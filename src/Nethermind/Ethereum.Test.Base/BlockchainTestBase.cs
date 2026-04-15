@@ -131,6 +131,11 @@ public abstract class BlockchainTestBase
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarmStateOnBlockProcessing = false;
+        if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
+        {
+            mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(1).TotalMilliseconds;
+        }
+
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)
@@ -402,6 +407,103 @@ public abstract class BlockchainTestBase
         if (validationError.Contains("intrinsic gas too low", StringComparison.Ordinal))
         {
             return ["TransactionException.INTRINSIC_GAS_TOO_LOW", "TransactionException.INTRINSIC_GAS_BELOW_FLOOR_GAS_COST"];
+        }
+
+        if (validationError.Contains("max initcode size exceeded", StringComparison.Ordinal))
+        {
+            return ["TransactionException.INITCODE_SIZE_EXCEEDED"];
+        }
+
+        if (validationError.Contains("insufficient sender balance", StringComparison.Ordinal))
+        {
+            return ["TransactionException.INSUFFICIENT_ACCOUNT_FUNDS"];
+        }
+
+        if (validationError.Contains("insufficient MaxFeePerGas for sender balance", StringComparison.Ordinal))
+        {
+            return ["TransactionException.INSUFFICIENT_ACCOUNT_FUNDS"];
+        }
+
+        if (validationError.Contains("InvalidTxType", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_3_TX_PRE_FORK"];
+        }
+
+        if (validationError.Contains("InvalidBlobVersionedHashVersion", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH"];
+        }
+
+        if (validationError.Contains("InvalidRequestsHash", StringComparison.Ordinal))
+        {
+            return ["BlockException.INVALID_REQUESTS"];
+        }
+
+        if (validationError.Contains("DepositsInvalid: Invalid deposit event layout", StringComparison.Ordinal))
+        {
+            return ["BlockException.INVALID_DEPOSIT_EVENT_LAYOUT"];
+        }
+
+        if (validationError.Contains("HeaderBlobGasMismatch", StringComparison.Ordinal))
+        {
+            return ["BlockException.INCORRECT_BLOB_GAS_USED", "BlockException.BLOB_GAS_USED_ABOVE_LIMIT"];
+        }
+
+        if (validationError.Contains("BlobTxGasLimitExceeded", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED"];
+        }
+
+        if (validationError.Contains("BlockBlobGasExceeded", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED"];
+        }
+
+        if (validationError.Contains("TxGasLimitCapExceeded", StringComparison.Ordinal))
+        {
+            return ["TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM"];
+        }
+
+        if (validationError.Contains("ExceededBlockSizeLimit", StringComparison.Ordinal))
+        {
+            return ["BlockException.RLP_BLOCK_LIMIT_EXCEEDED"];
+        }
+
+        if (validationError.Contains("BlockAccessListGasLimitExceeded", StringComparison.Ordinal))
+        {
+            return [
+                "BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED",
+                "TransactionException.GAS_ALLOWANCE_EXCEEDED"
+            ];
+        }
+
+        if (validationError.Contains("Error decoding block access list", StringComparison.Ordinal))
+        {
+            if (validationError.Contains("Account changes were in incorrect order", StringComparison.Ordinal))
+            {
+                return [
+                    "BlockException.INCORRECT_BLOCK_FORMAT",
+                    "BlockException.INVALID_BAL_EXTRA_ACCOUNT",
+                    "BlockException.INVALID_BLOCK_ACCESS_LIST"
+                ];
+            }
+
+            return ["BlockException.INCORRECT_BLOCK_FORMAT", "BlockException.INVALID_BLOCK_ACCESS_LIST"];
+        }
+
+        if (validationError.Contains("InvalidBlockLevelAccessList: Suggested block-level access list missing account changes", StringComparison.Ordinal))
+        {
+            return [
+                "BlockException.INVALID_BAL_MISSING_ACCOUNT",
+                "BlockException.INVALID_BLOCK_ACCESS_LIST",
+                "BlockException.INVALID_DEPOSIT_EVENT_LAYOUT",
+                "BlockException.SYSTEM_CONTRACT_CALL_FAILED"
+            ];
+        }
+
+        if (validationError.Contains("InvalidBlockLevelAccessList", StringComparison.Ordinal))
+        {
+            return ["BlockException.INVALID_BLOCK_ACCESS_LIST"];
         }
 
         return [];

@@ -263,8 +263,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         codeInsertRefunds > 0 ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0;
 
     /// <summary>
-    /// Applies EIP-7702 code insert refunds: state refund to reservoir + returns regular refund amount.
-    /// Only call on success paths (state gas accounting must not be modified on error).
+    /// Applies EIP-7702 code insert refunds: EIP-8037 state refund to reservoir + regular refund amount.
+    /// For EIP-8037 this is applied before execution so later state charges can consume the refunded reservoir.
     /// </summary>
     /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas), for clamping refunds.</param>
     static virtual long ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor) =>

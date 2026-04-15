@@ -83,7 +83,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8037_nested_create_code_deposit_failure_must_restore_create_state_to_parent()
+    public void Eip8037_nested_create_code_deposit_failure_must_keep_create_state_in_parent()
     {
         byte[] childInitCode = Prepare.EvmCode
             .PushData(33_000)
@@ -100,7 +100,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, 5_000_000, code);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState));
     }
 
     /// <summary>
@@ -162,6 +162,49 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
+    }
+
+    [Test]
+    public void Eip8037_top_level_create_collision_counts_only_create_state_as_block_gas()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        const long gasLimit = 600_000;
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, initCode, value: 0);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(contractAddress, 0, 1);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.Zero);
+    }
+
+    [Test]
+    public void Eip8037_create_memory_oog_must_not_charge_create_state_gas()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(16_777_216)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.CREATE)
+            .Done;
+
+        const long gasLimit = 100_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));

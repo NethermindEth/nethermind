@@ -217,6 +217,14 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
+            if (spec.IsEip8037Enabled && delegationRefunds > 0)
+            {
+                TGasPolicy intrinsicGasStandard = intrinsicGas.Standard;
+                long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+                TGasPolicy.ApplyCodeInsertRefunds(ref gasAvailable, delegationRefunds, spec, stateGasFloor);
+                delegationRefunds = 0;
+            }
+
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
@@ -728,7 +736,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     if (!PrepareDeployment(env.ExecutingAccount))
                     {
-                        goto FailContractCreate;
+                        if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                        WorldState.Restore(snapshot);
+                        gasConsumed = RefundOnFailContractCreationBeforeExecution(tx, spec, in gasAvailable);
+                        goto Complete;
                     }
                 }
             }
@@ -848,6 +859,25 @@ namespace Nethermind.Evm.TransactionProcessing
             return gasConsumed;
         }
 
+        protected virtual GasConsumed RefundOnFailContractCreationBeforeExecution(Transaction tx, IReleaseSpec spec, in TGasPolicy gasAfterExecution)
+        {
+            if (!spec.IsEip8037Enabled)
+                return tx.GasLimit;
+
+            long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
+            long spentGas = tx.GasLimit - TGasPolicy.GetStateReservoir(in gasAfterExecution);
+
+            GasConsumed gasConsumed = new(spentGas, spentGas, BlockGas: 0, blockStateGas, spentGas);
+
+            if (gasConsumed.SpentGas < tx.GasLimit)
+            {
+                UInt256 refundAmount = (ulong)(tx.GasLimit - gasConsumed.SpentGas) * VirtualMachine.TxExecutionContext.GasPrice;
+                PayRefund(tx, refundAmount, spec);
+            }
+
+            return gasConsumed;
+        }
+
         protected virtual bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
             if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Length, out long regularDepositCost, out long stateDepositCost))
@@ -951,10 +981,10 @@ namespace Nethermind.Evm.TransactionProcessing
             long spentGas = tx.GasLimit;
             long actualRefund = 0;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
 
             if (!substate.IsError)
             {
-                long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
                 spentGas -= TGasPolicy.GetRemainingGas(in gasAfterExecution) + TGasPolicy.GetStateReservoir(in gasAfterExecution);
 
                 long totalToRefund = codeInsertRegularRefund;
@@ -965,17 +995,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + TGasPolicy.GetRemainingGas(in gasAfterExecution) + " and refund of " + actualRefund);
             }
-            else if (codeInsertRefunds > 0)
+            else if (codeInsertRegularRefund > 0)
             {
-                // On error, only regular refund applies; state refund is not applied.
-                long codeInsertRegularRefund = TGasPolicy.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
-                if (codeInsertRegularRefund > 0)
-                {
-                    actualRefund = CalculateClaimableRefund(spentGas, codeInsertRegularRefund, spec);
+                actualRefund = CalculateClaimableRefund(spentGas, codeInsertRegularRefund, spec);
 
-                    if (Logger.IsTrace)
-                        Logger.Trace("Refunding delegations only: " + actualRefund);
-                }
+                if (Logger.IsTrace)
+                    Logger.Trace("Refunding delegations only: " + actualRefund);
             }
 
             // EIP-7778: Track pre-refund gas for block gas accounting

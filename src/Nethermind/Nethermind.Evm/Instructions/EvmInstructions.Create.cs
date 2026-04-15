@@ -137,7 +137,7 @@ internal static partial class EvmInstructions
 
         bool createOutOfGas = TEip8037.IsActive switch
         {
-            true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost) || !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState),
+            true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost),
             false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.Create + extraCost),
         };
 
@@ -158,6 +158,9 @@ internal static partial class EvmInstructions
 
         // Load the initialization code from memory based on the specified position and length.
         if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+            goto OutOfGas;
+
+        if (TEip8037.IsActive && !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
