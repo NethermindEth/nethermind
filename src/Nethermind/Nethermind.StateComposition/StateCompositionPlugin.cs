@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -45,19 +47,28 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
         // StateCompositionService is AutoActivated by StateCompositionModule so it
         // has already constructed itself (and wired NewHeadBlock) by this point.
 
-        if (!config.PersistSnapshots) return Task.CompletedTask;
-
         ILogger logger = _api.LogManager.GetClassLogger<StateCompositionPlugin>();
+        IBlockTree blockTree = _api.Context.Resolve<IBlockTree>();
+        StateCompositionService service = _api.Context.Resolve<StateCompositionService>();
+
+        if (!config.PersistSnapshots)
+        {
+            // Without snapshots there is nothing to restore, so the bootstrap scan
+            // is the only path to a usable baseline. Fire it once against the
+            // current head; OnNewHeadBlock then drives the incremental pipeline.
+            ScheduleBootstrapScan(service, blockTree, logger);
+            return Task.CompletedTask;
+        }
 
         StateCompositionSnapshotStore store = _api.Context.Resolve<StateCompositionSnapshotStore>();
         StateCompositionStateHolder stateHolder = _api.Context.Resolve<StateCompositionStateHolder>();
-        IBlockTree blockTree = _api.Context.Resolve<IBlockTree>();
 
         StateCompositionSnapshot? snapshot = store.ReadLatestSnapshot();
         if (snapshot is null)
         {
             if (logger.IsInfo)
-                logger.Info("StateComposition: no persisted snapshot found, fresh scan required");
+                logger.Info("StateComposition: no persisted snapshot found, scheduling bootstrap scan");
+            ScheduleBootstrapScan(service, blockTree, logger);
             return Task.CompletedTask;
         }
 
@@ -68,7 +79,8 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
         {
             if (logger.IsWarn)
                 logger.Warn($"StateComposition: persisted snapshot at block {snap.BlockNumber} " +
-                            $"has stale state root (reorg?), discarding");
+                            $"has stale state root (reorg?), scheduling bootstrap scan");
+            ScheduleBootstrapScan(service, blockTree, logger);
             return Task.CompletedTask;
         }
 
@@ -87,4 +99,44 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
     }
 
     public Task InitRpcModules() => Task.CompletedTask;
+
+    /// <summary>
+    /// Fire-and-forget the bootstrap scan against the current chain head. This is
+    /// the only call site that originates from the plugin (the other legal caller
+    /// of <see cref="StateCompositionService.AnalyzeAsync"/> is the
+    /// MissingTrieNodeException recovery path inside the service itself). If the
+    /// block tree has no head yet (very early init), log a warning — operators
+    /// must restart the node once the consensus client has driven the head past
+    /// genesis. <see cref="StateCompositionService.AnalyzeAsync"/> already
+    /// serialises via its scan semaphore, so the dispatched task is safe.
+    /// </summary>
+    private static void ScheduleBootstrapScan(
+        StateCompositionService service,
+        IBlockTree blockTree,
+        ILogger logger)
+    {
+        BlockHeader? head = blockTree.Head?.Header;
+        if (head is null)
+        {
+            if (logger.IsWarn)
+                logger.Warn("StateComposition: cannot schedule bootstrap scan — block tree head is null");
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                Result<StateCompositionStats> result =
+                    await service.AnalyzeAsync(head, CancellationToken.None).ConfigureAwait(false);
+
+                if (!result.IsSuccess && logger.IsWarn)
+                    logger.Warn($"StateComposition: bootstrap scan skipped: {result.Error}");
+            }
+            catch (Exception ex) when (logger.IsError)
+            {
+                logger.Error("StateComposition: bootstrap scan failed", ex);
+            }
+        });
+    }
 }
