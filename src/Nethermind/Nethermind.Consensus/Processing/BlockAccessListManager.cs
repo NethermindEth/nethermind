@@ -299,7 +299,8 @@ public class BlockAccessListManager(
             {
                 if (generatedHead.Value.BalanceChange != suggestedHead.Value.BalanceChange ||
                     generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
-                    !generatedHead.Value.CodeChange.Equals(suggestedHead.Value.CodeChange) ||
+                    generatedHead.Value.CodeChange.HasValue != suggestedHead.Value.CodeChange.HasValue ||
+                    generatedHead.Value.CodeChange is not null && !generatedHead.Value.CodeChange.Value.Equals(suggestedHead.Value.CodeChange.Value) ||
                     !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
                 {
                     throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
