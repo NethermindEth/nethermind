@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -19,7 +20,7 @@ using Nethermind.StateComposition.Snapshots;
 
 namespace Nethermind.StateComposition.Service;
 
-internal partial class StateCompositionService : IDisposable
+internal partial class StateCompositionService : IStoppableService, IDisposable
 {
     private const long MinMemoryBudgetBytes = 1_048_576L; // 1 MiB
     private const int MaxScanParallelism = 16;
@@ -278,10 +279,51 @@ internal partial class StateCompositionService : IDisposable
         Metrics.StateCompDiffsSinceBaseline = 0;
         Metrics.StateCompScansCompleted++;
 
-        if (_config.PersistSnapshots)
-            _snapshotStore.WriteSnapshot(
-                _stateHolder.BuildSnapshot(cumulativeBaseline, header.Number, header.StateRoot!));
+        WriteSnapshotForHead(cumulativeBaseline, header.Number, header.StateRoot!);
     }
+
+    /// <summary>
+    /// Persist the current incremental state for the given head. Single funnel
+    /// for every snapshot write — interval writes, scan completion, and the
+    /// graceful-shutdown flush all go through here so behavior cannot drift.
+    /// </summary>
+    private void WriteSnapshotForHead(CumulativeSizeStats stats, long blockNumber, Hash256 stateRoot)
+    {
+        if (!_config.PersistSnapshots) return;
+        _snapshotStore.WriteSnapshot(_stateHolder.BuildSnapshot(stats, blockNumber, stateRoot));
+    }
+
+    /// <summary>
+    /// Graceful shutdown hook invoked by <see cref="IServiceStopper"/> before the
+    /// snapshot RocksDB is disposed. Cancels any in-flight scan, waits for the scan
+    /// semaphore so no writer races with the flush, and force-writes the latest
+    /// incremental state (bypassing <see cref="IStateCompositionConfig.SnapshotInterval"/>)
+    /// so the next startup can resume without a full rescan.
+    /// </summary>
+    public async Task StopAsync()
+    {
+        CancelScan();
+
+        await _scanLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            CumulativeSizeStats? stats = _stateHolder.IncrementalStats;
+            Hash256? stateRoot = _stateHolder.LastProcessedStateRoot;
+            long blockNumber = _stateHolder.IncrementalBlock;
+            if (stats is null || stateRoot is null) return;
+
+            if (_logger.IsInfo)
+                _logger.Info($"StateComposition: shutdown flush — writing snapshot at block {blockNumber}");
+
+            WriteSnapshotForHead(stats.Value, blockNumber, stateRoot);
+        }
+        finally
+        {
+            _scanLock.Release();
+        }
+    }
+
+    public string Description => "StateComposition";
 
     public void Dispose()
     {
