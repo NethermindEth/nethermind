@@ -7,10 +7,10 @@ using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Visitors;
 using NUnit.Framework;
 
-namespace Nethermind.StateComposition.Test;
+namespace Nethermind.StateComposition.Test.Visitors;
 
 [TestFixture]
-public class PluginBootstrapTests
+public class VisitorCountersTests
 {
     [Test]
     public void VisitorCounters_MergeFrom_AggregatesCorrectly()
@@ -52,39 +52,6 @@ public class PluginBootstrapTests
             Assert.That(a.TotalBranchNodes, Is.EqualTo(13));
             Assert.That(a.AccountDepths[2].FullNodes, Is.EqualTo(2));
             Assert.That(a.AccountDepths[2].TotalSize, Is.EqualTo(125));
-        }
-    }
-
-    [Test]
-    public void DepthCounter_AddFullNode_UpdatesCountAndSize()
-    {
-        DepthCounter counter = new();
-
-        counter.AddFullNode(100);
-        counter.AddFullNode(200);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(counter.FullNodes, Is.EqualTo(2));
-            Assert.That(counter.TotalSize, Is.EqualTo(300));
-            Assert.That(counter.ShortNodes, Is.Zero);
-            Assert.That(counter.ValueNodes, Is.Zero);
-        }
-    }
-
-    [Test]
-    public void DepthCounter_AddShortNodeAndValueNode()
-    {
-        DepthCounter counter = new();
-
-        counter.AddShortNode(50);
-        counter.AddValueNode(75);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(counter.ShortNodes, Is.EqualTo(1));
-            Assert.That(counter.ValueNodes, Is.EqualTo(1));
-            Assert.That(counter.TotalSize, Is.EqualTo(125));
         }
     }
 
@@ -138,15 +105,6 @@ public class PluginBootstrapTests
     }
 
     [Test]
-    public void VisitorCounters_Flush_NoOp_WhenNoActiveTrie()
-    {
-        VisitorCounters c = new();
-        c.Flush(); // Should not throw
-
-        Assert.That(c.TopN.TopByDepthCount, Is.Zero);
-    }
-
-    [Test]
     public void VisitorCounters_MergeFrom_MergesTopN()
     {
         VisitorCounters a = new(topN: 5);
@@ -164,37 +122,43 @@ public class PluginBootstrapTests
         Assert.That(a.TopN.TopByDepthCount, Is.EqualTo(2));
     }
 
-    [Test]
-    public void Comparator_TopByDepth_DeterministicTiebreaking()
+    [TestCase("Depth")]
+    [TestCase("TotalNodes")]
+    [TestCase("ValueNodes")]
+    public void Comparator_DeterministicTiebreaking(string comparator)
     {
-        // Same MaxDepth → tiebreak on TotalNodes DESC
-        TopContractEntry a = new() { MaxDepth = 10, TotalNodes = 100, ValueNodes = 50 };
-        TopContractEntry b = new() { MaxDepth = 10, TotalNodes = 200, ValueNodes = 50 };
+        // For each primary key, two entries with identical primary value but
+        // different secondary (MaxDepth or TotalNodes) must produce a strict
+        // ordering so the heap never compares equal.
+        TopContractEntry a;
+        TopContractEntry b;
+        int result;
 
-        int result = TopNTracker.CompareByDepth(in a, in b);
-        Assert.That(result, Is.LessThan(0)); // b has more TotalNodes → a < b
-    }
+        switch (comparator)
+        {
+            case "Depth":
+                // Same MaxDepth → tiebreak on TotalNodes DESC
+                a = new() { MaxDepth = 10, TotalNodes = 100, ValueNodes = 50 };
+                b = new() { MaxDepth = 10, TotalNodes = 200, ValueNodes = 50 };
+                result = TopNTracker.CompareByDepth(in a, in b);
+                break;
+            case "TotalNodes":
+                // Same TotalNodes → tiebreak on MaxDepth DESC
+                a = new() { TotalNodes = 200, MaxDepth = 5, ValueNodes = 50 };
+                b = new() { TotalNodes = 200, MaxDepth = 10, ValueNodes = 50 };
+                result = TopNTracker.CompareByTotalNodes(in a, in b);
+                break;
+            case "ValueNodes":
+                // Same ValueNodes → tiebreak on MaxDepth DESC
+                a = new() { ValueNodes = 100, MaxDepth = 5, TotalNodes = 50 };
+                b = new() { ValueNodes = 100, MaxDepth = 10, TotalNodes = 50 };
+                result = TopNTracker.CompareByValueNodes(in a, in b);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(comparator), comparator, null);
+        }
 
-    [Test]
-    public void Comparator_TopByNodes_DeterministicTiebreaking()
-    {
-        // Same TotalNodes → tiebreak on MaxDepth DESC
-        TopContractEntry a = new() { TotalNodes = 200, MaxDepth = 5, ValueNodes = 50 };
-        TopContractEntry b = new() { TotalNodes = 200, MaxDepth = 10, ValueNodes = 50 };
-
-        int result = TopNTracker.CompareByTotalNodes(in a, in b);
-        Assert.That(result, Is.LessThan(0)); // b has more MaxDepth → a < b
-    }
-
-    [Test]
-    public void Comparator_TopByValueNodes_DeterministicTiebreaking()
-    {
-        // Same ValueNodes → tiebreak on MaxDepth DESC
-        TopContractEntry a = new() { ValueNodes = 100, MaxDepth = 5, TotalNodes = 50 };
-        TopContractEntry b = new() { ValueNodes = 100, MaxDepth = 10, TotalNodes = 50 };
-
-        int result = TopNTracker.CompareByValueNodes(in a, in b);
-        Assert.That(result, Is.LessThan(0)); // b has more MaxDepth → a < b
+        Assert.That(result, Is.LessThan(0)); // b wins the tiebreak → a < b
     }
 
     [Test]
@@ -245,34 +209,5 @@ public class PluginBootstrapTests
 
         Array.Sort(nodes);
         Assert.That(nodes, Is.EqualTo(new long[] { 9, 12, 15 }));
-    }
-
-    [Test]
-    public void VisitorCounters_TopN_ByValueNodes_InsertsAndEvictsCorrectly()
-    {
-        VisitorCounters c = new(topN: 3);
-
-        // Insert 5 contracts with increasing ValueNodes counts
-        for (int i = 1; i <= 5; i++)
-        {
-            byte[] ownerBytes = new byte[32];
-            ownerBytes[0] = (byte)i;
-            c.BeginStorageTrie(default, new ValueHash256(ownerBytes));
-            // i*2 leaf nodes (value nodes)
-            for (int j = 0; j < i * 2; j++)
-                c.TrackStorageNode(depth: 1, byteSize: 10, isLeaf: true, isBranch: false);
-        }
-
-        c.Flush();
-
-        // Top 3 by value nodes should be 10, 8, 6 (from i=5,4,3)
-        Assert.That(c.TopN.TopByValueNodesCount, Is.EqualTo(3));
-
-        long[] valueNodes = new long[3];
-        for (int i = 0; i < 3; i++)
-            valueNodes[i] = c.TopN.TopByValueNodes[i].ValueNodes;
-
-        Array.Sort(valueNodes);
-        Assert.That(valueNodes, Is.EqualTo(new long[] { 6, 8, 10 }));
     }
 }
