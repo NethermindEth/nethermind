@@ -179,7 +179,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowFormatException(string? message = null) => throw new FormatException(message);
+    private static void ThrowFormatException(string? message = ErrSyntax) => throw new FormatException(message);
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
@@ -341,10 +341,7 @@ public class EvenLengthByteArrayConverter : JsonConverter<byte[]>
         }
         catch (FormatException e)
         {
-            string message = e.Message is ByteArrayConverter.ErrMissingPrefix or ByteArrayConverter.ErrOddLength
-                ? e.Message
-                : ByteArrayConverter.ErrSyntax;
-            throw new JsonException(message, e);
+            throw new JsonException(e.Message, e);
         }
     }
 
