@@ -128,6 +128,11 @@ namespace Nethermind.Serialization.Ssz.Test
             Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitvector(twoBytes, 5));
         }
 
+        [TestCase(0)]
+        [TestCase(-1)]
+        public void DecodeBitvector_rejects_non_positive_vector_length(int vectorLength) =>
+            Assert.Throws<ArgumentOutOfRangeException>(() => Ssz.DecodeBitvector(ReadOnlySpan<byte>.Empty, vectorLength));
+
         [Test]
         public void DecodeBitvector_rejects_set_high_bits()
         {
