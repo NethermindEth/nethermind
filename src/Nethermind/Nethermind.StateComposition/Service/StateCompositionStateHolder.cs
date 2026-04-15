@@ -40,29 +40,17 @@ internal sealed class StateCompositionStateHolder
     private Dictionary<ValueHash256, int> _codeHashRefcounts = new();
     private Dictionary<ValueHash256, int> _codeHashSizes = new();
 
-    public StateCompositionStats CurrentStats
-    {
-        get { lock (_lock) return _currentStats; }
-    }
+    public StateCompositionStats CurrentStats { get { lock (_lock) return _currentStats; } }
 
-    public TrieDepthDistribution CurrentDistribution
-    {
-        get { lock (_lock) return _currentDistribution; }
-    }
+    public TrieDepthDistribution CurrentDistribution { get { lock (_lock) return _currentDistribution; } }
 
-    public ScanMetadata LastScanMetadata
-    {
-        get { lock (_lock) return _lastScanMetadata; }
-    }
+    public ScanMetadata LastScanMetadata { get { lock (_lock) return _lastScanMetadata; } }
 
     public bool IsInitialized { get { lock (_lock) return _isInitialized; } }
 
     public bool IsIncrementalSeeded { get { lock (_lock) return _isIncrementalSeeded; } }
 
-    public CumulativeSizeStats IncrementalStats
-    {
-        get { lock (_lock) return _incrementalStats; }
-    }
+    public CumulativeSizeStats IncrementalStats { get { lock (_lock) return _incrementalStats; } }
 
     /// <summary>
     /// Returns the live cumulative depth stats reference. Single-writer invariant:
@@ -74,24 +62,15 @@ internal sealed class StateCompositionStateHolder
     /// </summary>
     public CumulativeDepthStats CurrentDepthStats => _currentDepthStats;
 
-    public long IncrementalBlock
-    {
-        get { lock (_lock) return _incrementalBlock; }
-    }
+    public long IncrementalBlock { get { lock (_lock) return _incrementalBlock; } }
 
-    public int DiffsSinceBaseline
-    {
-        get { lock (_lock) return _diffsSinceBaseline; }
-    }
+    public int DiffsSinceBaseline { get { lock (_lock) return _diffsSinceBaseline; } }
 
     /// <summary>
     /// Returns <see cref="Hash256.Zero"/> when no baseline is available
     /// (cold start or post-<see cref="InvalidateBaseline"/>).
     /// </summary>
-    public Hash256 LastProcessedStateRoot
-    {
-        get { lock (_lock) return _lastProcessedStateRoot; }
-    }
+    public Hash256 LastProcessedStateRoot { get { lock (_lock) return _lastProcessedStateRoot; } }
 
     public CachedStatsResponse BuildCachedStatsResponse()
     {
