@@ -220,47 +220,22 @@ internal sealed partial class TrieDiffWalker
 
     private void RecordNode(NodeType nodeType, int rlpLength, bool isStorage, bool added)
     {
-        if (isStorage)
+        int trieIdx = isStorage ? StorageTrie : AccountTrie;
+        int kind = nodeType switch
         {
-            switch (nodeType)
-            {
-                case NodeType.Branch:
-                    if (added) _storageTrieBranchesAdded++;
-                    else _storageTrieBranchesRemoved++;
-                    break;
-                case NodeType.Extension:
-                    if (added) _storageTrieExtensionsAdded++;
-                    else _storageTrieExtensionsRemoved++;
-                    break;
-                case NodeType.Leaf:
-                    if (added) _storageTrieLeavesAdded++;
-                    else _storageTrieLeavesRemoved++;
-                    break;
-            }
+            NodeType.Branch => BranchKind,
+            NodeType.Extension => ExtensionKind,
+            NodeType.Leaf => LeafKind,
+            _ => -1,
+        };
 
-            if (added) _storageTrieBytesAdded += rlpLength;
-            else _storageTrieBytesRemoved += rlpLength;
-        }
-        else
+        if (kind >= 0)
         {
-            switch (nodeType)
-            {
-                case NodeType.Branch:
-                    if (added) _accountTrieBranchesAdded++;
-                    else _accountTrieBranchesRemoved++;
-                    break;
-                case NodeType.Extension:
-                    if (added) _accountTrieExtensionsAdded++;
-                    else _accountTrieExtensionsRemoved++;
-                    break;
-                case NodeType.Leaf:
-                    if (added) _accountTrieLeavesAdded++;
-                    else _accountTrieLeavesRemoved++;
-                    break;
-            }
-
-            if (added) _accountTrieBytesAdded += rlpLength;
-            else _accountTrieBytesRemoved += rlpLength;
+            if (added) _trieNodesAdded[trieIdx, kind]++;
+            else _trieNodesRemoved[trieIdx, kind]++;
         }
+
+        if (added) _trieBytesAdded[trieIdx] += rlpLength;
+        else _trieBytesRemoved[trieIdx] += rlpLength;
     }
 }
