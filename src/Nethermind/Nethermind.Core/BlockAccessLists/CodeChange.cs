@@ -11,10 +11,10 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public struct CodeChange(int blockAccessIndex, byte[] newCode) : IIndexedChange
 {
-    public int BlockAccessIndex {get; init; } = blockAccessIndex;
+    public readonly int BlockAccessIndex {get; init; } = blockAccessIndex;
 
     [JsonConverter(typeof(ByteArrayConverter))]
-    public byte[] NewCode { get; init; } = newCode;
+    public readonly byte[] NewCode { get; init; } = newCode;
 
     public ValueHash256 NewCodeHash => _hash ??= ValueKeccak.Compute(NewCode);
 
