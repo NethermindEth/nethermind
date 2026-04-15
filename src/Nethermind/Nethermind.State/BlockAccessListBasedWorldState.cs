@@ -226,7 +226,7 @@ public class BlockAccessListBasedWorldState(
     public void Reset(bool resetBlockChanges = true) { }
 
     public ArrayPoolList<AddressAsKey> GetAccountChanges() =>
-        _suggestedBlockAccessList.AccountChanges.Where(a => a.AccountChanged).Select(a => new AddressAsKey(a.Address)).ToPooledList(_suggestedBlockAccessList.AccountChanges.Count());
+        _suggestedBlockAccessList.AccountChanges.Where(a => a.AccountChanged).Select(a => new AddressAsKey(a.Address)).ToPooledList(_suggestedBlockAccessList.AccountChanges.Count);
 
     public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         => _transientStorageProvider.Get(in storageCell);
