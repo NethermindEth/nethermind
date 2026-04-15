@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
+using Nethermind.Core.Collections;
 
 [assembly: InternalsVisibleTo("Nethermind.Core.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
@@ -22,7 +23,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     [JsonIgnore]
     public int ItemCount { get; set; }
 
-    public IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
+    public EnumerableWithCount<AccountChanges> AccountChanges => new(_accountChanges.Values, _accountChanges.Values.Count);
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
