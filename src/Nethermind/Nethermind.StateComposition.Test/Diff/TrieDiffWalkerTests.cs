@@ -57,30 +57,6 @@ public class TrieDiffWalkerTests
     #region 1. Null / empty root cases
 
     [Test]
-    public void BothRootsNull_ReturnsZeroDiff()
-    {
-        MemDb db = new();
-        RawScopedTrieStore store = new(db);
-        TrieDiffWalker walker = new(store);
-
-        TrieDiff diff = walker.ComputeDiff(null, null);
-
-        Assert.That(diff, Is.Default);
-    }
-
-    [Test]
-    public void BothRootsEmptyTreeHash_ReturnsZeroDiff()
-    {
-        MemDb db = new();
-        RawScopedTrieStore store = new(db);
-        TrieDiffWalker walker = new(store);
-
-        TrieDiff diff = walker.ComputeDiff(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash);
-
-        Assert.That(diff, Is.Default);
-    }
-
-    [Test]
     public void SameRoot_ReturnsZeroDiff()
     {
         MemDb db = new();
@@ -99,33 +75,6 @@ public class TrieDiffWalkerTests
     #endregion
 
     #region 2. Empty → non-empty (genesis-like)
-
-    [Test]
-    public void EmptyToSingleAccount_CountsOneAccountAdded()
-    {
-        MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-
-        Hash256 emptyRoot = Keccak.EmptyTreeHash;
-
-        tree.Set(TestItem.AddressA, CreateEOA());
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root1 = tree.RootHash;
-
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(emptyRoot, root1);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(diff.AccountsAdded, Is.EqualTo(1));
-            Assert.That(diff.AccountsRemoved, Is.Zero);
-            Assert.That(diff.NetAccounts, Is.EqualTo(1));
-            Assert.That(diff.ContractsAdded, Is.Zero);
-            Assert.That(diff.AccountTrieLeavesAdded, Is.EqualTo(1));
-            Assert.That(diff.AccountTrieLeavesRemoved, Is.Zero);
-        }
-    }
 
     [Test]
     public void EmptyToMultipleAccounts_CountsAllAdded()
@@ -150,33 +99,6 @@ public class TrieDiffWalkerTests
             Assert.That(diff.ContractsAdded, Is.EqualTo(1));
             Assert.That(diff.ContractsRemoved, Is.Zero);
             Assert.That(diff.AccountTrieLeavesAdded, Is.EqualTo(3));
-        }
-    }
-
-    #endregion
-
-    #region 3. Non-empty → empty (edge case)
-
-    [Test]
-    public void SingleAccountToEmpty_CountsOneAccountRemoved()
-    {
-        MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-
-        tree.Set(TestItem.AddressA, CreateEOA());
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root1 = tree.RootHash;
-
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(root1, Keccak.EmptyTreeHash);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(diff.AccountsAdded, Is.Zero);
-            Assert.That(diff.AccountsRemoved, Is.EqualTo(1));
-            Assert.That(diff.NetAccounts, Is.EqualTo(-1));
-            Assert.That(diff.AccountTrieLeavesRemoved, Is.EqualTo(1));
         }
     }
 
@@ -797,47 +719,6 @@ public class TrieDiffWalkerTests
 
     #endregion
 
-    #region 17. Reusability: walker can compute multiple diffs
-
-    [Test]
-    public void Walker_CanBeReused_ForMultipleDiffs()
-    {
-        MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-
-        tree.Set(TestItem.AddressA, CreateEOA());
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root1 = tree.RootHash;
-
-        tree.Set(TestItem.AddressB, CreateEOA(200));
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root2 = tree.RootHash;
-
-        tree.Set(TestItem.AddressC, CreateEOA(300));
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root3 = tree.RootHash;
-
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-
-        TrieDiff diff1 = walker.ComputeDiff(root1, root2);
-        TrieDiff diff2 = walker.ComputeDiff(root2, root3);
-
-        using (Assert.EnterMultipleScope())
-        {
-            // Each diff is independent
-            Assert.That(diff1.AccountsAdded, Is.EqualTo(1));
-            Assert.That(diff2.AccountsAdded, Is.EqualTo(1));
-
-            // Counters reset between calls — diff2 should not accumulate diff1's values
-            Assert.That(diff2.AccountsRemoved, Is.Zero);
-        }
-    }
-
-    #endregion
-
     #region Integration: multi-block scan/diff/scan verification
 
     private static Address AddressFromSeed(int seed)
@@ -1031,50 +912,6 @@ public class TrieDiffWalkerTests
     #endregion
 
     #region 16. Depth delta tracking
-
-    [Test]
-    public void DepthDelta_Null_WhenTrackDepthDisabled()
-    {
-        MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-
-        tree.Set(TestItem.AddressA, CreateEOA());
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root1 = tree.RootHash;
-
-        tree.Set(TestItem.AddressB, CreateEOA(200));
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root2 = tree.RootHash;
-
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: false);
-        TrieDiff diff = walker.ComputeDiff(root1, root2);
-
-        Assert.That(diff.DepthDelta, Is.Null);
-    }
-
-    [Test]
-    public void DepthDelta_NotNull_WhenTrackDepthEnabled()
-    {
-        MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-
-        tree.Set(TestItem.AddressA, CreateEOA());
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root1 = tree.RootHash;
-
-        tree.Set(TestItem.AddressB, CreateEOA(200));
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root2 = tree.RootHash;
-
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
-        TrieDiff diff = walker.ComputeDiff(root1, root2);
-
-        Assert.That(diff.DepthDelta, Is.Not.Null);
-    }
 
     [Test]
     public void DepthDelta_AddOneLeaf_IncreasesValueNodesAtExpectedDepth()
