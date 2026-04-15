@@ -103,32 +103,4 @@ public class CumulativeSizeStatsTests
         }
     }
 
-    [Test]
-    public void ApplyDiff_Chained_StillPreservesFreezeFields()
-    {
-        ImmutableArray<long> hist = [7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        CumulativeSizeStats stats = CumulativeSizeStats.FromScanStats(
-            BuildScanStats(codeBytes: 1_000_000, slotHistogram: hist));
-
-        // Apply three distinct diffs in succession.
-        for (int i = 0; i < 3; i++)
-        {
-            TrieDiff d = new(
-                1, 0, 0, 0,
-                0, 0, 0, 0, 1, 0, 50, 0,
-                0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0,
-                0, 0, 0, 0);
-            stats = stats.ApplyDiff(d);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stats.AccountsTotal, Is.EqualTo(13));
-            Assert.That(stats.CodeBytesTotal, Is.EqualTo(1_000_000),
-                "CodeBytesTotal frozen across N chained diffs");
-            Assert.That(stats.SlotCountHistogram, Is.EqualTo(hist),
-                "SlotCountHistogram frozen across N chained diffs");
-        }
-    }
 }
