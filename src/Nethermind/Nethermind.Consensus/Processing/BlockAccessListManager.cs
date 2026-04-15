@@ -156,7 +156,7 @@ public class BlockAccessListManager(
             if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].BlockAccessIndex != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                UInt256 oldBalance = accountChanges.GetBalance(0);
+                UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
                 UInt256 newBalance = accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].PostBalance;
                 if (newBalance > oldBalance)
                 {

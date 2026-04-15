@@ -241,10 +241,10 @@ public class AccountChanges : IEquatable<AccountChanges>
         return sb.ToString();
     }
 
-    public UInt256 GetNonce(int blockAccessIndex)
+    public UInt256? GetNonce(int blockAccessIndex)
     {
         // todo: binary search
-        UInt256 lastNonce = UInt256.MaxValue;
+        UInt256? lastNonce = null;
         foreach (KeyValuePair<int, NonceChange> change in _nonceChanges)
         {
             if (change.Key >= blockAccessIndex)
@@ -256,9 +256,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         return lastNonce;
     }
 
-    public UInt256 GetBalance(int blockAccessIndex)
+    public UInt256? GetBalance(int blockAccessIndex)
     {
-        UInt256 lastBalance = UInt256.MaxValue;
+        UInt256? lastBalance = null;
         foreach (KeyValuePair<int, BalanceChange> change in _balanceChanges)
         {
             if (change.Key >= blockAccessIndex)

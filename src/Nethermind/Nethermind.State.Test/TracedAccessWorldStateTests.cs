@@ -513,4 +513,40 @@ public class TracedAccessWorldStateTests(bool parallel)
             }
         }
     }
+
+    // ── C7 regression: GetBalance/GetNonce return null, not UInt256.MaxValue sentinel ──
+
+    [Test]
+    public void AccountChanges_GetBalance_ReturnsNull_WhenNoChangesExist()
+    {
+        AccountChanges ac = new(TestItem.AddressA);
+        UInt256? balance = ac.GetBalance(0);
+        Assert.That(balance, Is.Null, "GetBalance should return null when no balance changes exist, not UInt256.MaxValue");
+    }
+
+    [Test]
+    public void AccountChanges_GetNonce_ReturnsNull_WhenNoChangesExist()
+    {
+        AccountChanges ac = new(TestItem.AddressA);
+        UInt256? nonce = ac.GetNonce(0);
+        Assert.That(nonce, Is.Null, "GetNonce should return null when no nonce changes exist, not UInt256.MaxValue");
+    }
+
+    [Test]
+    public void AccountChanges_GetBalance_ReturnsPreBlockValue_WhenOnlyPreStateExists()
+    {
+        AccountChanges ac = new(TestItem.AddressA);
+        ac.AddBalanceChange(new BalanceChange(-1, 500));
+        UInt256? balance = ac.GetBalance(0);
+        Assert.That(balance, Is.EqualTo((UInt256)500));
+    }
+
+    [Test]
+    public void AccountChanges_GetNonce_ReturnsPreBlockValue_WhenOnlyPreStateExists()
+    {
+        AccountChanges ac = new(TestItem.AddressA);
+        ac.AddNonceChange(new NonceChange(-1, 3));
+        UInt256? nonce = ac.GetNonce(0);
+        Assert.That(nonce, Is.EqualTo((UInt256)3));
+    }
 }

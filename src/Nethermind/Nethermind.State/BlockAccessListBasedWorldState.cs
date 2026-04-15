@@ -108,7 +108,9 @@ public class BlockAccessListBasedWorldState(
 
         if (accountChanges is not null)
         {
-            return accountChanges.GetBalance(blockAccessIndex);
+            return accountChanges.GetBalance(blockAccessIndex)
+                ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default,
+                    $"Suggested block-level access list missing balance for {address} at index {blockAccessIndex}.");
         }
 
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
@@ -120,7 +122,9 @@ public class BlockAccessListBasedWorldState(
 
         if (accountChanges is not null)
         {
-            return accountChanges.GetNonce(blockAccessIndex);
+            return accountChanges.GetNonce(blockAccessIndex)
+                ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default,
+                    $"Suggested block-level access list missing nonce for {address} at index {blockAccessIndex}.");
         }
 
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
