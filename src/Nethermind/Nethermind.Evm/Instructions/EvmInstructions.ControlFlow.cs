@@ -13,7 +13,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Pushes the current program counter (minus one) onto the EVM stack.

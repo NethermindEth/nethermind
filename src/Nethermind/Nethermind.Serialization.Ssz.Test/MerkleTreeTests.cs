@@ -34,10 +34,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
         }
 
-        private MerkleTree BuildATree(IKeyValueStore<ulong, byte[]>? keyValueStore = null)
-        {
-            return new ShaMerkleTree(keyValueStore ?? new MemMerkleTreeStore());
-        }
+        private MerkleTree BuildATree(IKeyValueStore<ulong, byte[]>? keyValueStore = null) => new ShaMerkleTree(keyValueStore ?? new MemMerkleTreeStore());
 
         [Test]
         public void Initially_count_is_0()
@@ -222,7 +219,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(123u)]
         public void Can_restore_count_from_the_database(uint leafCount)
         {
-            MemMerkleTreeStore? memDb = new MemMerkleTreeStore();
+            MemMerkleTreeStore? memDb = new();
             MerkleTree baselineTree = BuildATree(memDb);
 
             for (int i = 0; i < leafCount; i++)
@@ -304,8 +301,8 @@ namespace Nethermind.Serialization.Ssz.Test
                 baselineTree.Insert(_testLeaves[0]);
             }
 
-            var leafIndexes = Enumerable.Range(0, (int)nodesCount).Select(static l => (uint)l).ToArray();
-            var result = baselineTree.GetLeaves(leafIndexes);
+            uint[] leafIndexes = Enumerable.Range(0, (int)nodesCount).Select(static l => (uint)l).ToArray();
+            MerkleTreeNode[] result = baselineTree.GetLeaves(leafIndexes);
             for (int i = 0; i < result.Length; i++)
             {
                 result[i].Hash.Should().NotBe(Keccak.Zero);

@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Visitors
             if (useIterator)
             {
                 int txReceiptsLength = 0;
-                if (_receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash, out var iterator))
+                if (_receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash, out ReceiptsIterator iterator))
                 {
                     try
                     {

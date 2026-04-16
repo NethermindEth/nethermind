@@ -54,10 +54,7 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger<GeneralStateTestBase>();
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test)
-        {
-            return RunTest(test, NullTxTracer.Instance);
-        }
+        protected EthereumTestResult RunTest(GeneralStateTest test) => RunTest(test, NullTxTracer.Instance);
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {

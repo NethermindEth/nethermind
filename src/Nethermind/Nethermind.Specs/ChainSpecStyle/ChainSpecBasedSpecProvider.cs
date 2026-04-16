@@ -247,7 +247,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip4895Enabled = (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.WithdrawalTimestamp = chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue;
 
-            releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844Transition ?? long.MaxValue) <= releaseStartBlock ||
+                (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7951Enabled = (chainSpec.Parameters.Eip7951TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsRip7212Enabled = (chainSpec.Parameters.Rip7212TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsOpGraniteEnabled = (chainSpec.Parameters.OpGraniteTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -298,7 +299,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7939Enabled = (chainSpec.Parameters.Eip7939TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
-            releaseSpec.IsRip7728Enabled = (chainSpec.Parameters.Rip7728TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8037Enabled = (chainSpec.Parameters.Eip8037TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7778Enabled = (chainSpec.Parameters.Eip7778TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 

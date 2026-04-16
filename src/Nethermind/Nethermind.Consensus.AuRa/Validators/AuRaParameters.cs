@@ -42,14 +42,11 @@ public class AuRaParameters
         /// </remarks>
         public Address[]? Addresses { get; set; }
 
-        public Address GetContractAddress()
+        public Address GetContractAddress() => ValidatorType switch
         {
-            return ValidatorType switch
-            {
-                ValidatorType.Contract or ValidatorType.ReportingContract => Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses)),
-                _ => throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address."),
-            };
-        }
+            ValidatorType.Contract or ValidatorType.ReportingContract => Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses)),
+            _ => throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address."),
+        };
     }
 }
 

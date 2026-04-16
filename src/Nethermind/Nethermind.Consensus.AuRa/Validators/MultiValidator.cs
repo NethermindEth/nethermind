@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void InitCurrentValidator(long blockNumber, BlockHeader parentHeader)
         {
-            if (TryGetLastValidator(blockNumber, out var validatorInfo))
+            if (TryGetLastValidator(blockNumber, out KeyValuePair<long, AuRaParameters.Validator> validatorInfo))
             {
                 SetCurrentValidator(validatorInfo, parentHeader);
             }
@@ -67,12 +67,12 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator> validator)
         {
-            var headNumber = _blockTree.Head?.Number ?? 0;
+            long headNumber = _blockTree.Head?.Number ?? 0;
 
             validator = default;
             bool found = false;
 
-            foreach (var kvp in _validators)
+            foreach (KeyValuePair<long, AuRaParameters.Validator> kvp in _validators)
             {
                 if (kvp.Key <= blockNum || kvp.Key <= headNumber && kvp.Value.ValidatorType.CanChangeImmediately())
                 {
@@ -88,8 +88,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             for (int i = 0; i < e.FinalizedBlocks.Count; i++)
             {
-                var finalizedBlockHeader = e.FinalizedBlocks[i];
-                if (TryGetValidator(finalizedBlockHeader.Number, out var validator) && !validator.ValidatorType.CanChangeImmediately())
+                BlockHeader finalizedBlockHeader = e.FinalizedBlocks[i];
+                if (TryGetValidator(finalizedBlockHeader.Number, out AuRaParameters.Validator validator) && !validator.ValidatorType.CanChangeImmediately())
                 {
                     SetCurrentValidator(e.FinalizingBlock.Number, validator, e.FinalizingBlock);
                     if (!_forSealing)
@@ -112,16 +112,16 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                 if (isProducingBlock || isNotConsecutive)
                 {
-                    if (TryGetLastValidator(previousBlockNumber, out var validatorInfo))
+                    if (TryGetLastValidator(previousBlockNumber, out KeyValuePair<long, AuRaParameters.Validator> validatorInfo))
                     {
-                        var parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                        BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                         if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || ValidatorWasAlreadyFinalized(validatorInfo))
                         {
                             SetCurrentValidator(validatorInfo, parentHeader);
                         }
                         else if (!isProducingBlock)
                         {
-                            bool canSetValidatorAsCurrent = !TryGetLastValidator(validatorInfo.Key - 1, out var previousValidatorInfo);
+                            bool canSetValidatorAsCurrent = !TryGetLastValidator(validatorInfo.Key - 1, out KeyValuePair<long, AuRaParameters.Validator> previousValidatorInfo);
                             long? finalizedAtBlockNumber = null;
                             if (!canSetValidatorAsCurrent)
                             {
@@ -152,7 +152,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 bool notProducing = !options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-                if (TryGetValidator(block.Number, out var validator))
+                if (TryGetValidator(block.Number, out AuRaParameters.Validator validator))
                 {
                     if (validator.ValidatorType.CanChangeImmediately())
                     {
@@ -173,15 +173,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel, parentHeader);
         }
 
-        public void Dispose()
-        {
-            _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
-        }
+        public void Dispose() => _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
 
-        private void SetCurrentValidator(KeyValuePair<long, AuRaParameters.Validator> validatorInfo, BlockHeader parentHeader)
-        {
-            SetCurrentValidator(validatorInfo.Key, validatorInfo.Value, parentHeader);
-        }
+        private void SetCurrentValidator(KeyValuePair<long, AuRaParameters.Validator> validatorInfo, BlockHeader parentHeader) => SetCurrentValidator(validatorInfo.Key, validatorInfo.Value, parentHeader);
 
         private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader)
         {
@@ -208,20 +202,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) =>
             _validatorFactory.CreateValidatorProcessor(validatorPrototype, parentHeader, finalizedAtBlockNumber + 1);
 
-        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
-        {
-            _currentValidator.GetReportingValidator().ReportMalicious(validator, blockNumber, proof, cause);
-        }
+        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause) => _currentValidator.GetReportingValidator().ReportMalicious(validator, blockNumber, proof, cause);
 
-        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
-        {
-            _currentValidator.GetReportingValidator().ReportBenign(validator, blockNumber, cause);
-        }
+        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause) => _currentValidator.GetReportingValidator().ReportBenign(validator, blockNumber, cause);
 
-        public void TryReportSkipped(BlockHeader header, BlockHeader parent)
-        {
-            _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
-        }
+        public void TryReportSkipped(BlockHeader header, BlockHeader parent) => _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource) =>
             _currentValidator is ITxSource txSource

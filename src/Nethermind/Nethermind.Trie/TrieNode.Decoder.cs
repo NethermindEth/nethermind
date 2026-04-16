@@ -127,10 +127,7 @@ namespace Nethermind.Trie
             }
 
             [DoesNotReturn, StackTraceHidden]
-            private static void ThrowNullKey(TrieNode node)
-            {
-                throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
-            }
+            private static void ThrowNullKey(TrieNode node) => throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
 
             public static CappedArray<byte> RlpEncodeBranch(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? pool, bool canBeParallel)
             {
@@ -170,21 +167,17 @@ namespace Nethermind.Trie
                 }
             }
 
-            private static int GetChildrenRlpLengthForBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
-            {
+            private static int GetChildrenRlpLengthForBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel) =>
                 // Tail call optimized.
-                return item.HasRlp
+                item.HasRlp
                     ? GetChildrenRlpLengthForBranchRlp(tree, ref path, item, bufferPool, canBeParallel)
                     : GetChildrenRlpLengthForBranchNonRlp(tree, ref path, item, bufferPool, canBeParallel);
-            }
 
-            private static int GetChildrenRlpLengthForBranchParallel(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
-            {
+            private static int GetChildrenRlpLengthForBranchParallel(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel) =>
                 // Tail call optimized.
-                return item.HasRlp
+                item.HasRlp
                     ? GetChildrenRlpLengthForBranchRlpParallel(tree, path, item, bufferPool, canBeParallel)
                     : GetChildrenRlpLengthForBranchNonRlpParallel(tree, path, item, bufferPool, canBeParallel);
-            }
 
             private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool bufferPool, bool canBeParallel)
             {

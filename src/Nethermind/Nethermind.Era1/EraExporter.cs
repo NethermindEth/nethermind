@@ -111,9 +111,9 @@ public class EraExporter(
             ValueHash256 sha256;
 
             // Scoped using so the writer is disposed before File.Move — Windows locks open files.
-            using (EraWriter eraWriter = new EraWriter(fileSystem.File.Create(filePath), specProvider))
+            using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
             {
-                for (var y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
+                for (long y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
                 {
                     Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                     if (block is null)

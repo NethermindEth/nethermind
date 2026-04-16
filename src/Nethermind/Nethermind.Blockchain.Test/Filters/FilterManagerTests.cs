@@ -43,10 +43,7 @@ public class FilterManagerTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _filterStore.Dispose();
-    }
+    public void TearDown() => _filterStore.Dispose();
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task removing_filter_removes_data()
@@ -354,8 +351,8 @@ public class FilterManagerTests
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
         Action<IEnumerable<FilterLog>> logsAssertion)
     {
-        List<FilterBase> filters = new List<FilterBase>();
-        List<TxReceipt> receipts = new List<TxReceipt>();
+        List<FilterBase> filters = new();
+        List<TxReceipt> receipts = new();
         foreach (Action<FilterBuilder> filterBuilder in filterBuilders)
         {
             filters.Add(BuildFilter(filterBuilder));

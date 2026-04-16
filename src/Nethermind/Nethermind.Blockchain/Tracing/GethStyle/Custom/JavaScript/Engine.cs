@@ -47,11 +47,9 @@ public class Engine : IDisposable
         set => _currentEngine = value;
     }
 
-    static Engine()
-    {
+    static Engine() =>
         // compile default scripts in background thread
         Task.Run(CompileStandardScripts);
-    }
 
     private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
 
@@ -134,7 +132,7 @@ public class Engine : IDisposable
     private ITypedArray<byte> Slice(object input, long start, long end)
     {
         ArgumentNullException.ThrowIfNull(input);
-        var bytes = input.ToBytes();
+        byte[] bytes = input.ToBytes();
 
         return start < 0 || end < start || end > bytes.Length
             ? throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: available {bytes.Length}, offset {start}, size {end - start}")

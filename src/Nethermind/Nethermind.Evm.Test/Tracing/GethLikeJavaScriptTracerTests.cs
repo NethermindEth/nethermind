@@ -372,9 +372,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         }
     }
 
-    private static byte[] MStore()
-    {
-        return Prepare.EvmCode
+    private static byte[] MStore() => Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))
             .PushData(0)
             .Op(Instruction.MSTORE)
@@ -383,11 +381,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.MSTORE)
             .Op(Instruction.STOP)
             .Done;
-    }
 
-    private static byte[] SStore_double()
-    {
-        return Prepare.EvmCode
+    private static byte[] SStore_double() => Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))
             .PushData(0)
             .Op(Instruction.SSTORE)
@@ -399,11 +394,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.SLOAD)
             .Op(Instruction.STOP)
             .Done;
-    }
 
-    private static byte[] SStore()
-    {
-        return Prepare.EvmCode
+    private static byte[] SStore() => Prepare.EvmCode
             .PushData(SampleHexData2.PadLeft(64, '0'))
             .PushData(SampleHexData1.PadLeft(64, '0'))
             .PushData(UInt256.One)
@@ -413,7 +405,6 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.SLOAD)
             .Op(Instruction.STOP)
             .Done;
-    }
 
     private byte[] NestedCalls()
     {

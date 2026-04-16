@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
@@ -181,9 +182,14 @@ public class Startup : IStartup
             builder => builder.UseWebSocketsModules());
         }
 
+        string[] healthHostPatterns = jsonRpcUrlCollection.Values
+            .Where(url => url.IsModuleEnabled(ModuleType.Health))
+            .Select(url => $"*:{url.Port}")
+            .ToArray();
+
         app.UseEndpoints(endpoints =>
         {
-            if (healthChecksConfig.Enabled)
+            if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
             {
                 try
                 {
@@ -191,18 +197,18 @@ public class Startup : IStartup
                     {
                         Predicate = _ => true,
                         ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-                    });
+                    }).RequireHost(healthHostPatterns);
                     if (healthChecksConfig.UIEnabled)
                     {
-                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
+                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")))
+                            .RequireHost(healthHostPatterns);
                     }
+                    endpoints.MapDataFeeds(lifetime).RequireHost(healthHostPatterns);
                 }
                 catch (Exception e)
                 {
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
-
-                endpoints.MapDataFeeds(lifetime);
             }
         });
 
@@ -238,12 +244,17 @@ public class Startup : IStartup
             }
         }));
 
-        if (healthChecksConfig.Enabled)
+        if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
         {
-            var fileProvider = new ManifestEmbeddedFileProvider(typeof(Startup).Assembly, "wwwroot");
+            ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
 
-            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
-            app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+            app.UseWhen(
+                ctx => jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) && url.IsModuleEnabled(ModuleType.Health),
+                builder =>
+                {
+                    builder.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+                    builder.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+                });
         }
     }
 
@@ -268,11 +279,8 @@ public class Startup : IStartup
         }
     }
 
-    private static bool IsResourceUnavailableError(JsonRpcResponse? response)
-    {
-        return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
+    private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
-    }
 
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
     {
@@ -418,7 +426,7 @@ public class Startup : IStartup
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
     {
-        using var jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions { SkipValidation = true });
+        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
 
         jsonWriter.WriteStartObject();
         jsonWriter.WriteString("jsonrpc"u8, "2.0"u8);
@@ -477,10 +485,7 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(Utf8JsonWriter writer, object? id)
-        {
-            JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
-        }
+        void WriteOther(Utf8JsonWriter writer, object? id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
     }
 
     private static async ValueTask WriteStreamableResponseAsync(
@@ -561,10 +566,7 @@ public class Startup : IStartup
             stream.AdvanceTo(consumed, examined);
         }
 
-        public override void CancelPendingRead()
-        {
-            stream.CancelPendingRead();
-        }
+        public override void CancelPendingRead() => stream.CancelPendingRead();
 
         public override void Complete(Exception? exception = null)
         {

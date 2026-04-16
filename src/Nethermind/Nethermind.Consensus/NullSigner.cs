@@ -16,7 +16,7 @@ namespace Nethermind.Consensus
 
         public ValueTask Sign(Transaction tx) => default;
 
-        public Signature Sign(in ValueHash256 message) { return new(new byte[65]); }
+        public Signature Sign(in ValueHash256 message) => new(new byte[65]);
 
         public bool CanSign { get; } = false;
 
@@ -28,6 +28,6 @@ namespace Nethermind.Consensus
 
         public void SetSigner(IProtectedPrivateKey key) { }
 
-        public Signature Sign(BlockHeader header) { return new(new byte[65]); }
+        public Signature Sign(BlockHeader header) => new(new byte[65]);
     }
 }

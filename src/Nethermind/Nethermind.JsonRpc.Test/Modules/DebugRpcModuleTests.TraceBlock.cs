@@ -29,7 +29,7 @@ public partial class DebugRpcModuleTests
         using Context context = await Context.Create();
 
         const string expected = """{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}""";
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", "xxx");
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", "xxx");
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(response).RootElement,
@@ -44,8 +44,8 @@ public partial class DebugRpcModuleTests
 
         await context.Blockchain.AddBlock(factory(context.Blockchain));
 
-        var rlp = Rlp.Encode(context.Blockchain.BlockTree.Head).ToString();
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", rlp, options);
+        string rlp = Rlp.Encode(context.Blockchain.BlockTree.Head).ToString();
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", rlp, options);
 
         Assert.That(JsonElement.DeepEquals(
                 JsonDocument.Parse(response).RootElement,
@@ -60,8 +60,8 @@ public partial class DebugRpcModuleTests
 
         await context.Blockchain.AddBlock(factory(context.Blockchain));
 
-        var blockNumber = context.Blockchain.BlockTree.Head!.Number;
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", blockNumber, options);
+        long blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", blockNumber, options);
 
         Assert.That(JsonElement.DeepEquals(
                 JsonDocument.Parse(response).RootElement,
@@ -76,8 +76,8 @@ public partial class DebugRpcModuleTests
 
         await context.Blockchain.AddBlock(factory(context.Blockchain));
 
-        var blockHash = context.Blockchain.BlockTree.Head!.Hash;
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByHash", blockHash, options);
+        Hash256? blockHash = context.Blockchain.BlockTree.Head!.Hash;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByHash", blockHash, options);
 
         Assert.That(JsonElement.DeepEquals(
                 JsonDocument.Parse(response).RootElement,

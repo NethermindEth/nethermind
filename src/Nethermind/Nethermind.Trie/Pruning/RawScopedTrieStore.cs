@@ -35,10 +35,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
     {
         INodeStorage.IWriteBatch _writeBatch = nodeStorage.StartWriteBatch();
 
-        public void Dispose()
-        {
-            _writeBatch.Dispose();
-        }
+        public void Dispose() => _writeBatch.Dispose();
 
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {

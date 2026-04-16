@@ -16,10 +16,7 @@ namespace Nethermind.Trie
     {
         private const int StackAllocLengthLimit = 255;
 
-        public static Nibble[] FromBytes(params byte[] bytes)
-        {
-            return FromBytes(bytes.AsSpan());
-        }
+        public static Nibble[] FromBytes(params byte[] bytes) => FromBytes(bytes.AsSpan());
 
         public static Nibble[] FromBytes(ReadOnlySpan<byte> bytes)
         {
@@ -87,7 +84,7 @@ namespace Nethermind.Trie
             }
 
             // Calculate the length to process using SIMD operations.
-            var length = (bytes.Length - processed) / Vector128<byte>.Count;
+            int length = (bytes.Length - processed) / Vector128<byte>.Count;
             // Check if SIMD hardware acceleration is available and if there is data to process.
             // This will be branch eliminated the asm if not supported.
             if (Vector128.IsHardwareAccelerated && length > 0)
@@ -141,10 +138,7 @@ namespace Nethermind.Trie
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowArgumentException()
-            {
-                throw new ArgumentException("Nibbles length must be twice the bytes length");
-            }
+            static void ThrowArgumentException() => throw new ArgumentException("Nibbles length must be twice the bytes length");
         }
 
         public static Nibble[] FromHexString(string hexString)
@@ -180,10 +174,7 @@ namespace Nethermind.Trie
             return bytes;
         }
 
-        public static byte ToByte(Nibble highNibble, Nibble lowNibble)
-        {
-            return (byte)(((byte)highNibble << 4) | (byte)lowNibble);
-        }
+        public static byte ToByte(Nibble highNibble, Nibble lowNibble) => (byte)(((byte)highNibble << 4) | (byte)lowNibble);
 
         public static byte[] ToBytes(ReadOnlySpan<byte> nibbles)
         {

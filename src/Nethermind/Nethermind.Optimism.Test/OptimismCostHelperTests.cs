@@ -52,10 +52,10 @@ public class OptimismCostHelperTests
     public void ComputeDaFootprint(Func<Block> blockFactory)
     {
         Address l1BlockAddr = Build.An.Address.TestObject;
-        var specHelper = Substitute.For<IOptimismSpecHelper>();
+        IOptimismSpecHelper specHelper = Substitute.For<IOptimismSpecHelper>();
 
         Block block = blockFactory();
-        var helper = new OptimismCostHelper(specHelper, l1BlockAddr);
+        OptimismCostHelper helper = new(specHelper, l1BlockAddr);
 
         Assert.That((long)helper.ComputeDaFootprint(block), Is.EqualTo(block.BlobGasUsed));
     }

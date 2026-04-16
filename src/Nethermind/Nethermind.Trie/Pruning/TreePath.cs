@@ -150,10 +150,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetLast(int nib)
-    {
-        this[Length - 1] = nib;
-    }
+    public void SetLast(int nib) => this[Length - 1] = nib;
 
     public readonly int this[int index]
     {
@@ -215,10 +212,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         Length = pathLength;
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowPathMustBeLess()
-        {
-            throw new IndexOutOfRangeException("path length must be less than current length");
-        }
+        static void ThrowPathMustBeLess() => throw new IndexOutOfRangeException("path length must be less than current length");
     }
 
     /// <summary>
@@ -246,10 +240,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return fromPath[..Length];
     }
 
-    public readonly override string ToString()
-    {
-        return ToHexString();
-    }
+    public readonly override string ToString() => ToHexString();
 
     public static bool operator ==(in TreePath left, in TreePath right)
     {
@@ -261,22 +252,13 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return !(left == right);
     }
 
-    public readonly bool Equals(in TreePath other)
-    {
-        return Length == other.Length && Path.Equals(in other.Path);
-    }
+    public readonly bool Equals(in TreePath other) => Length == other.Length && Path.Equals(in other.Path);
 
     public readonly bool Equals(TreePath other) => Equals(in other);
 
-    public readonly override bool Equals(object? obj)
-    {
-        return obj is TreePath other && Equals(in other);
-    }
+    public readonly override bool Equals(object? obj) => obj is TreePath other && Equals(in other);
 
-    public readonly override int GetHashCode()
-    {
-        return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
-    }
+    public readonly override int GetHashCode() => (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
 
     /// <summary>
     /// Used for scoped pattern where inside the scope the path is appended with some nibbles and it will
@@ -293,10 +275,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
             _path = ref path;
         }
 
-        public void Dispose()
-        {
-            _path.TruncateMut(_previousLength);
-        }
+        public void Dispose() => _path.TruncateMut(_previousLength);
     }
 
     public readonly int CompareTo(in TreePath otherTree)
@@ -433,10 +412,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0,
     };
 
-    public bool StartsWith(TreePath otherPath)
-    {
-        return Truncate(otherPath.Length) == otherPath;
-    }
+    public bool StartsWith(TreePath otherPath) => Truncate(otherPath.Length) == otherPath;
 
     public readonly void EncodeWith8Byte(Span<byte> buffer)
     {

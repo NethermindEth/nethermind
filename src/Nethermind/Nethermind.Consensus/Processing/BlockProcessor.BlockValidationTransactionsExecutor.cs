@@ -24,10 +24,7 @@ namespace Nethermind.Consensus.Processing
         {
             private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
 
-            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-            {
-                transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
-            }
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
@@ -66,10 +63,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             [DoesNotReturn, StackTraceHidden]
-            private void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
-            {
-                throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
-            }
+            private void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
 
             /// <summary>
             /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>

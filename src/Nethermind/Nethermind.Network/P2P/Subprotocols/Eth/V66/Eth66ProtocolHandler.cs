@@ -122,58 +122,46 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeaders, CancellationToken cancellationToken)
         {
-            using var message = getBlockHeaders;
+            using GetBlockHeadersMessage message = getBlockHeaders;
             V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(message.EthMessage, cancellationToken);
             return new BlockHeadersMessage(message.RequestId, ethBlockHeadersMessage);
         }
 
         private async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage getBlockBodies, CancellationToken cancellationToken)
         {
-            using var message = getBlockBodies;
+            using GetBlockBodiesMessage message = getBlockBodies;
             V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(message.EthMessage, cancellationToken);
             return new BlockBodiesMessage(message.RequestId, ethBlockBodiesMessage);
         }
 
         private async Task<PooledTransactionsMessage> Handle(GetPooledTransactionsMessage getPooledTransactions, CancellationToken cancellationToken)
         {
-            using var message = getPooledTransactions;
+            using GetPooledTransactionsMessage message = getPooledTransactions;
             return new PooledTransactionsMessage(message.RequestId,
                 await FulfillPooledTransactionsRequest(message.EthMessage, cancellationToken));
         }
 
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
-            using var message = getReceiptsMessage;
+            using GetReceiptsMessage message = getReceiptsMessage;
             V63.Messages.ReceiptsMessage receiptsMessage = await FulfillReceiptsRequest(message.EthMessage, cancellationToken);
             return new ReceiptsMessage(message.RequestId, receiptsMessage);
         }
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage getNodeDataMessage, CancellationToken cancellationToken)
         {
-            using var message = getNodeDataMessage;
+            using GetNodeDataMessage message = getNodeDataMessage;
             V63.Messages.NodeDataMessage nodeDataMessage = await FulfillNodeDataRequest(message.EthMessage, cancellationToken);
             return new NodeDataMessage(message.RequestId, nodeDataMessage);
         }
 
-        private void Handle(BlockHeadersMessage message, long size)
-        {
-            _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
-        }
+        private void Handle(BlockHeadersMessage message, long size) => _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
 
-        private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
-        {
-            _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
-        }
+        private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size) => _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
 
-        private void Handle(NodeDataMessage msg, int size)
-        {
-            _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
-        }
+        private void Handle(NodeDataMessage msg, int size) => _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
 
-        protected void Handle(ReceiptsMessage msg, long size)
-        {
-            _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
-        }
+        protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
 

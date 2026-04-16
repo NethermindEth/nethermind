@@ -24,10 +24,7 @@ namespace Nethermind.Specs.Test
             TimestampFork = SpecProvider.TimestampFork;
         }
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-        {
-            SpecProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
-        }
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) => SpecProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
         public ForkActivation? MergeBlockNumber => SpecProvider.MergeBlockNumber;
 

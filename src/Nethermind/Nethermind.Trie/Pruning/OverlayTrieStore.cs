@@ -17,16 +17,11 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
 
-    public void Dispose()
-    {
-        baseStore.Dispose();
-    }
+    public void Dispose() => baseStore.Dispose();
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
-    {
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
         // We always return Unknown even if baseStore return unknown, like archive node.
-        return baseStore.FindCachedOrUnknown(address, in path, hash);
-    }
+        baseStore.FindCachedOrUnknown(address, in path, hash);
 
     public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {

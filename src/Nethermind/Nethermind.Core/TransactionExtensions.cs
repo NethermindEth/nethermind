@@ -70,7 +70,7 @@ namespace Nethermind.Core
 
         public static bool TryGetByTxType<T>(this T?[] array, TxType txType, [NotNullWhen(true)] out T? item)
         {
-            var type = (byte)txType;
+            byte type = (byte)txType;
             if (type > Transaction.MaxTxType)
             {
                 item = default;

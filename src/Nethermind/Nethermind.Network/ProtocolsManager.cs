@@ -327,10 +327,7 @@ namespace Nethermind.Network
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
 
-        public void AddSupportedCapability(Capability capability)
-        {
-            _capabilities.Add(capability);
-        }
+        public void AddSupportedCapability(Capability capability) => _capabilities.Add(capability);
 
         public void RemoveSupportedCapability(Capability capability)
         {

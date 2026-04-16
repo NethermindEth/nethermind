@@ -21,6 +21,7 @@ using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core.Test;
 using Nethermind.Trie;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests;
 
@@ -83,7 +84,7 @@ public class StateSyncDispatcherTests
 
         await _dispatcher.ExecuteDispatch(batch, 1);
 
-        using var _ = await peer.ReceivedWithAnyArgs(1).GetNodeData(default!, default);
+        using IByteArrayList _ = await peer.ReceivedWithAnyArgs(1).GetNodeData(default!, default);
     }
 
     [Test]

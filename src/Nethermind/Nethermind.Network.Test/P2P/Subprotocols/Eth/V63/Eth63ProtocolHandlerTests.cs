@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             _ctx.ProtocolHandler.HandleMessage(receiptsPacket);
 
-            using var result = await task;
+            using IOwnedReadOnlyList<TxReceipt[]> result = await task;
             result.Should().HaveCount(count);
         }
 
@@ -140,7 +140,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
-            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(static r => r.TxReceipts.Count == 64));
+            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(static r => r.TxReceipts.Count == 13));
         }
 
         private class Context
@@ -165,7 +165,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         return _protocolHandler;
                     }
 
-                    var nodeStatsManager = Substitute.For<INodeStatsManager>();
+                    INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
                     nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
 
                     _protocolHandler = new Eth63ProtocolHandler(

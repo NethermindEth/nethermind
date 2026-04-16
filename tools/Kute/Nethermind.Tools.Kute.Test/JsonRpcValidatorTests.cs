@@ -62,7 +62,7 @@ public class JsonRpcValidatorTests
     {
         foreach (var status in new[] { Status.VALID, Status.INVALID })
         {
-            foreach (var methodName in new[] { "engine_newPayloadV2", "engine_newPayloadV3", "engine_newPayloadV4" })
+            foreach (string? methodName in new[] { "engine_newPayloadV2", "engine_newPayloadV3", "engine_newPayloadV4" })
             {
                 var response = CreateResponse(status);
                 bool result = _validator.IsValid(CreateSingleRequest(methodName), response);
@@ -129,7 +129,7 @@ public class JsonRpcValidatorTests
 
     private static JsonRpc.Request.Single CreateSingleRequest(string? method, int id = 1)
     {
-        var methodJSON = method is null ? "null" : $"\"{method}\"";
+        string methodJSON = method is null ? "null" : $"\"{method}\"";
         return new JsonRpc.Request.Single(
             JsonNode.Parse(
                 $$"""{"jsonrpc":"2.0","id":{{id}},"method":{{methodJSON}},"params":[]}"""
@@ -147,7 +147,7 @@ public class JsonRpcValidatorTests
         sb.Remove(sb.Length - 1, 1); // Remove the last comma
         sb.Append(']');
 
-        var json = sb.ToString();
+        string json = sb.ToString();
 
         return new JsonRpc.Request.Batch(JsonNode.Parse(json)!);
     }
@@ -176,7 +176,7 @@ public class JsonRpcValidatorTests
         sb.Remove(sb.Length - 1, 1); // Remove the last comma
         sb.Append(']');
 
-        var json = sb.ToString();
+        string json = sb.ToString();
 
         return new JsonRpc.Response(JsonNode.Parse(json)!);
     }

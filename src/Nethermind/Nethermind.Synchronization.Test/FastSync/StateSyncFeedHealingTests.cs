@@ -33,7 +33,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Hash256 rootHash = remote.StateTree.RootHash;
 
         await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 2000);
-        var local = container.Resolve<IStateSyncTestOperation>();
+        IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         ProcessAccountRange(remote.StateTree, snapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
@@ -63,7 +63,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             byte[] key = new byte[32];
             // Snap can't actually use GetTrieNodes where the path is exactly 64 nibble. So *255.
             ((UInt256)(i * 255)).ToBigEndian(key);
-            Hash256 keccak = new Hash256(key);
+            Hash256 keccak = new(key);
             pathPool[i] = keccak;
         }
 
@@ -128,7 +128,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Hash256 finalRootHash = remote.StateTree.RootHash;
 
         await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 1000);
-        var local = container.Resolve<IStateSyncTestOperation>();
+        IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         int startingHashIndex = 0;

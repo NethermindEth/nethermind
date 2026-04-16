@@ -10,11 +10,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<FindNodeMsg>
+public class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<FindNodeMsg>
 {
-    public FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver) { }
-
     public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg)
     {
         int length = GetLength(msg, out int contentLength);

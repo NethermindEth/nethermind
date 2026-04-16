@@ -8,16 +8,10 @@ using Nethermind.Network.Config;
 
 namespace Nethermind.Network.IP
 {
-    class NetworkConfigExternalIPSource : IIPSource
+    class NetworkConfigExternalIPSource(INetworkConfig config, ILogManager logManager) : IIPSource
     {
-        private readonly INetworkConfig _config;
-        private readonly ILogger _logger;
-
-        public NetworkConfigExternalIPSource(INetworkConfig config, ILogManager logManager)
-        {
-            _config = config;
-            _logger = logManager.GetClassLogger<NetworkConfigExternalIPSource>();
-        }
+        private readonly INetworkConfig _config = config;
+        private readonly ILogger _logger = logManager.GetClassLogger<NetworkConfigExternalIPSource>();
 
         public Task<(bool, IPAddress)> TryGetIP()
         {

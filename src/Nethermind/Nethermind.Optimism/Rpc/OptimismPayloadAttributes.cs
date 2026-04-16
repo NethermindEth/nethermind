@@ -78,7 +78,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
+        int offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
 
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
         offset += 1;
@@ -122,7 +122,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
         if (releaseSpec.IsOpHoloceneEnabled)
         {
-            if (!this.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out var decodeError))
+            if (!this.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out string? decodeError))
             {
                 error = decodeError;
                 return PayloadAttributesValidationResult.InvalidPayloadAttributes;
