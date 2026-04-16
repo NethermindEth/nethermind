@@ -14,7 +14,7 @@ internal sealed class BeaconApiRetry<T>
         _pipeline = new ResiliencePipelineBuilder<T>()
             .AddRetry(new RetryStrategyOptions<T>
             {
-                MaxRetryAttempts = maxAttempts,
+                MaxRetryAttempts = maxAttempts - 1,
                 ShouldHandle = new PredicateBuilder<T>()
                     .Handle<HttpRequestException>()
                     .Handle<TaskCanceledException>()

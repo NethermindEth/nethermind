@@ -213,7 +213,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         using FileStream fs = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920);
         byte[] actual = SHA256.HashData(fs);
-        if (!actual.SequenceEqual(expectedHash))
+        if (!actual.AsSpan().SequenceEqual(expectedHash))
             throw new EraVerificationException($"SHA-256 checksum mismatch for '{Path.GetFileName(filePath)}'.");
     }
 }
