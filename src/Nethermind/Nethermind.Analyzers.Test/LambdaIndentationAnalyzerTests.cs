@@ -10,14 +10,13 @@ namespace Nethermind.Analyzers.Test;
 
 public class LambdaIndentationAnalyzerTests
 {
-    // MaxIndentOffset = 24: body column - statement column must exceed 24 to trigger.
-    // Tests run at column 0 base, so a statement at col 4 needs body at col 29+ to fire.
+    // MaxIndentOffset = 4: body column - arrow-line first-token column must exceed 4 to trigger.
 
     [Test]
     public async Task Deep_aligned_lambda_body_reports_diagnostic()
     {
-        // The `{` opening the lambda block is at column 33 (0-based), statement starts at col 4.
-        // Offset = 29 > 24 → fires.
+        // The `{` opening the lambda block is at column 33 (0-based), arrow line starts at col 8.
+        // Offset = 25 > 4 → fires.
         string source = """
             using System.Linq;
             class C
@@ -28,6 +27,68 @@ public class LambdaIndentationAnalyzerTests
                                              {|#0:{|}
                                                  return x * 2;
                                              });
+                }
+            }
+            """;
+
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("33", "25", "4"));
+    }
+
+    [Test]
+    public async Task Arrow_on_own_line_deep_body_reports_diagnostic()
+    {
+        // Arrow `=>` wraps to its own line at col 12. Body `{` at col 33. Offset = 33 - 12 = 21 > 4 → fires.
+        string source = """
+            using System.Linq;
+            class C
+            {
+                void M(int[] data)
+                {
+                    _ = data.Select(x
+                        =>
+                                             {|#0:{|}
+                                                 return x * 2;
+                                             });
+                }
+            }
+            """;
+
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("33", "21", "4"));
+    }
+
+    [Test]
+    public async Task Nested_lambda_deep_body_reports_diagnostic()
+    {
+        // Inner lambda body at col 33, arrow line first token `_` at col 8. Offset = 25 > 4 → fires.
+        string source = """
+            using System.Linq;
+            class C
+            {
+                void M(int[][] data)
+                {
+                    _ = data.Select(xs => xs.Select(x =>
+                                             {|#0:{|}
+                                                 return x * 2;
+                                             }));
+                }
+            }
+            """;
+
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("33", "25", "4"));
+    }
+
+    [Test]
+    public async Task Expression_body_too_deep_reports_diagnostic()
+    {
+        // Expression body (no block) at col 33, arrow line starts at col 8. Offset = 25 > 4 → fires.
+        string source = """
+            using System.Linq;
+            class C
+            {
+                void M(int[] data)
+                {
+                    _ = data.Select(x =>
+                                             {|#0:x|} * 2);
                 }
             }
             """;
@@ -78,6 +139,23 @@ public class LambdaIndentationAnalyzerTests
         }
         """,
         TestName = "Expression_body_normal_depth_no_diagnostic")]
+    [TestCase(
+        // Arrow on its own line, body at normal depth
+        """
+        using System.Linq;
+        class C
+        {
+            void M(int[] data)
+            {
+                _ = data.Select(x
+                    =>
+                    {
+                        return x * 2;
+                    });
+            }
+        }
+        """,
+        TestName = "Arrow_on_own_line_normal_depth_no_diagnostic")]
     public async Task No_diagnostic(string source) => await Verify(source);
 
     private static DiagnosticResult Diagnostic() =>

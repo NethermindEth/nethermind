@@ -78,8 +78,12 @@ public sealed class LambdaIndentationAnalyzer : DiagnosticAnalyzer
             arrowLineFirstToken = prev;
         }
 
+        // If the arrow is the first token on its line, the walk-back lands on the
+        // previous line. Fall back to the arrow token's own column in that case.
         int arrowLineColumn = arrowLineFirstToken == default
-            ? 0
+            || arrowLineFirstToken.GetLocation().GetLineSpan().StartLinePosition.Line
+               != arrowSpan.StartLinePosition.Line
+            ? arrowSpan.StartLinePosition.Character
             : arrowLineFirstToken.GetLocation().GetLineSpan().StartLinePosition.Character;
 
         int offset = bodyColumn - arrowLineColumn;
