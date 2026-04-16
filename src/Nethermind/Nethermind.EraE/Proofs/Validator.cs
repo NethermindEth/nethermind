@@ -34,7 +34,7 @@ public class Validator
                 specProvider.BeaconChainGenesisTimestamp.Value * 1000,
                 new Timestamper(),
                 TimeSpan.FromSeconds(secondsPerSlot),
-                TimeSpan.FromSeconds(0));
+                TimeSpan.Zero);
         }
         _trustedAccumulators = trustedAccumulators;
         _trustedHistoricalRoots = trustedHistoricalRoots;

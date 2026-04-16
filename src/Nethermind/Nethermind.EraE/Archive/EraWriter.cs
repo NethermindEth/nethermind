@@ -107,7 +107,7 @@ public sealed class EraWriter : IDisposable
             _startNumber = block.Number;
             _blocksRootContext = new BlocksRootContext(block.Number, block.Header.Timestamp, _specProvider);
             _firstBlock = false;
-            await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
+            await _e2StoreWriter.WriteEntry(EntryTypes.Version, Memory<byte>.Empty, cancellation);
         }
         else if (block.Number != _startNumber + _headers.Count)
         {

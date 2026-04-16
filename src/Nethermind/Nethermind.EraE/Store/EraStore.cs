@@ -17,7 +17,7 @@ namespace Nethermind.EraE.Store;
 
 public sealed class EraStore : IEraStore
 {
-    private readonly char[] _eraSeparator = ['-'];
+    private static readonly char[] _eraSeparator = ['-'];
 
     private readonly ISpecProvider _specProvider;
     private readonly IBlockValidator _blockValidator;
