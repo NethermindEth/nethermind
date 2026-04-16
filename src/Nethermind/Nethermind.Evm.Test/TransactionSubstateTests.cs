@@ -88,12 +88,12 @@ namespace Nethermind.Evm.Test
         [Test]
         public void should_hex_encode_custom_error_selector_with_control_characters()
         {
-            // keccak4("ActionFailed()") = 0x080a1c27 — the bytes happen to be valid UTF-8
+            // keccak4("ActionFailed()") = 0x080a1c27 - the bytes happen to be valid UTF-8
             // but contain control characters (\b, \n, FS) so must be hex-encoded, not returned raw.
             byte[] data = { 0x08, 0x0a, 0x1c, 0x27 };
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(
-                readOnlyMemory,
+                (CodeInfo.Empty, readOnlyMemory),
                 0,
                 new JournalSet<Address>(Address.EqualityComparer),
                 new JournalCollection<LogEntry>(),
