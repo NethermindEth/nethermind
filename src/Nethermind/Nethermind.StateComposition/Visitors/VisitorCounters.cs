@@ -84,9 +84,6 @@ public sealed class VisitorCounters(int topN = 20)
 
     private readonly DepthCounter[] _currentStorageDepths = new DepthCounter[MaxTrackedDepth];
 
-    // Scratch array for building TrieLevelStat[] without allocating a Builder each time.
-    // Allocated lazily on first contract-with-storage; reused across contracts.
-    // Only copied to a fresh array (and frozen to ImmutableArray) when the contract ranks in Top-N.
     private TrieLevelStat[]? _levelScratch;
 
     internal TopNTracker TopN { get; } = new(topN);
@@ -139,11 +136,9 @@ public sealed class VisitorCounters(int topN = 20)
         // so a single-leaf storage trie has MaxDepth=1 in Geth (not 0). Apply +1.
         int gethMaxDepth = _currentStorageMaxDepth + 1;
 
-        // Update histogram using Geth-compatible depth
         int depthBucket = Math.Min(gethMaxDepth, MaxTrackedDepth - 1);
         StorageMaxDepthHistogram[depthBucket]++;
 
-        // Log-bucketed slot-count histogram: bucket = min(15, floor(log2(slotCount + 1))).
         int slotBucket = ComputeSlotBucket(_currentStorageValueNodes);
         SlotCountHistogram[slotBucket]++;
 
@@ -152,9 +147,6 @@ public sealed class VisitorCounters(int topN = 20)
         if (_currentStorageValueNodes > 0)
             SlotCountsByOwner[_currentOwner] = _currentStorageValueNodes;
 
-        // Build per-depth Levels[16] summary into a reusable scratch array.
-        // The scratch array is allocated once per VisitorCounters instance (lazily)
-        // and reused across all contracts — no per-contract Builder/array allocation.
         _levelScratch ??= new TrieLevelStat[MaxTrackedDepth];
 
         TrieLevelStat summary = BuildCurrentStorageLevels(_levelScratch);
@@ -186,8 +178,6 @@ public sealed class VisitorCounters(int topN = 20)
         inserted |= TopN.TryInsertSize(candidate);
         if (!inserted) return;
 
-        // Contract ranks: freeze a fresh copy of the scratch into ImmutableArray.
-        // The scratch itself stays mutable for the next contract.
         TrieLevelStat[] frozenCopy = new TrieLevelStat[MaxTrackedDepth];
         Array.Copy(_levelScratch!, frozenCopy, MaxTrackedDepth);
         TopN.SetLevelsForOwner(candidate.Owner, ImmutableCollectionsMarshal.AsImmutableArray(frozenCopy));

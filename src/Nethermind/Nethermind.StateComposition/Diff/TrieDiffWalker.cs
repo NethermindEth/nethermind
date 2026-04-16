@@ -108,10 +108,8 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
 
     private void DiffSubtree(Hash256? oldHash, Hash256? newHash, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
-        // Fast path: identical subtrees
         if (oldHash == newHash) return;
 
-        // One side is empty → collect entire other side
         if (oldHash is null)
         {
             TrieNode newNode = resolver.FindCachedOrUnknown(in path, newHash!);
@@ -128,7 +126,6 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
             return;
         }
 
-        // Both exist and differ → resolve and compare
         TrieNode oldResolved = resolver.FindCachedOrUnknown(in path, oldHash);
         oldResolved.ResolveNode(resolver, in path);
         TrieNode newResolved = resolver.FindCachedOrUnknown(in path, newHash);

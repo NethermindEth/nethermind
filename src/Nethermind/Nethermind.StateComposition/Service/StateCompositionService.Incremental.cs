@@ -65,19 +65,14 @@ internal partial class StateCompositionService
             Metrics.StateCompDiffsSinceBaseline = _stateHolder.DiffsSinceBaseline;
             Metrics.StateCompDiffsApplied++;
 
-            MaybeWriteSnapshot(head, updated);
-
             if (_logger.IsDebug)
                 _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
                               $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
         }
         catch (MissingTrieNodeException ex)
         {
-            // prevRoot is no longer in the trie DB (container stopped longer than
-            // the pruning window, or a prune ran while the plugin was idle). The
-            // snapshot baseline is unusable — clear it so OnNewHeadBlock's null
-            // gate (line 20) silences every subsequent head block, then fire a
-            // background rescan to reseed via InitializeIncremental.
+            // prevRoot is no longer in the trie DB (pruning window exceeded).
+            // Invalidate so OnNewHeadBlock stops dispatching diffs, then rescan.
             Metrics.StateCompBaselineInvalidations++;
             _stateHolder.InvalidateBaseline();
             if (_logger.IsWarn)
@@ -138,23 +133,4 @@ internal partial class StateCompositionService
         });
     }
 
-    /// <summary>
-    /// Persist a snapshot at the configured interval and prune entries beyond the retention window.
-    /// The holder captures every field under a single lock so the write cannot tear. Graceful
-    /// shutdown force-flushes independently via <see cref="StopAsync"/>, so missing an interval
-    /// only costs a few blocks of incremental replay after a crash.
-    /// </summary>
-    private void MaybeWriteSnapshot(Block head, CumulativeSizeStats updated)
-    {
-        if (!_config.PersistSnapshots || head.Number % _config.SnapshotInterval != 0) return;
-
-        WriteSnapshotForHead(updated, head.Number, head.Header.StateRoot!);
-
-        int blocksToKeep = _config.SnapshotBlocksToKeep;
-        if (blocksToKeep <= 0) return;
-
-        long deleteAt = head.Number - blocksToKeep;
-        if (deleteAt > 0)
-            _snapshotStore.DeleteSnapshot(deleteAt);
-    }
 }

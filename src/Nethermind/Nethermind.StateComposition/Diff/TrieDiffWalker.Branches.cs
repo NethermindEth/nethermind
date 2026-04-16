@@ -69,8 +69,6 @@ internal sealed partial class TrieDiffWalker
             return;
         }
 
-        // Both sides present: at least one is inline (hashes differ, or one hash is null).
-        // Resolve both via GetChildWithChildPath so inline nodes load correctly, then diff.
         TreePath oldChildPath = path;
         TrieNode? oldChild = oldBranch.GetChildWithChildPath(resolver, ref oldChildPath, i);
         TreePath newChildPath = path;
@@ -122,7 +120,6 @@ internal sealed partial class TrieDiffWalker
         CollectSubtreeForDiff(oldNode, ref path, resolver, isStorage, added: false, oldLeaves, depth);
         CollectSubtreeForDiff(newNode, ref path, resolver, isStorage, added: true, newLeaves, depth);
 
-        // Diff leaves by full path for correct semantic counts
         foreach (KeyValuePair<ValueHash256, (TrieNode Leaf, TreePath Path)> kvp in newLeaves)
         {
             ValueHash256 fullPath = kvp.Key;
@@ -130,23 +127,19 @@ internal sealed partial class TrieDiffWalker
 
             if (oldLeaves.Remove(fullPath, out (TrieNode Leaf, TreePath Path) oldEntry))
             {
-                // Leaf at same path in both: modification, not add/remove
                 if (!isStorage)
                 {
                     TreePath leafPath = oldEntry.Path;
                     DecodeAndDiffAccountLeaves(oldEntry.Leaf, newLeaf, ref leafPath);
                 }
-                // Storage: same slot modified → net zero
             }
             else
             {
-                // Leaf only in new → genuinely added
                 TreePath leafPath = newLeafPath;
                 CollectLeaf(newLeaf, ref leafPath, added: true, isStorage);
             }
         }
 
-        // Remaining old leaves not matched → genuinely removed
         foreach (KeyValuePair<ValueHash256, (TrieNode Leaf, TreePath Path)> kvp in oldLeaves)
         {
             (TrieNode oldLeaf, TreePath oldLeafPath) = kvp.Value;

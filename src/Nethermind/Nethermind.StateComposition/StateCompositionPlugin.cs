@@ -53,15 +53,14 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
 
         if (!config.PersistSnapshots)
         {
-            // Without snapshots there is nothing to restore, so the bootstrap scan
-            // is the only path to a usable baseline. Fire it once against the
-            // current head; OnNewHeadBlock then drives the incremental pipeline.
             ScheduleBootstrapScan(service, blockTree, logger);
             return Task.CompletedTask;
         }
 
         StateCompositionSnapshotStore store = _api.Context.Resolve<StateCompositionSnapshotStore>();
         StateCompositionStateHolder stateHolder = _api.Context.Resolve<StateCompositionStateHolder>();
+
+        store.PurgeOldEntries();
 
         StateCompositionSnapshot? snapshot = store.ReadLatestSnapshot();
         if (snapshot is null)

@@ -81,8 +81,6 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
     /// </summary>
     public async Task<Result<StateCompositionStats>> AnalyzeAsync(BlockHeader header, CancellationToken ct)
     {
-        // If the semaphore is busy, either fail-fast (timeout <= 0) or wait briefly.
-        // Configurable via ScanQueueTimeoutSeconds — 0 keeps the original fail-fast behavior.
         TimeSpan queueTimeout = _config.ScanQueueTimeoutSeconds > 0
             ? TimeSpan.FromSeconds(_config.ScanQueueTimeoutSeconds)
             : TimeSpan.Zero;
@@ -102,9 +100,6 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
 
             (int topN, int parallelism, long memoryBudget) = ResolveScanOptions();
 
-            // Close over _stateReader so the visitor can fetch bytecode by codeHash
-            // for the CodeBytesTotal metric. Dedup happens inside the visitor — each
-            // unique codeHash triggers exactly one GetCode call across all workers.
             Func<ValueHash256, int> codeSizeLookup =
                 hash => _stateReader.GetCode(hash)?.Length ?? 0;
 
@@ -156,7 +151,6 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
 
     public async Task<Result<TopContractEntry?>> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)
     {
-        // Fail-fast semaphore to prevent concurrent heavy inspections.
         bool acquired = await _inspectLock.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
         if (!acquired)
             return Result<TopContractEntry?>.Fail("Contract inspection already in progress");
@@ -205,10 +199,7 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
         {
             cts.Cancel();
         }
-        catch (ObjectDisposedException)
-        {
-            // Scan already completed and disposed the CTS
-        }
+        catch (ObjectDisposedException) { }
     }
 
     private (int topN, int parallelism, long memoryBudget) ResolveScanOptions()
@@ -276,8 +267,6 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
                 slotCountByAddress: stats.SlotCountByAddress,
                 codeHashRefcounts: stats.CodeHashRefcounts,
                 codeHashSizes: stats.CodeHashSizes);
-
-            WriteSnapshotForHead(cumulativeBaseline, header.Number, header.StateRoot!);
         }
 
         Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
@@ -320,9 +309,6 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
         await _scanLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            // Drain any in-flight diff and exclude the encoder race against the
-            // tracker dictionaries. With both _scanLock and _diffLock held, the
-            // holder cannot mutate while we capture and serialize.
             lock (_diffLock)
             {
                 if (!_stateHolder.IsIncrementalSeeded) return;
