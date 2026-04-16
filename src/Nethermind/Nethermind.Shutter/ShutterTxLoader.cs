@@ -166,7 +166,7 @@ public class ShutterTxLoader(
         }
         catch (ShutterCrypto.ShutterCryptoException e)
         {
-            _logger.DebugError($"Could not decode encrypted Shutter transaction", e);
+            _logger.DebugError("Could not decode encrypted Shutter transaction", e);
         }
         catch (Bls.BlsException e)
         {

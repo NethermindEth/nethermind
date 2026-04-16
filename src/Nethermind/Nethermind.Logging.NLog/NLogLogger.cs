@@ -61,14 +61,11 @@ namespace Nethermind.Logging.NLog
             if (IsError) _logger.Error(ex, text);
         }
 
-        // Static cache of enum names to avoid the per-call allocation of Enum.ToString().
-        private static readonly string[] s_kindNames = Enum.GetNames<LogEventKind>();
-
         public void Warn(string text, LogEventKind kind)
         {
             if (!IsWarn) return;
             LogEventInfo evt = LogEventInfo.Create(global::NLog.LogLevel.Warn, _logger.Name, text);
-            evt.Properties["Kind"] = s_kindNames[(int)kind];
+            evt.Properties["Kind"] = Enum.GetName(kind);
             _logger.Log(evt);
         }
 
@@ -76,7 +73,7 @@ namespace Nethermind.Logging.NLog
         {
             if (!IsError) return;
             LogEventInfo evt = LogEventInfo.Create(global::NLog.LogLevel.Error, _logger.Name, ex, null, text);
-            evt.Properties["Kind"] = s_kindNames[(int)kind];
+            evt.Properties["Kind"] = Enum.GetName(kind);
             _logger.Log(evt);
         }
     }

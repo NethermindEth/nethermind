@@ -230,7 +230,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         catch (Exception ex)
         {
-            _logger.DebugError($"Error pre-warming transactions", ex);
+            _logger.DebugError("Error pre-warming transactions", ex);
         }
     }
 
@@ -324,7 +324,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             catch (Exception ex)
             {
-                PreWarmer._logger.DebugError($"Error pre-warming addresses", ex);
+                PreWarmer._logger.DebugError("Error pre-warming addresses", ex);
             }
             finally
             {

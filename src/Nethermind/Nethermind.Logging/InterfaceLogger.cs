@@ -19,6 +19,8 @@ namespace Nethermind.Logging
         /// filter these events separately from plain warnings. Default implementation drops the
         /// kind and falls through to <see cref="Warn(string)"/>.
         /// </summary>
+        // Note: the sink may still suppress the event if its own level filter (IsWarn / IsError)
+        // is not satisfied, even when IsDebug / IsTrace is true at the caller.
         void Warn(string text, LogEventKind kind) => Warn(text);
 
         /// <summary>
