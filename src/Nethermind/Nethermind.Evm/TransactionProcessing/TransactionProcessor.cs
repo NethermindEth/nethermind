@@ -955,7 +955,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard)
+            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard)
         {
             TGasPolicy gasAfterExecution = unspentGas;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
@@ -965,71 +965,68 @@ namespace Nethermind.Evm.TransactionProcessing
             if (substate.IsError && spec.IsEip8037Enabled)
                 return RefundOnFail(tx, spec, opts, in gasAfterExecution, in gasPrice, static (s, st) => s - st, floorGasLong);
 
-            long spentGasTotal = tx.GasLimit;
-            long actualRefund = 0;
+            (long spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertRegularRefund);
+            long preRefundGas = spentGas;
+            long operationGas = spentGas - refund;
 
-            if (!substate.IsError)
+            (long blockGas, long blockStateGas) = CalculateBlockGas(
+                spec, in substate, in gasAfterExecution, in intrinsicGasStandard, preRefundGas, floorGasLong, tx.GasLimit);
+
+            long spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
+
+            if (ShouldRefundGas(tx, opts, in gasPrice))
+                PayRefund(tx, (ulong)(tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
+
+            return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, blockStateGas, Math.Max(preRefundGas, floorGasLong));
+        }
+
+        private (long spentGas, long refund) CalculateSpentGasAndRefund(
+            Transaction tx, IReleaseSpec spec,
+            in TransactionSubstate substate, in TGasPolicy gasAfterExecution,
+            long codeInsertRegularRefund)
+        {
+            if (substate.IsError)
             {
-                spentGasTotal -= TGasPolicy.GetRemainingGas(in gasAfterExecution) + TGasPolicy.GetStateReservoir(in gasAfterExecution);
-
-                long totalToRefund = codeInsertRegularRefund;
-                if (!substate.ShouldRevert)
-                    totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
-                actualRefund = CalculateClaimableRefund(spentGasTotal, totalToRefund, spec);
-
-                if (Logger.IsTrace)
-                    Logger.Trace("Refunding unused gas of " + TGasPolicy.GetRemainingGas(in gasAfterExecution) + " and refund of " + actualRefund);
-            }
-            else if (codeInsertRegularRefund > 0)
-            {
-                actualRefund = CalculateClaimableRefund(spentGasTotal, codeInsertRegularRefund, spec);
-
-                if (Logger.IsTrace)
-                    Logger.Trace("Refunding delegations only: " + actualRefund);
+                long refund = codeInsertRegularRefund > 0
+                    ? CalculateClaimableRefund(tx.GasLimit, codeInsertRegularRefund, spec)
+                    : 0;
+                return (tx.GasLimit, refund);
             }
 
-            long preRefundGas = spentGasTotal;
-            spentGasTotal -= actualRefund;
+            long spentGas = tx.GasLimit - TGasPolicy.GetRemainingGas(in gasAfterExecution) - TGasPolicy.GetStateReservoir(in gasAfterExecution);
 
-            long operationGas = spentGasTotal;
+            long totalToRefund = codeInsertRegularRefund;
+            if (!substate.ShouldRevert)
+                totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
 
-            // EIP-8037: two-dimensional block gas accounting.
-            // Block level: gasUsed = max(sum_regular, sum_state).
+            return (spentGas, CalculateClaimableRefund(spentGas, totalToRefund, spec));
+        }
+
+        private static (long blockGas, long blockStateGas) CalculateBlockGas(
+            IReleaseSpec spec, in TransactionSubstate substate,
+            in TGasPolicy gasAfterExecution, in TGasPolicy intrinsicGasStandard,
+            long preRefundGas, long floorGas, long txGasLimit)
+        {
+            if (!spec.IsEip8037Enabled)
+                return (spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGas) : 0, 0);
+
+            long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
             long blockGas;
-            long blockStateGas;
-            if (spec.IsEip8037Enabled)
-            {
-                blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
-                if (substate.ShouldRevert)
-                {
-                    blockGas = preRefundGas - blockStateGas;
-                }
-                else
-                {
-                    long intrinsicState = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-                    long initialReservoir = Math.Max(0, tx.GasLimit - intrinsicState - Eip7825Constants.DefaultTxGasLimitCap);
-                    long reservoirConsumed = initialReservoir - TGasPolicy.GetStateReservoir(in gasAfterExecution);
-                    long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution);
-                    blockGas = preRefundGas - intrinsicState - reservoirConsumed - stateGasSpill;
-                }
 
-                blockGas = Math.Max(blockGas, floorGasLong);
+            if (substate.ShouldRevert)
+            {
+                blockGas = preRefundGas - blockStateGas;
             }
             else
             {
-                blockGas = spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGasLong) : 0;
-                blockStateGas = 0;
-            }
-            spentGasTotal = Math.Max(spentGasTotal, floorGasLong);
-
-            if (ShouldRefundGas(tx, opts, in gasPrice))
-            {
-                UInt256 refundAmount = (ulong)(tx.GasLimit - spentGasTotal) * gasPrice;
-                PayRefund(tx, refundAmount, spec);
+                long intrinsicState = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+                long initialReservoir = Math.Max(0, txGasLimit - intrinsicState - Eip7825Constants.DefaultTxGasLimitCap);
+                long reservoirConsumed = initialReservoir - TGasPolicy.GetStateReservoir(in gasAfterExecution);
+                long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution);
+                blockGas = preRefundGas - intrinsicState - reservoirConsumed - stateGasSpill;
             }
 
-            long maxUsedGas = Math.Max(preRefundGas, floorGasLong);
-            return new GasConsumed(spentGasTotal, operationGas, blockGas, blockStateGas, maxUsedGas);
+            return (Math.Max(blockGas, floorGas), blockStateGas);
         }
 
         protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
