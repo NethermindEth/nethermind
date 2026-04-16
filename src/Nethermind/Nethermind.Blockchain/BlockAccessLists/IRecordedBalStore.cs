@@ -11,4 +11,6 @@ public interface IRecordedBalStore
 {
     void Insert(Block block, BlockAccessList bal);
     BlockAccessList? Get(long blockNumber, Hash256 blockHash);
+    bool ReplayEnabled { get; }
+    bool RecordingEnabled { get; }
 }

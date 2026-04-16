@@ -38,7 +38,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            RecordedBalStore store = new(dir);
+            RecordedBalStore store = new(dir, replayEnabled: true, recordingEnabled: true);
             BlockAccessList bal = MakeBal(TestItem.AddressA, TestItem.AddressB);
             Block block = Build.A.Block.WithNumber(100).TestObject;
 
@@ -55,7 +55,7 @@ public class RecordedBalStoreTests
     [Test]
     public void Get_ReturnsNull_WhenFileDoesNotExist()
     {
-        RecordedBalStore store = new(TempDir());
+        RecordedBalStore store = new(TempDir(), replayEnabled: true, recordingEnabled: true);
         store.Get(999, TestItem.KeccakA).Should().BeNull();
     }
 
@@ -65,7 +65,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            RecordedBalStore store = new(dir);
+            RecordedBalStore store = new(dir, replayEnabled: true, recordingEnabled: true);
             Block block1 = Build.A.Block.WithNumber(0).TestObject;
             store.Insert(block1, MakeBal(TestItem.AddressA));
 
@@ -81,7 +81,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            RecordedBalStore store = new(dir);
+            RecordedBalStore store = new(dir, replayEnabled: true, recordingEnabled: true);
             Block blockA = Build.A.Block.WithNumber(0).TestObject;
             Block blockB = Build.A.Block.WithNumber(1).TestObject;
             BlockAccessList balA = MakeBal(TestItem.AddressA);
@@ -107,7 +107,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            RecordedBalStore store = new(dir);
+            RecordedBalStore store = new(dir, replayEnabled: true, recordingEnabled: true);
             long era0Block = 0;
             long era1Block = 8192;
 
@@ -131,7 +131,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            RecordedBalStore store = new(dir);
+            RecordedBalStore store = new(dir, replayEnabled: true, recordingEnabled: true);
             Block block = Build.A.Block.WithNumber(42).TestObject;
 
             store.Insert(block, MakeBal(TestItem.AddressA));
@@ -149,7 +149,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            RecordedBalStore store = new(dir);
+            RecordedBalStore store = new(dir, replayEnabled: true, recordingEnabled: true);
             Block block = Build.A.Block.WithNumber(7).TestObject;
             store.Insert(block, MakeBal(TestItem.AddressA));
 
