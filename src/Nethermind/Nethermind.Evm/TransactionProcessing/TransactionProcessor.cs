@@ -214,16 +214,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
 
-            int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
+            int delegationRefunds = !spec.IsEip7702Enabled || !tx.HasAuthorizationList ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
-            if (spec.IsEip8037Enabled && delegationRefunds > 0)
-            {
-                TGasPolicy intrinsicGasStandard = intrinsicGas.Standard;
-                long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-                TGasPolicy.ApplyCodeInsertRefunds(ref gasAvailable, delegationRefunds, spec, stateGasFloor);
-                delegationRefunds = 0;
-            }
+            ApplyPreExecutionDelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
 
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
@@ -314,6 +308,17 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             gasAvailable = TGasPolicy.CreateAvailableFromIntrinsic(tx.GasLimit, intrinsicGas.Standard, spec);
             return TransactionResult.Ok;
+        }
+
+        private static void ApplyPreExecutionDelegationRefunds(IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, ref TGasPolicy gasAvailable, ref int delegationRefunds)
+        {
+            if (spec.IsEip8037Enabled && delegationRefunds > 0)
+            {
+                TGasPolicy intrinsicGasStandard = intrinsicGas.Standard;
+                long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+                TGasPolicy.ApplyCodeInsertRefunds(ref gasAvailable, delegationRefunds, spec, stateGasFloor);
+                delegationRefunds = 0;
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
