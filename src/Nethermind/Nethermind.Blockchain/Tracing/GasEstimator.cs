@@ -204,14 +204,16 @@ public class GasEstimator(
     private static string GetError(EstimateGasTracer gasTracer, string defaultError = TransactionExecutionFails) =>
         gasTracer switch
         {
-            { TopLevelRevert: true } => gasTracer.Error ??
-                                        (gasTracer.ReturnValue?.Length > 0
-                                            ? $"{ExecutionReverted}: {gasTracer.ReturnValue.ToHexString(true)}"
-                                            : ExecutionReverted),
+            { TopLevelRevert: true } => GetRevertError(gasTracer),
             { OutOfGas: true } => GasEstimationOutOfGas,
             { StatusCode: StatusCode.Failure } => gasTracer.Error ?? TransactionExecutionFails,
             _ => defaultError
         };
+
+    private static string GetRevertError(EstimateGasTracer gasTracer) =>
+        gasTracer.Error ?? (gasTracer.ReturnValue?.Length > 0
+            ? $"{ExecutionReverted}: {gasTracer.ReturnValue.ToHexString(true)}"
+            : ExecutionReverted);
 
     private readonly record struct EstimationBounds(long LeftBound, long RightBound, long IntrinsicGas);
 
