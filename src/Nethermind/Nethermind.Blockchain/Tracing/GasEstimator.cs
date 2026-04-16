@@ -67,8 +67,7 @@ public class GasEstimator(
 
         UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress!);
 
-        EstimationResult fundsResult = CheckFunds(tx, spec, gasTracer, senderBalance);
-        if (!fundsResult.IsSuccess || fundsResult.GasEstimate > 0)
+        if (CheckFunds(tx, spec, gasTracer, senderBalance) is { } fundsResult)
             return fundsResult;
 
         long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec).MinimalGas;
@@ -94,10 +93,11 @@ public class GasEstimator(
             _ => EstimationResult.Success(0)
         };
 
-    private static EstimationResult CheckFunds(Transaction tx, IReleaseSpec spec, EstimateGasTracer gasTracer, UInt256 senderBalance)
+    // Returns null if funds are sufficient (estimation continues), or a terminal result to return immediately.
+    private static EstimationResult? CheckFunds(Transaction tx, IReleaseSpec spec, EstimateGasTracer gasTracer, UInt256 senderBalance)
     {
         if (tx.ValueRef == UInt256.Zero || tx.ValueRef <= senderBalance)
-            return EstimationResult.Success(0);
+            return null;
 
         long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, spec);
         return additionalGas > 0
