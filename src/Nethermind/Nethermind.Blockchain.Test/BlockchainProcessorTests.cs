@@ -495,18 +495,21 @@ public class BlockchainProcessorTests
             {
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted as invalid");
 
-                // Subscribe before checking so we don't miss BlockInvalidated firing
+                // BlockchainProcessor.BlockRemoved fires after ProcessBranch's finally
+                // block runs DeleteInvalidBlocks, so waiting on it guarantees the block
+                // is gone from the tree with no polling needed.
+                // Subscribe before checking to avoid missing the event if it fires
                 // between the check and the subscription.
                 ManualResetEventSlim deletedEvent = new(false);
-                void OnBlockInvalidated(object? sender, BlockEventArgs args)
+                void OnBlockRemoved(object? sender, BlockRemovedEventArgs args)
                 {
-                    if (args.Block.Hash == block.Hash) deletedEvent.Set();
+                    if (args.BlockHash == block.Hash) deletedEvent.Set();
                 }
 
-                processingTestContext._blockTree.BlockInvalidated += OnBlockInvalidated;
+                processingTestContext._processor.BlockRemoved += OnBlockRemoved;
                 try
                 {
-                    // Handle the case where deletion already completed before we subscribed.
+                    // Handle the case where BlockRemoved already fired before we subscribed.
                     if (processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None) is null)
                         deletedEvent.Set();
 
@@ -514,7 +517,7 @@ public class BlockchainProcessorTests
                 }
                 finally
                 {
-                    processingTestContext._blockTree.BlockInvalidated -= OnBlockInvalidated;
+                    processingTestContext._processor.BlockRemoved -= OnBlockRemoved;
                 }
 
                 Assert.That(processingTestContext._blockTree.Head?.Hash, Is.EqualTo(processingTestContext._headBefore), "head");

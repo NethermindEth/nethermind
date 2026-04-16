@@ -214,12 +214,6 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         remove => throw new NotSupportedException();
     }
 
-    public event EventHandler<BlockEventArgs>? BlockInvalidated
-    {
-        add => throw new NotSupportedException();
-        remove => throw new NotSupportedException();
-    }
-
     public Hash256? GetHash(BlockHeader headBlock, int depth) =>
         depth == 0
             ? headBlock.Hash
