@@ -572,7 +572,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                return TransactionResult.MinerPremiumNegative;
+                return TransactionResult.CreateMinerPremiumNegative(tx, header.BaseFeePerGas);
             }
 
             UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
@@ -1056,7 +1056,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ErrorType.InsufficientMaxFeePerGasForSenderBalance => "insufficient MaxFeePerGas for sender balance",
             ErrorType.InsufficientSenderBalance => "insufficient sender balance",
             ErrorType.MalformedTransaction => "malformed",
-            ErrorType.MinerPremiumNegative => "miner premium is negative",
+            ErrorType.MinerPremiumNegative => SubstateError ?? "miner premium is negative",
             ErrorType.NonceOverflow => "nonce overflow",
             ErrorType.SenderHasDeployedCode => "sender has deployed code",
             ErrorType.SenderNotSpecified => "sender not specified",
@@ -1076,6 +1076,13 @@ namespace Nethermind.Evm.TransactionProcessing
         public override string ToString() => Error is not ErrorType.None ? $"Fail : {ErrorDescription}" : "Success";
 
         public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? substateError = null) => new(ErrorType.None, evmExceptionType) { SubstateError = substateError };
+
+        public static TransactionResult CreateMinerPremiumNegative(Transaction tx, in UInt256 baseFee)
+        {
+            UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.MaxPriorityFeePerGas;
+            string detail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {feeCap}, baseFee: {baseFee} (supplied gas {tx.GasLimit})";
+            return new TransactionResult(ErrorType.MinerPremiumNegative) { SubstateError = detail };
+        }
 
         public static readonly TransactionResult Ok = new();
 

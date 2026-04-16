@@ -493,6 +493,28 @@ public class BlockchainBridgeTests
     }
 
     [Test]
+    public void Call_tx_returns_descriptive_MinerPremiumIsNegativeError()
+    {
+        UInt256 baseFee = 146_283_608_928UL;
+        UInt256 maxFeePerGas = 140_000_000_000UL;
+        Address sender = new("0xd3181ddbB2CEA7B4954b8D4a05DBf85D8Fc36aEF");
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(baseFee).TestObject;
+        Transaction tx = new()
+        {
+            GasLimit = 56786,
+            SenderAddress = sender,
+            DecodedMaxFeePerGas = maxFeePerGas,
+            Type = TxType.EIP1559
+        };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.CreateMinerPremiumNegative(tx, baseFee));
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo($"err: max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee} (supplied gas 56786)"));
+    }
+
+    [Test]
     public void EstimateGas_tx_returns_MinerPremiumIsNegativeError()
     {
         BlockHeader header = Build.A.BlockHeader
@@ -504,6 +526,28 @@ public class BlockchainBridgeTests
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
         Assert.That(callOutput.Error, Is.EqualTo("miner premium is negative"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_descriptive_MinerPremiumIsNegativeError()
+    {
+        UInt256 baseFee = 61_500_000_000UL;
+        UInt256 maxFeePerGas = 50_000_000_000UL;
+        Address sender = new("0xd3181ddbB2CEA7B4954b8D4a05DBf85D8Fc36aEF");
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(baseFee).TestObject;
+        Transaction tx = new()
+        {
+            GasLimit = 21000,
+            SenderAddress = sender,
+            DecodedMaxFeePerGas = maxFeePerGas,
+            Type = TxType.EIP1559
+        };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.CreateMinerPremiumNegative(tx, baseFee));
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo($"err: max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee} (supplied gas 21000)"));
     }
 
     [Test]
