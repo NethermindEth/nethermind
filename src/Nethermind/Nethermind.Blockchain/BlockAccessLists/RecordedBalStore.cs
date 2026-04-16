@@ -17,8 +17,11 @@ namespace Nethermind.Blockchain.Headers;
 /// File layout: 65536-byte header (8192 × 8 bytes: uint32 offset + uint32 size per slot),
 /// followed by appended RLP-encoded BAL data. Offset 0 means no entry.
 /// </summary>
-public class RecordedBalStore(string directory) : IRecordedBalStore
+public class RecordedBalStore(string directory, bool replayEnabled, bool recordingEnabled) : IRecordedBalStore
 {
+    public bool ReplayEnabled => replayEnabled;
+    public bool RecordingEnabled => recordingEnabled;
+
     private const int EraSize = 8192;
     private const int HeaderSize = EraSize * 8; // 65536 bytes
 
@@ -82,4 +85,6 @@ public class NullRecordedBalStore : IRecordedBalStore
     public static NullRecordedBalStore Instance { get; } = new();
     public void Insert(Block block, BlockAccessList bal) { }
     public BlockAccessList? Get(long blockNumber, Hash256 blockHash) => null;
+    public bool ReplayEnabled => false;
+    public bool RecordingEnabled => false;
 }

@@ -61,12 +61,6 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
     bool BuildBlocksOnMainState { get; set; }
 
-    [ConfigItem(Description = "Whether to load previously recorded block access lists from the recordedBal database to trigger HintBal prewarming. Useful for BAL-driven prewarming benchmarks on historical blocks.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool ReplayBal { get; set; }
-
-    [ConfigItem(Description = "Whether to record generated block access lists to the recordedBal database during block processing.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool RecordBal { get; set; }
-
     byte[] GetExtraDataBytes();
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]

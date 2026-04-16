@@ -42,15 +42,14 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlocksConfig? blocksConfig = null,
     IRecordedBalStore? recordedBalStore = null)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
-    private readonly bool _replayBal = blocksConfig?.ReplayBal ?? false;
-    private readonly bool _recordBal = blocksConfig?.RecordBal ?? false;
     private readonly IRecordedBalStore _recordedBalStore = recordedBalStore ?? NullRecordedBalStore.Instance;
+    private readonly bool _replayBal = recordedBalStore?.ReplayEnabled ?? false;
+    private readonly bool _recordBal = recordedBalStore?.RecordingEnabled ?? false;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls

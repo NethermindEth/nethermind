@@ -91,8 +91,7 @@ namespace Nethermind.Config
 
         public bool BuildBlocksOnMainState { get; set; }
 
-        public bool ReplayBal { get; set; }
-        public bool RecordBal { get; set; }
+
 
         public byte[] GetExtraDataBytes() => _extraDataBytes;
 
