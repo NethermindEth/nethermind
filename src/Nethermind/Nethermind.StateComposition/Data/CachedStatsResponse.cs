@@ -13,6 +13,9 @@ public readonly record struct CachedStatsResponse
     /// <summary>Live cumulative stats — initialized from scan, then updated by diffs.</summary>
     public CumulativeSizeStats CurrentStats { get; init; }
 
+    /// <summary>Per-depth trie node distribution. Default until the first scan completes.</summary>
+    public TrieDepthDistribution TrieDistribution { get; init; }
+
     /// <summary>Block number these stats correspond to. 0 until the first scan completes.</summary>
     public long BlockNumber { get; init; }
 

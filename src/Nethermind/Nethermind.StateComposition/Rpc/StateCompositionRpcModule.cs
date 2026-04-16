@@ -19,18 +19,10 @@ internal sealed class StateCompositionRpcModule(
     IBlockTree blockTree)
     : IStateCompositionRpcModule
 {
-    public Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats()
+    public Task<ResultWrapper<CachedStatsResponse>> statecomp_get()
     {
         return Task.FromResult(
             ResultWrapper<CachedStatsResponse>.Success(stateHolder.BuildCachedStatsResponse()));
-    }
-
-    public Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution()
-    {
-        Result<TrieDepthDistribution> result = service.GetTrieDistribution();
-        return Task.FromResult(!result.Success(out TrieDepthDistribution dist, out string? error) ?
-            ResultWrapper<TrieDepthDistribution>.Fail(error, ErrorCodes.ResourceUnavailable) :
-            ResultWrapper<TrieDepthDistribution>.Success(dist));
     }
 
     public Task<ResultWrapper<bool>> statecomp_cancelScan()
