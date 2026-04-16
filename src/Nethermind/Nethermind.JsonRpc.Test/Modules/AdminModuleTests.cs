@@ -74,7 +74,7 @@ public class AdminModuleTests
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
 
         // Create a peer with a validated session
-        Peer testPeer = new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true));
+        Peer testPeer = new(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true));
         ISession validatedSession = Substitute.For<ISession>();
         validatedSession.IsNetworkIdMatched.Returns(true);
         testPeer.OutSession = validatedSession;
@@ -239,7 +239,7 @@ public class AdminModuleTests
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
-        var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
+        List<PeerInfo> peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
         peerInfoList.Count.Should().Be(1);
         PeerInfo peerInfo = peerInfoList[0];
         peerInfo.Network.RemoteAddress.Should().NotBeNullOrEmpty(); // Fixed: more flexible network address checking
@@ -366,10 +366,7 @@ public class AdminModuleTests
     }
 
     [Test]
-    public async Task Smoke_solc()
-    {
-        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
-    }
+    public async Task Smoke_solc() => _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
 
     [Test]
     public async Task Smoke_test_peers()
@@ -399,7 +396,7 @@ public class AdminModuleTests
     public async Task No_subscription_name_admin()
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe");
-        var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"Incorrect parameters count, expected: 2, actual: 0\"},\"id\":67}";
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"Incorrect parameters count, expected: 2, actual: 0\"},\"id\":67}";
         expectedResult.Should().Be(serialized);
     }
 
@@ -424,7 +421,7 @@ public class AdminModuleTests
     public async Task PeerEventsSubscription_creating_result()
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents");
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
+        string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
         expectedResult.Should().Be(serialized);
     }
 
@@ -435,7 +432,7 @@ public class AdminModuleTests
         JsonRpcResult jsonRpcResult = GetPeerEventsAddResult(new PeerEventArgs(new Peer(node)), out string subscriptionId);
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"add\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"add\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult.Should().Be(serialized);
     }
 
@@ -446,7 +443,7 @@ public class AdminModuleTests
         JsonRpcResult jsonRpcResult = GetPeerEventsRemovedResult(new PeerEventArgs(new Peer(node)), out string subscriptionId);
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"drop\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"drop\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult.Should().Be(serialized);
     }
 
@@ -457,7 +454,7 @@ public class AdminModuleTests
         JsonRpcResult jsonRpcResult = GetPeerEventsMsgReceivedResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId, _existingSession1);
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult.Should().Be(serialized);
     }
 
@@ -468,7 +465,7 @@ public class AdminModuleTests
         JsonRpcResult jsonRpcResult = GetPeerEventsMsgDeliveredResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId, _existingSession1);
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult.Should().Be(serialized);
     }
 
@@ -479,13 +476,13 @@ public class AdminModuleTests
         JsonRpcResult jsonRpcResult1 = GetPeerEventsMsgReceivedResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId1, _existingSession1);
         jsonRpcResult1.Response.Should().NotBeNull();
         string serialized1 = _jsonSerializer.Serialize(jsonRpcResult1.Response);
-        var expectedResult1 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId1, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult1 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId1, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult1.Should().Be(serialized1);
 
         JsonRpcResult jsonRpcResult2 = GetPeerEventsMsgReceivedResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId2, _existingSession2);
         jsonRpcResult2.Response.Should().NotBeNull();
         string serialized2 = _jsonSerializer.Serialize(jsonRpcResult2.Response);
-        var expectedResult2 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId2, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult2 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId2, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult2.Should().Be(serialized2);
     }
 
@@ -496,37 +493,37 @@ public class AdminModuleTests
         JsonRpcResult jsonRpcResult1 = GetPeerEventsMsgDeliveredResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId1, _existingSession1);
         jsonRpcResult1.Response.Should().NotBeNull();
         string serialized1 = _jsonSerializer.Serialize(jsonRpcResult1.Response);
-        var expectedResult1 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId1, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult1 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId1, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult1.Should().Be(serialized1);
 
         JsonRpcResult jsonRpcResult2 = GetPeerEventsMsgDeliveredResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId2, _existingSession2);
         jsonRpcResult2.Response.Should().NotBeNull();
         string serialized2 = _jsonSerializer.Serialize(jsonRpcResult2.Response);
-        var expectedResult2 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId2, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult2 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId2, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult2.Should().Be(serialized2);
     }
 
     [Test]
     public void MsgReceived_event_on_new_session()
     {
-        var newSession = Substitute.For<ISession>();
+        ISession newSession = Substitute.For<ISession>();
         Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
         JsonRpcResult jsonRpcResult = GetPeerEventsMsgReceivedResultNewSession(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId, newSession);
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult.Should().Be(serialized);
     }
 
     [Test]
     public void MsgDelivered_event_on_new_session()
     {
-        var newSession = Substitute.For<ISession>();
+        ISession newSession = Substitute.For<ISession>();
         Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
         JsonRpcResult jsonRpcResult = GetPeerEventsMsgDeliveredResultNewSession(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId, newSession);
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult.Should().Be(serialized);
     }
 
@@ -535,7 +532,7 @@ public class AdminModuleTests
     {
         Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
         DisconnectEventArgs disconnectEventArgs = new(new DisconnectReason(), new DisconnectType(), "");
-        PeerEventArgs peerEventArgs = new PeerEventArgs(node, "BitTorrent", 1, 2);
+        PeerEventArgs peerEventArgs = new(node, "BitTorrent", 1, 2);
         PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
         JsonRpcResult jsonRpcResult = new();
         ManualResetEvent manualResetEvent = new(false);
@@ -552,10 +549,10 @@ public class AdminModuleTests
 
     private static AdminRpcModule CreateMinimalAdminModule(IPeerPool peerPool)
     {
-        var blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
-        var networkConfig = new NetworkConfig();
-        var stateReader = Substitute.For<IStateReader>();
-        var subscriptionManager = Substitute.For<ISubscriptionManager>();
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+        NetworkConfig networkConfig = new();
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        ISubscriptionManager subscriptionManager = Substitute.For<ISubscriptionManager>();
 
         return new AdminRpcModule(
             blockTree,
@@ -572,10 +569,10 @@ public class AdminModuleTests
 
     private static IPeerPool CreatePeerPool(Peer peer)
     {
-        var peers = new ConcurrentDictionary<PublicKeyAsKey, Peer>();
+        ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
         peers.TryAdd(TestItem.PublicKeyA, peer);
 
-        var peerPool = Substitute.For<IPeerPool>();
+        IPeerPool peerPool = Substitute.For<IPeerPool>();
         peerPool.ActivePeers.Returns(peers);
         return peerPool;
     }
@@ -583,14 +580,14 @@ public class AdminModuleTests
     private static Peer CreateTestPeer(string clientId, Capability[] capabilities, bool isStatic = false, bool isInbound = false)
     {
         // Create node
-        var node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic);
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic);
         node.ClientId = clientId;
 
         // Create peer
-        var peer = new Peer(node);
+        Peer peer = new(node);
 
         // Create session
-        var session = Substitute.For<ISession>();
+        ISession session = Substitute.For<ISession>();
         session.RemoteHost.Returns("192.168.1.100");
         session.RemotePort.Returns(isInbound ? 45678 : 30303);
         session.LocalPort.Returns(30303);
@@ -599,7 +596,7 @@ public class AdminModuleTests
         // Setup capabilities
         if (capabilities.Length > 0)
         {
-            var protocolHandler = Substitute.For<IP2PProtocolHandler>();
+            IP2PProtocolHandler protocolHandler = Substitute.For<IP2PProtocolHandler>();
             protocolHandler.GetCapabilities().Returns(capabilities);
             session.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
                 .Returns(x => { x[1] = protocolHandler; return true; });
@@ -620,16 +617,16 @@ public class AdminModuleTests
     public void Admin_peers_returns_geth_with_snap_capabilities()
     {
         // Arrange
-        var peer = CreateTestPeer("Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2",
+        Peer peer = CreateTestPeer("Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2",
             new[] { new Capability("eth", 68), new Capability("snap", 1) }, isStatic: true);
-        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
 
         // Act
-        var result = module.admin_peers();
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         // Assert
         result.Data.Should().HaveCount(1);
-        var peerInfo = result.Data[0];
+        PeerInfo peerInfo = result.Data[0];
 
         peerInfo.Id.Should().Be(TestItem.PublicKeyA);
         peerInfo.Name.Should().Be("Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2");
@@ -643,11 +640,11 @@ public class AdminModuleTests
     public void Admin_peers_handles_empty_capabilities_correctly()
     {
         // Arrange
-        var peer = CreateTestPeer("TestClient", Array.Empty<Capability>());
-        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+        Peer peer = CreateTestPeer("TestClient", Array.Empty<Capability>());
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
 
         // Act
-        var result = module.admin_peers();
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         // Assert
         result.Data[0].Caps.Should().BeEmpty();
@@ -657,16 +654,16 @@ public class AdminModuleTests
     public void Admin_peers_supports_multiple_eth_versions_with_snap()
     {
         // Arrange
-        var capabilities = new[] {
+        Capability[] capabilities = new[] {
             new Capability("eth", 67), new Capability("eth", 68), new Capability("snap", 1) };
-        var peer = CreateTestPeer("erigon/v3.0.12-39c6a6ff/linux-amd64/go1.23.10", capabilities);
-        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+        Peer peer = CreateTestPeer("erigon/v3.0.12-39c6a6ff/linux-amd64/go1.23.10", capabilities);
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
 
         // Act
-        var result = module.admin_peers();
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         // Assert
-        var peerInfo = result.Data[0];
+        PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(capabilities);
         peerInfo.Protocols.Should().ContainKeys("eth", "snap");
     }
@@ -675,14 +672,14 @@ public class AdminModuleTests
     public void Admin_peers_identifies_inbound_connections()
     {
         // Arrange
-        var peer = CreateTestPeer("TestClient", Array.Empty<Capability>(), isInbound: true);
-        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+        Peer peer = CreateTestPeer("TestClient", Array.Empty<Capability>(), isInbound: true);
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
 
         // Act
-        var result = module.admin_peers();
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         // Assert
-        var peerInfo = result.Data[0];
+        PeerInfo peerInfo = result.Data[0];
         peerInfo.Network.Inbound.Should().BeTrue();
         peerInfo.Network.RemoteAddress.Should().Be("192.168.1.100:45678");
     }
@@ -691,15 +688,15 @@ public class AdminModuleTests
     public void Admin_peers_handles_eth_only_protocols()
     {
         // Arrange
-        var peer = CreateTestPeer("Nethermind/v1.25.4+2bf8a789/linux-x64/dotnet8.0.8",
+        Peer peer = CreateTestPeer("Nethermind/v1.25.4+2bf8a789/linux-x64/dotnet8.0.8",
             new[] { new Capability("eth", 68) });
-        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
 
         // Act
-        var result = module.admin_peers();
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         // Assert
-        var peerInfo = result.Data[0];
+        PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(new[] { new Capability("eth", 68) });
         peerInfo.Protocols.Should().ContainKey("eth");
         peerInfo.Protocols.Should().NotContainKey("snap");
@@ -709,16 +706,16 @@ public class AdminModuleTests
     public void Admin_peers_uses_first_eth_version_for_protocol_info()
     {
         // Arrange
-        var capabilities = new[] {
+        Capability[] capabilities = new[] {
             new Capability("eth", 67), new Capability("eth", 68), new Capability("snap", 1) };
-        var peer = CreateTestPeer("erigon/v3.0.12", capabilities);
-        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+        Peer peer = CreateTestPeer("erigon/v3.0.12", capabilities);
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
 
         // Act
-        var result = module.admin_peers();
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         // Assert
-        var peerInfo = result.Data[0];
+        PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(capabilities);
         peerInfo.Protocols.Should().ContainKeys("eth", "snap");
     }
@@ -727,15 +724,15 @@ public class AdminModuleTests
     public void Admin_peers_supports_legacy_eth_versions()
     {
         // Arrange
-        var peer = CreateTestPeer("Geth/v1.10.0-stable/linux-amd64/go1.16.15",
+        Peer peer = CreateTestPeer("Geth/v1.10.0-stable/linux-amd64/go1.16.15",
             new[] { new Capability("eth", 66) });
-        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
 
         // Act
-        var result = module.admin_peers();
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         // Assert
-        var peerInfo = result.Data[0];
+        PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(new[] { new Capability("eth", 66) });
         peerInfo.Protocols.Should().ContainKey("eth");
         peerInfo.Protocols.Should().NotContainKey("snap"); // Old versions don't support snap

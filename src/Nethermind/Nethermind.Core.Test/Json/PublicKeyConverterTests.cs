@@ -14,10 +14,7 @@ public class PublicKeyConverterTests : ConverterTestBase<PublicKey>
     static readonly PublicKeyConverter converter = new();
 
     [TestCaseSource(nameof(PublicKeyTestCases))]
-    public void Test_roundtrip(PublicKey? value)
-    {
-        TestConverter(value!, static (key, publicKey) => key == publicKey, converter);
-    }
+    public void Test_roundtrip(PublicKey? value) => TestConverter(value!, static (key, publicKey) => key == publicKey, converter);
 
     static IEnumerable<TestCaseData> PublicKeyTestCases =
     [

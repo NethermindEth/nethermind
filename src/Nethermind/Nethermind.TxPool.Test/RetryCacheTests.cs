@@ -191,10 +191,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public void Received_NonExistentResource_DoesNotThrow()
-    {
-        Assert.That(() => _cache.Received(999), Throws.Nothing);
-    }
+    public void Received_NonExistentResource_DoesNotThrow() => Assert.That(() => _cache.Received(999), Throws.Nothing);
 
     [Test]
     public void HandlerBag_StaleAddAfterDrainAndReuse_IsRejected()

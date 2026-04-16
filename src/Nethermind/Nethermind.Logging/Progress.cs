@@ -16,7 +16,7 @@ public static class Progress
 
     private static string[] CreateChunks(char ch, string start, string end)
     {
-        var chunks = new string[WidthBar + 1];
+        string[] chunks = new string[WidthBar + 1];
         for (int i = 0; i < chunks.Length; i++)
         {
             chunks[i] = start + new string(ch, i) + end;

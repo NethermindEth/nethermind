@@ -12,7 +12,7 @@ internal class XdcTxGossipPolicy(ISpecProvider provider, IChainHeadInfoProvider 
 {
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        var spec = (IXdcReleaseSpec)provider.GetXdcSpec(chainHeadInfoProvider.HeadNumber);
+        IXdcReleaseSpec spec = (IXdcReleaseSpec)provider.GetXdcSpec(chainHeadInfoProvider.HeadNumber);
 
         return !tx.RequiresSpecialHandling(spec);
     }

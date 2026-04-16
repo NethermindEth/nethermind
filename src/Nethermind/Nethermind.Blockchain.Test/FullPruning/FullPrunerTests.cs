@@ -221,15 +221,15 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             IDbFactory dbFactory = Substitute.For<IDbFactory>();
             dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
-            NodeStorage storageForWrite = new NodeStorage(TrieDb, currentKeyScheme);
+            NodeStorage storageForWrite = new(TrieDb, currentKeyScheme);
             PatriciaTree trie = Build.A.Trie(storageForWrite).WithAccountsByIndex(0, 100).TestObject;
             _stateRoot = trie.RootHash;
             FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
-            NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
+            NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
             nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
             NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
 
-            var trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
+            TestRawTrieStore trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
             StateReader = new StateReader(trieStore, new TestMemDb(), LimboLogs.Instance);
 
             Pruner = new(
@@ -258,10 +258,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             await WaitForPruningEnd(ctx);
         }
 
-        public void TriggerPruningViaEvent()
-        {
+        public void TriggerPruningViaEvent() =>
             PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
-        }
 
         public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
         {
@@ -276,7 +274,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         public async Task<TestFullPruningDb.TestPruningContext> WaitForPruningStart()
         {
             TriggerPruningViaEvent();
-            using CancellationTokenSource cts = new CancellationTokenSource();
+            using CancellationTokenSource cts = new();
             Task addBlockTasks = Task.Run(() =>
             {
                 while (!cts.IsCancellationRequested)
@@ -315,8 +313,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         public void ShouldCopyAllValuesWhenVisitingTrie()
         {
-            PatriciaTree trie = new PatriciaTree(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
-            TrieCopiedNodeVisitor visitor = new TrieCopiedNodeVisitor(new NodeStorage(CopyDb));
+            PatriciaTree trie = new(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
+            TrieCopiedNodeVisitor visitor = new(new NodeStorage(CopyDb));
             trie.Accept(visitor, BlockTree.Head!.StateRoot!);
         }
 
@@ -330,21 +328,14 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         }
     }
 
-    private class TestFullPruningDb : FullPruningDb
+    private class TestFullPruningDb(DbSettings settings, IDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false) : FullPruningDb(settings, dbFactory)
     {
-        private readonly bool _successfulPruning;
-        private readonly bool _clearPrunedDb;
+        private readonly bool _successfulPruning = successfulPruning;
+        private readonly bool _clearPrunedDb = clearPrunedDb;
 
         public TestPruningContext Context { get; set; } = null!;
         public new int PruningStarted { get; private set; }
         public ManualResetEvent WaitForClearDb { get; } = new(false);
-
-        public TestFullPruningDb(DbSettings settings, IDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false)
-            : base(settings, dbFactory)
-        {
-            _successfulPruning = successfulPruning;
-            _clearPrunedDb = clearPrunedDb;
-        }
 
         protected override void ClearOldDb(IDb oldDb)
         {
@@ -366,19 +357,13 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             return false;
         }
 
-        internal class TestPruningContext : IPruningContext
+        internal class TestPruningContext(IPruningContext context, bool successfulPruning) : IPruningContext
         {
-            private readonly IPruningContext _context;
-            private readonly bool _successfulPruning;
+            private readonly IPruningContext _context = context;
+            private readonly bool _successfulPruning = successfulPruning;
 
             public ManualResetEvent DisposeEvent { get; } = new(false);
             public ManualResetEvent WaitForFinish { get; } = new(false);
-
-            public TestPruningContext(IPruningContext context, bool successfulPruning)
-            {
-                _context = context;
-                _successfulPruning = successfulPruning;
-            }
 
             public void Dispose()
             {
@@ -393,20 +378,11 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 set => _context[key] = value;
             }
 
-            public IWriteBatch StartWriteBatch()
-            {
-                return _context.StartWriteBatch();
-            }
+            public IWriteBatch StartWriteBatch() => _context.StartWriteBatch();
 
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            {
-                _context.Set(key, value, flags);
-            }
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _context.Set(key, value, flags);
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return _context.Get(key, flags);
-            }
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _context.Get(key, flags);
 
             public void Commit()
             {
@@ -417,28 +393,18 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 }
             }
 
-            public void MarkStart()
-            {
-                _context.MarkStart();
-            }
+            public void MarkStart() => _context.MarkStart();
 
             public CancellationTokenSource CancellationTokenSource { get; } = new();
         }
     }
 
-    class TrieCopiedNodeVisitor : ITreeVisitor<TreePathContextWithStorage>
+    class TrieCopiedNodeVisitor(INodeStorage nodeStorage) : ITreeVisitor<TreePathContextWithStorage>
     {
-        private readonly INodeStorage _nodeStorageToCompareTo;
+        private readonly INodeStorage _nodeStorageToCompareTo = nodeStorage;
 
-        public TrieCopiedNodeVisitor(INodeStorage nodeStorage)
-        {
-            _nodeStorageToCompareTo = nodeStorage;
-        }
-
-        private void CheckNode(Hash256? storage, in TreePath path, TrieNode node)
-        {
+        private void CheckNode(Hash256? storage, in TreePath path, TrieNode node) =>
             _nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak).Should().BeTrue();
-        }
 
         public bool IsFullDbScan => true;
         public bool ShouldVisit(in TreePathContextWithStorage ctx, in ValueHash256 nextNode) => true;
@@ -451,20 +417,13 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
         }
 
-        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node)
-        {
+        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node) =>
             CheckNode(ctx.Storage, ctx.Path, node);
-        }
 
-        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node)
-        {
+        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node) =>
             CheckNode(ctx.Storage, ctx.Path, node);
-        }
 
-        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node)
-        {
-            CheckNode(ctx.Storage, ctx.Path, node);
-        }
+        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node) => CheckNode(ctx.Storage, ctx.Path, node);
 
         public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account)
         {

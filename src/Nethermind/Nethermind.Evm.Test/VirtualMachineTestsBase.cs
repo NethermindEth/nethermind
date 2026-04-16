@@ -54,10 +54,7 @@ public abstract class VirtualMachineTestsBase
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
-    protected virtual ILogManager GetLogManager()
-    {
-        return LimboLogs.Instance;
-    }
+    protected virtual ILogManager GetLogManager() => LimboLogs.Instance;
 
     [SetUp]
     public virtual void Setup()
@@ -199,10 +196,7 @@ public abstract class VirtualMachineTestsBase
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
         ulong excessBlobGas = 0,
-        ulong gasPrice = 1)
-    {
-        return PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas, gasPrice: gasPrice);
-    }
+        ulong gasPrice = 1) => PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas, gasPrice: gasPrice);
 
     protected (Block block, Transaction transaction) PrepareTx(
         ForkActivation activation,
@@ -265,10 +259,7 @@ public abstract class VirtualMachineTestsBase
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
     protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code,
-        byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null, ulong gasPrice = 1)
-    {
-        return PrepareTx((blockNumber, Timestamp), gasLimit, code, input, value, senderRecipientAndMiner);
-    }
+        byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null, ulong gasPrice = 1) => PrepareTx((blockNumber, Timestamp), gasLimit, code, input, value, senderRecipientAndMiner);
 
     protected (Block block, Transaction transaction) PrepareTx(ForkActivation activation, long gasLimit, byte[] code,
         byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
@@ -325,10 +316,7 @@ public abstract class VirtualMachineTestsBase
         return (block, transaction);
     }
 
-    protected Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner)
-    {
-        return BuildBlock(activation, senderRecipientAndMiner, null);
-    }
+    protected Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner) => BuildBlock(activation, senderRecipientAndMiner, null);
 
     protected virtual Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner,
         Transaction tx, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0, ulong slotNumber = 0)
@@ -347,25 +335,13 @@ public abstract class VirtualMachineTestsBase
             .TestObject;
     }
 
-    protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
-    {
-        Assert.That(receipt.GasSpent, Is.EqualTo(gas), "gas");
-    }
+    protected void AssertGas(TestAllTracerWithOutput receipt, long gas) => Assert.That(receipt.GasSpent, Is.EqualTo(gas), "gas");
 
-    protected void AssertStorage(UInt256 address, Address value)
-    {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes.PadLeft(32)), "storage");
-    }
+    protected void AssertStorage(UInt256 address, Address value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes.PadLeft(32)), "storage");
 
-    protected void AssertStorage(UInt256 address, Hash256 value)
-    {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
-    }
+    protected void AssertStorage(UInt256 address, Hash256 value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
 
-    protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
-    {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray()), "storage");
-    }
+    protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray()), "storage");
 
     protected void AssertStorage(UInt256 address, BigInteger expectedValue)
     {
@@ -398,8 +374,5 @@ public abstract class VirtualMachineTestsBase
         }
     }
 
-    protected void AssertCodeHash(Address address, Hash256 codeHash)
-    {
-        Assert.That(TestState.GetCodeHash(address), Is.EqualTo(codeHash), "code hash");
-    }
+    protected void AssertCodeHash(Address address, Hash256 codeHash) => Assert.That(TestState.GetCodeHash(address), Is.EqualTo(codeHash), "code hash");
 }

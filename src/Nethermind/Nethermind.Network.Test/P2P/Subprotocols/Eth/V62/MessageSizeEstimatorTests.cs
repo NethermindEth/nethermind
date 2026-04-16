@@ -16,34 +16,25 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Estimate_header_size()
         {
-            var header = Build.A.BlockHeader.TestObject;
+            BlockHeader header = Build.A.BlockHeader.TestObject;
             MessageSizeEstimator.EstimateSize(header).Should().Be(512);
         }
 
         [Test]
-        public void Estimate_null_header_size()
-        {
-            MessageSizeEstimator.EstimateSize((BlockHeader)null).Should().Be(0);
-        }
+        public void Estimate_null_header_size() => MessageSizeEstimator.EstimateSize((BlockHeader)null).Should().Be(0);
 
         [Test]
         public void Estimate_block_size()
         {
-            var block = Build.A.Block.WithTransactions(100, MuirGlacier.Instance).TestObject;
+            Block block = Build.A.Block.WithTransactions(100, MuirGlacier.Instance).TestObject;
             MessageSizeEstimator.EstimateSize(block).Should().Be(10512);
         }
 
         [Test]
-        public void Estimate_null_block_size()
-        {
-            MessageSizeEstimator.EstimateSize((Block)null).Should().Be(0);
-        }
+        public void Estimate_null_block_size() => MessageSizeEstimator.EstimateSize((Block)null).Should().Be(0);
 
         [Test]
-        public void Estimate_null_tx_size()
-        {
-            MessageSizeEstimator.EstimateSize((Transaction)null).Should().Be(0);
-        }
+        public void Estimate_null_tx_size() => MessageSizeEstimator.EstimateSize((Transaction)null).Should().Be(0);
 
         [Test]
         public void Estimate_tx_size()

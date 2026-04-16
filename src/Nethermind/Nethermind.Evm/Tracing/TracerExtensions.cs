@@ -11,10 +11,7 @@ namespace Nethermind.Evm.Tracing;
 
 public static class TracerExtensions
 {
-    public static CancellationTxTracer WithCancellation(this ITxTracer txTracer, CancellationToken cancellationToken)
-    {
-        return new(txTracer, cancellationToken);
-    }
+    public static CancellationTxTracer WithCancellation(this ITxTracer txTracer, CancellationToken cancellationToken) => new(txTracer, cancellationToken);
 
     public static CancellationBlockTracer WithCancellation(this IBlockTracer blockTracer, CancellationToken cancellationToken) =>
         new(blockTracer, cancellationToken);

@@ -121,9 +121,6 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Get_length_returns_1_for_null()
-        {
-            _decoder.GetLength(null, RlpBehaviors.None).Should().Be(1);
-        }
+        public void Get_length_returns_1_for_null() => _decoder.GetLength(null, RlpBehaviors.None).Should().Be(1);
     }
 }

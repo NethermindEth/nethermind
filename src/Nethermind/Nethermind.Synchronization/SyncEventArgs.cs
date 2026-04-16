@@ -6,15 +6,9 @@ using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.Synchronization
 {
-    public class SyncEventArgs : EventArgs
+    public class SyncEventArgs(ISyncPeer peer, SyncEvent @event) : EventArgs
     {
-        public ISyncPeer Peer { get; }
-        public SyncEvent SyncEvent { get; }
-
-        public SyncEventArgs(ISyncPeer peer, SyncEvent @event)
-        {
-            Peer = peer;
-            SyncEvent = @event;
-        }
+        public ISyncPeer Peer { get; } = peer;
+        public SyncEvent SyncEvent { get; } = @event;
     }
 }

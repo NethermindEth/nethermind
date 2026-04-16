@@ -20,7 +20,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
     public void StartUpdating()
     {
-        var offsetInSec = dbConfig.StatsDumpPeriodSec * 1.1;
+        double offsetInSec = dbConfig.StatsDumpPeriodSec * 1.1;
 
         _timer = new Timer(UpdateMetrics, null, TimeSpan.FromSeconds(offsetInSec), TimeSpan.FromSeconds(offsetInSec));
     }
@@ -30,13 +30,13 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         try
         {
             // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
-            var compactionStatsString = "";
+            string compactionStatsString = "";
             compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
             ProcessCompactionStats(compactionStatsString);
 
             if (dbConfig.EnableDbStatistics)
             {
-                var dbStatsString = dbOptions.GetStatisticsString();
+                string dbStatsString = dbOptions.GetStatisticsString();
                 ProcessStatisticsString(dbStatsString);
                 // Currently we don't extract any DB statistics but we can do it here
             }
@@ -54,7 +54,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         {
             // The metric can be of several type, usually just a counter, but sometime its a histogram,
             // in which case we take both the sum and count.
-            if (SubMetric.TryGetValue("SUM", out var valueSum))
+            if (SubMetric.TryGetValue("SUM", out double valueSum))
             {
                 Metrics.DbStats[($"{dbName}Db", $"{Name}.sum")] = valueSum;
                 Metrics.DbStats[($"{dbName}Db", $"{Name}.count")] = SubMetric["COUNT"];
@@ -146,7 +146,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
             if (match?.Success == true)
             {
-                for (var index = 1; index < match.Groups.Count; index++)
+                for (int index = 1; index < match.Groups.Count; index++)
                 {
                     Group group = match.Groups[index];
                     Metrics.DbStats[($"{dbName}Db", group.Name)] = long.Parse(group.Value);
@@ -169,8 +169,5 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
     [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractSubStatsRegex();
 
-    public void Dispose()
-    {
-        _timer?.Dispose();
-    }
+    public void Dispose() => _timer?.Dispose();
 }

@@ -30,10 +30,7 @@ namespace Nethermind.Db
 #endif
 
         public MemDb(string name)
-            : this(0, 0)
-        {
-            Name = name;
-        }
+            : this(0, 0) => Name = name;
 
         public static MemDb CopyFrom(IDb anotherDb)
         {

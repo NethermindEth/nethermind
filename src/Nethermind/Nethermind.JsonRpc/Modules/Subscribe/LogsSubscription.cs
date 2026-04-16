@@ -56,15 +56,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
 
-        private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
-        {
-            TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptCanonicalityMonitor.ReceiptsInserted), e.WasRemoved);
-        }
+        private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptCanonicalityMonitor.ReceiptsInserted), e.WasRemoved);
 
-        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed)
-        {
-            ScheduleAction(async () => await TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
-        }
+        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed) => ScheduleAction(async () => await TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
 
         private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
         {
@@ -76,9 +70,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
             if (isAfterFromBlock && isBeforeToBlock)
             {
-                var filterLogs = GetFilterLogs(blockHeader, receipts, removed);
+                IEnumerable<FilterLog> filterLogs = GetFilterLogs(blockHeader, receipts, removed);
 
-                foreach (var filterLog in filterLogs)
+                foreach (FilterLog filterLog in filterLogs)
                 {
                     using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
                     await JsonRpcDuplexClient.SendJsonRpcResult(result);
@@ -103,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     {
                         for (int j = 0; j < receipt.Logs!.Length; j++)
                         {
-                            var receiptLog = receipt.Logs[j];
+                            LogEntry receiptLog = receipt.Logs[j];
                             if (_filter.Accepts(receiptLog))
                             {
                                 yield return new FilterLog(

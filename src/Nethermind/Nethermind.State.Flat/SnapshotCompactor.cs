@@ -135,7 +135,7 @@ public class SnapshotCompactor : ISnapshotCompactor
         ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
-        using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(2);
+        using ArrayPoolListRef<Task> compactTask = new(2);
 
         // Accounts
         compactTask.Add(Task.Run(() =>
@@ -157,7 +157,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                 Snapshot knownState = snapshots[i];
                 addressToClear.Clear();
 
-                foreach ((HashedKey<Address> address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
+                foreach ((HashedKey<Address> address, bool isNewAccount) in knownState.SelfDestructedStorageAddresses)
                 {
                     if (isNewAccount)
                     {
@@ -196,7 +196,7 @@ public class SnapshotCompactor : ISnapshotCompactor
         {
             // Clear storage nodes for self-destructed accounts
             using PooledSet<Hash256> addressHashToClear = new();
-            foreach ((HashedKey<Address> address, var isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
+            foreach ((HashedKey<Address> address, bool isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
             {
                 if (!isNewAccount)
                     addressHashToClear.Add(address.Key.ToAccountPath.ToCommitment());

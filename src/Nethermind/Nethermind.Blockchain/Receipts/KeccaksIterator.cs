@@ -40,9 +40,6 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Reset()
-        {
-            _decoderContext.Position = _startPosition;
-        }
+        public void Reset() => _decoderContext.Position = _startPosition;
     }
 }

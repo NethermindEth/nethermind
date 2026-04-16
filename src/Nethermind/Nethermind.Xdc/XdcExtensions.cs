@@ -86,7 +86,7 @@ internal static partial class XdcExtensions
         ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
         if (sigBytes.Length != Signature.Size + 2)
             throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
-        Signature signature = new Signature(sigBytes.Slice(2, 64), sigBytes[66]);
+        Signature signature = new(sigBytes.Slice(2, 64), sigBytes[66]);
         decoderContext.SkipItem();
         return signature;
     }

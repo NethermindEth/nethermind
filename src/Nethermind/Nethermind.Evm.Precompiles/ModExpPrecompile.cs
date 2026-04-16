@@ -190,12 +190,9 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return new UInt256(iterationCount, overflow);
     }
 
-    private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength)
-    {
-        return releaseSpec.IsEip7823Enabled
+    private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength) => releaseSpec.IsEip7823Enabled
             ? (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823)
             : baseLength >= uint.MaxValue || modulusLength >= uint.MaxValue;
-    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsShort(ReadOnlySpan<byte> inputData)
@@ -213,7 +210,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         // Test if too high
         if (Vector256.IsHardwareAccelerated)
         {
-            ref var firstByte = ref MemoryMarshal.GetReference(inputData);
+            ref byte firstByte = ref MemoryMarshal.GetReference(inputData);
             Vector256<byte> mask = ~Vector256.Create(0, 0, 0, 0, 0, 0, 0, uint.MaxValue).AsByte();
             if (Vector256.BitwiseAnd(
                     Vector256.BitwiseOr(
@@ -228,7 +225,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
         else if (Vector128.IsHardwareAccelerated)
         {
-            ref var firstByte = ref MemoryMarshal.GetReference(inputData);
+            ref byte firstByte = ref MemoryMarshal.GetReference(inputData);
             Vector128<byte> mask = ~Vector128.Create(0, 0, 0, uint.MaxValue).AsByte();
             if (Vector128.BitwiseOr(
                     Vector128.BitwiseOr(
@@ -267,7 +264,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         // Only valid if baseLength and modulusLength are zero; when expLength doesn't matter
         if (Vector256.IsHardwareAccelerated)
         {
-            ref var firstByte = ref MemoryMarshal.GetReference(inputData);
+            ref byte firstByte = ref MemoryMarshal.GetReference(inputData);
             if (Vector256.BitwiseOr(
                     Unsafe.ReadUnaligned<Vector256<byte>>(ref firstByte),
                     Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref firstByte, StartModLength)))
@@ -279,7 +276,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
         else if (Vector128.IsHardwareAccelerated)
         {
-            ref var firstByte = ref MemoryMarshal.GetReference(inputData);
+            ref byte firstByte = ref MemoryMarshal.GetReference(inputData);
             if (Vector128.BitwiseOr(
                     Vector128.BitwiseOr(
                         Unsafe.ReadUnaligned<Vector128<byte>>(ref firstByte),

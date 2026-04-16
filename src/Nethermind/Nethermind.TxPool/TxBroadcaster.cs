@@ -374,19 +374,10 @@ namespace Nethermind.TxPool
 
         public bool ContainsTx(Hash256 hash) => _persistentTxs.ContainsKey(hash);
 
-        public bool AddPeer(ITxPoolPeer peer)
-        {
-            return _peers.TryAdd(peer.Id, peer);
-        }
+        public bool AddPeer(ITxPoolPeer peer) => _peers.TryAdd(peer.Id, peer);
 
-        public bool RemovePeer(PublicKey nodeId)
-        {
-            return _peers.TryRemove(nodeId, out _);
-        }
+        public bool RemovePeer(PublicKey nodeId) => _peers.TryRemove(nodeId, out _);
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

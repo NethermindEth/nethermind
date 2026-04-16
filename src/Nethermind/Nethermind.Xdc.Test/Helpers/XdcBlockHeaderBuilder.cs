@@ -20,8 +20,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     public new XdcBlockHeader TestObject => (XdcBlockHeader)base.TestObject;
 
 
-    public XdcBlockHeaderBuilder()
-    {
+    public XdcBlockHeaderBuilder() =>
         TestObjectInternal = new XdcBlockHeader(
             Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
@@ -43,7 +42,6 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
             Validator = new byte[65],
             Penalties = Array.Empty<byte>(),
         };
-    }
 
     public XdcBlockHeaderBuilder WithExtraFieldsV2(ExtraFieldsV2 extraFieldsV2)
     {
@@ -53,26 +51,26 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
 
     public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData(int signatureNumber = 72)
     {
-        PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
+        PrivateKeyGenerator keyBuilder = new();
         return WithGeneratedExtraConsensusData(Enumerable.Range(0, signatureNumber).Select(i => keyBuilder.Generate()));
     }
 
     public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData(IEnumerable<PrivateKey> keys)
     {
-        QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        BlockRoundInfo blockRoundInfo = new BlockRoundInfo(Hash256.Zero, 1, 1);
-        QuorumCertificate quorumForSigning = new QuorumCertificate(blockRoundInfo, null, 450);
+        QuorumCertificateDecoder qcEncoder = new();
+        EthereumEcdsa ecdsa = new(0);
+        BlockRoundInfo blockRoundInfo = new(Hash256.Zero, 1, 1);
+        QuorumCertificate quorumForSigning = new(blockRoundInfo, null, 450);
         IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
-        QuorumCertificate quorumCert = new QuorumCertificate(blockRoundInfo, [.. signatures], 450);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, quorumCert);
+        QuorumCertificate quorumCert = new(blockRoundInfo, [.. signatures], 450);
+        ExtraFieldsV2 extraFieldsV2 = new(1, quorumCert);
 
         EncodeExtraData(extraFieldsV2);
         return this;
     }
     private void EncodeExtraData(ExtraFieldsV2 extraFieldsV2)
     {
-        ExtraConsensusDataDecoder extraEncoder = new ExtraConsensusDataDecoder();
+        ExtraConsensusDataDecoder extraEncoder = new();
         Rlp extraEncoded = extraEncoder.Encode(extraFieldsV2);
         XdcTestObjectInternal.ExtraData = [0x2, .. extraEncoded.Bytes];
     }

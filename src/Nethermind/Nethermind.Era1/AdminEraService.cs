@@ -6,26 +6,18 @@ using Nethermind.Logging;
 
 namespace Nethermind.Era1;
 
-public class AdminEraService : IAdminEraService
+public class AdminEraService(
+    IEraImporter eraImporter,
+    IEraExporter eraExporter,
+    IProcessExitSource processExit,
+    ILogManager logManager) : IAdminEraService
 {
-    private readonly ILogger _logger;
-    private readonly IEraImporter _eraImporter;
-    private readonly IEraExporter _eraExporter;
-    private readonly IProcessExitSource _processExit;
+    private readonly ILogger _logger = logManager.GetClassLogger<AdminEraService>();
+    private readonly IEraImporter _eraImporter = eraImporter;
+    private readonly IEraExporter _eraExporter = eraExporter;
+    private readonly IProcessExitSource _processExit = processExit;
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
-
-    public AdminEraService(
-        IEraImporter eraImporter,
-        IEraExporter eraExporter,
-        IProcessExitSource processExit,
-        ILogManager logManager)
-    {
-        _eraImporter = eraImporter;
-        _eraExporter = eraExporter;
-        _processExit = processExit;
-        _logger = logManager.GetClassLogger<AdminEraService>();
-    }
 
     public string ExportHistory(string destination, long from, long to)
     {

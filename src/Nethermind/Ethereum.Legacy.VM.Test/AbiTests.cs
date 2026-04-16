@@ -60,9 +60,6 @@ internal class AbiTests
         public byte[] Result { get; set; }
         public AbiType[] Types { get; set; }
 
-        public override string ToString()
-        {
-            return Name;
-        }
+        public override string ToString() => Name;
     }
 }

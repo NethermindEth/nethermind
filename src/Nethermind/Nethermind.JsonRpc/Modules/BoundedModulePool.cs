@@ -10,10 +10,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class RpcLimits
     {
-        public static void Init(int limit)
-        {
-            Limit = limit;
-        }
+        public static void Init(int limit) => Limit = limit;
 
         private static int Limit { get; set; }
         private static bool Enabled => Limit > 0;
