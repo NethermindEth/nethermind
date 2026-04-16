@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -54,7 +53,6 @@ public class BlockAccessListManager(
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
-    private Hash256 _lastLoadedBal = Hash256.Zero;
 
     private void Reset()
     {
@@ -77,9 +75,8 @@ public class BlockAccessListManager(
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
 
-            if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
+            if (ParallelExecutionEnabled)
             {
-                _lastLoadedBal = suggestedBlock.Hash;
                 LoadPreStateToSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
             }
         }
@@ -301,7 +298,7 @@ public class BlockAccessListManager(
                     generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
                     generatedHead.Value.CodeChange.HasValue != suggestedHead.Value.CodeChange.HasValue ||
                     generatedHead.Value.CodeChange is not null && !generatedHead.Value.CodeChange.Value.Equals(suggestedHead.Value.CodeChange.Value) ||
-                    !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
+                    !SlotChangesEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
                 {
                     throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
                 }
@@ -381,20 +378,32 @@ public class BlockAccessListManager(
                 slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
             }
 
-            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            foreach (UInt256 storageRead in accountChanges.StorageReads)
             {
-                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
-                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
+                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead);
+                StorageCell storageCell = new(accountChanges.Address, storageRead);
                 slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
             }
         }
+    }
+
+    private static bool SlotChangesEqual(IEnumerable<SlotChanges> left, IEnumerable<SlotChanges> right)
+    {
+        using IEnumerator<SlotChanges> e1 = left.GetEnumerator();
+        using IEnumerator<SlotChanges> e2 = right.GetEnumerator();
+        while (e1.MoveNext())
+        {
+            if (!e2.MoveNext() || !e1.Current.Equals(e2.Current))
+                return false;
+        }
+        return !e2.MoveNext();
     }
 
     private static bool HasNoChanges(in ChangeAtIndex c)
         => c.BalanceChange is null &&
             c.NonceChange is null &&
             c.CodeChange is null &&
-            !c.SlotChanges.Any();
+            !c.HasSlotChanges;
 
     private interface ITxProcessorWithWorldStateManager
     {

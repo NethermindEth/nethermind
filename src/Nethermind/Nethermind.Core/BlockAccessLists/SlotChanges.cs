@@ -5,14 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text.Json.Serialization;
+using Nethermind.Core.Comparers;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public record SlotChanges(UInt256 Slot, SortedList<int, StorageChange> Changes)
+public record SlotChanges([property: JsonPropertyName("key")] UInt256 Slot, SortedList<int, StorageChange> Changes)
 {
-    public SlotChanges(UInt256 slot) : this(slot, []) { }
+    public SlotChanges(UInt256 slot) : this(slot, new(IntComparer.Instance)) { }
 
     public virtual bool Equals(SlotChanges? other) =>
         other is not null &&

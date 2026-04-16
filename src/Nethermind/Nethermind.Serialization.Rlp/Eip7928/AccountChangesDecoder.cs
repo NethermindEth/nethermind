@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Comparers;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -27,7 +28,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         UInt256? lastSlot = null;
-        SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length);
+        SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length, UInt256Comparer.Instance);
         foreach (SlotChanges slotChange in slotChanges)
         {
             UInt256 slot = slotChange.Slot;
@@ -39,16 +40,16 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             slotChangesList.Add(slot, slotChange);
         }
 
-        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _storageLimit);
-        SortedSet<StorageRead> storageReadsList = [];
-        StorageRead? lastRead = null;
-        foreach (StorageRead storageRead in storageReads)
+        UInt256[] storageReads = ctx.DecodeArray(UInt256Decoder.Instance, true, default, _storageLimit);
+        SortedSet<UInt256> storageReadsList = new(UInt256Comparer.Instance);
+        UInt256? lastRead = null;
+        foreach (UInt256 storageRead in storageReads)
         {
             if (lastRead is not null && storageRead.CompareTo(lastRead.Value) <= 0)
             {
                 throw new RlpException("Storage reads were in incorrect order.");
             }
-            if (slotChangesList.ContainsKey(storageRead.Key))
+            if (slotChangesList.ContainsKey(storageRead))
             {
                 throw new RlpException("Invalid storage read, already in storage changes.");
             }
@@ -89,7 +90,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
     public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfAddressRlp
             + SequenceLength(item.StorageChanges, SlotChangesDecoder.Instance, rlpBehaviors)
-            + SequenceLength(item.StorageReads, StorageReadDecoder.Instance, rlpBehaviors)
+            + SequenceLength(item.StorageReads, UInt256Decoder.Instance, rlpBehaviors)
             + SequenceLength(item.BalanceChanges, BalanceChangeDecoder.Instance, rlpBehaviors)
             + SequenceLength(item.NonceChanges, NonceChangeDecoder.Instance, rlpBehaviors)
             + SequenceLength(item.CodeChanges, CodeChangeDecoder.Instance, rlpBehaviors);
@@ -108,7 +109,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         where T : struct, IIndexedChange
     {
         int? lastIndex = null;
-        SortedList<int, T> sorted = new(items.Length);
+        SortedList<int, T> sorted = new(items.Length, IntComparer.Instance);
         foreach (T item in items)
         {
             int index = item.BlockAccessIndex;

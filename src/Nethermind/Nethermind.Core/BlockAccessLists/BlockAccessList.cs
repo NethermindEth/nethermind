@@ -27,7 +27,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
-    private readonly SortedDictionary<Address, AccountChanges> _accountChanges = [];
+    private readonly SortedDictionary<Address, AccountChanges> _accountChanges = new(AddressComparer.Instance);
     private readonly Stack<Change> _changes = new();
 
     public BlockAccessList()
@@ -369,6 +369,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     accountChanges.NonceChangeAtIndex(index),
                     accountChanges.CodeChangeAtIndex(index),
                     accountChanges.SlotChangesAtIndex(index),
+                    accountChanges.HasSlotChangesAtIndex(index),
                     isSystemContract ? 0 : accountChanges.StorageReads.Count
                 );
         }
@@ -549,7 +550,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     }
 }
 
-public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)
+public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, bool HasSlotChanges, int Reads)
 {
     public override string ToString()
     {

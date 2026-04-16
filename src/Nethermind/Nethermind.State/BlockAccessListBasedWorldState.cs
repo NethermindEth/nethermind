@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -227,15 +225,24 @@ public class BlockAccessListBasedWorldState(
     public void CommitTree(long blockNumber)
         => _innerWorldState.CommitTree(blockNumber);
 
-    public void DecrementNonce(Address address, UInt256 delta)
-        => _innerWorldState.DecrementNonce(address, delta);
+    public void DecrementNonce(Address address, UInt256 delta) { }
 
     public void RecalculateStateRoot() { }
 
     public void Reset(bool resetBlockChanges = true) { }
 
-    public ArrayPoolList<AddressAsKey> GetAccountChanges() =>
-        _suggestedBlockAccessList.AccountChanges.Where(a => a.AccountChanged).Select(a => new AddressAsKey(a.Address)).ToPooledList(_suggestedBlockAccessList.AccountChanges.Count);
+    public ArrayPoolList<AddressAsKey> GetAccountChanges()
+    {
+        ArrayPoolList<AddressAsKey> result = new(_suggestedBlockAccessList.AccountChanges.Count);
+        foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
+        {
+            if (accountChanges.AccountChanged)
+            {
+                result.Add(new AddressAsKey(accountChanges.Address));
+            }
+        }
+        return result;
+    }
 
     public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         => _transientStorageProvider.Get(in storageCell);

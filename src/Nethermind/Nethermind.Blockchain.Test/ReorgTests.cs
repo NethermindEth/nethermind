@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
@@ -28,7 +29,6 @@ using Nethermind.Evm.State;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -111,7 +111,8 @@ public class ReorgTests
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             blockhashProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new BlocksConfig());
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

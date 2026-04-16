@@ -24,7 +24,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
         Address? lastAddress = null;
         int itemCount = 0;
-        SortedDictionary<Address, AccountChanges> accountChangesMap = [];
+        SortedDictionary<Address, AccountChanges> accountChangesMap = new(AddressComparer.Instance);
         foreach (AccountChanges a in accountChanges)
         {
             Address address = a.Address;

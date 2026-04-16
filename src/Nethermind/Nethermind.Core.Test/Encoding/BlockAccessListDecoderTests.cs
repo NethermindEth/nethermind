@@ -142,9 +142,9 @@ public class BlockAccessListDecoderTests
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
 
-        StorageRead storageRead = new(0xbababa);
-        byte[] storageReadBytes = Rlp.Encode(storageRead, RlpBehaviors.None).Bytes;
-        StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
+        UInt256 storageRead = 0xbababa;
+        byte[] storageReadBytes = Rlp.Encode(storageRead).Bytes;
+        UInt256 storageReadDecoded = Rlp.Decode<UInt256>(storageReadBytes, RlpBehaviors.None);
         Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
 
         BalanceChange balanceChange = new(10, 0);
@@ -234,10 +234,10 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_storage_reads_throws()
     {
-        SortedSet<StorageRead> storageReads = new(DescendingComparer<StorageRead>())
+        SortedSet<UInt256> storageReads = new(DescendingComparer<UInt256>())
         {
-            new(UInt256.One),
-            new(new UInt256(2))
+            UInt256.One,
+            new UInt256(2)
         };
         AccountChanges accountChanges = new(
             TestItem.AddressA,
