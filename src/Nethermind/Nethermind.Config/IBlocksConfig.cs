@@ -61,6 +61,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
     bool BuildBlocksOnMainState { get; set; }
 
+    [ConfigItem(Description = "Whether to record and replay generated block access lists to a separate database. Useful for BAL-driven prewarming benchmarks on historical blocks.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ReplayBal { get; set; }
+
     byte[] GetExtraDataBytes();
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]

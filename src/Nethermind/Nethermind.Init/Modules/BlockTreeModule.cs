@@ -5,6 +5,7 @@ using System.IO;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -23,7 +24,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIndexConfig) : Autofac.Module
+public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIndexConfig, IBlocksConfig blocksConfig) : Autofac.Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -36,6 +37,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
+            .AddSingleton<IRecordedBalStore, IDb>(CreateRecordedBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
@@ -89,4 +91,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb) =>
         new BlockAccessListStore(balDb);
+
+    private IRecordedBalStore CreateRecordedBalStore([KeyFilter(DbNames.RecordedBal)] IDb recordedBalDb) =>
+        blocksConfig.ReplayBal ? new RecordedBalStore(recordedBalDb) : NullRecordedBalStore.Instance;
 }

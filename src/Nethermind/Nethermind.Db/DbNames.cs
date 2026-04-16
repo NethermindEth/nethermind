@@ -13,6 +13,7 @@ namespace Nethermind.Db
         public const string Headers = "headers";
         public const string BlockNumbers = "blockNumbers";
         public const string BlockAccessLists = "blockAccessLists";
+        public const string RecordedBal = "recordedBal";
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
         public const string BadBlocks = "badBlocks";

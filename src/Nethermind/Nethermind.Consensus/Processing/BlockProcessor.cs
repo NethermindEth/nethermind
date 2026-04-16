@@ -8,8 +8,10 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -39,11 +41,15 @@ public partial class BlockProcessor(
     IBlockhashStore blockHashStore,
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
-    IExecutionRequestsProcessor executionRequestsProcessor)
+    IExecutionRequestsProcessor executionRequestsProcessor,
+    IBlocksConfig? blocksConfig = null,
+    IRecordedBalStore? recordedBalStore = null)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+    private readonly bool _replayBal = blocksConfig?.ReplayBal ?? false;
+    private readonly IRecordedBalStore _recordedBalStore = recordedBalStore ?? NullRecordedBalStore.Instance;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -57,9 +63,14 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
+        if (_replayBal && suggestedBlock.BlockAccessList is null)
+        {
+            suggestedBlock.BlockAccessList = _recordedBalStore.Get(suggestedBlock.Number, suggestedBlock.Hash);
+        }
+
         if (_balBuilder is not null)
         {
-            bool balsEnabled = spec.BlockLevelAccessListsEnabled;
+            bool balsEnabled = spec.BlockLevelAccessListsEnabled || _replayBal;
             _balBuilder.TracingEnabled = balsEnabled;
             if (balsEnabled)
             {
@@ -74,6 +85,11 @@ public partial class BlockProcessor(
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
+        }
+
+        if (_replayBal && _balBuilder is not null)
+        {
+            _recordedBalStore.Insert(block, _balBuilder.GeneratedBlockAccessList);
         }
 
         return (block, receipts);
