@@ -25,8 +25,7 @@ public class EraStoreTests
 
         using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
 
-        eraStore.FirstBlock.Should().Be(from);
-        eraStore.LastBlock.Should().Be(to);
+        eraStore.BlockRange.Should().Be((from, to));
     }
 
     [Test]
@@ -35,7 +34,7 @@ public class EraStoreTests
         await using EraStoreEnv env = await CreateDefaultEraStoreEnv();
 
         (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(
-            env.EraStore.FirstBlock, ensureValidated: false);
+            env.EraStore.BlockRange.First, ensureValidated: false);
 
         block.Should().NotBeNull();
         receipts.Should().NotBeNull();
@@ -57,7 +56,7 @@ public class EraStoreTests
     {
         await using EraStoreEnv env = await CreateDefaultEraStoreEnv();
 
-        long targetBlock = env.EraStore.FirstBlock + 5;
+        long targetBlock = env.EraStore.BlockRange.First + 5;
         (Block? block, _) = await env.EraStore.FindBlockAndReceipts(targetBlock, ensureValidated: false);
 
         block!.Number.Should().Be(targetBlock);
@@ -89,7 +88,7 @@ public class EraStoreTests
         string tmpDirectory = ctx.ResolveTempDirPath();
 
         using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
-        long nextStart = eraStore.NextEraStart(eraStore.FirstBlock);
+        long nextStart = eraStore.NextEraStart(eraStore.BlockRange.First);
 
         nextStart.Should().Be(eraSize, "first era covers blocks 0..eraSize-1");
     }
@@ -123,7 +122,7 @@ public class EraStoreTests
         using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, trusted);
 
         Assert.That(
-            async () => await eraStore.FindBlockAndReceipts(eraStore.FirstBlock, ensureValidated: true),
+            async () => await eraStore.FindBlockAndReceipts(eraStore.BlockRange.First, ensureValidated: true),
             Throws.Nothing);
     }
 
