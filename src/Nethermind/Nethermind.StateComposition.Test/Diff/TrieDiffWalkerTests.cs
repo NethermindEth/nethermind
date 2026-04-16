@@ -38,9 +38,6 @@ public class TrieDiffWalkerTests
         return new Account(0, 0, Keccak.EmptyTreeHash, Keccak.Compute(code));
     }
 
-    /// <summary>
-    /// Helper: commit a storage tree for an address, return the storage root hash.
-    /// </summary>
     private static Hash256 CommitStorage(MemDb db, Address address, params (UInt256 Index, byte[] Value)[] slots)
     {
         Hash256 addressHash = address.ToAccountPath.ToCommitment();
@@ -54,14 +51,10 @@ public class TrieDiffWalkerTests
         return storageTree.RootHash;
     }
 
-    #region 8. Storage trie changes
-
     [Test]
     public void AddContractWithStorage_CountsStorageSlots()
     {
         MemDb db = new();
-
-        // First, create storage for the contract
         Hash256 storageRoot = CommitStorage(db, TestItem.AddressB,
             (UInt256.Zero, [1]),
             (UInt256.One, [2]),
@@ -89,7 +82,6 @@ public class TrieDiffWalkerTests
             Assert.That(diff.StorageSlotsAdded, Is.EqualTo(3));
             Assert.That(diff.StorageSlotsRemoved, Is.Zero);
             Assert.That(diff.NetStorageSlots, Is.EqualTo(3));
-            // Storage trie nodes should be counted
             Assert.That(diff.StorageTrieLeavesAdded, Is.EqualTo(3));
             Assert.That(diff.StorageTrieBytesAdded, Is.GreaterThan(0));
         }
@@ -99,8 +91,6 @@ public class TrieDiffWalkerTests
     public void ModifyStorageSlot_NetZeroSlots()
     {
         MemDb db = new();
-
-        // Initial storage: 2 slots
         Hash256 storageRoot1 = CommitStorage(db, TestItem.AddressA,
             (UInt256.Zero, [1]),
             (UInt256.One, [2])
@@ -112,7 +102,6 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // Modified storage: same 2 slots, different values
         Hash256 addressHash = TestItem.AddressA.ToAccountPath.ToCommitment();
         StorageTree storageTree2 = new(new RawScopedTrieStore(db, addressHash), storageRoot1, LimboLogs.Instance);
         storageTree2.Set(UInt256.Zero, [42]);
@@ -136,8 +125,6 @@ public class TrieDiffWalkerTests
     public void AddStorageSlot_CountsOneSlotAdded()
     {
         MemDb db = new();
-
-        // Initial storage: 1 slot
         Hash256 storageRoot1 = CommitStorage(db, TestItem.AddressA,
             (UInt256.Zero, [1])
         );
@@ -148,7 +135,6 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // Add a second slot
         Hash256 addressHash = TestItem.AddressA.ToAccountPath.ToCommitment();
         StorageTree storageTree2 = new(new RawScopedTrieStore(db, addressHash), storageRoot1, LimboLogs.Instance);
         storageTree2.Set(UInt256.One, [2]);
@@ -170,10 +156,6 @@ public class TrieDiffWalkerTests
             Assert.That(diff.NetStorageSlots, Is.EqualTo(1));
         }
     }
-
-    #endregion
-
-    #region 10. Symmetry: forward diff ≡ reversed diff
 
     [Test]
     public void ForwardAndReverse_AreSymmetric()
@@ -198,7 +180,6 @@ public class TrieDiffWalkerTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Forward adds = reverse removes and vice versa
             Assert.That(forward.AccountsAdded, Is.EqualTo(reverse.AccountsRemoved));
             Assert.That(forward.AccountsRemoved, Is.EqualTo(reverse.AccountsAdded));
             Assert.That(forward.ContractsAdded, Is.EqualTo(reverse.ContractsRemoved));
@@ -209,10 +190,6 @@ public class TrieDiffWalkerTests
             Assert.That(forward.AccountTrieBytesAdded, Is.EqualTo(reverse.AccountTrieBytesRemoved));
         }
     }
-
-    #endregion
-
-    #region 11. CumulativeSizeStats round-trip
 
     [Test]
     public void CumulativeSizeStats_ApplyDiff_RoundTrips()
@@ -226,27 +203,21 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // Full scan at root1
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
         StateCompositionStats scan1 = v1.GetStats(1, root1);
         CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(scan1);
 
-        // Add more accounts
         tree.Set(TestItem.AddressC, CreateEOA(300));
         tree.Set(TestItem.AddressD, CreateContractNoStorage());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        // Compute diff
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
-
-        // Apply diff
         CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
 
-        // Full scan at root2 for verification
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
         tree.Accept(v2, root2);
         StateCompositionStats scan2 = v2.GetStats(2, root2);
@@ -254,7 +225,6 @@ public class TrieDiffWalkerTests
 
         using (Assert.EnterMultipleScope())
         {
-            // The cumulative stats after applying diff must match a fresh full scan
             Assert.That(updated.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal mismatch");
             Assert.That(updated.ContractsTotal, Is.EqualTo(expected.ContractsTotal), "ContractsTotal mismatch");
             Assert.That(updated.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches mismatch");
@@ -264,56 +234,43 @@ public class TrieDiffWalkerTests
         }
     }
 
-    #endregion
-
-    #region 12. Multi-block incremental consistency
-
     [Test]
     public void MultiBlockIncremental_MatchesFullScan()
     {
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        // Block 1: 2 accounts
         tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // Full scan at root1
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
         CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
 
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
 
-        // Block 2: +1 account
         tree.Set(TestItem.AddressC, CreateEOA(300));
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
-
         cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root1, root2));
 
-        // Block 3: +1 contract, modify A
         tree.Set(TestItem.AddressD, CreateContractNoStorage());
         tree.Set(TestItem.AddressA, CreateEOA(999));
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root3 = tree.RootHash;
-
         cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root2, root3));
 
-        // Block 4: remove B
         tree.Set(TestItem.AddressB, null!);
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root4 = tree.RootHash;
-
         cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root3, root4));
 
-        // Full scan at root4 for verification
         using StateCompositionVisitor v4 = new(LimboLogs.Instance);
         tree.Accept(v4, root4);
         CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v4.GetStats(4, root4));
@@ -329,16 +286,10 @@ public class TrieDiffWalkerTests
         }
     }
 
-    #endregion
-
-    #region 13. Storage trie incremental consistency
-
     [Test]
     public void StorageTrieIncremental_MatchesFullScan()
     {
         MemDb db = new();
-
-        // Block 1: contract with 2 storage slots
         Hash256 storageRoot1 = CommitStorage(db, TestItem.AddressA,
             (UInt256.Zero, [1]),
             (UInt256.One, [2])
@@ -350,12 +301,10 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // Full scan at root1
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
         CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
 
-        // Block 2: add a storage slot
         Hash256 addressHash = TestItem.AddressA.ToAccountPath.ToCommitment();
         StorageTree storage2 = new(new RawScopedTrieStore(db, addressHash), storageRoot1, LimboLogs.Instance);
         storage2.Set((UInt256)2, [3]);
@@ -372,7 +321,6 @@ public class TrieDiffWalkerTests
         TrieDiff diff = walker.ComputeDiff(root1, root2);
         CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
 
-        // Full scan at root2 for verification
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
         tree.Accept(v2, root2);
         CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v2.GetStats(2, root2));
@@ -387,17 +335,12 @@ public class TrieDiffWalkerTests
         }
     }
 
-    #endregion
-
-    #region 14. Large trie (many accounts)
-
     [Test]
     public void LargeTrie_IncrementalMatchesFullScan()
     {
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        // Create 50 accounts to generate a deeper trie with branches
         for (int i = 0; i < 50; i++)
         {
             byte[] addressBytes = new byte[20];
@@ -410,12 +353,10 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // Full scan
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
         CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
 
-        // Add 10 more
         for (int i = 50; i < 60; i++)
         {
             byte[] addressBytes = new byte[20];
@@ -432,7 +373,6 @@ public class TrieDiffWalkerTests
         TrieDiff diff = walker.ComputeDiff(root1, root2);
         CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
 
-        // Full scan at root2
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
         tree.Accept(v2, root2);
         CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v2.GetStats(2, root2));
@@ -446,10 +386,6 @@ public class TrieDiffWalkerTests
             Assert.That(updated.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes");
         }
     }
-
-    #endregion
-
-    #region 16. CumulativeSizeStats FromScanStats mapping
 
     [Test]
     public void CumulativeSizeStats_FromScanStats_MapsCorrectly()
@@ -486,10 +422,6 @@ public class TrieDiffWalkerTests
         }
     }
 
-    #endregion
-
-    #region Integration: multi-block scan/diff/scan verification
-
     private static Address AddressFromSeed(int seed)
     {
         return new Address(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[..20].ToArray());
@@ -520,7 +452,6 @@ public class TrieDiffWalkerTests
         // --- Generate blocks ---
         for (int block = 0; block < totalBlocks; block++)
         {
-            // New EOA accounts
             for (int i = 0; i < newEOAsPerBlock; i++)
             {
                 Address addr = AddressFromSeed(addressSeed++);
@@ -528,7 +459,6 @@ public class TrieDiffWalkerTests
                 eoaAddresses.Add(addr);
             }
 
-            // New contracts with storage
             for (int i = 0; i < newContractsPerBlock; i++)
             {
                 Address addr = AddressFromSeed(addressSeed++);
@@ -545,7 +475,6 @@ public class TrieDiffWalkerTests
                 contractStorageRoots[addr] = sroot;
             }
 
-            // Modify existing EOA balances
             if (block > 0)
             {
                 int pool = eoaAddresses.Count - newEOAsPerBlock; // exclude just-added
@@ -556,7 +485,6 @@ public class TrieDiffWalkerTests
                 }
             }
 
-            // Modify existing contract storage
             if (block >= 2)
             {
                 int pool = contractAddresses.Count - newContractsPerBlock;
@@ -678,10 +606,6 @@ public class TrieDiffWalkerTests
         TestContext.Out.WriteLine($"\nReport: {reportPath}");
     }
 
-    #endregion
-
-    #region Reorg Rollback
-
     /// <summary>
     /// Applies a forward diff then a backward diff and asserts the result is
     /// field-for-field equal to the original baseline. Exercises the subtraction
@@ -693,7 +617,6 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        // root1: two EOAs + one contract
         tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Set(TestItem.AddressC, CreateContractNoStorage());
@@ -701,7 +624,6 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // root2: add more accounts, modify balance of A, remove B
         tree.Set(TestItem.AddressD, CreateEOA(400));
         tree.Set(TestItem.AddressE, CreateEOA(500));
         tree.Set(TestItem.AddressA, CreateEOA(999));
@@ -710,14 +632,12 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        // Baseline: full scan at root1
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
         CumulativeSizeStats baseline = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
 
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
 
-        // Forward diff root1 → root2
         TrieDiff forward = walker.ComputeDiff(root1, root2);
         CumulativeSizeStats updated = baseline.ApplyDiff(forward);
 
@@ -725,8 +645,6 @@ public class TrieDiffWalkerTests
         TrieDiff backward = walker.ComputeDiff(root2, root1);
         CumulativeSizeStats final = updated.ApplyDiff(backward);
 
-        // After round-trip the stats must equal the original baseline exactly.
-        // A negative-value bug in ApplyDiff would surface here.
         using (Assert.EnterMultipleScope())
         {
             Assert.That(final.AccountsTotal, Is.EqualTo(baseline.AccountsTotal), "AccountsTotal");
@@ -741,5 +659,4 @@ public class TrieDiffWalkerTests
         }
     }
 
-    #endregion
 }

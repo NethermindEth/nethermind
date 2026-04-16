@@ -108,7 +108,6 @@ public class StateCompositionVisitorTests
     {
         TrieNode node = new(NodeType.Branch, EmptyBranchRlp());
 
-        // Visit branches at depths 0, 1, 2
         for (int depth = 0; depth < 3; depth++)
         {
             StateCompositionContext ctx = new(default, level: depth, isStorage: false, branchChildIndex: null);

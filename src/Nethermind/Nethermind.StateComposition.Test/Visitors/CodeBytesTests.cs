@@ -88,7 +88,6 @@ public class CodeBytesTests
         using StateCompositionVisitor visitor =
             new(LimboLogs.Instance, codeSizeLookup: Lookup);
 
-        // Two EOAs — empty code hash, HasCode == false.
         AccountStruct eoa = new(0, 100, Keccak.EmptyTreeHash.ValueHash256, EmptyCodeHash);
         visitor.VisitAccount(in AccountCtx, AccountLeaf, in eoa);
         visitor.VisitAccount(in AccountCtx, AccountLeaf, in eoa);

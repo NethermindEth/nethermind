@@ -66,13 +66,10 @@ public class CumulativeSizeStatsTests
     [Test]
     public void ApplyDiff_PreservesCodeBytesAndSlotHistogram()
     {
-        // Freeze pattern: incremental diffs do not touch CodeBytesTotal or SlotCountHistogram.
-        // They remain at last-scan values until the next full scan.
         ImmutableArray<long> hist = [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         CumulativeSizeStats baseline = CumulativeSizeStats.FromScanStats(
             BuildScanStats(codeBytes: 12_345, slotHistogram: hist));
 
-        // Non-trivial diff: structural changes across both tries, account and contract churn.
         TrieDiff diff = new(
             AccountsAdded: 2, AccountsRemoved: 1,
             ContractsAdded: 1, ContractsRemoved: 0,
@@ -95,12 +92,10 @@ public class CumulativeSizeStatsTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Core fields updated by diff math
             Assert.That(updated.AccountsTotal, Is.EqualTo(11));
             Assert.That(updated.ContractsTotal, Is.EqualTo(4));
             Assert.That(updated.StorageSlotsTotal, Is.EqualTo(53));
             Assert.That(updated.ContractsWithStorage, Is.EqualTo(3));
-            // Freeze fields preserved verbatim
             Assert.That(updated.CodeBytesTotal, Is.EqualTo(12_345),
                 "CodeBytesTotal must carry forward unchanged — no incremental refcount");
             Assert.That(updated.SlotCountHistogram, Is.EqualTo(hist),
