@@ -181,7 +181,12 @@ public sealed class RemoteEraStoreDecorator : IEraStore
 
         string destinationPath = Path.Join(_downloadDir, entry.Filename);
 
-        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, static _ => new SemaphoreSlim(1, 1));
+        if (!_epochLocks.TryGetValue(epoch, out SemaphoreSlim? epochLock))
+        {
+            SemaphoreSlim created = new(1, 1);
+            epochLock = _epochLocks.GetOrAdd(epoch, created);
+            if (!ReferenceEquals(epochLock, created)) created.Dispose();
+        }
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {

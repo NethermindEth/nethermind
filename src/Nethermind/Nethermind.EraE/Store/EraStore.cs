@@ -110,7 +110,12 @@ public sealed class EraStore : IEraStore
     {
         if (_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified) return;
 
-        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, static _ => new SemaphoreSlim(1, 1));
+        if (!_epochLocks.TryGetValue(epoch, out SemaphoreSlim? epochLock))
+        {
+            SemaphoreSlim created = new(1, 1);
+            epochLock = _epochLocks.GetOrAdd(epoch, created);
+            if (!ReferenceEquals(epochLock, created)) created.Dispose();
+        }
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {
