@@ -56,7 +56,7 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                ProcessTransaction(balManager.GetTxProcessor(i + 1), _stateProvider, _transactionProcessedEventHandler, block, currentTx, i, receiptsTracer, processingOptions);
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
@@ -87,7 +87,7 @@ public partial class BlockProcessor
                 0,
                 len + 1,
                 ParallelUnbalancedWork.DefaultOptions,
-                (block, processingOptions, stateProvider: _stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                (block, processingOptions, stateProvider: _stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions, executor: this),
                 static (i, state) =>
                 {
                     if (i == 0)
@@ -103,9 +103,10 @@ public partial class BlockProcessor
                     try
                     {
                         Transaction tx = state.txs[txIndex];
-                        ProcessTransaction(
+                        state.executor.ProcessTransaction(
                             state.balManager.GetTxProcessor(i),
                             state.stateProvider,
+                            null,
                             state.block,
                             tx,
                             txIndex,
@@ -143,19 +144,6 @@ public partial class BlockProcessor
             block.Header.Bloom = blockBloom;
 
             return result;
-        }
-
-        private static void ProcessTransaction(
-            ITransactionProcessorAdapter transactionProcessor,
-            IWorldState stateProvider,
-            Block block,
-            Transaction currentTx,
-            int index,
-            BlockReceiptsTracer receiptsTracer,
-            ProcessingOptions processingOptions)
-        {
-            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
-            if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
     }
 }
