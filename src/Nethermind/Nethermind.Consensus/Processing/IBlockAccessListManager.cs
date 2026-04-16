@@ -27,9 +27,7 @@ public interface IBlockAccessListManager
     ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null);
     void NextTransaction();
     void Rollback();
-#if !ZK_EVM
     void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
-#endif
     void SetBlockAccessList(Block block);
     void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);

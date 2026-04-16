@@ -15,8 +15,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -49,16 +47,10 @@ public partial class BlockProcessor(
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly ILogManager _logManager = logManager;
     protected readonly IWorldState _stateProvider = stateProvider;
-#if !ZK_EVM
     protected readonly IBlockAccessListManager _balManager = balManager;
-#else
-    private readonly IBlockAccessListManager _ = balManager;
-#endif
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
-    private readonly SystemContractHandler _standardSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor);
-#if !ZK_EVM
-    private readonly BlockAccessListSystemContractHandler _balSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, balManager);
-#endif
+    private readonly SystemContractHandler _standardSystemContractHandler = new(
+        beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor);
     private SystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -72,12 +64,11 @@ public partial class BlockProcessor(
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
-
-#if !ZK_EVM
+#if ZK_EVM
+        _systemContractHandler = _standardSystemContractHandler;
+#else
         _balManager.PrepareForProcessing(suggestedBlock, spec, options);
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler : _standardSystemContractHandler;
-#else
-        _systemContractHandler = _standardSystemContractHandler;
 #endif
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
@@ -124,11 +115,9 @@ public partial class BlockProcessor(
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
-
 #if !ZK_EVM
         _balManager.Setup(block);
 #endif
-
         _systemContractHandler.StoreBeaconRoot(block, spec);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
@@ -178,7 +167,6 @@ public partial class BlockProcessor(
 #if !ZK_EVM
         _balManager.SetBlockAccessList(block);
 #endif
-
         header.Hash = header.CalculateHash();
 
         return receipts;
@@ -325,74 +313,4 @@ public partial class BlockProcessor(
             }
         }
     }
-
-    public interface ISystemContractHandler : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
-    {
-    }
-
-    public class SystemContractHandler(
-        IBeaconBlockRootHandler beaconBlockRootHandler,
-        IBlockhashStore blockHashStore,
-        IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor) : ISystemContractHandler
-    {
-        public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
-            => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
-
-        public
-#if !ZK_EVM
-        virtual
-#endif
-        void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer = null)
-            => beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
-
-        public AccessList? GetAccessList(Block block, IReleaseSpec spec)
-            => beaconBlockRootHandler.GetAccessList(block, spec);
-
-        public
-#if !ZK_EVM
-        virtual
-#endif
-        void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
-            => blockHashStore.ApplyBlockhashStateChanges(blockHeader, spec);
-
-        public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber, IReleaseSpec spec)
-            => blockHashStore.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
-
-        public
-#if !ZK_EVM
-        virtual
-#endif
-        void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
-            => executionRequestsProcessor.ProcessExecutionRequests(block, state, receipts, spec);
-
-        public
-#if !ZK_EVM
-        virtual
-#endif
-        void ProcessWithdrawals(Block block, IReleaseSpec spec)
-            => withdrawalProcessor.ProcessWithdrawals(block, spec);
-    }
-
-#if !ZK_EVM
-    public class BlockAccessListSystemContractHandler(
-        IBeaconBlockRootHandler beaconBlockRootHandler,
-        IBlockhashStore blockHashStore,
-        IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor,
-        IBlockAccessListManager balManager) : SystemContractHandler(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor)
-    {
-        public override void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
-            => balManager.StoreBeaconRoot(block, spec);
-
-        public override void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
-            => balManager.ApplyBlockhashStateChanges(blockHeader, spec);
-
-        public override void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
-            => balManager.ProcessExecutionRequests(block, receipts, spec);
-
-        public override void ProcessWithdrawals(Block block, IReleaseSpec spec)
-            => balManager.ProcessWithdrawals(block, spec);
-    }
-#endif
 }
