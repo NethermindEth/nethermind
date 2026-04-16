@@ -1442,11 +1442,30 @@ public partial class EngineModuleTests
         ExecutionPayload block3B = CreateBlockRequest(chain, block2B, TestItem.AddressA);
         (await rpc.engine_newPayloadV1(block3B)).Data.Status.Should().Be(PayloadStatus.Valid);
 
+        chain.BlockTree.Head!.Hash.Should().Be(block1.BlockHash);
+        chain.BlockTree.IsMainChain(block2B.BlockHash).Should().BeFalse();
+        chain.BlockTree.IsMainChain(block3B.BlockHash).Should().BeFalse();
+
         // head = 3B, safe = 2B (real ancestor of 3B), finalized = block1 (also a real ancestor).
         ForkchoiceStateV1 fcu = new(block3B.BlockHash, block2B.BlockHash, block1.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
         result.ErrorCode.Should().Be(0);
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        Block? canonicalHead = chain.BlockTree.FindBlock(block3B.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+        Block? canonicalSafe = chain.BlockTree.FindBlock(block2B.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+        Block? canonicalFinalized = chain.BlockTree.FindBlock(block1.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+
+        canonicalHead.Should().NotBeNull();
+        canonicalSafe.Should().NotBeNull();
+        canonicalFinalized.Should().NotBeNull();
+        canonicalHead!.Hash.Should().Be(block3B.BlockHash);
+        canonicalSafe!.Hash.Should().Be(block2B.BlockHash);
+        canonicalFinalized!.Hash.Should().Be(block1.BlockHash);
+        chain.BlockTree.IsMainChain(block3B.BlockHash).Should().BeTrue();
+        chain.BlockTree.IsMainChain(block2B.BlockHash).Should().BeTrue();
+        chain.BlockTree.IsMainChain(block1.BlockHash).Should().BeTrue();
+        chain.BlockTree.Head!.Hash.Should().Be(block3B.BlockHash);
     }
 
 

@@ -343,8 +343,9 @@ public class ForkchoiceUpdatedHandler(
     }
 
     // Per Engine API spec, safeBlockHash and finalizedBlockHash MUST be ancestors of headBlockHash
-    // *in the same FCU request*. A null candidateHeader signals Keccak.Zero (no value supplied),
-    // which is consistent.
+    // *in the same FCU request*:
+    // https://github.com/ethereum/execution-apis/blob/main/src/engine/paris.md#specification-1
+    // A null candidateHeader signals Keccak.Zero (no value supplied), which is consistent.
     //
     // Fast path (steady state): if BOTH the candidate and newHeadBlock are on the canonical
     // main chain, then by chain linearity (one canonical block per level, candidate.Number
@@ -369,7 +370,7 @@ public class ForkchoiceUpdatedHandler(
         {
             cursor = _blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
-        return cursor is null || cursor.Hash != candidateHeader.Hash;
+        return cursor is null || cursor.GetOrCalculateHash() != candidateHeader.GetOrCalculateHash();
     }
 
     private Block? GetBlock(Hash256 headBlockHash)
