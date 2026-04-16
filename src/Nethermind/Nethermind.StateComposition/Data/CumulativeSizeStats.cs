@@ -60,7 +60,7 @@ public readonly record struct CumulativeSizeStats(
     /// completes and calls <see cref="FromScanStats"/>.
     /// </para>
     /// </summary>
-    public CumulativeSizeStats ApplyDiff(TrieDiff diff) => this with
+    internal CumulativeSizeStats ApplyDiff(TrieDiff diff) => this with
     {
         AccountsTotal = AccountsTotal + diff.NetAccounts,
         ContractsTotal = ContractsTotal + diff.NetContracts,
@@ -81,7 +81,7 @@ public readonly record struct CumulativeSizeStats(
     /// Initialize from a full scan's <see cref="StateCompositionStats"/>.
     /// Maps FullNodes→Branches, ShortNodes→Extensions, ValueNodes→Leaves.
     /// </summary>
-    public static CumulativeSizeStats FromScanStats(StateCompositionStats scan) => new(
+    internal static CumulativeSizeStats FromScanStats(StateCompositionStats scan) => new(
         scan.AccountsTotal,
         scan.ContractsTotal,
         scan.StorageSlotsTotal,

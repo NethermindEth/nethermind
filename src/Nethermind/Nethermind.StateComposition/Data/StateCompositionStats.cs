@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.StateComposition.Data;
 
-public readonly record struct StateCompositionStats
+internal readonly record struct StateCompositionStats
 {
     public long BlockNumber { get; init; }
     public Hash256? StateRoot { get; init; }

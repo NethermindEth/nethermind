@@ -19,7 +19,7 @@ namespace Nethermind.StateComposition.Snapshots;
 /// Keys are 8-byte big-endian block numbers for natural sort order.
 /// A sentinel key stores the latest block number for O(1) lookup.
 /// </summary>
-public class StateCompositionSnapshotStore(
+internal sealed class StateCompositionSnapshotStore(
     [KeyFilter("stateComposition")] IDb db,
     ILogManager logManager)
 {

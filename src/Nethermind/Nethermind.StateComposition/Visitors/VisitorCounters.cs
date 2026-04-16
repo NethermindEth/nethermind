@@ -11,7 +11,7 @@ using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Visitors;
 
-public sealed class VisitorCounters(int topN = 20)
+internal sealed class VisitorCounters(int topN = 20)
 {
     public const int MaxTrackedDepth = 16;
 
