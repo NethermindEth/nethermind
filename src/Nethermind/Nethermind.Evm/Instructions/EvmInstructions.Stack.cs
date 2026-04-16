@@ -621,11 +621,16 @@ public static partial class EvmInstructions
                 : EvmExceptionType.None;
     }
 
+    // EIP-8024 specifies that a missing immediate beyond end of code evaluates to zero.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte ReadEip8024ImmediateOrZero(ReadOnlySpan<byte> code, int programCounter)
+        => programCounter < code.Length ? code[programCounter] : (byte)0;
+
     /// <summary>
     /// Reads and decodes an immediate for EIP-8024 DUPN/SWAPN instructions.
     /// </summary>
     /// <remarks>
-    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Handles reading the immediate and advancing the program counter.
     /// Branchless formula: n = (x + 145) % 256.
     /// Valid range: 0-90 (n=145-235) and 128-255 (n=17-144).
     /// Disallowed range: 0x5b-0x7f (91-127) to avoid JUMPDEST/PUSH patterns.
@@ -635,13 +640,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
-        {
-            depth = 0;
-            return false;
-        }
-
-        byte imm = code[programCounter];
+        byte imm = ReadEip8024ImmediateOrZero(code, programCounter);
         depth = (imm + 145) & 0xFF;
 
         if ((uint)(imm - 0x5B) <= 0x24)
@@ -655,7 +654,7 @@ public static partial class EvmInstructions
     /// Reads and decodes an immediate for EIP-8024 EXCHANGE instruction.
     /// </summary>
     /// <remarks>
-    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Handles reading the immediate and advancing the program counter.
     /// Branchless formula: k = x ^ 143 (XOR with 0x8F).
     /// Valid range: 0-81 (k mapped via XOR) and 128-255. Invalid range: 82-127.
     /// Returns stack indices ready for direct use with stack.Exchange.
@@ -665,13 +664,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
-        {
-            n = m = 0;
-            return false;
-        }
-
-        byte imm = code[programCounter];
+        byte imm = ReadEip8024ImmediateOrZero(code, programCounter);
 
         int k = imm ^ 0x8F;
         int q = k >> 4;
