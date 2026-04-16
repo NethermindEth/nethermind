@@ -888,24 +888,21 @@ namespace Nethermind.Evm.TransactionProcessing
             long stateDepositCost,
             byte[] code)
         {
-            bool hasEnoughRegularGas = TGasPolicy.GetRemainingGas(in unspentGas) >= regularDepositCost;
-            bool hasEnoughStateGas = TGasPolicy.GetRemainingGas(in unspentGas) + TGasPolicy.GetStateReservoir(in unspentGas) >= stateDepositCost;
-            if ((!hasEnoughRegularGas || !hasEnoughStateGas) && spec.ChargeForTopLevelCreate)
+            long remainingGas = TGasPolicy.GetRemainingGas(in unspentGas);
+            bool hasEnoughGas = remainingGas >= regularDepositCost && remainingGas + TGasPolicy.GetStateReservoir(in unspentGas) >= stateDepositCost;
+
+            if (!hasEnoughGas)
+                return !spec.ChargeForTopLevelCreate;
+
+            TGasPolicy gasAfterCodeDeposit = unspentGas;
+            if (!TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost))
                 return false;
 
-            if (hasEnoughRegularGas && hasEnoughStateGas)
-            {
-                TGasPolicy gasAfterCodeDeposit = unspentGas;
-                if (!TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost))
-                    return false;
+            _codeInfoRepository.InsertCode(code, codeOwner, spec);
+            if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
+                accessedItems.WarmUpLargeContract(codeOwner);
 
-                _codeInfoRepository.InsertCode(code, codeOwner, spec);
-                if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
-                    accessedItems.WarmUpLargeContract(codeOwner);
-
-                unspentGas = gasAfterCodeDeposit;
-            }
-
+            unspentGas = gasAfterCodeDeposit;
             return true;
         }
 
@@ -987,18 +984,12 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy gasAfterExecution,
             long codeInsertRegularRefund)
         {
-            if (substate.IsError)
-            {
-                long refund = codeInsertRegularRefund > 0
-                    ? CalculateClaimableRefund(tx.GasLimit, codeInsertRegularRefund, spec)
-                    : 0;
-                return (tx.GasLimit, refund);
-            }
-
-            long spentGas = tx.GasLimit - TGasPolicy.GetRemainingGas(in gasAfterExecution) - TGasPolicy.GetStateReservoir(in gasAfterExecution);
+            long spentGas = substate.IsError
+                ? tx.GasLimit
+                : tx.GasLimit - TGasPolicy.GetRemainingGas(in gasAfterExecution) - TGasPolicy.GetStateReservoir(in gasAfterExecution);
 
             long totalToRefund = codeInsertRegularRefund;
-            if (!substate.ShouldRevert)
+            if (!substate.IsError && !substate.ShouldRevert)
                 totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
 
             return (spentGas, CalculateClaimableRefund(spentGas, totalToRefund, spec));
