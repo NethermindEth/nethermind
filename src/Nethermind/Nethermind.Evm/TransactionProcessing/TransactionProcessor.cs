@@ -501,11 +501,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            long gasUsedForAllowance = spec.IsEip8037Enabled
-                ? _blockCumulativeRegularGas
-                : spec.IsEip7778Enabled
-                    ? _blockCumulativeReceiptGas
-                    : header.GasUsed;
+            long gasUsedForAllowance = spec switch
+            {
+                { IsEip8037Enabled: true } => _blockCumulativeRegularGas,
+                { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
+                _ => header.GasUsed,
+            };
 
             long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
             if (tx.GasLimit > maxTransactionGasLimit)
