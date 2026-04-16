@@ -84,8 +84,11 @@ public class BlockAccessListManager(
 
     public void Setup(Block block)
     {
-        _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager : _sequentialTxProcessorWithWorldStateManager;
-        _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
+        if (Enabled)
+        {
+            _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager : _sequentialTxProcessorWithWorldStateManager;
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
+        }
     }
 
     public void SpendGas(long gas)
