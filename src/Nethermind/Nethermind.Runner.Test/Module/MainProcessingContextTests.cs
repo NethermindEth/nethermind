@@ -33,7 +33,7 @@ public class MainProcessingContextTests
             })
             .Build();
 
-        var mainProcessingContext = ctx.Resolve<IMainProcessingContext>();
+        IMainProcessingContext mainProcessingContext = ctx.Resolve<IMainProcessingContext>();
         int totalTransactionProcessed = 0;
         mainProcessingContext.TransactionProcessed += (_, _) => totalTransactionProcessed++;
 

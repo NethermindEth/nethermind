@@ -17,24 +17,16 @@ public interface IChainLevelHelper
     BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0);
 }
 
-public class ChainLevelHelper : IChainLevelHelper
+public class ChainLevelHelper(
+    IBlockTree blockTree,
+    IBeaconPivot beaconPivot,
+    ISyncConfig syncConfig,
+    ILogManager logManager) : IChainLevelHelper
 {
-    private readonly IBlockTree _blockTree;
-    private readonly ISyncConfig _syncConfig;
-    private readonly ILogger _logger;
-    private readonly IBeaconPivot _beaconPivot;
-
-    public ChainLevelHelper(
-        IBlockTree blockTree,
-        IBeaconPivot beaconPivot,
-        ISyncConfig syncConfig,
-        ILogManager logManager)
-    {
-        _blockTree = blockTree;
-        _beaconPivot = beaconPivot;
-        _syncConfig = syncConfig;
-        _logger = logManager.GetClassLogger<ChainLevelHelper>();
-    }
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISyncConfig _syncConfig = syncConfig;
+    private readonly ILogger _logger = logManager.GetClassLogger<ChainLevelHelper>();
+    private readonly IBeaconPivot _beaconPivot = beaconPivot;
 
     private void OnMissingBeaconHeader(long blockNumber)
     {

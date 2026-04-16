@@ -123,11 +123,8 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     }
 
     [Test]
-    public void Throws_on_null()
-    {
-        Assert.Throws<JsonException>(
+    public void Throws_on_null() => Assert.Throws<JsonException>(
             static () => JsonSerializer.Deserialize<UInt256>("null", options));
-    }
 
     [TestCase(0ul, 0ul, 0ul, 0ul, "\"0x0\"")]
     [TestCase(1ul, 0ul, 0ul, 0ul, "\"0x1\"")]

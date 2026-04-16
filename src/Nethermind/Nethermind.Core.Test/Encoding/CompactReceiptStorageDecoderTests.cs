@@ -137,7 +137,7 @@ namespace Nethermind.Core.Test.Encoding
 
             byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
             Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
-            decoder.DecodeStructRef(ref ctx, RlpBehaviors.Storage, out var deserialized);
+            decoder.DecodeStructRef(ref ctx, RlpBehaviors.Storage, out TxReceiptStructRef deserialized);
 
             Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
             deserialized.BlockHash.Bytes.Length.Should().Be(0);

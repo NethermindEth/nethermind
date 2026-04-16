@@ -13,15 +13,12 @@ public class ClHealthTrackerTests
 {
     private const int MaxIntervalSeconds = 300;
 
-    private static ClHealthRequestsTracker CreateHealthTracker(ManualTimestamper timestamper)
-    {
-        return new ClHealthRequestsTracker(
+    private static ClHealthRequestsTracker CreateHealthTracker(ManualTimestamper timestamper) => new(
             timestamper,
             new HealthChecksConfig()
             {
                 MaxIntervalClRequestTime = MaxIntervalSeconds
             }, LimboLogs.Instance);
-    }
 
     [Test]
     public void CheckClAlive_Initially_ReturnsTrue()

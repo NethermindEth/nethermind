@@ -31,7 +31,7 @@ public class ChainSpecFileLoader
     public ChainSpec LoadEmbeddedOrFromFile(string fileName)
     {
         fileName = NormalizeFileName(fileName);
-        var extension = Path.GetExtension(fileName);
+        string extension = Path.GetExtension(fileName);
 
         string resourceName = FileNameToResource(fileName);
         Assembly assembly = typeof(IConfig).Assembly;
@@ -50,7 +50,7 @@ public class ChainSpecFileLoader
 
     private static string FileNameToResource(string fileName)
     {
-        var sb = new StringBuilder();
+        StringBuilder sb = new();
         sb.Append("Nethermind.Config.");
         if (!fileName.Contains('/'))
         {
@@ -64,7 +64,7 @@ public class ChainSpecFileLoader
 
     private static string NormalizeFileName(string fileName)
     {
-        var extension = Path.GetExtension(fileName);
+        string extension = Path.GetExtension(fileName);
         return extension == "" ? $"{fileName}.json" : fileName;
     }
 

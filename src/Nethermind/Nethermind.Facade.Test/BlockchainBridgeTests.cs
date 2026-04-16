@@ -70,10 +70,7 @@ public class BlockchainBridgeTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _container.Dispose();
-    }
+    public void TearDown() => _container.Dispose();
 
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()

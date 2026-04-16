@@ -219,13 +219,13 @@ public class BlockhashProviderTests
         Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
         tree.SuggestHeader(current.Header);
 
-        var specProvider = new CustomSpecProvider(
+        CustomSpecProvider specProvider = new(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
         BlockhashProvider provider = new(new BlockhashCache(blockTreeBuilder.HeaderStore, LimboLogs.Instance), worldState, LimboLogs.Instance);
         BlockhashStore store = new(worldState);
 
-        using var _ = worldState.BeginScope(current.Header);
+        using IDisposable _ = worldState.BeginScope(current.Header);
 
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
         Assert.That(result, Is.EqualTo(head?.Hash));
@@ -254,7 +254,7 @@ public class BlockhashProviderTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Eip2935_poc_trimmed_hashes()
     {
-        var chainLength = 42;
+        int chainLength = 42;
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
 
@@ -270,7 +270,7 @@ public class BlockhashProviderTests
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
         BlockhashStore store = new(worldState);
 
-        using var _ = worldState.BeginScope(current.Header);
+        using IDisposable _ = worldState.BeginScope(current.Header);
 
         // 1. Set some code to pass IsContract check
         byte[] code = [1, 2, 3];
@@ -280,7 +280,7 @@ public class BlockhashProviderTests
         // 2. Store parent hash with leading zeros
         store.ApplyBlockhashStateChanges(current.Header, specProvider.GetSpec(current.Header));
         // 3. Try to retrieve the parent hash from the state
-        var result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1, specProvider.GetSpec(current.Header));
+        Hash256? result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1, specProvider.GetSpec(current.Header));
         Assert.That(result, Is.EqualTo(current.Header.ParentHash));
     }
 
@@ -306,7 +306,7 @@ public class BlockhashProviderTests
             Eip2935RingBufferSize = customRingBufferSize
         };
 
-        var specProvider = new CustomSpecProvider((new ForkActivation(0, genesis.Timestamp), customSpec));
+        CustomSpecProvider specProvider = new((new ForkActivation(0, genesis.Timestamp), customSpec));
         BlockhashStore store = new(worldState);
 
         using IDisposable _ = worldState.BeginScope(current.Header);

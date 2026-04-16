@@ -72,7 +72,7 @@ public class OptimismBlockProcessor : BlockProcessor
         if (_opSpecHelper.IsJovian(block.Header))
         {
             UInt256 daFootprintBig = _costHelper.ComputeDaFootprint(block);
-            var (daFootprint, hasOverflow) = daFootprintBig.UlongWithOverflow;
+            (ulong daFootprint, bool hasOverflow) = daFootprintBig.UlongWithOverflow;
             if (hasOverflow || daFootprint > long.MaxValue)
                 throw new InvalidOperationException($"DA Footprint overflow ({daFootprintBig}) at block {block.Header.Number}");
 

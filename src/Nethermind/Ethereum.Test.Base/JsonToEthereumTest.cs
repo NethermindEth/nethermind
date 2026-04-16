@@ -398,15 +398,15 @@ namespace Ethereum.Test.Base
         private static (string name, string category) GetNameAndCategory(string key)
         {
             key = key.Replace('\\', '/');
-            var index = key.IndexOf(".py::");
+            int index = key.IndexOf(".py::");
             if (index < 0)
             {
                 return (key, "");
             }
-            var name = key.Substring(index + 5);
+            string name = key.Substring(index + 5);
             string category = key.Substring(0, index);
             int startIndex = 0;
-            for (var i = 0; i < 3; i++)
+            for (int i = 0; i < 3; i++)
             {
                 int newIndex = category.IndexOf("/", startIndex);
                 if (newIndex < 0)

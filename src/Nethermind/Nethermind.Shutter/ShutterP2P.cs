@@ -118,8 +118,8 @@ public class ShutterP2P : IShutterP2P
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
-                using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+                using CancellationTokenSource timeoutSource = new(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
+                using CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                 lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();

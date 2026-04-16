@@ -34,9 +34,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 
     public class PrewarmerMainProcessingModule : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder
+        protected override void Load(ContainerBuilder builder) => builder
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
@@ -64,6 +62,5 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrecompileCachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                 });
-        }
     }
 }

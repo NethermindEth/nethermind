@@ -9,21 +9,14 @@ namespace Nethermind.Consensus.Clique
     /// <summary>
     /// This small thing caused so much trouble that it deserves its own class
     /// </summary>
-    internal class WiggleRandomizer
+    internal class WiggleRandomizer(ICryptoRandom cryptoRandom, ISnapshotManager snapshotManager, int minWiggle = 0)
     {
-        private readonly ICryptoRandom _cryptoRandom;
-        private readonly ISnapshotManager _snapshotManager;
-        private readonly int _minimumWiggle;
+        private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
+        private readonly ISnapshotManager _snapshotManager = snapshotManager;
+        private readonly int _minimumWiggle = minWiggle;
         private long _lastWiggleAtNumber;
 
         private int _lastWiggle;
-
-        public WiggleRandomizer(ICryptoRandom cryptoRandom, ISnapshotManager snapshotManager, int minWiggle = 0)
-        {
-            _cryptoRandom = cryptoRandom;
-            _snapshotManager = snapshotManager;
-            _minimumWiggle = minWiggle;
-        }
 
         public int WiggleFor(BlockHeader header)
         {

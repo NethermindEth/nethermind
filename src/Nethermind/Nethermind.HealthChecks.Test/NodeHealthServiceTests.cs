@@ -380,7 +380,7 @@ public class NodeHealthServiceTests
     {
         if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
         {
-            var joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
+            string joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
             if (!string.IsNullOrWhiteSpace(joined))
             {
                 return joined + ".";
@@ -407,9 +407,6 @@ public class NodeHealthServiceTests
             }
         }
 
-        public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
-        {
-            return _capabilities;
-        }
+        public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities() => _capabilities;
     }
 }

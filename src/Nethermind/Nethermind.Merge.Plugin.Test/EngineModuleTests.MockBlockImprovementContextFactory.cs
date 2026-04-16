@@ -19,23 +19,16 @@ public partial class EngineModuleTests
             new MockBlockImprovementContext(currentBestBlock, startDateTime);
     }
 
-    private class MockBlockImprovementContext : IBlockImprovementContext
+    private class MockBlockImprovementContext(Block currentBestBlock, DateTimeOffset startDateTime) : IBlockImprovementContext
     {
-        public MockBlockImprovementContext(Block currentBestBlock, DateTimeOffset startDateTime)
-        {
-            CurrentBestBlock = currentBestBlock;
-            StartDateTime = startDateTime;
-            ImprovementTask = Task.FromResult((Block?)currentBestBlock);
-        }
-
         public void Dispose() => Disposed = true;
 
         public void CancelOngoingImprovements() { }
 
-        public Task<Block?> ImprovementTask { get; }
-        public Block? CurrentBestBlock { get; }
+        public Task<Block?> ImprovementTask { get; } = Task.FromResult((Block?)currentBestBlock);
+        public Block? CurrentBestBlock { get; } = currentBestBlock;
         public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
-        public DateTimeOffset StartDateTime { get; }
+        public DateTimeOffset StartDateTime { get; } = startDateTime;
     }
 }

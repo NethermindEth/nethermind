@@ -11,26 +11,17 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-778
 /// </summary>
-public class NodeRecordSigner : INodeRecordSigner
+public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : INodeRecordSigner
 {
-    private readonly IEcdsa _ecdsa;
+    private readonly IEcdsa _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
 
-    private readonly PrivateKey _privateKey;
-
-    public NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey)
-    {
-        _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
-        _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
-    }
+    private readonly PrivateKey _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
 
     /// <summary>
     /// Signs the node record with own private key.
     /// </summary>
     /// <param name="nodeRecord"></param>
-    public void Sign(NodeRecord nodeRecord)
-    {
-        nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
-    }
+    public void Sign(NodeRecord nodeRecord) => nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
 
     /// <summary>
     /// Deserializes a <see cref="NodeRecord"/> from an <see cref="RlpStream"/>.

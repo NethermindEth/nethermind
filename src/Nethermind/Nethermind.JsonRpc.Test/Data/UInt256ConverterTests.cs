@@ -11,15 +11,9 @@ namespace Nethermind.JsonRpc.Test.Data
     public class UInt256ConverterTests : SerializationTestBase
     {
         [Test]
-        public void Can_do_roundtrip()
-        {
-            TestRoundtrip((UInt256)123456789);
-        }
+        public void Can_do_roundtrip() => TestRoundtrip((UInt256)123456789);
 
         [Test]
-        public void Can_do_roundtrip_big()
-        {
-            TestRoundtrip(UInt256.Parse("1321312414124781461278412647816487146817246816418746187246187468714681"));
-        }
+        public void Can_do_roundtrip_big() => TestRoundtrip(UInt256.Parse("1321312414124781461278412647816487146817246816418746187246187468714681"));
     }
 }

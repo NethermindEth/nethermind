@@ -94,7 +94,7 @@ internal static partial class InstructionAnnotator
     public static string Annotate(string disassembly, InstructionDb db)
     {
         var sb = new StringBuilder();
-        var lines = JoinContinuationLines(disassembly.Split('\n'));
+        List<string> lines = JoinContinuationLines(disassembly.Split('\n'));
 
         foreach (string rawLine in lines)
         {
@@ -107,7 +107,7 @@ internal static partial class InstructionAnnotator
                 continue;
             }
 
-            var match = InstructionLineRegex().Match(line);
+            Match match = InstructionLineRegex().Match(line);
             if (match.Success)
             {
                 string mnemonic = match.Groups["mnemonic"].Value.ToLowerInvariant();
@@ -125,7 +125,7 @@ internal static partial class InstructionAnnotator
                 // Try the original mnemonic first, then any alias
                 string lookupMnemonic = MnemonicAliases.TryGetValue(mnemonic, out var alias)
                     ? alias : mnemonic;
-                var info = db.Lookup(mnemonic, pattern)
+                InstructionInfo? info = db.Lookup(mnemonic, pattern)
                     ?? (lookupMnemonic != mnemonic ? db.Lookup(lookupMnemonic, pattern) : null);
 
                 if (info is not null)
@@ -144,7 +144,7 @@ internal static partial class InstructionAnnotator
             }
 
             // Try zero-operand match
-            var zeroMatch = ZeroOperandRegex().Match(line);
+            Match zeroMatch = ZeroOperandRegex().Match(line);
             if (zeroMatch.Success)
             {
                 string mnemonic = zeroMatch.Groups["mnemonic"].Value.ToLowerInvariant();
@@ -152,7 +152,7 @@ internal static partial class InstructionAnnotator
                 {
                     string zeroLookup = MnemonicAliases.TryGetValue(mnemonic, out var zAlias)
                         ? zAlias : mnemonic;
-                    var info = db.Lookup(mnemonic, "")
+                    InstructionInfo? info = db.Lookup(mnemonic, "")
                         ?? (zeroLookup != mnemonic ? db.Lookup(zeroLookup, "") : null);
                     if (info is not null)
                     {
@@ -280,7 +280,7 @@ internal static partial class InstructionAnnotator
             return "";
 
         // Split operands by comma, but respect brackets for memory operands
-        var operands = SplitOperands(operandsRaw);
+        List<string> operands = SplitOperands(operandsRaw);
         var parts = new List<string>();
 
         for (int i = 0; i < operands.Count; i++)

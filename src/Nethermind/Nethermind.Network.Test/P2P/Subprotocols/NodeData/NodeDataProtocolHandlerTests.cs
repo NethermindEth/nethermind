@@ -65,7 +65,7 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Can_handle_get_node_data()
     {
-        var msg = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+        GetNodeDataMessage msg = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
 
         HandleZeroMessage(msg, NodeDataMessageCode.GetNodeData);
         _session.Received().DeliverMessage(Arg.Any<NodeDataMessage>());
@@ -74,7 +74,7 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Can_handle_node_data()
     {
-        var msg = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
+        NodeDataMessage msg = new(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
 
         ((INodeDataPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
         HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
@@ -83,7 +83,7 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Should_throw_when_receiving_unrequested_node_data()
     {
-        var msg = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
+        NodeDataMessage msg = new(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
 
         System.Action act = () => HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
         act.Should().Throw<SubprotocolException>();

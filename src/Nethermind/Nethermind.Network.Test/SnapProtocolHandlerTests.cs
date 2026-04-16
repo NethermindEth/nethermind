@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -75,7 +76,8 @@ public class SnapProtocolHandlerTests
                 MessageSerializationService,
                 RunImmediatelyScheduler.Instance,
                 LimboLogs.Instance,
-                new SyncConfig());
+                new SyncConfig(),
+                NoopSnapServer.Instance);
             set
             {
                 _snapProtocolHandler = value;
@@ -104,7 +106,7 @@ public class SnapProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new PathWithAccount(Keccak.Zero, Account.TotallyEmpty) },
+                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, Account.TotallyEmpty) },
                             RequestId = accountRangeMessage.RequestId,
                         });
                         buffer.ReadByte(); // Need to skip adaptive type
@@ -119,20 +121,11 @@ public class SnapProtocolHandlerTests
             }
         }
 
-        public void RecordedMessageSizesShouldIncrease()
-        {
-            _recordedResponseBytesLength[^1].Should().BeGreaterThan(_recordedResponseBytesLength[^2]);
-        }
+        public void RecordedMessageSizesShouldIncrease() => _recordedResponseBytesLength[^1].Should().BeGreaterThan(_recordedResponseBytesLength[^2]);
 
-        public void RecordedMessageSizesShouldDecrease()
-        {
-            _recordedResponseBytesLength[^1].Should().BeLessThan(_recordedResponseBytesLength[^2]);
-        }
+        public void RecordedMessageSizesShouldDecrease() => _recordedResponseBytesLength[^1].Should().BeLessThan(_recordedResponseBytesLength[^2]);
 
-        public void RecordedMessageSizesShouldNotChange()
-        {
-            _recordedResponseBytesLength[^1].Should().Be(_recordedResponseBytesLength[^2]);
-        }
+        public void RecordedMessageSizesShouldNotChange() => _recordedResponseBytesLength[^1].Should().Be(_recordedResponseBytesLength[^2]);
     }
 
     [Test]
@@ -166,10 +159,7 @@ public class SnapProtocolHandlerTests
     [TestCase(1L, 1L)]
     [TestCase(0L, 1L)]
     [TestCase(-1L, 1L)]
-    public void ClampResponseBytes_clamps_to_valid_range(long input, long expected)
-    {
-        Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
-    }
+    public void ClampResponseBytes_clamps_to_valid_range(long input, long expected) => Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
 
     [Test]
     [Explicit]

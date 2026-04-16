@@ -243,9 +243,6 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        public void Dispose()
-        {
-            _blockTreeSuggestPacer.Dispose();
-        }
+        public void Dispose() => _blockTreeSuggestPacer.Dispose();
     }
 }

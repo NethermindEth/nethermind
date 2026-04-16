@@ -21,26 +21,18 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Init.Steps.Migrations
 {
-    public class BloomMigration : IDatabaseMigration
+    public class BloomMigration(IApiWithNetwork api) : IDatabaseMigration
     {
-        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []);
+        private static readonly BlockHeader EmptyHeader = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []);
 
-        private readonly IApiWithNetwork _api;
-        private readonly ILogger _logger;
+        private readonly IApiWithNetwork _api = api;
+        private readonly ILogger _logger = api.LogManager.GetClassLogger<BloomMigration>();
         private Stopwatch? _stopwatch;
-        private readonly ProgressLogger _progressLogger;
+        private readonly ProgressLogger _progressLogger = new("Bloom migration ", api.LogManager);
         private long _migrateCount;
         private Average[]? _averages;
-        private readonly StringBuilder _builder = new StringBuilder();
-        private readonly IBloomConfig _bloomConfig;
-
-        public BloomMigration(IApiWithNetwork api)
-        {
-            _api = api;
-            _logger = api.LogManager.GetClassLogger<BloomMigration>();
-            _progressLogger = new ProgressLogger("Bloom migration ", api.LogManager);
-            _bloomConfig = api.Config<IBloomConfig>();
-        }
+        private readonly StringBuilder _builder = new();
+        private readonly IBloomConfig _bloomConfig = api.Config<IBloomConfig>();
 
         public async Task Run(CancellationToken cancellationToken)
         {
@@ -116,7 +108,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
-            using (Timer timer = new Timer(1000) { Enabled = true })
+            using (Timer timer = new(1000) { Enabled = true })
             {
                 timer.Elapsed += (_, _) =>
                 {
