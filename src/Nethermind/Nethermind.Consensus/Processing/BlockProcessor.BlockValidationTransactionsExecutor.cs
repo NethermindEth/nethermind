@@ -55,27 +55,15 @@ namespace Nethermind.Consensus.Processing
                 return [.. receiptsTracer.TxReceipts];
             }
 
-            private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-                => ProcessTransaction(transactionProcessor, _stateProvider, _transactionProcessedEventHandler, block, currentTx, index, receiptsTracer, processingOptions);
-
-
             protected
 #if !ZK_EVM
             virtual
 #endif
-            void ProcessTransaction(
-                ITransactionProcessorAdapter transactionProcessor,
-                IWorldState stateProvider,
-                ITransactionProcessedEventHandler? transactionProcessedEventHandler,
-                Block block,
-                Transaction currentTx,
-                int index,
-                BlockReceiptsTracer receiptsTracer,
-                ProcessingOptions processingOptions)
+            void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
-                TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+                _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
             }
 
             [DoesNotReturn, StackTraceHidden]

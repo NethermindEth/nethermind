@@ -170,7 +170,7 @@ public class TaikoModule : Module
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
-            // Block processing
+            // Blok processing
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
             .AddSingleton<IMainProcessingModule, TaikoMainBlockProcessingModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
@@ -253,9 +253,7 @@ public class TaikoModule : Module
 
     private class TaikoBlockValidationModule : Module, IBlockValidationModule
     {
-        protected override void Load(ContainerBuilder builder) => builder
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>()
-            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>();
+        protected override void Load(ContainerBuilder builder) => builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
     }
 
     private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule

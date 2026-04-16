@@ -14,18 +14,10 @@ public class TaikoBlockValidationTransactionExecutor(
     IWorldState stateProvider)
     : BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    protected override void ProcessTransaction(
-        ITransactionProcessorAdapter transactionProcessor,
-        IWorldState stateProvider,
-        ITransactionProcessedEventHandler? transactionProcessedEventHandler,
-        Block block,
-        Transaction currentTx,
-        int index,
-        BlockReceiptsTracer receiptsTracer,
-        ProcessingOptions processingOptions)
+    protected override void ProcessTransaction(Block block, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
-        if ((currentTx.SenderAddress?.Equals(TaikoBlockValidator.GoldenTouchAccount) ?? false) && index == 0)
+        if ((currentTx.SenderAddress?.Equals(TaikoBlockValidator.GoldenTouchAccount) ?? false) && i == 0)
             currentTx.IsAnchorTx = true;
-        base.ProcessTransaction(transactionProcessor, stateProvider, transactionProcessedEventHandler, block, currentTx, index, receiptsTracer, processingOptions);
+        base.ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
     }
 }
