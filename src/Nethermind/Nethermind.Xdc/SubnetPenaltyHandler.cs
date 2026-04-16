@@ -7,17 +7,12 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
 internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
 {
-    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
-    private readonly XdcSubnetHeaderDecoder _xdcHeaderDecoder = new();
-
     public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
     {
         // Triggered only at gap blocks
