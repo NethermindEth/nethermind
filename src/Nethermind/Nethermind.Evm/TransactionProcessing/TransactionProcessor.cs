@@ -839,9 +839,11 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
 
+        protected delegate long BlockGasCalculation(long spentGas, long blockStateGas);
+
         protected virtual GasConsumed RefundOnFail(Transaction tx, IReleaseSpec spec, ExecutionOptions opts,
             in TGasPolicy gas, in UInt256 gasPrice,
-            Func<long, long, long> computeBlockGas, long floorGas = 0)
+            BlockGasCalculation computeBlockGas, long floorGas = 0)
         {
             if (spec.IsEip8037Enabled)
             {
