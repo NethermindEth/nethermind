@@ -79,7 +79,9 @@ public readonly record struct CumulativeSizeStats(
 
     /// <summary>
     /// Initialize from a full scan's <see cref="StateCompositionStats"/>.
-    /// Maps FullNodes→Branches, ShortNodes→Extensions, ValueNodes→Leaves.
+    /// Converts Geth vocabulary (FullNode/ShortNode/ValueNode from
+    /// <see cref="Data.TrieLevelStat"/>) to standard MPT (Branches/Extensions/Leaves):
+    /// Branches = FullNodes, Extensions = ShortNodes − ValueNodes, Leaves = ValueNodes.
     /// </summary>
     internal static CumulativeSizeStats FromScanStats(StateCompositionStats scan) => new(
         scan.AccountsTotal,

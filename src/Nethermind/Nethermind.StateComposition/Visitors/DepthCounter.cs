@@ -4,8 +4,8 @@
 namespace Nethermind.StateComposition.Visitors;
 
 /// <summary>
-/// Mutable per-depth node counters.
-/// Short=Extension, Full=Branch, Value=Leaf.
+/// Mutable per-depth node counters using Geth's trie node vocabulary
+/// (see <see cref="Data.TrieLevelStat"/> for the full mapping).
 /// <para>
 /// WARNING: This is a mutable struct. MUST be accessed via <c>ref</c> to avoid
 /// accidental copies that silently lose mutations. Always use

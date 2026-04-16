@@ -35,10 +35,11 @@ public enum DepthSlot
 /// IsEmpty, SeedFromSnapshot) is one loop instead of nine field-by-field copies.
 ///
 /// Physical-depth storage: rows are indexed by physical depth [0..15].
-/// The Geth +1 shift for ValueNodeCount is applied only at presentation time
-/// in <see cref="Metrics.UpdateDepthDistribution"/> — never stored here.
+/// The Geth +1 depth shift for ValueNodeCount is applied only at presentation
+/// time in <see cref="Metrics.UpdateDepthDistribution"/> — never stored here.
 ///
-/// AccountShortNodes[d] = extensions + leaves at physical depth d (matches Geth ShortNode convention).
+/// Uses Geth vocabulary (see <see cref="Data.TrieLevelStat"/> for full mapping):
+/// AccountShortNodes[d] = extensions + leaves at physical depth d.
 /// AccountValueNodes[d] = leaves at physical depth d (unshifted).
 /// </summary>
 public sealed class CumulativeDepthStats
