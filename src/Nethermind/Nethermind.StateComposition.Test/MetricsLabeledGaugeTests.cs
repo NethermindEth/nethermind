@@ -54,12 +54,10 @@ public class MetricsLabeledGaugeTests
             // Branch occupancy cardinality: 16 child-count buckets.
             Assert.That(Metrics.StateCompAccountBranchOccupancy, Has.Count.EqualTo(16));
 
-            // Direct reads: account depth 3.
             Assert.That(Metrics.StateCompTrieDepthNodes[("account", 3, "full")], Is.EqualTo(stats.AccountFullNodes[3]));
             Assert.That(Metrics.StateCompTrieDepthNodes[("account", 3, "short")], Is.EqualTo(stats.AccountShortNodes[3]));
             Assert.That(Metrics.StateCompTrieDepthBytes[("account", 3)], Is.EqualTo(stats.AccountNodeBytes[3]));
 
-            // Storage depth 5 reads use the same direct path for full/short/bytes.
             Assert.That(Metrics.StateCompTrieDepthNodes[("storage", 5, "full")], Is.EqualTo(stats.StorageFullNodes[5]));
             Assert.That(Metrics.StateCompTrieDepthNodes[("storage", 5, "short")], Is.EqualTo(stats.StorageShortNodes[5]));
             Assert.That(Metrics.StateCompTrieDepthBytes[("storage", 5)], Is.EqualTo(stats.StorageNodeBytes[5]));

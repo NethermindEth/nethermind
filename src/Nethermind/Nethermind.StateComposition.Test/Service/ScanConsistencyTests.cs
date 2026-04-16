@@ -77,7 +77,6 @@ public class ScanConsistencyTests
         tree.Accept(v1, root1);
         StateCompositionStats stats1 = v1.GetStats(1, root1);
 
-        // Scan at root2 — must see block 2's state
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
         tree.Accept(v2, root2);
         StateCompositionStats stats2 = v2.GetStats(2, root2);
@@ -105,14 +104,12 @@ public class ScanConsistencyTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        // Block 1: 2 accounts
         tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // Block 2: modify A's balance + add C
         tree.Set(TestItem.AddressA, new Account(1, 999));
         tree.Set(TestItem.AddressC, CreateEOA(300));
         tree.Commit();
@@ -146,14 +143,12 @@ public class ScanConsistencyTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        // Block 1: 2 accounts → simple trie structure
         tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // Block 2: 20 accounts → more complex trie with deeper branching
         for (int i = 0; i < 20; i++)
         {
             tree.Set(TestItem.Addresses[i], CreateEOA(i));
@@ -230,7 +225,6 @@ public class ScanConsistencyTests
         StateTree readTree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
         StateTree writeTree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        // Build initial state on writeTree
         for (int i = 0; i < 50; i++)
         {
             writeTree.Set(TestItem.Addresses[i], CreateEOA(i));
@@ -242,7 +236,6 @@ public class ScanConsistencyTests
 
         ManualResetEventSlim scanStarted = new(false);
 
-        // Scan root1 in background via readTree
         Task<StateCompositionStats> scanTask = Task.Run(() =>
         {
             using StateCompositionVisitor v = new(LimboLogs.Instance);
@@ -251,7 +244,6 @@ public class ScanConsistencyTests
             return v.GetStats(1, root1);
         });
 
-        // Commit new state concurrently on writeTree
         scanStarted.Wait(TimeSpan.FromSeconds(5));
         for (int i = 50; i < 100; i++)
         {
@@ -311,7 +303,6 @@ public class ScanConsistencyTests
             new StateCompositionConfig { ScanParallelism = 1 },
             LimboLogs.Instance);
 
-        // Scan at root0
         BlockHeader header0 = Build.A.BlockHeader
             .WithNumber(0).WithStateRoot(root0).TestObject;
         Result<StateCompositionStats> result0 =
@@ -374,7 +365,6 @@ public class ScanConsistencyTests
             new StateCompositionConfig { ScanParallelism = 1 },
             LimboLogs.Instance);
 
-        // First scan at root0
         await service.AnalyzeAsync(
             Build.A.BlockHeader.WithNumber(0).WithStateRoot(root0).TestObject,
             CancellationToken.None);
@@ -384,7 +374,6 @@ public class ScanConsistencyTests
             Assert.That(stateHolder.LastScanMetadata.BlockNumber, Is.Zero);
         }
 
-        // Second scan at root1 — overwrites cached stats
         await service.AnalyzeAsync(
             Build.A.BlockHeader.WithNumber(1).WithStateRoot(root1).TestObject,
             CancellationToken.None);

@@ -95,7 +95,6 @@ public class StateCompositionServiceTests
             Assert.That(second.Error, Does.Contain("already in progress"));
         }
 
-        // Release blocker so first scan completes
         blocker.SetResult();
         await firstScan;
     }
@@ -185,23 +184,17 @@ public class StateCompositionServiceTests
 
         Task<Result<StateCompositionStats>> scanTask = service.AnalyzeAsync(header, cts.Token);
 
-        // Wait for visitor to be in-flight
         Assert.That(visitorEntered.Wait(TimeSpan.FromSeconds(3)), Is.True, "Visitor did not enter RunTreeVisitor");
 
-        // Cancel — the mock will unblock and throw OperationCanceledException
         await cts.CancelAsync();
 
-        // Task must complete without hanging; the cancellation propagates as exception
         try
         {
             await scanTask.WaitAsync(TimeSpan.FromSeconds(3), testCt);
             // If we reach here the task returned a Result rather than throwing —
             // that's also acceptable as long as IsInitialized is false.
         }
-        catch (OperationCanceledException)
-        {
-            // Expected: task faulted with cancellation
-        }
+        catch (OperationCanceledException) { }
 
         // Baseline must NOT have been installed — partial scan must not corrupt state
         Assert.That(stateHolder.IsInitialized, Is.False,
@@ -239,11 +232,9 @@ public class StateCompositionServiceTests
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        // Start the scan — it blocks inside RunTreeVisitor<StateCompositionContext>
         Task<Result<StateCompositionStats>> scanTask = service.AnalyzeAsync(header, testCt);
         Assert.That(scanEntered.Wait(TimeSpan.FromSeconds(3)), Is.True, "Scan did not enter RunTreeVisitor");
 
-        // InspectContractAsync must complete promptly — separate semaphore
         Result<TopContractEntry?> inspectResult = await service.InspectContractAsync(
             Address.Zero, header, testCt).WaitAsync(TimeSpan.FromSeconds(3), testCt);
 
@@ -254,7 +245,6 @@ public class StateCompositionServiceTests
             Assert.That(inspectResult.Data, Is.Null, "No storage found → null result");
         }
 
-        // Release scan and clean up
         releaseScan.Set();
         await scanTask.WaitAsync(TimeSpan.FromSeconds(3), testCt);
     }

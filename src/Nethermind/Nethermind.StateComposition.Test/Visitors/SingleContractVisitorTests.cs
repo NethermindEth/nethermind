@@ -46,7 +46,6 @@ public class SingleContractVisitorTests
         TrieNode node = new(NodeType.Leaf, [0xc0]);
         StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
-        // Visit account that matches target
         AccountStruct targetAccount = new(0, 0, targetRoot, Keccak.Zero.ValueHash256);
         visitor.VisitAccount(in accountCtx, node, in targetAccount);
 
@@ -93,15 +92,12 @@ public class SingleContractVisitorTests
         StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         ValueHash256 hash = default;
 
-        // Visit matching account -> activates collection
         AccountStruct target = new(0, 0, targetRoot, Keccak.Zero.ValueHash256);
         visitor.VisitAccount(in accountCtx, node, in target);
 
-        // Visit next account -> completes target
         AccountStruct next = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
         visitor.VisitAccount(in accountCtx, node, in next);
 
-        // ShouldVisit should return false — target already completed
         Assert.That(visitor.ShouldVisit(in accountCtx, in hash), Is.False,
             "ShouldVisit must return false after target completed");
     }
@@ -117,7 +113,6 @@ public class SingleContractVisitorTests
         ValueHash256 hash = default;
         StateCompositionContext storageCtx = new(default, level: 1, isStorage: true, branchChildIndex: null);
 
-        // Before finding target, storage nodes should be skipped
         Assert.That(visitor.ShouldVisit(in storageCtx, in hash), Is.False,
             "Storage visits must be skipped before target is found");
     }
