@@ -113,7 +113,7 @@ jobs:
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
-          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}"
+          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
           set +e
           dotnet test --project ${{ matrix.project }}.csproj -c release $flags
           rc=$?
@@ -196,7 +196,7 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}"
+          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
           set +e
           dotnet test --project ${{ matrix.project }}.csproj -c release $flags
           rc=$?
@@ -310,15 +310,32 @@ jobs:
     if: needs.tests.outputs.collect_coverage == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
       - name: Download coverage reports
         uses: actions/download-artifact@v8
         with:
-          path: .coverage
+          path: coverage
           pattern: '*-coverage'
 
+      - name: Merge coverage reports
+        run: |
+          dotnet tool install --global dotnet-coverage
+          dotnet-coverage merge \
+            coverage/**/*.cobertura.xml \
+            -f cobertura \
+            -o coverage.cobertura.xml \
+            --remove-input-files
+
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: codecov-nethermind
-          directory: .coverage
+          files: coverage.cobertura.xml
+          disable_search: true
+          fail_ci_if_error: true

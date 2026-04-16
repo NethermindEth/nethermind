@@ -23,6 +23,10 @@ namespace Nethermind.Core.Extensions
 {
     public static unsafe partial class Bytes
     {
+        internal const string ErrMissingPrefix = "hex string without 0x prefix";
+        internal const string ErrOddLength = "hex string of odd length";
+        internal const string ErrSyntax = "invalid hex string";
+
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
@@ -453,7 +457,7 @@ namespace Nethermind.Core.Extensions
         {
             if (bits.Length % 8 != 0)
             {
-                throw new ArgumentException(nameof(bits));
+                throw new ArgumentException("Bit array length must be a multiple of 8.", nameof(bits));
             }
 
             byte[] bytes = new byte[bits.Length / 8];
@@ -642,7 +646,7 @@ namespace Nethermind.Core.Extensions
             }
 
             [DoesNotReturn]
-            static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException();
+            static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException(nameof(hex), "Output hex span has incorrect length.");
         }
 
         public static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
@@ -945,7 +949,7 @@ namespace Nethermind.Core.Extensions
 
             if (!HexConverter.TryDecodeFromUtf8(hexString, result))
             {
-                ThrowFormatException_IncorrectHexString();
+                ThrowFormatException();
             }
         }
 
@@ -953,7 +957,7 @@ namespace Nethermind.Core.Extensions
         private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
 
         [DoesNotReturn, StackTraceHidden]
-        private static void ThrowFormatException_IncorrectHexString() => throw new FormatException("Incorrect hex string");
+        internal static void ThrowFormatException(string? message = ErrSyntax) => throw new FormatException(message);
 
         [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString, int length) =>
@@ -983,7 +987,7 @@ namespace Nethermind.Core.Extensions
                 ? HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan)
                 : HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
 
-            if (!isSuccess) throw new FormatException("Incorrect hex string");
+            if (!isSuccess) throw new FormatException(ErrSyntax);
         }
 
         private static ReadOnlySpan<char> Trim0X(ReadOnlySpan<char> hexString)
