@@ -987,10 +987,18 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy gasAfterExecution,
             long codeInsertRegularRefund)
         {
+            if (substate.IsError)
+            {
+                long refund = codeInsertRegularRefund > 0
+                    ? CalculateClaimableRefund(tx.GasLimit, codeInsertRegularRefund, spec)
+                    : 0;
+                return (tx.GasLimit, refund);
+            }
+
             long spentGas = tx.GasLimit - TGasPolicy.GetRemainingGas(in gasAfterExecution) - TGasPolicy.GetStateReservoir(in gasAfterExecution);
 
             long totalToRefund = codeInsertRegularRefund;
-            if (!substate.ShouldRevert && !substate.IsError)
+            if (!substate.ShouldRevert)
                 totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
 
             return (spentGas, CalculateClaimableRefund(spentGas, totalToRefund, spec));
