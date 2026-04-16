@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 namespace Nethermind.BalRecorder;
 
@@ -30,9 +29,6 @@ public class BalRecordingBlockProcessor(
     {
         if (store.ReplayEnabled && suggestedBlock.BlockAccessList is null && suggestedBlock.Hash is not null)
             suggestedBlock.BlockAccessList = store.Get(suggestedBlock.Number, suggestedBlock.Hash);
-
-        if (_balBuilder is not null)
-            _balBuilder.TracingEnabled = true;
 
         (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
