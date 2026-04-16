@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.IO;
 
 namespace Nethermind.BalRecorder;
@@ -19,6 +20,11 @@ public class EraFlatStore(string directory, string extension = "bin")
     private const int EraSize = 8192;
     private const int HeaderSize = EraSize * 8; // 65536 bytes
 
+    private readonly ConcurrentDictionary<long, object> _eraLocks = new();
+
+    private object EraLock(long blockNumber) =>
+        _eraLocks.GetOrAdd(blockNumber / EraSize, static _ => new object());
+
     private string FilePath(long blockNumber) =>
         Path.Combine(directory, $"{blockNumber / EraSize:D8}.{extension}");
 
@@ -28,20 +34,23 @@ public class EraFlatStore(string directory, string extension = "bin")
         string path = FilePath(blockNumber);
         int slot = (int)(blockNumber % EraSize);
 
-        using FileStream fs = new(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+        lock (EraLock(blockNumber))
+        {
+            using FileStream fs = new(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
 
-        if (fs.Length == 0)
-            fs.Write(new byte[HeaderSize]);
+            if (fs.Length == 0)
+                fs.Write(new byte[HeaderSize]);
 
-        fs.Seek(0, SeekOrigin.End);
-        uint offset = (uint)fs.Position;
-        fs.Write(data);
+            fs.Seek(0, SeekOrigin.End);
+            uint offset = (uint)fs.Position;
+            fs.Write(data);
 
-        Span<byte> entry = stackalloc byte[8];
-        BinaryPrimitives.WriteUInt32BigEndian(entry, offset);
-        BinaryPrimitives.WriteUInt32BigEndian(entry[4..], (uint)data.Length);
-        fs.Seek(slot * 8, SeekOrigin.Begin);
-        fs.Write(entry);
+            Span<byte> entry = stackalloc byte[8];
+            BinaryPrimitives.WriteUInt32BigEndian(entry, offset);
+            BinaryPrimitives.WriteUInt32BigEndian(entry[4..], (uint)data.Length);
+            fs.Seek(slot * 8, SeekOrigin.Begin);
+            fs.Write(entry);
+        }
     }
 
     /// <summary>
@@ -56,27 +65,30 @@ public class EraFlatStore(string directory, string extension = "bin")
 
         int slot = (int)(blockNumber % EraSize);
 
-        using FileStream fs = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-        Span<byte> entry = stackalloc byte[8];
-        fs.Seek(slot * 8, SeekOrigin.Begin);
-        fs.ReadExactly(entry);
-
-        uint offset = BinaryPrimitives.ReadUInt32BigEndian(entry);
-        if (offset == 0) return false;
-
-        int size = (int)BinaryPrimitives.ReadUInt32BigEndian(entry[4..]);
-        byte[] rented = ArrayPool<byte>.Shared.Rent(size);
-        try
+        lock (EraLock(blockNumber))
         {
-            fs.Seek(offset, SeekOrigin.Begin);
-            fs.ReadExactly(rented, 0, size);
-            action(new ReadOnlySpan<byte>(rented, 0, size), arg);
-            return true;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(rented);
+            using FileStream fs = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            Span<byte> entry = stackalloc byte[8];
+            fs.Seek(slot * 8, SeekOrigin.Begin);
+            fs.ReadExactly(entry);
+
+            uint offset = BinaryPrimitives.ReadUInt32BigEndian(entry);
+            if (offset == 0) return false;
+
+            int size = (int)BinaryPrimitives.ReadUInt32BigEndian(entry[4..]);
+            byte[] rented = ArrayPool<byte>.Shared.Rent(size);
+            try
+            {
+                fs.Seek(offset, SeekOrigin.Begin);
+                fs.ReadExactly(rented, 0, size);
+                action(new ReadOnlySpan<byte>(rented, 0, size), arg);
+                return true;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
         }
     }
 }
