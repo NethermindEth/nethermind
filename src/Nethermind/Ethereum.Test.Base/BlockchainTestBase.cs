@@ -354,31 +354,14 @@ public abstract class BlockchainTestBase
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext,
                 "engine_newPayloadV" + newPayloadVersion, paramsJson);
 
-            // RPC-level errors (e.g. wrong payload version) are valid for negative tests
             if (npResponse is JsonRpcErrorResponse errorResponse)
             {
-                Assert.That(validationError, Is.Not.Null,
-                    $"engine_newPayloadV{newPayloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+                AssertExpectedRpcError(errorResponse, validationError, newPayloadVersion);
                 continue;
             }
 
             PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
-            string expectedStatus = validationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
-            Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus),
-                $"engine_newPayloadV{newPayloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. " +
-                $"ValidationError: {payloadStatus.ValidationError}");
-
-            if (validationError is not null)
-            {
-                Assert.That(payloadStatus.ValidationError, Is.Not.Null,
-                    $"engine_newPayloadV{newPayloadVersion} returned INVALID without validation error. Expected: {validationError}");
-
-                string[] mappedValidationErrors = MapValidationErrorsToEestExceptions(payloadStatus.ValidationError!);
-
-                Assert.That(MatchesExpectedValidationError(payloadStatus.ValidationError!, mappedValidationErrors, validationError), Is.True,
-                    $"engine_newPayloadV{newPayloadVersion} returned unexpected validation error. " +
-                    $"Actual: {payloadStatus.ValidationError}. Normalized: {string.Join("|", mappedValidationErrors)}. Expected: {validationError}");
-            }
+            AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
 
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
@@ -388,12 +371,33 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private static bool MatchesExpectedValidationError(string validationError, string[] mappedValidationErrors, string expectedValidationError)
+    private static void AssertExpectedRpcError(JsonRpcErrorResponse errorResponse, string? validationError, int payloadVersion) =>
+        Assert.That(validationError, Is.Not.Null,
+            $"engine_newPayloadV{payloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
     {
-        string[] expectedErrors = expectedValidationError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return expectedErrors.Any(expected =>
-            mappedValidationErrors.Contains(expected) ||
-            validationError.Contains(expected, StringComparison.Ordinal));
+        string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
+        Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus),
+            $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. " +
+            $"ValidationError: {payloadStatus.ValidationError}");
+
+        if (expectedValidationError is not null)
+            AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
+    }
+
+    private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
+    {
+        Assert.That(actualError, Is.Not.Null,
+            $"engine_newPayloadV{payloadVersion} returned INVALID without validation error. Expected: {expectedError}");
+
+        string[] mapped = MapValidationErrorsToEestExceptions(actualError!);
+        string[] expected = expectedError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        bool matches = expected.Any(e => mapped.Contains(e) || actualError!.Contains(e, StringComparison.Ordinal));
+
+        Assert.That(matches, Is.True,
+            $"engine_newPayloadV{payloadVersion} unexpected validation error. " +
+            $"Actual: {actualError}. Mapped: {string.Join("|", mapped)}. Expected: {expectedError}");
     }
 
     // Mirrors execution-specs NethermindExceptionMapper: client validation text -> EEST exception ids.
