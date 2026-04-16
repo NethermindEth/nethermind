@@ -134,13 +134,8 @@ public static partial class EvmInstructions
         long initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
         long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
         long extraCost = initCodeWordCost + create2HashCost;
-
-        bool createOutOfGas = TEip8037.IsActive switch
-        {
-            true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost),
-            false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.Create + extraCost),
-        };
-
+        long gasCost = (TEip8037.IsActive ? GasCostOf.CreateRegular : GasCostOf.Create) + extraCost;
+        bool createOutOfGas = !TGasPolicy.UpdateGas(ref gas, gasCost);
         if (createOutOfGas) goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.

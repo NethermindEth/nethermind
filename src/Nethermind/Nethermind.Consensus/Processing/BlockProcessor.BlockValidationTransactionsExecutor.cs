@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -48,7 +49,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                     {
-                        throw new InvalidBlockException(block, BlockErrorMessages.ExceededGasLimit);
+                        ThrowInvalidBlockForGasLimit(block);
                     }
 
                     if (shouldValidateBlockAccessList)
@@ -60,6 +61,10 @@ namespace Nethermind.Consensus.Processing
                 _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
                 return [.. receiptsTracer.TxReceipts];
+
+                [DebuggerHidden]
+                [DoesNotReturn]
+                static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, BlockErrorMessages.ExceededGasLimit);
             }
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)

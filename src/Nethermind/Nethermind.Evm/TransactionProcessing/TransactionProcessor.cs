@@ -217,7 +217,7 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds = !spec.IsEip7702Enabled || !tx.HasAuthorizationList ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
-            ApplyPreExecutionDelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
+            Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
 
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
@@ -310,7 +310,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private static void ApplyPreExecutionDelegationRefunds(IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, ref TGasPolicy gasAvailable, ref int delegationRefunds)
+        private static void Apply8037DelegationRefunds(IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, ref TGasPolicy gasAvailable, ref int delegationRefunds)
         {
             if (spec.IsEip8037Enabled && delegationRefunds > 0)
             {
@@ -491,16 +491,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            IBlockGasAccountingTracer? gasAccountingTracer = tracer as IBlockGasAccountingTracer;
-            long gasUsedForAllowance = header.GasUsed;
-            if (spec.IsEip8037Enabled)
+            long gasUsedForAllowance = tracer switch
             {
-                gasUsedForAllowance = gasAccountingTracer?.CumulativeRegularGasUsed ?? gasUsedForAllowance;
-            }
-            else if (spec.IsEip7778Enabled)
-            {
-                gasUsedForAllowance = gasAccountingTracer?.CumulativeReceiptGasUsed ?? gasUsedForAllowance;
-            }
+                IBlockGasAccountingTracer t when spec.IsEip8037Enabled => t.CumulativeRegularGasUsed,
+                IBlockGasAccountingTracer t when spec.IsEip7778Enabled => t.CumulativeReceiptGasUsed,
+                _ => header.GasUsed,
+            };
 
             long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
             if (tx.GasLimit > maxTransactionGasLimit)
