@@ -44,6 +44,7 @@ public class EraExporterTests
     }
 
     [TestCase("checksums_sha256.txt")]
+    [TestCase("checksums.txt")]
     [TestCase("accumulators.txt")]
     public async Task Export_WhenCalled_CreatesMetadataFile(string fileName)
     {
