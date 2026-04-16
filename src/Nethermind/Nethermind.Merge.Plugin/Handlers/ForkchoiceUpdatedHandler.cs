@@ -240,14 +240,14 @@ public class ForkchoiceUpdatedHandler(
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
 
-        if (IsInconsistent(finalizedBlockHash))
+        if (IsInconsistent(finalizedHeader, newHeadBlock))
         {
             string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
-        if (IsInconsistent(safeBlockHash))
+        if (IsInconsistent(safeBlockHeader, newHeadBlock))
         {
             string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
@@ -342,7 +342,23 @@ public class ForkchoiceUpdatedHandler(
         if (isSyncInitialized && _logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
 
-    private bool IsInconsistent(Hash256 blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);
+    // Per Engine API spec, safeBlockHash and finalizedBlockHash MUST be ancestors of headBlockHash
+    // *in the same FCU request*. Walk parents from newHeadBlock instead of consulting
+    // _blockTree.IsMainChain — the latter reflects the previously-canonical chain and can wrongly
+    // reject valid requests when the EL has not yet reconciled to the new head (issue #11185).
+    // A null candidateHeader signals Keccak.Zero (no value supplied), which is consistent.
+    private bool IsInconsistent(BlockHeader? candidateHeader, Block newHeadBlock)
+    {
+        if (candidateHeader is null) return false;
+        if (candidateHeader.Number > newHeadBlock.Number) return true;
+
+        BlockHeader? cursor = newHeadBlock.Header;
+        while (cursor is not null && cursor.Number > candidateHeader.Number)
+        {
+            cursor = _blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        }
+        return cursor is null || cursor.Hash != candidateHeader.Hash;
+    }
 
     private Block? GetBlock(Hash256 headBlockHash)
     {

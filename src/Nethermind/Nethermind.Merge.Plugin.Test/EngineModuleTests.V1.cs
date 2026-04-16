@@ -1405,6 +1405,50 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult3.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
     }
 
+    [Test]
+    public async Task forkchoiceUpdated_safe_block_that_is_real_ancestor_of_new_head_is_accepted()
+    {
+        // Regression for #11185. ForkchoiceUpdatedHandler.IsInconsistent used to ask
+        // "is this hash on _blockTree's currently-canonical chain?" via _blockTree.IsMainChain.
+        // The Engine API spec instead requires safeBlockHash / finalizedBlockHash to be ancestors
+        // of *the headBlockHash supplied in the same FCU request*. The two questions diverge
+        // whenever the EL has not yet reconciled its canonical view to the new head, which
+        // produced spurious -38002 "Inconsistent ForkChoiceState" errors and blocked the EF
+        // Fast Confirmation Rule for exchanges on Nimbus + Nethermind setups.
+        //
+        // This test mirrors the inconsistent_safe_hash fixture but supplies a safe block that
+        // is a genuine ancestor of the new head (block2B), as opposed to a sibling-branch hash.
+        // The request must be accepted as Valid.
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ExecutionPayload block1 = CreateBlockRequest(
+            chain, CreateParentBlockRequestOnHead(chain.BlockTree),
+            TestItem.AddressA);
+        (await rpc.engine_newPayloadV1(block1)).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        ForkchoiceStateV1 fcu1 = new(block1.BlockHash, block1.BlockHash, block1.BlockHash);
+        (await rpc.engine_forkchoiceUpdatedV1(fcu1)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        // Sibling at level 2 (chain A) — present in the tree but not on the new head's chain.
+        ExecutionPayload block2A = CreateBlockRequest(chain, block1, TestItem.AddressB);
+        (await rpc.engine_newPayloadV1(block2A)).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        // Chain B: block1 -> 2B -> 3B. Both blocks belong to the chain the FCU will signal.
+        ExecutionPayload block2B = CreateBlockRequest(chain, block1, TestItem.AddressA);
+        (await rpc.engine_newPayloadV1(block2B)).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        ExecutionPayload block3B = CreateBlockRequest(chain, block2B, TestItem.AddressA);
+        (await rpc.engine_newPayloadV1(block3B)).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        // head = 3B, safe = 2B (real ancestor of 3B), finalized = block1 (also a real ancestor).
+        ForkchoiceStateV1 fcu = new(block3B.BlockHash, block2B.BlockHash, block1.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
+        result.ErrorCode.Should().Be(0);
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+    }
+
 
     [Test]
     public async Task payloadV1_latest_block_after_reorg()
