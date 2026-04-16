@@ -4,7 +4,6 @@
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -12,10 +11,8 @@ namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class TaikoBlockValidationTransactionExecutor(
     ITransactionProcessorAdapter transactionProcessor,
-    IWorldState stateProvider,
-    ISpecProvider specProvider,
-    IBlockAccessListManager balManager)
-    : BlockProcessor.ParallelBlockValidationTransactionsExecutor(transactionProcessor, stateProvider, specProvider, balManager)
+    IWorldState stateProvider)
+    : BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
     protected override void ProcessTransaction(
         ITransactionProcessorAdapter transactionProcessor,
