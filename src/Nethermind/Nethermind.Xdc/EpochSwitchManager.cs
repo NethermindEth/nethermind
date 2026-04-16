@@ -22,7 +22,7 @@ internal class EpochSwitchManager(
         tree,
         snapshotManager)
 {
-    protected LruCache<ulong, BlockRoundInfo> Round2EpochBlockInfo { get; } = new(XdcConstants.InMemoryRound2Epochs, nameof(Round2EpochBlockInfo));
+    private LruCache<ulong, BlockRoundInfo> Round2EpochBlockInfo { get; } = new(XdcConstants.InMemoryRound2Epochs, nameof(Round2EpochBlockInfo));
     /// <summary>
     /// Determine if the given block is an epoch switch block.
     /// </summary>
@@ -272,8 +272,7 @@ internal class EpochSwitchManager(
 
         if (closeEpochNum >= epochNumber - targetEpoch)
         {
-            XdcBlockHeader estBlockHeader = (XdcBlockHeader)Tree.FindHeader(estBlockNum);
-            if (estBlockHeader is null)
+            if (Tree.FindHeader(estBlockNum) is not XdcBlockHeader estBlockHeader)
             {
                 return null;
             }

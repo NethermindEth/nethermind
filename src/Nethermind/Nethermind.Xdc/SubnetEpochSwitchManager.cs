@@ -37,6 +37,20 @@ internal class SubnetEpochSwitchManager(
         return subnetSnapshot.NextEpochPenalties;
     }
 
-    public override BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch) =>
-        throw new NotSupportedException("GetBlockByEpochNumber is not supported in subnet.");
+    public override BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
+    {
+        if (Tree.Head?.Header is not XdcBlockHeader headHeader) return null;
+
+        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(headHeader);
+
+        if (targetEpoch > (ulong)(long.MaxValue / xdcSpec.EpochLength)) return null;
+        long targetNumber = (long)targetEpoch * xdcSpec.EpochLength;
+
+        if (Tree.FindHeader(targetNumber) is not XdcBlockHeader targetHeader) return null;
+
+        EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(targetHeader);
+        if (epochSwitchInfo is null) return null;
+
+        return epochSwitchInfo.EpochSwitchBlockInfo;
+    }
 }
