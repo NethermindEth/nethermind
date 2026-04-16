@@ -282,7 +282,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         {
             // All balance is consumed by value; nothing left for gas — allowance cap fires before execution.
             Assert.That(err, Is.Not.Null);
-            Assert.That(err, Does.StartWith(GasEstimator.AllowanceExceedanceMsgPrefix));
+            Assert.That(err, Does.StartWith(GasEstimator.GasExceedsAllowanceMsgPrefix));
         }
         else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
