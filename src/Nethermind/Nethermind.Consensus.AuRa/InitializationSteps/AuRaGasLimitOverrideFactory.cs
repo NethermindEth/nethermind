@@ -32,11 +32,11 @@ public class AuRaGasLimitOverrideFactory(
         {
             AuRaContractGasLimitOverride gasLimitCalculator = new(
                 blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                        new BlockGasLimitContract(
-                            abiEncoder,
-                            blockGasLimitContractTransition.Value,
-                            blockGasLimitContractTransition.Key,
-                            envFactory.Create()))
+                    new BlockGasLimitContract(
+                        abiEncoder,
+                        blockGasLimitContractTransition.Value,
+                        blockGasLimitContractTransition.Key,
+                        envFactory.Create()))
                     .ToArray<IBlockGasLimitContract>(),
                 gasLimitOverrideCache,
                 auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
