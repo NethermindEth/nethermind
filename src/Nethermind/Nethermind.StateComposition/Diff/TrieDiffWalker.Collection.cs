@@ -21,13 +21,13 @@ internal sealed partial class TrieDiffWalker
 
     private struct SemanticLeafHandler(TrieDiffWalker walker) : ILeafHandler
     {
-        public void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
+        public readonly void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
             => walker.CollectLeaf(leaf, ref path, added, isStorage);
     }
 
     private struct DictionaryLeafHandler(Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves) : ILeafHandler
     {
-        public void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
+        public readonly void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
         {
             TreePath pathAtLeaf = path;
             int prevLen = path.Length;
@@ -99,7 +99,7 @@ internal sealed partial class TrieDiffWalker
                 {
                     Hash256? childHash = node.GetChildHash(1);
                     int prevLen = path.Length;
-                    path.AppendMut(node.Key!);
+                    path.AppendMut(node.Key);
                     // Structural depth — see TrieDiffWalker.Extensions.DiffExtensions for rationale.
                     int childDepth = depth + 1;
 
@@ -199,7 +199,7 @@ internal sealed partial class TrieDiffWalker
 
         if (account.HasStorage)
         {
-            ITrieNodeResolver storageResolver = rootResolver.GetStorageTrieNodeResolver(addressHash);
+            ITrieNodeResolver storageResolver = _rootResolver.GetStorageTrieNodeResolver(addressHash);
             TreePath storagePath = TreePath.Empty;
             Hash256 storageRoot = new(account.StorageRoot);
 

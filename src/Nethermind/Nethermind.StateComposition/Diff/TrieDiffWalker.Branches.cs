@@ -114,8 +114,8 @@ internal sealed partial class TrieDiffWalker
     private void DiffMismatchedNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path,
         ITrieNodeResolver resolver, bool isStorage, int depth)
     {
-        var oldLeaves = new Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)>();
-        var newLeaves = new Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)>();
+        Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> oldLeaves = [];
+        Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> newLeaves = [];
 
         CollectSubtreeForDiff(oldNode, ref path, resolver, isStorage, added: false, oldLeaves, depth);
         CollectSubtreeForDiff(newNode, ref path, resolver, isStorage, added: true, newLeaves, depth);

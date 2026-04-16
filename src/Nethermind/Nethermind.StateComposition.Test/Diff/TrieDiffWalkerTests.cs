@@ -5,7 +5,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -42,7 +41,7 @@ public class TrieDiffWalkerTests
     {
         Hash256 addressHash = address.ToAccountPath.ToCommitment();
         StorageTree storageTree = new(new RawScopedTrieStore(db, addressHash), LimboLogs.Instance);
-        foreach (var (index, value) in slots)
+        foreach ((UInt256 index, byte[]? value) in slots)
         {
             storageTree.Set(index, value);
         }
@@ -72,8 +71,9 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(root1, root2);
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -114,8 +114,9 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(root1, root2);
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
 
         // Same slot modified → net zero (leaf at same path means update, not add/remove)
         Assert.That(diff.NetStorageSlots, Is.Zero);
@@ -147,8 +148,9 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(root1, root2);
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -174,9 +176,10 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff forward = walker.ComputeDiff(root1, root2);
-        TrieDiff reverse = walker.ComputeDiff(root2, root1);
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
+        TrieDiff forward = walker.ComputeDiff(root1, root2, resolver);
+        TrieDiff reverse = walker.ComputeDiff(root2, root1, resolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -214,8 +217,9 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(root1, root2);
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
         CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
@@ -250,26 +254,27 @@ public class TrieDiffWalkerTests
         tree.Accept(v1, root1);
         CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
 
         tree.Set(TestItem.AddressC, CreateEOA(300));
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
-        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root1, root2));
+        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root1, root2, resolver));
 
         tree.Set(TestItem.AddressD, CreateContractNoStorage());
         tree.Set(TestItem.AddressA, CreateEOA(999));
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root3 = tree.RootHash;
-        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root2, root3));
+        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root2, root3, resolver));
 
-        tree.Set(TestItem.AddressB, null!);
+        tree.Set(TestItem.AddressB, null);
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root4 = tree.RootHash;
-        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root3, root4));
+        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root3, root4, resolver));
 
         using StateCompositionVisitor v4 = new(LimboLogs.Instance);
         tree.Accept(v4, root4);
@@ -317,8 +322,9 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(root1, root2);
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
         CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
@@ -369,8 +375,9 @@ public class TrieDiffWalkerTests
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(root1, root2);
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
         CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
@@ -443,7 +450,7 @@ public class TrieDiffWalkerTests
         Hash256[] roots = new Hash256[totalBlocks];
         List<Address> eoaAddresses = [];
         List<Address> contractAddresses = [];
-        Dictionary<Address, Hash256> contractStorageRoots = new();
+        Dictionary<Address, Hash256> contractStorageRoots = [];
         Random rng = new(42); // deterministic seed
         int addressSeed = 0;
 
@@ -460,7 +467,7 @@ public class TrieDiffWalkerTests
             for (int i = 0; i < newContractsPerBlock; i++)
             {
                 Address addr = AddressFromSeed(addressSeed++);
-                var slots = new (UInt256, byte[])[slotsPerContract];
+                (UInt256, byte[])[] slots = new (UInt256, byte[])[slotsPerContract];
                 for (int s = 0; s < slotsPerContract; s++)
                 {
                     byte[] val = new byte[32];
@@ -528,10 +535,11 @@ public class TrieDiffWalkerTests
             v1.Dispose();
 
             // 2. Incremental diffs from→to
-            TrieDiffWalker walker = new(new RawScopedTrieStore(db));
+            RawScopedTrieStore resolver = new(db);
+            TrieDiffWalker walker = new();
             for (int b = from; b < to; b++)
             {
-                TrieDiff diff = walker.ComputeDiff(roots[b], roots[b + 1]);
+                TrieDiff diff = walker.ComputeDiff(roots[b], roots[b + 1], resolver);
                 cumulative = cumulative.ApplyDiff(diff);
             }
 
@@ -603,7 +611,7 @@ public class TrieDiffWalkerTests
         tree.Set(TestItem.AddressD, CreateEOA(400));
         tree.Set(TestItem.AddressE, CreateEOA(500));
         tree.Set(TestItem.AddressA, CreateEOA(999));
-        tree.Set(TestItem.AddressB, null!);
+        tree.Set(TestItem.AddressB, null);
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
@@ -612,13 +620,14 @@ public class TrieDiffWalkerTests
         tree.Accept(v1, root1);
         CumulativeSizeStats baseline = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
 
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
+        RawScopedTrieStore resolver = new(db);
+        TrieDiffWalker walker = new();
 
-        TrieDiff forward = walker.ComputeDiff(root1, root2);
+        TrieDiff forward = walker.ComputeDiff(root1, root2, resolver);
         CumulativeSizeStats updated = baseline.ApplyDiff(forward);
 
         // Backward diff root2 → root1 (reorg rollback)
-        TrieDiff backward = walker.ComputeDiff(root2, root1);
+        TrieDiff backward = walker.ComputeDiff(root2, root1, resolver);
         CumulativeSizeStats final = updated.ApplyDiff(backward);
 
         using (Assert.EnterMultipleScope())

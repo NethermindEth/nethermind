@@ -61,9 +61,9 @@ public class SnapshotRoundTripTests
             diffsSinceBaseline,
             scanBlockNumber,
             new CumulativeDepthStats(),
-            slotCountByAddress ?? new Dictionary<ValueHash256, long>(),
-            codeHashRefcounts ?? new Dictionary<ValueHash256, int>(),
-            codeHashSizes ?? new Dictionary<ValueHash256, int>());
+            slotCountByAddress ?? [],
+            codeHashRefcounts ?? [],
+            codeHashSizes ?? []);
 
     private static StateCompositionSnapshot RoundTrip(StateCompositionSnapshot original)
     {
@@ -113,7 +113,7 @@ public class SnapshotRoundTripTests
             Assert.That(decoded.DiffsSinceBaseline, Is.EqualTo(42));
             Assert.That(decoded.ScanBlockNumber, Is.EqualTo(999_000));
 
-            Assert.That(decoded.SlotCountByAddress.Count, Is.EqualTo(2));
+            Assert.That(decoded.SlotCountByAddress, Has.Count.EqualTo(2));
             Assert.That(decoded.SlotCountByAddress[addr1], Is.EqualTo(42));
             Assert.That(decoded.SlotCountByAddress[addr2], Is.EqualTo(1_000_000));
 

@@ -10,7 +10,6 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 using Nethermind.StateComposition.Data;
-using Nethermind.StateComposition.Diff;
 
 namespace Nethermind.StateComposition.Service;
 
@@ -46,9 +45,8 @@ internal sealed partial class StateCompositionService
 
             using IReadOnlyTrieStore readOnlyStore = _worldStateManager.CreateReadOnlyTrieStore();
             IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
-            TrieDiffWalker walker = new(resolver, _config.TrackDepthIncrementally);
 
-            TrieDiff diff = walker.ComputeDiff(prevRoot, head.Header.StateRoot);
+            TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, resolver);
             // Feed the code-hash tracker: it looks up bytecode size exactly once
             // per newly-observed hash, so the cost is bounded by the number of
             // distinct code hashes introduced in this diff.

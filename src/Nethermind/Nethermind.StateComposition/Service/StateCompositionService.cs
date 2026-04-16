@@ -15,6 +15,7 @@ using Nethermind.State;
 using Nethermind.Trie;
 
 using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Diff;
 using Nethermind.StateComposition.Visitors;
 using Nethermind.StateComposition.Snapshots;
 
@@ -41,6 +42,8 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     // SemaphoreSlim — removes the IDisposable/kernel-object overhead.
     private readonly Lock _diffLock = new();
 
+    private readonly TrieDiffWalker _diffWalker;
+
     // Written from the scan task, read by CancelScan() from arbitrary threads.
     // volatile guarantees the read sees the most recent write without a lock.
     private volatile CancellationTokenSource? _currentScanCts;
@@ -62,6 +65,7 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         _config = config;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<StateCompositionService>();
+        _diffWalker = new TrieDiffWalker(config.TrackDepthIncrementally);
 
         _blockTree.NewHeadBlock += OnNewHeadBlock;
     }
@@ -74,7 +78,7 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     /// <item><description>Plugin bootstrap: <see cref="StateCompositionPlugin.Init"/>
     /// schedules a background scan when no persisted snapshot is available.</description></item>
     /// <item><description>Incremental recovery: <see cref="ScheduleBaselineRescan"/>
-    /// from the <see cref="Nethermind.Trie.MissingTrieNodeException"/> handler in
+    /// from the <see cref="MissingTrieNodeException"/> handler in
     /// <see cref="RunIncrementalDiff"/>.</description></item>
     /// </list>
     /// Fail-fast / queued via <see cref="_scanLock"/> so back-to-back triggers collapse into one scan.
@@ -100,8 +104,7 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
 
             (int topN, int parallelism, long memoryBudget) = ResolveScanOptions();
 
-            Func<ValueHash256, int> codeSizeLookup =
-                hash => _stateReader.GetCode(hash)?.Length ?? 0;
+            int codeSizeLookup(ValueHash256 hash) => _stateReader.GetCode(hash)?.Length ?? 0;
 
             using StateCompositionVisitor visitor = new(
                 _logManager,

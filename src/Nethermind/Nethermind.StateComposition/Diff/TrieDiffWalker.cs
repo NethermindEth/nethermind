@@ -11,11 +11,13 @@ using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Diff;
 
-internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, bool trackDepth = false)
+internal sealed partial class TrieDiffWalker(bool trackDepth = false)
 {
     private readonly CumulativeDepthStats _depthDelta = new();
-    private readonly List<SlotCountChange> _slotCountChanges = new();
-    private readonly List<CodeHashChange> _codeHashChanges = new();
+    private readonly List<SlotCountChange> _slotCountChanges = [];
+    private readonly List<CodeHashChange> _codeHashChanges = [];
+
+    private ITrieNodeResolver _rootResolver = null!;
 
     // Active contract context for per-account slot tracking.
     // Set by BeginContractStorage / cleared by EndContractStorage around every
@@ -44,8 +46,9 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
     private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
     private int _emptyAccountsAdded, _emptyAccountsRemoved;
 
-    public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot)
+    public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot, ITrieNodeResolver rootResolver)
     {
+        _rootResolver = rootResolver;
         ResetCounters();
         if (trackDepth) _depthDelta.Reset();
 
@@ -55,7 +58,7 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         if (oldHash == newHash) return TrieDiff.Empty;
 
         TreePath path = TreePath.Empty;
-        DiffSubtree(oldHash, newHash, ref path, rootResolver, isStorage: false, depth: 0);
+        DiffSubtree(oldHash, newHash, ref path, _rootResolver, isStorage: false, depth: 0);
 
         return new TrieDiff(
             _accountsAdded, _accountsRemoved,

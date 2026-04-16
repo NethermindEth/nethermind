@@ -70,8 +70,11 @@ internal sealed partial class TrieDiffWalker
         }
         else
         {
-            CollectSubtree(oldExt, ref path, resolver, isStorage, added: false, depth);
-            CollectSubtree(newExt, ref path, resolver, isStorage, added: true, depth);
+            // Prefix mismatch means the trie restructured (e.g. extension split on insert).
+            // Use DiffMismatchedNodes to match shared leaves by path instead of independently
+            // collecting both subtrees, which would emit spurious CodeHashChange / SlotCountChange
+            // events for leaves that exist on both sides.
+            DiffMismatchedNodes(oldExt, newExt, ref path, resolver, isStorage, depth);
         }
     }
 }
