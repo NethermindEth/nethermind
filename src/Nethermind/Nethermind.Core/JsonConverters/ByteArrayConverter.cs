@@ -21,13 +21,10 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     public override byte[]? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        return Convert(ref reader);
-    }
+        JsonSerializerOptions options) => Convert(ref reader);
 
     [SkipLocalsInit]
-    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false)
+    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false, bool requireEvenLength = false)
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
@@ -37,7 +34,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         if (reader.HasValueSequence)
         {
-            return ConvertValueSequence(ref reader, strictHexFormat);
+            return ConvertValueSequence(ref reader, strictHexFormat, requireEvenLength);
         }
 
         ReadOnlySpan<byte> hex = reader.ValueSpan;
@@ -48,14 +45,17 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         {
             hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref hexRef, 2), length - 2);
         }
-        else if (strictHexFormat) ThrowFormatException();
+        else if (strictHexFormat) Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
+
+        if (requireEvenLength && hex.Length % 2 != 0)
+            Bytes.ThrowFormatException(Bytes.ErrOddLength);
 
         return Bytes.FromUtf8HexString(hex);
     }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat)
+    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength = false)
     {
         ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
         int length = checked((int)valueSequence.Length);
@@ -78,17 +78,20 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                 {
                     sr.Rewind(1);
                     if (strictHexFormat)
-                        ThrowFormatException();
+                        Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
                 }
             }
             else if (strictHexFormat)
             {
-                ThrowFormatException();
+                Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
             }
         }
 
         long totalHexChars = length - (hadPrefix ? 2 : 0);
         if (totalHexChars <= 0) return [];
+
+        if (requireEvenLength && (totalHexChars & 1) != 0)
+            Bytes.ThrowFormatException(Bytes.ErrOddLength);
 
         int odd = (int)(totalHexChars & 1);
         int outLen = (int)(totalHexChars >> 1) + odd;
@@ -104,7 +107,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
             firstNibble = (byte)HexConverter.FromLowerChar(firstNibble | 0x20);
             if (firstNibble > 0x0F)
-                ThrowFormatException();
+                Bytes.ThrowFormatException();
 
             Unsafe.Add(ref resultRef, outPos++) = firstNibble;
         }
@@ -172,18 +175,12 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowFormatException() => throw new FormatException();
-
-    [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
 
     public override void Write(
         Utf8JsonWriter writer,
         byte[] bytes,
-        JsonSerializerOptions options)
-    {
-        Convert(writer, bytes, skipLeadingZeros: false);
-    }
+        JsonSerializerOptions options) => Convert(writer, bytes, skipLeadingZeros: false);
 
     /// <summary>
     /// Writes bytes as a hex string value (e.g. "0xabcd") using WriteRawValue.
@@ -318,8 +315,29 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         return result;
     }
 
-    public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options) => Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
+}
+
+/// <summary>
+/// A strict variant of <see cref="ByteArrayConverter"/> that enforces canonical hex encoding:
+/// the <c>0x</c> prefix is required and the hex string must have an even number of digits.
+/// Matches Geth, Reth, and Erigon behaviour — returns -32602 for malformed input.
+/// Use on RPC transaction fields (input, data) to reject malformed calldata before it reaches the EVM.
+/// </summary>
+public class StrictHexByteArrayConverter : JsonConverter<byte[]>
+{
+    public override byte[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
+        try
+        {
+            return ByteArrayConverter.Convert(ref reader, strictHexFormat: true, requireEvenLength: true);
+        }
+        catch (FormatException e)
+        {
+            throw new JsonException(e.Message, e);
+        }
     }
+
+    public override void Write(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+        => ByteArrayConverter.Convert(writer, value, skipLeadingZeros: false);
 }

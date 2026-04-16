@@ -56,10 +56,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
         spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, JovianTimestamp, new DefaultBaseFeeCalculator());
     }
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
-    {
-        AddIfNotNull(timestamps, JovianTimestamp);
-    }
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps) => AddIfNotNull(timestamps, JovianTimestamp);
 
     private void AddIfNotNull(SortedSet<ulong> timestamps, ulong? timestamp)
     {

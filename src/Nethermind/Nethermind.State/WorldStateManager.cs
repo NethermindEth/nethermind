@@ -42,6 +42,9 @@ public class WorldStateManager : IWorldStateManager
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
         _lastNStateRootTracker = lastNStateRootTracker;
+        SnapServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
+            ? NoopSnapServer.Instance
+            : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
@@ -56,27 +59,15 @@ public class WorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
+    public ISnapServer SnapServer { get; }
 
-    public IWorldStateScopeProvider CreateResettableWorldState()
-    {
-        return new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
-    }
+    public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
 
     public IReadOnlyTrieStore CreateReadOnlyTrieStore() => _readOnlyTrieStore;
 
-    public IOverridableWorldScope CreateOverridableWorldScope()
-    {
-        return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
-    }
+    public IOverridableWorldScope CreateOverridableWorldScope() => new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
 
-    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
-    {
-        return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
-    }
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
 
-    public void FlushCache(CancellationToken cancellationToken)
-    {
-        _trieStore.PersistCache(cancellationToken);
-    }
+    public void FlushCache(CancellationToken cancellationToken) => _trieStore.PersistCache(cancellationToken);
 }

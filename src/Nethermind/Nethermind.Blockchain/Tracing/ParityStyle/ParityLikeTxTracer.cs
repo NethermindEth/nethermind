@@ -75,44 +75,35 @@ public class ParityLikeTxTracer : TxTracer
     public sealed override bool IsTracingState { get; protected set; }
     public sealed override bool IsTracingStorage { get; protected set; }
 
-    private static string GetCallType(ExecutionType executionType)
+    private static string GetCallType(ExecutionType executionType) => executionType switch
     {
-        return executionType switch
-        {
-            ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
-            ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
-            ExecutionType.DELEGATECALL => "delegatecall",
-            ExecutionType.STATICCALL => "staticcall",
-            ExecutionType.CALLCODE => "callcode",
-            _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}")
-        };
-    }
+        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
+        ExecutionType.DELEGATECALL => "delegatecall",
+        ExecutionType.STATICCALL => "staticcall",
+        ExecutionType.CALLCODE => "callcode",
+        _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}")
+    };
 
-    private static string GetActionType(ExecutionType executionType)
+    private static string GetActionType(ExecutionType executionType) => executionType switch
     {
-        return executionType switch
-        {
-            ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
-            _ => "call"
-        };
-    }
+        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        _ => "call"
+    };
 
-    private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
+    private static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
-        return evmExceptionType switch
-        {
-            EvmExceptionType.None => null,
-            EvmExceptionType.BadInstruction => "Bad instruction",
-            EvmExceptionType.StackOverflow => "Stack overflow",
-            EvmExceptionType.StackUnderflow => "Stack underflow",
-            EvmExceptionType.OutOfGas => "Out of gas",
-            EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
-            EvmExceptionType.AccessViolation => "Access violation",
-            EvmExceptionType.StaticCallViolation => "Static call violation",
-            EvmExceptionType.Revert => "Reverted",
-            _ => "Error",
-        };
-    }
+        EvmExceptionType.None => null,
+        EvmExceptionType.BadInstruction => "Bad instruction",
+        EvmExceptionType.StackOverflow => "Stack overflow",
+        EvmExceptionType.StackUnderflow => "Stack underflow",
+        EvmExceptionType.OutOfGas => "Out of gas",
+        EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
+        EvmExceptionType.AccessViolation => "Access violation",
+        EvmExceptionType.StaticCallViolation => "Static call violation",
+        EvmExceptionType.Revert => "Reverted",
+        _ => "Error",
+    };
 
     public ParityLikeTxTrace BuildResult()
     {
@@ -268,10 +259,7 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-    {
-        _currentPushList.Add(stackItem.ToArray());
-    }
+    public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => _currentPushList.Add(stackItem.ToArray());
 
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
@@ -281,10 +269,8 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-    {
+    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
         _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
-    }
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -391,15 +377,12 @@ public class ParityLikeTxTracer : TxTracer
         PushAction(action);
     }
 
-    private static string? GetCreateMethod(ExecutionType callType)
+    private static string? GetCreateMethod(ExecutionType callType) => callType switch
     {
-        return callType switch
-        {
-            ExecutionType.CREATE => "create",
-            ExecutionType.CREATE2 => "create2",
-            _ => null
-        };
-    }
+        ExecutionType.CREATE => "create",
+        ExecutionType.CREATE2 => "create2",
+        _ => null
+    };
 
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
@@ -443,14 +426,10 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
-    {
+    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode) =>
         // TODO: use memory pool?
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
-    }
 
-    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-    {
+    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>
         _currentOperation!.Used = gasAvailable;
-    }
 }

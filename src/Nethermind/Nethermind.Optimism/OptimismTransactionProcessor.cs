@@ -181,7 +181,7 @@ public class OptimismTransactionProcessor(
         {
             // Record deposits as using all their gas
             // System Transactions are special & are not recorded as using any gas (anywhere)
-            var gas = tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
+            long gas = tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
             return gas;
         }
 

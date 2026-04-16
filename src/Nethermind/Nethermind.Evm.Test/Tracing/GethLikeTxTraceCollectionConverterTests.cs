@@ -18,7 +18,7 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Write_null()
     {
-        var result = _serializer.Serialize((GethLikeTxTraceCollection?)null);
+        string result = _serializer.Serialize((GethLikeTxTraceCollection?)null);
 
         Assert.That(result, Is.EqualTo("null"));
     }
@@ -26,8 +26,8 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Write_empty()
     {
-        var collection = new GethLikeTxTraceCollection([]);
-        var result = _serializer.Serialize(collection);
+        GethLikeTxTraceCollection collection = new([]);
+        string result = _serializer.Serialize(collection);
 
         Assert.That(result, Is.EqualTo("[]"));
     }
@@ -35,10 +35,10 @@ public class GethLikeTxTraceCollectionConverterTests
     [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Write_with_traces_with_tx_hash(GethLikeTxTrace trace, string json)
     {
-        var expected = $"""[{json}]""";
+        string expected = $"""[{json}]""";
 
-        var collection = new GethLikeTxTraceCollection([trace]);
-        var result = _serializer.Serialize(collection);
+        GethLikeTxTraceCollection collection = new([trace]);
+        string result = _serializer.Serialize(collection);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
@@ -49,8 +49,8 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Read_null()
     {
-        var json = "null";
-        var result = _serializer.Deserialize<GethLikeTxTraceCollection>(json);
+        string json = "null";
+        GethLikeTxTraceCollection result = _serializer.Deserialize<GethLikeTxTraceCollection>(json);
 
         Assert.That(result, Is.Null);
     }
@@ -58,8 +58,8 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Read_empty()
     {
-        var json = "[]";
-        var result = _serializer.Deserialize<GethLikeTxTraceCollection>(json);
+        string json = "[]";
+        GethLikeTxTraceCollection result = _serializer.Deserialize<GethLikeTxTraceCollection>(json);
 
         Assert.That(result.Count, Is.EqualTo(0));
     }
@@ -68,7 +68,7 @@ public class GethLikeTxTraceCollectionConverterTests
     [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Read_with_traces(GethLikeTxTrace expectedTrace, string json)
     {
-        var result = _serializer.Deserialize<GethLikeTxTraceCollection>($"""[{json}]""");
+        GethLikeTxTraceCollection result = _serializer.Deserialize<GethLikeTxTraceCollection>($"""[{json}]""");
 
         Assert.Multiple(() =>
         {

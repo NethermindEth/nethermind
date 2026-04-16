@@ -50,10 +50,7 @@ namespace Nethermind.Evm
             BlobGasUsed = blobGasUsed;
         }
 
-        public TxGasInfo(UInt256? effectiveGasPrice)
-        {
-            EffectiveGasPrice = effectiveGasPrice;
-        }
+        public TxGasInfo(UInt256? effectiveGasPrice) => EffectiveGasPrice = effectiveGasPrice;
 
         public UInt256? EffectiveGasPrice { get; }
         public UInt256? BlobGasPrice { get; }

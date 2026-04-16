@@ -5,15 +5,10 @@ using System;
 
 namespace Nethermind.Logging
 {
-    public class TestLogManager : ILogManager
+    public class TestLogManager(LogLevel level = LogLevel.Warn) : ILogManager
     {
-        public static readonly TestLogManager Instance = new TestLogManager();
-        private readonly NUnitLogger _logger;
-
-        public TestLogManager(LogLevel level = LogLevel.Warn)
-        {
-            _logger = new NUnitLogger(level);
-        }
+        public static readonly TestLogManager Instance = new();
+        private readonly NUnitLogger _logger = new(level);
 
         public ILogger GetClassLogger<T>() => new(_logger);
 

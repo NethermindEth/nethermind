@@ -44,7 +44,7 @@ public class BlobGasCalculatorTests
     [Test]
     public void Blob_base_fee_may_overflow()
     {
-        var tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
+        Transaction tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(ulong.MaxValue).TestObject;
 
         bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, Eip4844Constants.DefaultBlobGasPriceUpdateFraction, out UInt256 blobBaseFee);

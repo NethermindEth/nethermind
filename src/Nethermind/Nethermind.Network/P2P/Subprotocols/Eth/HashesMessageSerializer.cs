@@ -19,10 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null) =>
             byteBuffer.DeserializeRlp((ref Rlp.ValueDecoderContext ctx) => DeserializeHashesArrayPool(ref ctx, limit));
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null)
-        {
-            return ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
-        }
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null) => ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {

@@ -66,7 +66,7 @@ public class SessionTests
         Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         Assert.Throws<InvalidOperationException>(() =>
         {
-            var node = session.Node;
+            Node node = session.Node;
         });
 
         session.Handshake(TestItem.PublicKeyA);
@@ -354,7 +354,7 @@ public class SessionTests
     public void Do_not_disconnects_after_initiating_disconnect_on_static_node()
     {
         bool wasCalled = false;
-        Node node = new Node(TestItem.PublicKeyA, "127.0.0.1", 8545);
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545);
         node.IsStatic = true;
         Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalled = true;
@@ -518,7 +518,7 @@ public class SessionTests
         session.AddProtocolHandler(bbb);
         session.AddProtocolHandler(ccc);
 
-        var message = new TestMessage();
+        TestMessage message = new();
         _packetSender.Enqueue(message).Returns(10);
         session.DeliverMessage(message);
         _packetSender.Received().Enqueue(message);
@@ -530,7 +530,7 @@ public class SessionTests
     [Test]
     public void Cannot_deliver_before_initialized()
     {
-        var message = new TestMessage();
+        TestMessage message = new();
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
         session.Handshake(TestItem.PublicKeyA);
@@ -564,7 +564,7 @@ public class SessionTests
 
         session.InitiateDisconnect(DisconnectReason.Other);
 
-        var message = new TestMessage();
+        TestMessage message = new();
         session.DeliverMessage(message);
         _packetSender.DidNotReceive().Enqueue(Arg.Any<TestMessage>());
         message.WasDisposed.Should().BeTrue();
@@ -610,7 +610,7 @@ public class SessionTests
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
 
-        var message = new TestMessage();
+        TestMessage message = new();
         p2p.When(it => it.DisconnectProtocol(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
             .Do((_) =>
             {

@@ -221,10 +221,7 @@ namespace Nethermind.Init.Steps.Migrations
             return emptyBlock;
         }
 
-        static void ReturnMissingBlock(Block emptyBlock)
-        {
-            EmptyBlock.Return(emptyBlock);
-        }
+        static void ReturnMissingBlock(Block emptyBlock) => EmptyBlock.Return(emptyBlock);
 
         IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(long from, long to, bool updateReceiptMigrationPointer, CancellationToken token)
         {
@@ -371,15 +368,9 @@ namespace Nethermind.Init.Steps.Migrations
 
         private class EmptyBlockObjectPolicy : IPooledObjectPolicy<Block>
         {
-            public Block Create()
-            {
-                return new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []));
-            }
+            public Block Create() => new(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []));
 
-            public bool Return(Block obj)
-            {
-                return true;
-            }
+            public bool Return(Block obj) => true;
         }
     }
 }

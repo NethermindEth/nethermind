@@ -35,7 +35,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
             .GetProperties(flag)
             .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() is null);
 
-        Dictionary<Type, PropertyInfo> availableTypes = new Dictionary<Type, PropertyInfo>();
+        Dictionary<Type, PropertyInfo> availableTypes = new();
 
         foreach (PropertyInfo propertyInfo in properties)
         {

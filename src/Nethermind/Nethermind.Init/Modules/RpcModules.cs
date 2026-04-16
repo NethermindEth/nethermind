@@ -107,9 +107,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ;
     }
 
-    private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx)
-    {
-        return new AdminRpcModule(
+    private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx) => new AdminRpcModule(
             ctx.Resolve<IBlockTree>(),
             ctx.Resolve<INetworkConfig>(),
             ctx.Resolve<IPeerPool>(),
@@ -120,5 +118,4 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
             ctx.Resolve<ISubscriptionManager>());
-    }
 }

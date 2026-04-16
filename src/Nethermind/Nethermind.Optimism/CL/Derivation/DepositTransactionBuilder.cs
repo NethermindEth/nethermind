@@ -75,10 +75,10 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
     public IEnumerable<Transaction> BuildUserDepositTransactions(ReceiptForRpc[] receipts)
     {
         List<Transaction> result = [];
-        foreach (var receipt in receipts)
+        foreach (ReceiptForRpc receipt in receipts)
         {
             if (receipt.Status != StatusCode.Success) continue;
-            foreach (var log in receipt.Logs)
+            foreach (LogEntryForRpc log in receipt.Logs)
             {
                 if (log.Address != engineParameters.OptimismPortalProxy) continue;
                 if (log.Topics.Length == 0 || log.Topics[0] != DepositEvent.ABIHash) continue;
@@ -115,8 +115,8 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         if (log.Topics[1].Bytes.Length != 32) throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[1]}");
         if (log.Topics[2].Bytes.Length != 32) throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[2]}");
 
-        var from = new Address(log.Topics[1].Bytes[^Address.Size..]);
-        var to = new Address(log.Topics[2].Bytes[^Address.Size..]);
+        Address from = new(log.Topics[1].Bytes[^Address.Size..]);
+        Address to = new(log.Topics[2].Bytes[^Address.Size..]);
 
         static Hash256 ComputeSourceHash(Hash256 l1BlockHash, ulong logIndex)
         {
@@ -125,7 +125,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             l1BlockHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
             span.TakeAndMove(24); // skip 24 bytes
             BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), logIndex);
-            var depositIdHash = Keccak.Compute(buffer);
+            Hash256 depositIdHash = Keccak.Compute(buffer);
 
             buffer.Clear();
             span = buffer;
@@ -137,11 +137,11 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             return Keccak.Compute(buffer);
         }
 
-        var version = log.Topics[3];
+        Hash256 version = log.Topics[3];
         if (version == DepositEvent.Version0)
         {
-            var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
-            var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
+            DepositLogEventV0 depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
+            Hash256 sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
 
             return new()
             {
@@ -181,7 +181,7 @@ public readonly ref struct DepositLogEventV0
 
         // TODO: Can we `stackalloc`? What is `data.Length` max size?
         int opaqueDataLength = 32 + 32 + 8 + 1 + Data.Length;
-        var opaqueData = ArrayPool<byte>.Shared.Rent(opaqueDataLength);
+        byte[] opaqueData = ArrayPool<byte>.Shared.Rent(opaqueDataLength);
         {
             Span<byte> span = opaqueData.AsSpan(0, opaqueDataLength);
 
@@ -191,14 +191,14 @@ public readonly ref struct DepositLogEventV0
             span.TakeAndMove(1)[0] = (byte)(IsCreation ? 1 : 0);
             Data.CopyTo(span.TakeAndMove(Data.Length));
         }
-        var result = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, Signature, opaqueData[..opaqueDataLength]);
+        byte[] result = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, Signature, opaqueData[..opaqueDataLength]);
         ArrayPool<byte>.Shared.Return(opaqueData);
         return result;
     }
 
     public static DepositLogEventV0 FromBytes(byte[] source) // TODO: Add `ReadOnlySpan<byte>` overloads
     {
-        var opaqueData = (byte[])AbiEncoder.Instance.Decode(AbiEncodingStyle.None, Signature, source)[0];
+        byte[] opaqueData = (byte[])AbiEncoder.Instance.Decode(AbiEncodingStyle.None, Signature, source)[0];
         Span<byte> span = opaqueData;
 
         return new()

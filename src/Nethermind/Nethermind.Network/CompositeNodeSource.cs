@@ -54,10 +54,7 @@ public class CompositeNodeSource : INodeSource, IDisposable
         }
     }
 
-    private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
-    {
-        NodeRemoved?.Invoke(sender, e);
-    }
+    private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e) => NodeRemoved?.Invoke(sender, e);
 
     public void Dispose()
     {

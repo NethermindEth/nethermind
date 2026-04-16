@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
                     for (int j = 0; j < accountSlots.Count; j++)
                     {
-                        var slot = accountSlots[j];
+                        PathWithStorageSlot slot = accountSlots[j];
 
                         int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
 
@@ -105,11 +105,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
             else
             {
-                for (var i = 0; i < message.Slots.Count; i++)
+                for (int i = 0; i < message.Slots.Count; i++)
                 {
                     int accountSlotsLength = 0;
 
-                    var accountSlots = message.Slots[i];
+                    IOwnedReadOnlyList<PathWithStorageSlot> accountSlots = message.Slots[i];
                     foreach (ref readonly PathWithStorageSlot slot in accountSlots.AsSpan())
                     {
                         int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);

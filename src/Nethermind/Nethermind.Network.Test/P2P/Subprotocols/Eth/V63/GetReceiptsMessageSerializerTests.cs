@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             using GetReceiptsMessage message = new(keys.ToPooledList());
             GetReceiptsMessageSerializer serializer = new();
-            var serialized = serializer.Serialize(message);
+            byte[] serialized = serializer.Serialize(message);
             using GetReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
             Assert.That(deserialized.Hashes.Count, Is.EqualTo(keys.Length), "count");

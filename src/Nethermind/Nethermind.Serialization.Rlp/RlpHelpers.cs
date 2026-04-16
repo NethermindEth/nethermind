@@ -179,10 +179,10 @@ internal static class RlpHelpers
         }
 
         // prevent out-of-bound access in DeserializeLengthRef
-        var postPosition = position + 1 + lengthOfLength;
+        int postPosition = position + 1 + lengthOfLength;
         if (postPosition > data.Length)
         {
-            ThrowLengthOutOfBounds(position, lengthOfLength);
+            ThrowRlpDataTruncated();
         }
 
         int contentLength = DeserializeLengthRef(
@@ -255,10 +255,7 @@ internal static class RlpHelpers
         return result;
 
         [DoesNotReturn]
-        static void ThrowInvalidData()
-        {
-            throw new RlpException("Length starts with 0");
-        }
+        static void ThrowInvalidData() => throw new RlpException("Length starts with 0");
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -284,6 +281,10 @@ internal static class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowSequenceLengthTooLong()
         => throw new RlpException("Expected length of length less than or equal to 4");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowRlpDataTruncated()
+        => throw new RlpException("RLP data is truncated: not enough bytes for the declared length prefix");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowUnexpectedLength(int length)

@@ -12,7 +12,7 @@ public class CompactStackTests
     [Test]
     public void TestPush_then_Pop()
     {
-        CompactStack<int> stack = new CompactStack<int>();
+        CompactStack<int> stack = new();
         for (int i = 0; i < 1024; i++)
         {
             stack.Push(i);

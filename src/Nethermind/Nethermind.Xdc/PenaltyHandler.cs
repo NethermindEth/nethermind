@@ -29,13 +29,13 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
         if (limit == 0) return currentEpochSwitchInfo.Penalties;
 
-        var epochNumber = (ulong)spec.SwitchEpoch + currentEpochSwitchInfo.EpochSwitchBlockInfo.Round / (ulong)spec.EpochLength;
+        ulong epochNumber = (ulong)spec.SwitchEpoch + currentEpochSwitchInfo.EpochSwitchBlockInfo.Round / (ulong)spec.EpochLength;
         if (epochNumber < limit) return [];
 
         BlockRoundInfo results = epochSwitchManager.GetBlockByEpochNumber(epochNumber - limit);
         if (results is null) return [];
 
-        var header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
+        XdcBlockHeader header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
         if (header?.PenaltiesAddress is null) return [];
 
         return [.. header.PenaltiesAddress];
@@ -50,10 +50,10 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         Hash256 currentHash = parentHash;
         while (parentNumber >= 0)
         {
-            var parentHeader = (XdcBlockHeader)tree.FindHeader(currentHash, parentNumber);
+            XdcBlockHeader parentHeader = (XdcBlockHeader)tree.FindHeader(currentHash, parentNumber);
             if (parentHeader is null) return [];
 
-            var isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
+            bool isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
             if (isEpochSwitch)
                 break;
 
@@ -65,16 +65,16 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             listBlockHash.Add(currentHash);
         }
 
-        var header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
+        XdcBlockHeader header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
-        var penalties = new HashSet<Address>();
+        HashSet<Address> penalties = new();
 
         int minMinerBlockPerEpoch = currentSpec.IsTipUpgradePenaltyEnabled
             ? currentSpec.MinimumMinerBlockPerEpoch
             : XdcConstants.MinimumMinerBlockPerEpoch;
 
-        foreach (var (miner, total) in minerStatistics)
+        foreach ((Address miner, int total) in minerStatistics)
         {
             if (total < minMinerBlockPerEpoch)
                 penalties.Add(miner);
@@ -89,10 +89,10 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             if (number > comebackHeight)
             {
                 Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
-                var penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
+                HashSet<Address> penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
-                var blockHashes = new HashSet<Hash256>();
-                var startRange = Math.Min((int)currentSpec.RangeReturnSigner, listBlockHash.Count) - 1;
+                HashSet<Hash256> blockHashes = new();
+                int startRange = Math.Min((int)currentSpec.RangeReturnSigner, listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
                 {
@@ -108,7 +108,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
                     foreach (Transaction tx in signingTxs)
                     {
-                        var signedBlockHash = new Hash256(tx.Data.Span[^32..]);
+                        Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
                         Address fromSigner = tx.SenderAddress;
 
                         if (blockHashes.Contains(signedBlockHash))
@@ -133,7 +133,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     Address[] previousPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)i);
                     foreach (Address previousPenalty in previousPenalties)
                     {
-                        penaltyParolees[previousPenalty] = penaltyParolees.TryGetValue(previousPenalty, out var count)
+                        penaltyParolees[previousPenalty] = penaltyParolees.TryGetValue(previousPenalty, out ulong count)
                             ? count + 1
                             : 1;
                     }
@@ -141,9 +141,9 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     if (i == 0) lastPenalty = previousPenalties;
                 }
 
-                var blockHashes = new HashSet<Hash256>();
-                var txSignerMap = new Dictionary<Address, int>();
-                var startRange = Math.Min(currentSpec.EpochLength, listBlockHash.Count) - 1;
+                HashSet<Hash256> blockHashes = new();
+                Dictionary<Address, int> txSignerMap = new();
+                int startRange = Math.Min(currentSpec.EpochLength, listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
                 {
@@ -156,21 +156,21 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
                     foreach (Transaction tx in signingTxs)
                     {
-                        var signedBlockHash = new Hash256(tx.Data.Span[^32..]);
+                        Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
                         Address fromSigner = tx.SenderAddress!;
                         if (blockHashes.Contains(signedBlockHash))
                         {
-                            txSignerMap[fromSigner] = txSignerMap.TryGetValue(fromSigner, out var count) ? count + 1 : 1;
+                            txSignerMap[fromSigner] = txSignerMap.TryGetValue(fromSigner, out int count) ? count + 1 : 1;
                         }
                     }
                 }
 
                 foreach (Address penalty in lastPenalty)
                 {
-                    penaltyParolees.TryGetValue(penalty, out var epochs);
+                    penaltyParolees.TryGetValue(penalty, out ulong epochs);
                     if (epochs == (ulong)limitPenaltyEpoch)
                     {
-                        txSignerMap.TryGetValue(penalty, out var signedCount);
+                        txSignerMap.TryGetValue(penalty, out int signedCount);
                         if (signedCount >= currentSpec.MinimumSigningTx)
                             continue;
                     }

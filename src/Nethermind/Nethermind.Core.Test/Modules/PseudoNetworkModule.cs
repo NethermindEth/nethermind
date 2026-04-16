@@ -35,7 +35,7 @@ public class PseudoNetworkModule() : Module
                         ISyncConfig syncConfig = m.Context.Resolve<ISyncConfig>();
                         IWorldStateManager worldStateManager = m.Context.Resolve<IWorldStateManager>();
 
-                        if (syncConfig.SnapServingEnabled == true)
+                        if (syncConfig.SnapServingEnabled == true || syncConfig.SnapSync)
                         {
                             protocolManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
                         }

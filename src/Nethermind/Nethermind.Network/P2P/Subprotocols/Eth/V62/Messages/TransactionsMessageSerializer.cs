@@ -44,9 +44,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref Rlp.ValueDecoderContext ctx)
-        {
-            return Rlp.DecodeArrayPool<Transaction>(ref ctx, RlpBehaviors.InMempoolForm, limit: RlpLimit);
-        }
+        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref Rlp.ValueDecoderContext ctx) => Rlp.DecodeArrayPool<Transaction>(ref ctx, RlpBehaviors.InMempoolForm, limit: RlpLimit);
     }
 }

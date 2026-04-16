@@ -48,7 +48,7 @@ internal class XdcStateSyncSnapshotManagerTests
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(number => epochSwitchNumbers.Contains((int)number.Arg<XdcBlockHeader>().Number));
 
-        XdcStateSyncSnapshotManager manager = new XdcStateSyncSnapshotManager(
+        XdcStateSyncSnapshotManager manager = new(
             xdcTestBlockchain.SpecProvider,
             epochSwitchManager,
             xdcTestBlockchain.BlockTree,
@@ -96,7 +96,7 @@ internal class XdcStateSyncSnapshotManagerTests
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(ci => epochSwitchNumbers.Contains((int)ci.Arg<XdcBlockHeader>().Number));
 
-        XdcStateSyncSnapshotManager manager = new XdcStateSyncSnapshotManager(
+        XdcStateSyncSnapshotManager manager = new(
             xdcTestBlockchain.SpecProvider,
             epochSwitchManager,
             xdcTestBlockchain.BlockTree,

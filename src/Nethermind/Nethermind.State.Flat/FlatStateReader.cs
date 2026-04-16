@@ -64,7 +64,7 @@ public class FlatStateReader(
 
         ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
 
-        PatriciaTree patriciaTree = new PatriciaTree(trieStoreAdapter, logManager);
+        PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
         patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
     }
 

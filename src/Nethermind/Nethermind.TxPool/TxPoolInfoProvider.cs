@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
@@ -16,19 +17,19 @@ namespace Nethermind.TxPool
         {
             // only std txs are picked here. Should we add blobs?
             // BTW this class should be rewritten or removed - a lot of unnecessary allocations
-            var groupedTransactions = txPool.GetPendingTransactionsBySender();
-            var pendingTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
-            var queuedTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
+            IDictionary<AddressAsKey, Transaction[]> groupedTransactions = txPool.GetPendingTransactionsBySender();
+            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new();
+            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new();
             foreach (KeyValuePair<AddressAsKey, Transaction[]> group in groupedTransactions)
             {
                 Address address = group.Key;
-                var accountNonce = accountStateProvider.GetNonce(address);
-                var expectedNonce = accountNonce;
-                var pending = new Dictionary<ulong, Transaction>();
-                var queued = new Dictionary<ulong, Transaction>();
-                var transactionsOrderedByNonce = group.Value.OrderBy(static t => t.Nonce);
+                UInt256 accountNonce = accountStateProvider.GetNonce(address);
+                UInt256 expectedNonce = accountNonce;
+                Dictionary<ulong, Transaction> pending = new();
+                Dictionary<ulong, Transaction> queued = new();
+                IOrderedEnumerable<Transaction> transactionsOrderedByNonce = group.Value.OrderBy(static t => t.Nonce);
 
-                foreach (var transaction in transactionsOrderedByNonce)
+                foreach (Transaction? transaction in transactionsOrderedByNonce)
                 {
                     ulong transactionNonce = (ulong)transaction.Nonce;
                     if (transaction.Nonce == expectedNonce)

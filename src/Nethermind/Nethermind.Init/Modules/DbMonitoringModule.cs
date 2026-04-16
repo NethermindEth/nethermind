@@ -45,7 +45,7 @@ public class DbMonitoringModule : Module
 
     public class DbTracker
     {
-        private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new ConcurrentDictionary<string, IDbMeta>();
+        private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
         private readonly int _intervalSec;
         private readonly HyperClockCacheWrapper _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
@@ -64,15 +64,9 @@ public class DbMonitoringModule : Module
             }
         }
 
-        public void AddDb(string name, IDbMeta dbMeta)
-        {
-            _createdDbs.TryAdd(name, dbMeta);
-        }
+        public void AddDb(string name, IDbMeta dbMeta) => _createdDbs.TryAdd(name, dbMeta);
 
-        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
-        {
-            return _createdDbs;
-        }
+        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta() => _createdDbs;
 
         public bool Paused { get; set; } = false;
 

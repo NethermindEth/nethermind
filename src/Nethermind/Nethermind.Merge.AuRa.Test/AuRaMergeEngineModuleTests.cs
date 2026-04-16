@@ -121,14 +121,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null)
-            : base(mergeConfig)
-        {
+            : base(mergeConfig) =>
             SealEngineType = Core.SealEngineType.AuRa;
-        }
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
-        {
-            return base.ConfigureContainer(builder, configProvider)
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            base.ConfigureContainer(builder, configProvider)
                 .AddDecorator<ISpecProvider>((_, specProvider) =>
                 {
                     // I guess ideally, just make a wrapper for `ISpecProvider` that replace only SealEngine.
@@ -177,7 +174,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
                     return api;
                 });
-        }
 
         protected override ChainSpec CreateChainSpec()
         {
@@ -209,13 +205,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
+            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
             auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));
-            IBlockProducerEnv env = BlockProducerEnvFactory.Create();
+            IBlockProducerEnv env = BlockProducerEnvFactory.CreatePersistent();
             FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
             AuRaBlockProducer preMergeBlockProducer = new(
                 env.TxSource,

@@ -85,9 +85,9 @@ namespace Nethermind.Config
 
         public static IPAddress? GetHostIpFromDnsAddresses(params IPAddress[] hostAddresses)
         {
-            for (var index = 0; index < hostAddresses.Length; index++)
+            for (int index = 0; index < hostAddresses.Length; index++)
             {
-                var hostAddress = hostAddresses[index];
+                IPAddress hostAddress = hostAddresses[index];
                 if (Equals(hostAddress, hostAddress.MapToIPv4()))
                 {
                     return hostAddress;

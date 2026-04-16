@@ -87,10 +87,7 @@ public class ExtensionData : INodeWithKey
             return ref _value;
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowArgumentOutOfRangeException(int index)
-            {
-                throw new ArgumentOutOfRangeException(nameof(index), index, $"{index} is not 0 or 1");
-            }
+            static void ThrowArgumentOutOfRangeException(int index) => throw new ArgumentOutOfRangeException(nameof(index), index, $"{index} is not 0 or 1");
         }
     }
 
@@ -98,10 +95,7 @@ public class ExtensionData : INodeWithKey
     {
     }
 
-    internal ExtensionData(byte[] key)
-    {
-        Key = key;
-    }
+    internal ExtensionData(byte[] key) => Key = key;
 
     internal ExtensionData(byte[] key, TrieNode value)
     {
@@ -135,10 +129,7 @@ public class LeafData : INodeWithKey
     public CappedArray<byte> Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
-    public LeafData()
-    {
-        _value = CappedArray<byte>.Empty;
-    }
+    public LeafData() => _value = CappedArray<byte>.Empty;
 
     internal LeafData(byte[] key, CappedArray<byte> value)
     {

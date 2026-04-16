@@ -82,7 +82,7 @@ namespace Nethermind.Core.Extensions
 
             fixed (byte* input = &Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2))
             {
-                var createParams = new StringParams(input, bytes.Length, leadingZeros, withZeroX);
+                StringParams createParams = new(input, bytes.Length, leadingZeros, withZeroX);
                 return string.Create(length, createParams, static (chars, state) =>
                 {
 
@@ -157,7 +157,7 @@ namespace Nethermind.Core.Extensions
                             : char2;
             }
 
-            string result = new string(charArray.AsSpan(0, length));
+            string result = new(charArray.AsSpan(0, length));
             ArrayPool<char>.Shared.Return(charArray);
 
             return result;
