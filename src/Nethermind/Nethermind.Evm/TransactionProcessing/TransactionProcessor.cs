@@ -64,6 +64,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
+        private long _blockCumulativeRegularGas;
+        private long _blockCumulativeReceiptGas;
 
         [Flags]
         protected enum ExecutionOptions
@@ -131,7 +133,11 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-            => VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
+        {
+            _blockCumulativeRegularGas = 0;
+            _blockCumulativeReceiptGas = 0;
+            VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
+        }
 
         public void SetBlockExecutionContext(BlockHeader header)
         {
@@ -188,7 +194,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             TransactionResult result;
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
-            if (!(result = ValidateStatic(tx, header, spec, tracer, opts, in intrinsicGas))) return result;
+            if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
@@ -244,6 +250,11 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            {
+                _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
+                _blockCumulativeReceiptGas += spentGas.SpentGas;
+            }
 
             //only main thread updates transaction
             if (!opts.HasFlag(ExecutionOptions.Warmup))
@@ -445,7 +456,6 @@ namespace Nethermind.Evm.TransactionProcessing
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
-            ITxTracer tracer,
             ExecutionOptions opts,
             in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
@@ -480,10 +490,10 @@ namespace Nethermind.Evm.TransactionProcessing
             long minGasRequired = spec.IsEip8037Enabled
                 ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
                 : TGasPolicy.GetRemainingGas(in minimal);
-            return ValidateGas(tx, header, spec, tracer, minGasRequired);
+            return ValidateGas(tx, header, spec, minGasRequired);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, long minGasRequired)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired)
         {
             if (tx.GasLimit < minGasRequired)
             {
@@ -491,12 +501,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            long gasUsedForAllowance = tracer switch
-            {
-                IBlockGasAccountingTracer t when spec.IsEip8037Enabled => t.CumulativeRegularGasUsed,
-                IBlockGasAccountingTracer t when spec.IsEip7778Enabled => t.CumulativeReceiptGasUsed,
-                _ => header.GasUsed,
-            };
+            long gasUsedForAllowance = spec.IsEip8037Enabled
+                ? _blockCumulativeRegularGas
+                : spec.IsEip7778Enabled
+                    ? _blockCumulativeReceiptGas
+                    : header.GasUsed;
 
             long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
             if (tx.GasLimit > maxTransactionGasLimit)
