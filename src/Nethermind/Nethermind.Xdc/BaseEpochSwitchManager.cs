@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -8,8 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System;
-using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
@@ -38,7 +38,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
         while (!IsEpochSwitchAtBlock(header))
         {
-            header = (XdcBlockHeader)Tree.FindHeader(header.ParentHash!) ?? throw new InvalidOperationException($"Parent block {header.ParentHash} not found while walking to epoch switch");
+            header = Tree.FindHeader(header.ParentHash!) as XdcBlockHeader ?? throw new InvalidOperationException($"Parent block {header.ParentHash} not found while walking to epoch switch");
         }
 
         Address[] masterNodes;
@@ -103,18 +103,14 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
             return epochSwitchInfo;
         }
 
-        XdcBlockHeader h = (XdcBlockHeader)Tree.FindHeader(hash);
-        if (h is null)
-        {
-            return null;
-        }
+        if (Tree.FindHeader(hash) is not XdcBlockHeader h) return null;
 
         return GetEpochSwitchInfo(h);
     }
 
     public EpochSwitchInfo? GetEpochSwitchInfo(ulong round)
     {
-        XdcBlockHeader headOfChainHeader = (XdcBlockHeader)Tree.Head.Header;
+        if (Tree.Head?.Header is not XdcBlockHeader headOfChainHeader) return null;
 
         EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(headOfChainHeader);
         if (epochSwitchInfo is null)

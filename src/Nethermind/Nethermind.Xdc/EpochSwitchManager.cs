@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -8,8 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System;
-using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
@@ -93,7 +93,10 @@ internal class EpochSwitchManager(
         return parentRound < epochStartRound;
     }
 
-    protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec) => [.. header.PenaltiesAddress!.Value];
+    protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec) =>
+        header.PenaltiesAddress is null
+            ? throw new InvalidOperationException($"PenaltiesAddress is null on epoch-switch block {header.Number}")
+            : [.. header.PenaltiesAddress.Value];
 
     private EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
@@ -171,8 +174,7 @@ internal class EpochSwitchManager(
     {
         while (start < end)
         {
-            XdcBlockHeader header = (XdcBlockHeader)Tree.FindHeader((start + end) / 2);
-            if (header is null)
+            if (Tree.FindHeader((start + end) / 2) is not XdcBlockHeader header)
             {
                 epochBlockInfo = null;
                 return false;
@@ -189,12 +191,6 @@ internal class EpochSwitchManager(
 
             if (epochNum == targetEpochNumber)
             {
-                if (header.ExtraConsensusData is null)
-                {
-                    epochBlockInfo = null;
-                    return false;
-                }
-
                 ulong round = header.ExtraConsensusData.BlockRound;
 
                 if (isEpochSwitch)
