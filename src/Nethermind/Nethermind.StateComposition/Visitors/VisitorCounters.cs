@@ -45,10 +45,10 @@ internal sealed class VisitorCounters(int topN = 20)
     /// <summary>
     /// Log-bucketed per-contract slot-count histogram.
     /// Bucket = min(Length-1, floor(log2(slotCount+1))).
-    /// Length is bound to <see cref="CumulativeSizeStats.SlotHistogramLength"/>
+    /// Length is bound to <see cref="CumulativeTrieStats.SlotHistogramLength"/>
     /// so the producer and the snapshot decoder agree on wire length.
     /// </summary>
-    public readonly long[] SlotCountHistogram = new long[CumulativeSizeStats.SlotHistogramLength];
+    public readonly long[] SlotCountHistogram = new long[CumulativeTrieStats.SlotHistogramLength];
 
     public readonly DepthCounter[] AccountDepths = new DepthCounter[MaxTrackedDepth];
     public readonly DepthCounter[] StorageDepths = new DepthCounter[MaxTrackedDepth];
@@ -223,7 +223,7 @@ internal sealed class VisitorCounters(int topN = 20)
             BranchOccupancyHistogram[i] += other.BranchOccupancyHistogram[i];
         }
 
-        // Slot-count histogram length is bound to CumulativeSizeStats.SlotHistogramLength,
+        // Slot-count histogram length is bound to CumulativeTrieStats.SlotHistogramLength,
         // not MaxTrackedDepth, so it needs its own loop.
         for (int i = 0; i < SlotCountHistogram.Length; i++)
             SlotCountHistogram[i] += other.SlotCountHistogram[i];
@@ -249,6 +249,6 @@ internal sealed class VisitorCounters(int topN = 20)
         if (slotCount <= 0) return 0;
         // BitOperations.Log2(n) == floor(log2(n)) for n >= 1.
         int log = BitOperations.Log2((ulong)(slotCount + 1));
-        return Math.Min(CumulativeSizeStats.SlotHistogramLength - 1, log);
+        return Math.Min(CumulativeTrieStats.SlotHistogramLength - 1, log);
     }
 }

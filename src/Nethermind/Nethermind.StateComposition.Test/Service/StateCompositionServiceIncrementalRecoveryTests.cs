@@ -53,7 +53,7 @@ public class StateCompositionServiceIncrementalRecoveryTests
         return config;
     }
 
-    private static CumulativeSizeStats EmptyBaseline() =>
+    private static CumulativeTrieStats EmptyBaseline() =>
         new(
             AccountsTotal: 0,
             ContractsTotal: 0,
@@ -71,7 +71,7 @@ public class StateCompositionServiceIncrementalRecoveryTests
         {
             CodeBytesTotal = 0,
             SlotCountHistogram = ImmutableArray.Create(
-                new long[CumulativeSizeStats.SlotHistogramLength]),
+                new long[CumulativeTrieStats.SlotHistogramLength]),
         };
 
     private static void SeedBaseline(StateCompositionStateHolder holder, long blockNumber, Hash256 stateRoot)
@@ -91,7 +91,7 @@ public class StateCompositionServiceIncrementalRecoveryTests
         {
             Assert.That(holder.LastProcessedStateRoot, Is.EqualTo(Hash256.Zero),
                 "InvalidateBaseline must clear the baseline root so OnNewHeadBlock stops spawning diff tasks.");
-            Assert.That(holder.IsIncrementalSeeded, Is.True,
+            Assert.That(holder.HasIncrementalBaseline, Is.True,
                 "Cached incremental stats must survive invalidation so RPC keeps serving last-known values.");
             Assert.That(holder.IncrementalBlock, Is.EqualTo(100),
                 "Incremental block number must stay — only the root is deliberately dropped.");
@@ -144,9 +144,9 @@ public class StateCompositionServiceIncrementalRecoveryTests
         // ScheduleBaselineRescan is fire-and-forget. Against the substitute
         // IStateReader, AnalyzeAsync completes quickly — wait for it to reseed.
         await WaitForConditionAsync(
-            () => stateHolder.IsInitialized,
+            () => stateHolder.HasScanBaseline,
             TimeSpan.FromSeconds(5),
-            "Auto-rescan did not set IsInitialized=true within 5s").ConfigureAwait(false);
+            "Auto-rescan did not set HasScanBaseline=true within 5s").ConfigureAwait(false);
 
         using (Assert.EnterMultipleScope())
         {

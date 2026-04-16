@@ -50,7 +50,7 @@ internal sealed partial class StateCompositionService
             // Feed the code-hash tracker: it looks up bytecode size exactly once
             // per newly-observed hash, so the cost is bounded by the number of
             // distinct code hashes introduced in this diff.
-            CumulativeSizeStats updated = _stateHolder.ApplyIncrementalDiffAndUpdate(
+            CumulativeTrieStats updated = _stateHolder.ApplyIncrementalDiffAndUpdate(
                 diff, head.Number, head.Header.StateRoot,
                 hash => _stateReader.GetCode(hash)?.Length ?? 0);
 

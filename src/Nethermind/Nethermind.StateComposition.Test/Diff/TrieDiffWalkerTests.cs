@@ -195,7 +195,7 @@ public class TrieDiffWalkerTests
     }
 
     [Test]
-    public void CumulativeSizeStats_ApplyDiff_RoundTrips()
+    public void CumulativeTrieStats_ApplyDiff_RoundTrips()
     {
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
@@ -209,7 +209,7 @@ public class TrieDiffWalkerTests
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
         StateCompositionStats scan1 = v1.GetStats(1, root1);
-        CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(scan1);
+        CumulativeTrieStats cumulative = CumulativeTrieStats.FromScanStats(scan1);
 
         tree.Set(TestItem.AddressC, CreateEOA(300));
         tree.Set(TestItem.AddressD, CreateContractNoStorage());
@@ -220,12 +220,12 @@ public class TrieDiffWalkerTests
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
         TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
-        CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
+        CumulativeTrieStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
         tree.Accept(v2, root2);
         StateCompositionStats scan2 = v2.GetStats(2, root2);
-        CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(scan2);
+        CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(scan2);
 
         using (Assert.EnterMultipleScope())
         {
@@ -252,7 +252,7 @@ public class TrieDiffWalkerTests
 
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
-        CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
+        CumulativeTrieStats cumulative = CumulativeTrieStats.FromScanStats(v1.GetStats(1, root1));
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
@@ -278,7 +278,7 @@ public class TrieDiffWalkerTests
 
         using StateCompositionVisitor v4 = new(LimboLogs.Instance);
         tree.Accept(v4, root4);
-        CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v4.GetStats(4, root4));
+        CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(v4.GetStats(4, root4));
 
         using (Assert.EnterMultipleScope())
         {
@@ -308,7 +308,7 @@ public class TrieDiffWalkerTests
 
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
-        CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
+        CumulativeTrieStats cumulative = CumulativeTrieStats.FromScanStats(v1.GetStats(1, root1));
 
         Hash256 addressHash = TestItem.AddressA.ToAccountPath.ToCommitment();
         StorageTree storage2 = new(new RawScopedTrieStore(db, addressHash), storageRoot1, LimboLogs.Instance);
@@ -325,11 +325,11 @@ public class TrieDiffWalkerTests
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
         TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
-        CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
+        CumulativeTrieStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
         tree.Accept(v2, root2);
-        CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v2.GetStats(2, root2));
+        CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(v2.GetStats(2, root2));
 
         using (Assert.EnterMultipleScope())
         {
@@ -361,7 +361,7 @@ public class TrieDiffWalkerTests
 
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
-        CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
+        CumulativeTrieStats cumulative = CumulativeTrieStats.FromScanStats(v1.GetStats(1, root1));
 
         for (int i = 50; i < 60; i++)
         {
@@ -378,11 +378,11 @@ public class TrieDiffWalkerTests
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
         TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
-        CumulativeSizeStats updated = cumulative.ApplyDiff(diff);
+        CumulativeTrieStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
         tree.Accept(v2, root2);
-        CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v2.GetStats(2, root2));
+        CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(v2.GetStats(2, root2));
 
         using (Assert.EnterMultipleScope())
         {
@@ -395,7 +395,7 @@ public class TrieDiffWalkerTests
     }
 
     [Test]
-    public void CumulativeSizeStats_FromScanStats_MapsCorrectly()
+    public void CumulativeTrieStats_FromScanStats_MapsCorrectly()
     {
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
@@ -410,7 +410,7 @@ public class TrieDiffWalkerTests
         tree.Accept(visitor, root);
         StateCompositionStats scan = visitor.GetStats(1, root);
 
-        CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(scan);
+        CumulativeTrieStats cumulative = CumulativeTrieStats.FromScanStats(scan);
 
         using (Assert.EnterMultipleScope())
         {
@@ -531,7 +531,7 @@ public class TrieDiffWalkerTests
             StateCompositionVisitor v1 = new(LimboLogs.Instance);
             tree.Accept(v1, roots[from]);
             StateCompositionStats s1 = v1.GetStats(from, roots[from]);
-            CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(s1);
+            CumulativeTrieStats cumulative = CumulativeTrieStats.FromScanStats(s1);
             v1.Dispose();
 
             // 2. Incremental diffs from→to
@@ -547,7 +547,7 @@ public class TrieDiffWalkerTests
             StateCompositionVisitor v2 = new(LimboLogs.Instance);
             tree.Accept(v2, roots[to]);
             StateCompositionStats s2 = v2.GetStats(to, roots[to]);
-            CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(s2);
+            CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(s2);
             v2.Dispose();
 
             // CodeBytesTotal and SlotCountHistogram are frozen by design —
@@ -618,17 +618,17 @@ public class TrieDiffWalkerTests
 
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
-        CumulativeSizeStats baseline = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
+        CumulativeTrieStats baseline = CumulativeTrieStats.FromScanStats(v1.GetStats(1, root1));
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
 
         TrieDiff forward = walker.ComputeDiff(root1, root2, resolver);
-        CumulativeSizeStats updated = baseline.ApplyDiff(forward);
+        CumulativeTrieStats updated = baseline.ApplyDiff(forward);
 
         // Backward diff root2 → root1 (reorg rollback)
         TrieDiff backward = walker.ComputeDiff(root2, root1, resolver);
-        CumulativeSizeStats final = updated.ApplyDiff(backward);
+        CumulativeTrieStats final = updated.ApplyDiff(backward);
 
         using (Assert.EnterMultipleScope())
         {

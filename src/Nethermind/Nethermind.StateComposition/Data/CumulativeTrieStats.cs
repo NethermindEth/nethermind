@@ -10,7 +10,7 @@ namespace Nethermind.StateComposition.Data;
 /// Immutable cumulative state composition stats.
 /// <see cref="ApplyDiff"/> returns a new instance with exact adds and removes applied.
 /// </summary>
-public readonly record struct CumulativeSizeStats(
+public readonly record struct CumulativeTrieStats(
     long AccountsTotal,
     long ContractsTotal,
     long StorageSlotsTotal,
@@ -60,7 +60,7 @@ public readonly record struct CumulativeSizeStats(
     /// completes and calls <see cref="FromScanStats"/>.
     /// </para>
     /// </summary>
-    internal CumulativeSizeStats ApplyDiff(TrieDiff diff) => this with
+    internal CumulativeTrieStats ApplyDiff(TrieDiff diff) => this with
     {
         AccountsTotal = AccountsTotal + diff.NetAccounts,
         ContractsTotal = ContractsTotal + diff.NetContracts,
@@ -83,7 +83,7 @@ public readonly record struct CumulativeSizeStats(
     /// <see cref="Data.TrieLevelStat"/>) to standard MPT (Branches/Extensions/Leaves):
     /// Branches = FullNodes, Extensions = ShortNodes − ValueNodes, Leaves = ValueNodes.
     /// </summary>
-    internal static CumulativeSizeStats FromScanStats(StateCompositionStats scan) => new(
+    internal static CumulativeTrieStats FromScanStats(StateCompositionStats scan) => new(
         scan.AccountsTotal,
         scan.ContractsTotal,
         scan.StorageSlotsTotal,

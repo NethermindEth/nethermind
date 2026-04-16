@@ -22,7 +22,7 @@ public interface IStateCompositionRpcModule : IRpcModule
                       "Check LastScanMetadata.IsComplete to confirm a scan has run; " +
                       "stats are zero-valued before the first scan completes.",
         ExampleResponse = "{\"currentStats\":{\"accountsTotal\":12345678},\"trieDistribution\":{\"accountTrieLevels\":[...]},\"blockNumber\":19000000,\"diffsSinceLastScan\":42,\"lastScanMetadata\":{\"isComplete\":true}}")]
-    Task<ResultWrapper<CachedStatsResponse>> statecomp_get();
+    Task<ResultWrapper<StateCompositionReport>> statecomp_get();
 
     [JsonRpcMethod(IsImplemented = true,
         Description = "Cancel the currently running scan, if any.",
