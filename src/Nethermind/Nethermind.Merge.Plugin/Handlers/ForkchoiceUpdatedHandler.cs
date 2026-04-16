@@ -343,14 +343,26 @@ public class ForkchoiceUpdatedHandler(
     }
 
     // Per Engine API spec, safeBlockHash and finalizedBlockHash MUST be ancestors of headBlockHash
-    // *in the same FCU request*. Walk parents from newHeadBlock instead of consulting
-    // _blockTree.IsMainChain — the latter reflects the previously-canonical chain and can wrongly
-    // reject valid requests when the EL has not yet reconciled to the new head (issue #11185).
-    // A null candidateHeader signals Keccak.Zero (no value supplied), which is consistent.
+    // *in the same FCU request*. A null candidateHeader signals Keccak.Zero (no value supplied),
+    // which is consistent.
+    //
+    // Fast path (steady state): if BOTH the candidate and newHeadBlock are on the canonical
+    // main chain, then by chain linearity (one canonical block per level, candidate.Number
+    // <= newHeadBlock.Number) the candidate is necessarily an ancestor of newHeadBlock. Two
+    // O(1) ChainLevelInfo lookups vs. the parent walk in the fallback. The IsMainChain check
+    // on newHeadBlock is essential — IsMainChain(candidate) alone would silently accept a
+    // non-ancestor when newHeadBlock sits on a side branch (the inverse of issue #11185).
+    //
+    // Slow path: walk parents from newHeadBlock and compare hashes. Required when the EL has
+    // not yet reconciled its canonical view to newHeadBlock — the case the original
+    // _blockTree.IsMainChain(blockHash) check got wrong (issue #11185).
     private bool IsInconsistent(BlockHeader? candidateHeader, Block newHeadBlock)
     {
         if (candidateHeader is null) return false;
         if (candidateHeader.Number > newHeadBlock.Number) return true;
+
+        if (_blockTree.IsMainChain(candidateHeader) && _blockTree.IsMainChain(newHeadBlock.Header))
+            return false;
 
         BlockHeader? cursor = newHeadBlock.Header;
         while (cursor is not null && cursor.Number > candidateHeader.Number)
