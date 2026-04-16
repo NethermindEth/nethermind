@@ -62,7 +62,7 @@ public static class TestLoader
             throw new ArgumentException($"Cannot find test resource: {testFileName}");
         }
 
-        var jsonOptions = new JsonSerializerOptions()
+        JsonSerializerOptions jsonOptions = new()
         {
             PropertyNameCaseInsensitive = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

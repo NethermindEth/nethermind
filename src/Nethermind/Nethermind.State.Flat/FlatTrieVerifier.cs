@@ -67,7 +67,7 @@ public class FlatTrieVerifier
         ArgumentNullException.ThrowIfNull(_persistence);
         ArgumentNullException.ThrowIfNull(_flatDbManager);
 
-        StateId stateId = new StateId(stateAtBlock);
+        StateId stateId = new(stateAtBlock);
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         if (reader.CurrentState != stateId)
         {
@@ -82,10 +82,7 @@ public class FlatTrieVerifier
     }
 
     // Internal method for testing with direct components
-    internal void Verify(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken)
-    {
-        VerifyCore(reader, trieStore, stateRoot, cancellationToken);
-    }
+    internal void Verify(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken) => VerifyCore(reader, trieStore, stateRoot, cancellationToken);
 
     private bool VerifyCore(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken)
     {
@@ -398,7 +395,7 @@ public class FlatTrieVerifier
             if (_logger.IsWarn) _logger.Warn($"Mismatched account. Path: {triePath}. Flat: {flatAccount}, Trie: {trieAccount}");
         }
 
-        if (trieAccount is not null && trieAccount.StorageRoot != Keccak.EmptyTreeHash)
+        if (trieAccount is not null)
         {
             Hash256 fullPath = triePath.Path.ToCommitment();
             StorageVerificationJob job = new(flatKey, fullPath, trieAccount.StorageRoot, isPreimageMode);
@@ -426,7 +423,7 @@ public class FlatTrieVerifier
             if (_logger.IsWarn) _logger.Warn($"Mismatched account. Hash: {trieHash}. Flat: {flatAccount}, Trie: {trieAccount}");
         }
 
-        if (trieAccount is not null && trieAccount.StorageRoot != Keccak.EmptyTreeHash)
+        if (trieAccount is not null)
         {
             Hash256 fullPath = trieHash.ToCommitment();
             StorageVerificationJob job = new(flatKey, fullPath, trieAccount.StorageRoot, true);
@@ -453,12 +450,32 @@ public class FlatTrieVerifier
         }
     }
 
+    private void VerifyEmptyStorage(StorageVerificationJob job, IPersistence.IPersistenceReader reader)
+    {
+        using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        while (flatIter.MoveNext())
+        {
+            if (!IsZeroValue(flatIter.CurrentValue))
+            {
+                Interlocked.Increment(ref _slotCount);
+                Interlocked.Increment(ref _missingInTrie);
+                if (_logger.IsWarn) _logger.Warn($"Orphaned flat storage for empty-root account. Account: {job.FlatAccountKey}, Slot: {flatIter.CurrentKey}");
+            }
+        }
+    }
+
     private void VerifyStorageHashed(
         StorageVerificationJob job,
         IPersistence.IPersistenceReader reader,
         IScopedTrieStore trieStore,
         CancellationToken cancellationToken)
     {
+        if (job.StorageRoot == Keccak.EmptyTreeHash)
+        {
+            VerifyEmptyStorage(job, reader);
+            return;
+        }
+
         using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
         TrieLeafIterator trieIter = new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
@@ -510,6 +527,13 @@ public class FlatTrieVerifier
         IScopedTrieStore trieStore,
         CancellationToken cancellationToken)
     {
+        // Empty storage root — any flat entries are orphans
+        if (job.StorageRoot == Keccak.EmptyTreeHash)
+        {
+            VerifyEmptyStorage(job, reader);
+            return;
+        }
+
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
         PatriciaTree storageTree = new(storageTrieStore, _logManager);
 
@@ -682,7 +706,7 @@ public class FlatTrieVerifier
             }
 
             // Navigate based on node type
-            TreePath fullPath = new TreePath(flatKey, 64);
+            TreePath fullPath = new(flatKey, 64);
             switch (currentNode.NodeType)
             {
                 case NodeType.Branch:
@@ -760,7 +784,7 @@ public class FlatTrieVerifier
 
         if (_logger.IsInfo) _logger.Info($"  -> Scanning remaining path with zero hash...");
 
-        TreePath fullPath = new TreePath(flatKey, 64);
+        TreePath fullPath = new(flatKey, 64);
         while (currentPath.Length < lookupLimit)
         {
             int nibble = fullPath[currentPath.Length];

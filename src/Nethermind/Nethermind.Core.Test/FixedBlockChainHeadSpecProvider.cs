@@ -12,10 +12,7 @@ namespace Nethermind.Core.Test
         ulong? timestamp = null)
         : IChainHeadSpecProvider
     {
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-        {
-            specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
-        }
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) => specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
         public ForkActivation? MergeBlockNumber => specProvider.MergeBlockNumber;
         public ulong TimestampFork => specProvider.TimestampFork;

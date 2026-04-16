@@ -17,14 +17,12 @@ public class GasCostTests
     {
         get
         {
-            static TestCaseData MakeTestCase(string testCase, ulong result, ulong fastLzSize, ulong l1BaseFee, ulong blobBaseFee, ulong l1BaseFeeScalar, ulong l1BlobBaseFeeScalar)
-            {
-                return new TestCaseData(new UInt256(fastLzSize), new UInt256(l1BaseFee), new UInt256(blobBaseFee), new UInt256(l1BaseFeeScalar), new UInt256(l1BlobBaseFeeScalar))
+            static TestCaseData MakeTestCase(string testCase, ulong result, ulong fastLzSize, ulong l1BaseFee, ulong blobBaseFee, ulong l1BaseFeeScalar, ulong l1BlobBaseFeeScalar) =>
+                new(new UInt256(fastLzSize), new UInt256(l1BaseFee), new UInt256(blobBaseFee), new UInt256(l1BaseFeeScalar), new UInt256(l1BlobBaseFeeScalar))
                 {
                     ExpectedResult = new UInt256(result),
                     TestName = testCase
                 };
-            }
 
             yield return MakeTestCase("Low compressed size", 3203000, 50, 1000000000, 10000000, 2, 3);
             yield return MakeTestCase("Below minimal #1", 3203000, 150, 1000000000, 10000000, 2, 3);

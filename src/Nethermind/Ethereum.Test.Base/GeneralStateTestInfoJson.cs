@@ -31,7 +31,7 @@ namespace Ethereum.Test.Base
             string? spec = null;
             if (reader.TokenType == JsonTokenType.StartObject)
             {
-                var depth = reader.CurrentDepth;
+                int depth = reader.CurrentDepth;
                 while (reader.Read())
                 {
                     if (reader.TokenType == JsonTokenType.EndObject && reader.CurrentDepth == depth)
@@ -84,9 +84,6 @@ namespace Ethereum.Test.Base
         public override void Write(
             Utf8JsonWriter writer,
             GeneralStateTestInfoJson info,
-            JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, info, options);
-        }
+            JsonSerializerOptions options) => JsonSerializer.Serialize(writer, info, options);
     }
 }

@@ -58,7 +58,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
     {
-        var taikoSpec = (ITaikoReleaseSpec)spec;
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
         if (taikoSpec.IsShastaEnabled && header.ExtraData is { Length: < TaikoHeaderHelper.ShastaExtraDataLen })
         {
@@ -78,7 +78,7 @@ public class TaikoHeaderValidator(
             return false;
         }
 
-        var taikoSpec = (ITaikoReleaseSpec)spec;
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
         if (taikoSpec.IsShastaEnabled)
         {
             return ValidateEip4396Header(header, parent, spec, ref error);
@@ -197,7 +197,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        var taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
 
         // Shasta fork enforces a strict timestamp increase, while other forks allow equal timestamps
         // (multiple L2 blocks per L1 block scenario).

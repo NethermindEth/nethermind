@@ -15,10 +15,7 @@ namespace Nethermind.State.Snap
 
         public byte[] ToRlpValue() => SlotRlpValue;
 
-        public bool Equals(in PathWithStorageSlot other)
-        {
-            return Path == other.Path && SlotRlpValue.AsSpan().SequenceEqual(other.SlotRlpValue);
-        }
+        public bool Equals(in PathWithStorageSlot other) => Path == other.Path && SlotRlpValue.AsSpan().SequenceEqual(other.SlotRlpValue);
 
         public bool Equals(PathWithStorageSlot other) => Equals(in other);
 

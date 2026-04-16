@@ -35,17 +35,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
         }
 
-        private void OnNewPending(object? sender, TxEventArgs e)
+        private void OnNewPending(object? sender, TxEventArgs e) => ScheduleAction(async () =>
         {
-            ScheduleAction(async () =>
-            {
-                using JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions
-                    ? TransactionForRpc.FromTransaction(e.Transaction, new(_specProvider.ChainId))
-                    : e.Transaction.Hash!);
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
-            });
-        }
+            using JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions
+                ? TransactionForRpc.FromTransaction(e.Transaction, new(_specProvider.ChainId))
+                : e.Transaction.Hash!);
+            await JsonRpcDuplexClient.SendJsonRpcResult(result);
+            if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
+        });
 
         public override string Type => SubscriptionType.EthSubscription.NewPendingTransactions;
 

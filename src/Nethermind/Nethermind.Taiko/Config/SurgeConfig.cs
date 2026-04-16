@@ -22,4 +22,5 @@ public class SurgeConfig : ISurgeConfig
     public int GasPriceRefreshTimeoutSeconds { get; set; } = 12;
     public int MaxGasLimitRatio { get; set; } = 0;
     public bool TdxEnabled { get; set; } = false;
+
 }

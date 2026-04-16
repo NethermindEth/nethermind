@@ -12,7 +12,7 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public Hash256 GetHash() => new Hash256(_keccakHash.GenerateValueHash());
+        public Hash256 GetHash() => new(_keccakHash.GenerateValueHash());
 
         public ValueHash256 GetValueHash() => _keccakHash.GenerateValueHash();
 
@@ -22,15 +22,9 @@ namespace Nethermind.Crypto
             _keccakHash = keccakHash;
         }
 
-        public override void Write(ReadOnlySpan<byte> bytesToWrite)
-        {
-            _keccakHash.Update(bytesToWrite);
-        }
+        public override void Write(ReadOnlySpan<byte> bytesToWrite) => _keccakHash.Update(bytesToWrite);
 
-        public override void WriteByte(byte byteToWrite)
-        {
-            _keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1));
-        }
+        public override void WriteByte(byte byteToWrite) => _keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1));
 
         protected override void WriteZero(int length)
         {

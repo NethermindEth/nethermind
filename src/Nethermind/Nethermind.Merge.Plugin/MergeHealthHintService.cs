@@ -8,18 +8,11 @@ using Nethermind.Consensus;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class MergeHealthHintService : IHealthHintService
+    public class MergeHealthHintService(IHealthHintService? healthHintService, IPoSSwitcher? poSSwitcher, IBlocksConfig blocksConfig) : IHealthHintService
     {
-        private readonly IHealthHintService _healthHintService;
-        private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IBlocksConfig _blocksConfig;
-
-        public MergeHealthHintService(IHealthHintService? healthHintService, IPoSSwitcher? poSSwitcher, IBlocksConfig blocksConfig)
-        {
-            _healthHintService = healthHintService ?? throw new ArgumentNullException(nameof(healthHintService));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
-        }
+        private readonly IHealthHintService _healthHintService = healthHintService ?? throw new ArgumentNullException(nameof(healthHintService));
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+        private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {

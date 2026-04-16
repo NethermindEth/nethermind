@@ -32,10 +32,7 @@ namespace Nethermind.Crypto
 
         public byte[]? Bytes { get; }
 
-        public override readonly string ToString()
-        {
-            return ToString(true);
-        }
+        public override readonly string ToString() => ToString(true);
 
         public readonly string ToString(bool withZeroX)
         {
@@ -47,10 +44,7 @@ namespace Nethermind.Crypto
             return Core.Extensions.Bytes.ToHexString(Bytes, withZeroX);
         }
 
-        public static Keccak512 Compute(Rlp rlp)
-        {
-            return InternalCompute(rlp.Bytes);
-        }
+        public static Keccak512 Compute(Rlp rlp) => InternalCompute(rlp.Bytes);
 
         public static Keccak512 Compute(byte[]? input)
         {
@@ -92,10 +86,7 @@ namespace Nethermind.Crypto
             KeccakHash.ComputeUIntsToUint(input, output);
         }
 
-        private static Keccak512 InternalCompute(byte[] input)
-        {
-            return new Keccak512(KeccakHash.ComputeHashBytes(input, Size));
-        }
+        private static Keccak512 InternalCompute(byte[] input) => new(KeccakHash.ComputeHashBytes(input, Size));
 
         public static Keccak512 Compute(string? input)
         {
@@ -107,20 +98,11 @@ namespace Nethermind.Crypto
             return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
         }
 
-        public readonly bool Equals(Keccak512 other)
-        {
-            return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
-        }
+        public readonly bool Equals(Keccak512 other) => Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
 
-        public override readonly bool Equals(object obj)
-        {
-            return obj?.GetType() == typeof(Keccak512) && Equals((Keccak512)obj);
-        }
+        public override readonly bool Equals(object obj) => obj?.GetType() == typeof(Keccak512) && Equals((Keccak512)obj);
 
-        public override readonly int GetHashCode()
-        {
-            return BinaryPrimitives.ReadInt32LittleEndian(Bytes);
-        }
+        public override readonly int GetHashCode() => BinaryPrimitives.ReadInt32LittleEndian(Bytes);
 
         public static bool operator ==(Keccak512 a, Keccak512 b)
         {

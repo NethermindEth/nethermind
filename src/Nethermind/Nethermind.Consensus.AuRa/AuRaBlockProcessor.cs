@@ -151,10 +151,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private void OnAddingTransaction(object? sender, AddingTxEventArgs e)
-        {
-            CheckTxPosdaoRules(e);
-        }
+        private void OnAddingTransaction(object? sender, AddingTxEventArgs e) => CheckTxPosdaoRules(e);
 
         private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
         {

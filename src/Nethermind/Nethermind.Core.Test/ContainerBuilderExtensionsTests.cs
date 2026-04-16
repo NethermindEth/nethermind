@@ -40,20 +40,14 @@ public class ContainerBuilderExtensionsTests
     {
         public MainComponentDependency Property => mainComponentDependency;
 
-        public void Dispose()
-        {
-            scope.Dispose();
-        }
+        public void Dispose() => scope.Dispose();
     }
 
     private class MainComponentDependency : IDisposable
     {
         public bool WasDisposed { get; set; }
 
-        public void Dispose()
-        {
-            WasDisposed = true;
-        }
+        public void Dispose() => WasDisposed = true;
     }
 
     private class MainComponentDependencySubClass : MainComponentDependency
@@ -91,9 +85,6 @@ public class ContainerBuilderExtensionsTests
     {
         public bool WasDisposed { get; set; } = false;
 
-        public void Dispose()
-        {
-            WasDisposed = true;
-        }
+        public void Dispose() => WasDisposed = true;
     }
 }

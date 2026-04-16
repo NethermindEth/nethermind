@@ -27,10 +27,7 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNu
 
     public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash) { }
 
-    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
-    {
-        return (header.Number == bedrockBlockNumber - 1, header.IsPostMerge = header.Number >= bedrockBlockNumber);
-    }
+    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header) => (header.Number == bedrockBlockNumber - 1, header.IsPostMerge = header.Number >= bedrockBlockNumber);
 
     public bool HasEverReachedTerminalBlock() => true;
 

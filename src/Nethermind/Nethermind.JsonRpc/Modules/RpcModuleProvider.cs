@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             _registerMethod = GetType().GetMethods().First(m => m.Name == nameof(Register));
-            foreach (var rpcModuleInfo in rpcModules)
+            foreach (RpcModuleInfo rpcModuleInfo in rpcModules)
             {
                 RegisterNonGeneric(rpcModuleInfo.ModuleType, rpcModuleInfo.Pool);
                 if (jsonRpcConfig.PreloadRpcModules) rpcModuleInfo.Pool.Preload();
@@ -89,8 +89,8 @@ namespace Nethermind.JsonRpc.Modules
             string moduleType = attribute.ModuleType;
             lock (_updateRegistrationsLock)
             {
-                var methods = GetMethods<T>(moduleType).ToArray();
-                var poolRecord = GetPool(pool);
+                KeyValuePair<string, ResolvedMethodInfo>[] methods = GetMethods<T>(moduleType).ToArray();
+                (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolRecord = GetPool(pool);
 
                 methods
                     .ForEach((method) =>
@@ -110,10 +110,7 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule
-        {
-            return (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
-        }
+        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule => (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
 
         private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
         {
@@ -188,7 +185,7 @@ namespace Nethermind.JsonRpc.Modules
         public IRpcModulePool? GetPoolForMethod(string methodName)
         {
             EnsureFrozenCollection();
-            return _frozenPools.TryGetValue(methodName, out var poolInfo) ? poolInfo.ModulePool : null;
+            return _frozenPools.TryGetValue(methodName, out (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolInfo) ? poolInfo.ModulePool : null;
         }
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
@@ -231,10 +228,7 @@ namespace Nethermind.JsonRpc.Modules
                     return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke([]));
 
                     [DoesNotReturn, StackTraceHidden]
-                    static void ThrowNotJsonRpc()
-                    {
-                        throw new InvalidOperationException("This parameter is not an IJsonRpcParam");
-                    }
+                    static void ThrowNotJsonRpc() => throw new InvalidOperationException("This parameter is not an IJsonRpcParam");
                 }
 
                 internal ExpectedParameter(ParameterInfo info, ConstructorInvoker? constructor, ParameterDetails introspection)
@@ -255,10 +249,7 @@ namespace Nethermind.JsonRpc.Modules
                 IsOptional = 0b10,
             }
 
-            public ResolvedMethodInfo()
-            {
-                ExpectedParameters = [];
-            }
+            public ResolvedMethodInfo() => ExpectedParameters = [];
 
             public ResolvedMethodInfo(
                 string moduleType,
@@ -271,7 +262,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 ParameterInfo[] parameters = methodInfo.GetParameters();
                 ExpectedParameter[] expectedParameters = new ExpectedParameter[parameters.Length];
-                for (var i = 0; i < parameters.Length; i++)
+                for (int i = 0; i < parameters.Length; i++)
                 {
                     ParameterInfo parameter = parameters[i];
                     ConstructorInvoker? constructor = null;
@@ -306,10 +297,7 @@ namespace Nethermind.JsonRpc.Modules
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
 
-            public override string ToString()
-            {
-                return MethodInfo.Name;
-            }
+            public override string ToString() => MethodInfo.Name;
 
             private static bool IsNullableParameter(ParameterInfo parameterInfo)
             {

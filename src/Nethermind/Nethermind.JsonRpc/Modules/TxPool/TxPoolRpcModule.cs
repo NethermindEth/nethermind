@@ -11,22 +11,22 @@ namespace Nethermind.JsonRpc.Modules.TxPool
     {
         public ResultWrapper<TxPoolStatus> txpool_status()
         {
-            var poolInfo = txPoolInfoProvider.GetInfo();
-            var poolStatus = new TxPoolStatus(poolInfo);
+            TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
+            TxPoolStatus poolStatus = new(poolInfo);
 
             return ResultWrapper<TxPoolStatus>.Success(poolStatus);
         }
 
         public ResultWrapper<TxPoolContent> txpool_content()
         {
-            var poolInfo = txPoolInfoProvider.GetInfo();
-            var chainId = specProvider.ChainId;
+            TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
+            ulong chainId = specProvider.ChainId;
             return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo, chainId));
         }
 
         public ResultWrapper<TxPoolInspection> txpool_inspect()
         {
-            var poolInfo = txPoolInfoProvider.GetInfo();
+            TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
             return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
         }
     }

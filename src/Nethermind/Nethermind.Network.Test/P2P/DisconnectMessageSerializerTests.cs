@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test.P2P
         [TestCase("82c104", EthDisconnectReason.TooManyPeers)]
         public void Can_read_other_format_message(string hex, EthDisconnectReason expectedReason)
         {
-            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+            DisconnectMessageSerializer serializer = new();
             byte[] serialized = Bytes.FromHexString(hex);
             using DisconnectMessage deserialized = serializer.Deserialize(serialized);
             deserialized.Reason.Should().Be((int)expectedReason);

@@ -47,7 +47,7 @@ public partial class BlockProducerBaseTests
             testRpc.SpecProvider,
             new BlocksConfig(),
             LimboLogs.Instance);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -67,7 +67,7 @@ public partial class BlockProducerBaseTests
             testRpc.SpecProvider,
             LimboLogs.Instance,
             blocksConfig);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -88,7 +88,7 @@ public partial class BlockProducerBaseTests
             testRpc.SpecProvider,
             LimboLogs.Instance,
             blocksConfig);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -112,7 +112,7 @@ public partial class BlockProducerBaseTests
             Substitute.For<ISpecProvider>(),
             LimboLogs.Instance,
             Substitute.For<IBlocksConfig>());
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), Substitute.For<IBlockTree>(), blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -134,7 +134,7 @@ public partial class BlockProducerBaseTests
             new CliqueConfig(),
             LimboLogs.Instance);
 
-        CliqueBlockProducerRunner runner = new CliqueBlockProducerRunner(
+        CliqueBlockProducerRunner runner = new(
             testRpc.BlockTree,
             testRpc.Timestamper,
             Substitute.For<ICryptoRandom>(),

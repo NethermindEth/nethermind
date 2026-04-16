@@ -162,10 +162,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// <summary>
     /// Determines if the gas price should be forced to refresh due to timeout.
     /// </summary>
-    private bool ForceRefreshGasPrice()
-    {
-        return DateTime.UtcNow - _lastGasPriceCalculation >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
-    }
+    private bool ForceRefreshGasPrice() => DateTime.UtcNow - _lastGasPriceCalculation >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
 
     private async ValueTask<L1FeeHistoryResults?> GetL1FeeHistory()
     {

@@ -26,10 +26,7 @@ public class FastHashBenchmarks
     }
 
     [Benchmark(Baseline = true)]
-    public int FastHash()
-    {
-        return ((ReadOnlySpan<byte>)_data).FastHash();
-    }
+    public int FastHash() => ((ReadOnlySpan<byte>)_data).FastHash();
 
     [Benchmark]
     public int FastHashAes()

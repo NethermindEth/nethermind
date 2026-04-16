@@ -15,10 +15,7 @@ public class DoubleArrayConverterTests : ConverterTestBase<double[]>
     static readonly DoubleArrayConverter converter = new();
 
     [TestCaseSource(nameof(RoundtripTestCases))]
-    public void Test_roundtrip(double[] value)
-    {
-        TestConverter(value, static (a, b) => a.AsSpan().SequenceEqual(b), converter);
-    }
+    public void Test_roundtrip(double[] value) => TestConverter(value, static (a, b) => a.AsSpan().SequenceEqual(b), converter);
 
     static IEnumerable<TestCaseData> RoundtripTestCases()
     {

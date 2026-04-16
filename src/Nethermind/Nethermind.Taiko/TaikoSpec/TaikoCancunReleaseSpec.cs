@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Specs.Forks;
 
@@ -15,6 +16,11 @@ public class TaikoOntakeReleaseSpec : Cancun, ITaikoReleaseSpec
     public bool IsShastaEnabled { get; set; }
     public bool UseSurgeGasPriceOracle { get; set; }
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
+    public bool IsRip7728Enabled { get; set; }
+    public bool IsL1StaticCallEnabled { get; set; }
+
+    public override FrozenSet<AddressAsKey> BuildPrecompilesCache() =>
+        ITaikoReleaseSpec.BuildTaikoPrecompilesCache(base.BuildPrecompilesCache(), IsRip7728Enabled, IsL1StaticCallEnabled);
 }
 
 public class TaikoPacayaReleaseSpec : TaikoOntakeReleaseSpec

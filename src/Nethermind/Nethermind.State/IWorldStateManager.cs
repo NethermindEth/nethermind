@@ -14,7 +14,7 @@ public interface IWorldStateManager
 {
     IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    ISnapServer? SnapServer { get; }
+    ISnapServer SnapServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>

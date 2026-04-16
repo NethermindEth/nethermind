@@ -113,42 +113,28 @@ namespace Ethereum.PoW.Test
             public string Result { get; set; }
         }
 
-        public class EthashTest
+        public class EthashTest(
+            string name,
+            ulong nonce,
+            Hash256 mixHash,
+            byte[] header,
+            Hash256 seed,
+            BigInteger cacheSize,
+            BigInteger fullSize,
+            Hash256 headerHash,
+            Hash256 cacheHash,
+            Hash256 result)
         {
-            public EthashTest(
-                string name,
-                ulong nonce,
-                Hash256 mixHash,
-                byte[] header,
-                Hash256 seed,
-                BigInteger cacheSize,
-                BigInteger fullSize,
-                Hash256 headerHash,
-                Hash256 cacheHash,
-                Hash256 result)
-            {
-                Name = name;
-                Nonce = nonce;
-                MixHash = mixHash;
-                Header = header;
-                Seed = seed;
-                CacheSize = cacheSize;
-                FullSize = fullSize;
-                CacheHash = cacheHash;
-                HeaderHash = headerHash;
-                Result = result;
-            }
-
-            public string Name { get; }
-            public ulong Nonce { get; }
-            public Hash256 MixHash { get; }
-            public byte[] Header { get; }
-            public Hash256 Seed { get; }
-            public BigInteger CacheSize { get; }
-            public BigInteger FullSize { get; }
-            public Hash256 HeaderHash { get; }
-            public Hash256 CacheHash { get; }
-            public Hash256 Result { get; }
+            public string Name { get; } = name;
+            public ulong Nonce { get; } = nonce;
+            public Hash256 MixHash { get; } = mixHash;
+            public byte[] Header { get; } = header;
+            public Hash256 Seed { get; } = seed;
+            public BigInteger CacheSize { get; } = cacheSize;
+            public BigInteger FullSize { get; } = fullSize;
+            public Hash256 HeaderHash { get; } = headerHash;
+            public Hash256 CacheHash { get; } = cacheHash;
+            public Hash256 Result { get; } = result;
 
             public override string ToString() => Name;
         }

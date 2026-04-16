@@ -43,18 +43,15 @@ namespace Nethermind.PerfTest
 {
     internal static class Program
     {
-        private static async Task Main(string[] args)
-        {
-            await RunBenchmarkBlocks().ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    _logger.Error("test failed", t.Exception);
-                    _logger.Error("inner", t.Exception?.InnerException);
-                    Console.ReadLine();
-                }
-            });
-        }
+        private static async Task Main(string[] args) => await RunBenchmarkBlocks().ContinueWith(t =>
+                                                                  {
+                                                                      if (t.IsFaulted)
+                                                                      {
+                                                                          _logger.Error("test failed", t.Exception);
+                                                                          _logger.Error("inner", t.Exception?.InnerException);
+                                                                          Console.ReadLine();
+                                                                      }
+                                                                  });
 
         private static ILogger _logger;
         private static ILogManager _logManager;
@@ -85,125 +82,56 @@ namespace Nethermind.PerfTest
             public Block Head => _blockTree.Head;
             public bool CanAcceptNewBlocks { get; } = true;
 
-            public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
-            {
-                await _blockTree.Accept(blockTreeVisitor, cancellationToken);
-            }
+            public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => await _blockTree.Accept(blockTreeVisitor, cancellationToken);
 
             public ChainLevelInfo FindLevel(long number) => _blockTree.FindLevel(number);
-            public BlockInfo FindCanonicalBlockInfo(long blockNumber)
-            {
-                throw new NotImplementedException();
-            }
+            public BlockInfo FindCanonicalBlockInfo(long blockNumber) => throw new NotImplementedException();
 
-            public AddBlockResult Insert(Block block)
-            {
-                return _blockTree.Insert(block);
-            }
+            public AddBlockResult Insert(Block block) => _blockTree.Insert(block);
 
-            public void Insert(IEnumerable<Block> blocks)
-            {
-                _blockTree.Insert(blocks);
-            }
+            public void Insert(IEnumerable<Block> blocks) => _blockTree.Insert(blocks);
 
-            public void UpdateHeadBlock(Keccak blockHash)
-            {
-                _blockTree.UpdateHeadBlock(blockHash);
-            }
+            public void UpdateHeadBlock(Keccak blockHash) => _blockTree.UpdateHeadBlock(blockHash);
 
-            public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)
-            {
-                return _blockTree.SuggestBlock(block, shouldProcess);
-            }
+            public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true) => _blockTree.SuggestBlock(block, shouldProcess);
 
-            public AddBlockResult Insert(BlockHeader header)
-            {
-                return _blockTree.Insert(header);
-            }
+            public AddBlockResult Insert(BlockHeader header) => _blockTree.Insert(header);
 
-            public AddBlockResult SuggestHeader(BlockHeader header)
-            {
-                return _blockTree.SuggestHeader(header);
-            }
+            public AddBlockResult SuggestHeader(BlockHeader header) => _blockTree.SuggestHeader(header);
 
             public Keccak HeadHash => _blockTree.HeadHash;
             public Keccak GenesisHash => _blockTree.GenesisHash;
             public Keccak PendingHash => _blockTree.PendingHash;
 
-            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions option)
-            {
-                return _blockTree.FindBlock(blockHash, option);
-            }
+            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions option) => _blockTree.FindBlock(blockHash, option);
 
-            public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options)
-            {
-                return _blockTree.FindHeader(blockHash, options);
-            }
+            public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockHash, options);
 
-            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
-            {
-                return _blockTree.FindBlock(blockNumber, options);
-            }
+            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockNumber, options);
 
-            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options)
-            {
-                return _blockTree.FindHeader(blockNumber, options);
-            }
+            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockNumber, options);
 
-            public Keccak FindBlockHash(long blockNumber)
-            {
-                return _blockTree.FindBlockHash(blockNumber);
-            }
+            public Keccak FindBlockHash(long blockNumber) => _blockTree.FindBlockHash(blockNumber);
 
-            public bool IsMainChain(BlockHeader blockHeader)
-            {
-                return _blockTree.IsMainChain(blockHeader);
-            }
+            public bool IsMainChain(BlockHeader blockHeader) => _blockTree.IsMainChain(blockHeader);
 
-            public Keccak FindHash(long blockNumber)
-            {
-                return _blockTree.FindHash(blockNumber);
-            }
+            public Keccak FindHash(long blockNumber) => _blockTree.FindHash(blockNumber);
 
-            public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
-            {
-                return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
-            }
+            public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
-            public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth)
-            {
-                return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
-            }
+            public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth) => _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
 
-            public void DeleteInvalidBlock(Block invalidBlock)
-            {
-                _blockTree.DeleteInvalidBlock(invalidBlock);
-            }
+            public void DeleteInvalidBlock(Block invalidBlock) => _blockTree.DeleteInvalidBlock(invalidBlock);
 
-            public bool IsMainChain(Keccak blockHash)
-            {
-                return _blockTree.IsMainChain(blockHash);
-            }
+            public bool IsMainChain(Keccak blockHash) => _blockTree.IsMainChain(blockHash);
 
-            public BlockHeader FindBestSuggestedHeader()
-            {
-                return _blockTree.BestSuggestedHeader;
-            }
+            public BlockHeader FindBestSuggestedHeader() => _blockTree.BestSuggestedHeader;
 
-            public bool IsKnownBlock(long number, Keccak blockHash)
-            {
-                return _blockTree.IsKnownBlock(number, blockHash);
-            }
+            public bool IsKnownBlock(long number, Keccak blockHash) => _blockTree.IsKnownBlock(number, blockHash);
 
-            public void UpdateMainChain(Block[] blocks, bool wereProcessed)
-            {
-                _blockTree.UpdateMainChain(blocks, wereProcessed);
-            }
+            public void UpdateMainChain(Block[] blocks, bool wereProcessed) => _blockTree.UpdateMainChain(blocks, wereProcessed);
 
-            public bool WasProcessed(long number, Keccak blockHash)
-            {
-                return false;
-            }
+            public bool WasProcessed(long number, Keccak blockHash) => false;
 
             public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
 
@@ -215,10 +143,7 @@ namespace Nethermind.PerfTest
 
             public event EventHandler<BlockEventArgs> NewHeadBlock;
 
-            public int DeleteChainSlice(in long startNumber, long? endNumber)
-            {
-                return _blockTree.DeleteChainSlice(startNumber, endNumber);
-            }
+            public int DeleteChainSlice(in long startNumber, long? endNumber) => _blockTree.DeleteChainSlice(startNumber, endNumber);
 
             public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
         }
@@ -255,7 +180,7 @@ namespace Nethermind.PerfTest
             if (_logger.IsInfo) _logger.Info("State DBs deleted");
 
             /* load spec */
-            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer(), _logManager);
+            ChainSpecLoader loader = new(new EthereumJsonSerializer(), _logManager);
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "goerli.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
@@ -366,7 +291,7 @@ namespace Nethermind.PerfTest
             _logger.Info($"Starting benchmark processor...");
             /* start processing */
             BigInteger totalGas = BigInteger.Zero;
-            Stopwatch stopwatch = new Stopwatch();
+            Stopwatch stopwatch = new();
             Block currentHead;
             long maxMemory = 0;
             blockTree.NewHeadBlock += (sender, args) =>
@@ -426,7 +351,7 @@ namespace Nethermind.PerfTest
 
             bool isStarted = false;
 
-            TaskCompletionSource<object> completionSource = new TaskCompletionSource<object>();
+            TaskCompletionSource<object> completionSource = new();
             blockTree.NewBestSuggestedBlock += (sender, args) =>
             {
                 if (!isStarted)
@@ -443,7 +368,7 @@ namespace Nethermind.PerfTest
                 }
             };
 
-            DbBlocksLoader dbBlocksLoader = new DbBlocksLoader(blockTree, _logger, 0, 10000, BlocksToLoad);
+            DbBlocksLoader dbBlocksLoader = new(blockTree, _logger, 0, 10000, BlocksToLoad);
             await Task.WhenAny(completionSource.Task, blockTree.Accept(dbBlocksLoader, CancellationToken.None));
 
             await blockchainProcessor.StopAsync(true).ContinueWith(

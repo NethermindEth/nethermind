@@ -44,14 +44,14 @@ public class TransactionForRpcTests
             Signature = new Signature(r, s, 27)
         };
 
-        var txForRpc = TransactionForRpc.FromTransaction(tx);
+        TransactionForRpc txForRpc = TransactionForRpc.FromTransaction(tx);
 
         EthereumJsonSerializer serializer = new();
         string serialized = serializer.Serialize(txForRpc);
 
-        var json = JObject.Parse(serialized);
-        var expectedS = JObject.Parse("""{ "s": "0x20000000000000000000000000000000000000000000000000000000000"}""");
-        var expectedR = JObject.Parse("""{ "r": "0x1000000000000000000000000000000000000000000000000000000000000"}""");
+        JObject json = JObject.Parse(serialized);
+        JObject expectedS = JObject.Parse("""{ "s": "0x20000000000000000000000000000000000000000000000000000000000"}""");
+        JObject expectedR = JObject.Parse("""{ "r": "0x1000000000000000000000000000000000000000000000000000000000000"}""");
 
         json.Should().ContainSubtree(expectedS);
         json.Should().ContainSubtree(expectedR);
@@ -62,7 +62,7 @@ public class TransactionForRpcTests
     {
         TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, new(SomeChainId));
         string serialized = _serializer.Serialize(rpcTransaction);
-        using var jsonDocument = JsonDocument.Parse(serialized);
+        using JsonDocument jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
 
         switch (transaction.Type)
@@ -83,7 +83,7 @@ public class TransactionForRpcTests
                 SetCodeTransactionForRpcTests.ValidateSchema(json);
                 break;
             default:
-                throw new ArgumentOutOfRangeException();
+                throw new ArgumentOutOfRangeException(nameof(transaction), transaction.Type, "Unknown transaction type.");
         }
     }
 
@@ -92,7 +92,7 @@ public class TransactionForRpcTests
     {
         TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, new(SomeChainId));
         string serialized = _serializer.Serialize(rpcTransaction);
-        using var jsonDocument = JsonDocument.Parse(serialized);
+        using JsonDocument jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
 
         json.GetProperty("hash").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
@@ -124,7 +124,7 @@ public class TransactionForRpcTests
         TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx);
 
         rpcTx.Should().BeOfType<LegacyTransactionForRpc>();
-        var legacyRpcTx = (LegacyTransactionForRpc)rpcTx;
+        LegacyTransactionForRpc legacyRpcTx = (LegacyTransactionForRpc)rpcTx;
 
         ulong? expectedChainId = tx.Signature.ChainId;
         expectedChainId.Should().Be(0xc72dd9d5e883eul);
@@ -155,7 +155,7 @@ public class TransactionForRpcTests
         TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx);
 
         rpcTx.Should().BeOfType<LegacyTransactionForRpc>();
-        var legacyRpcTx = (LegacyTransactionForRpc)rpcTx;
+        LegacyTransactionForRpc legacyRpcTx = (LegacyTransactionForRpc)rpcTx;
 
         legacyRpcTx.ChainId.Should().Be(explicitChainId);
     }

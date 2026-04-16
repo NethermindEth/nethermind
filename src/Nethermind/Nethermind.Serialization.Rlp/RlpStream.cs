@@ -43,20 +43,11 @@ namespace Nethermind.Serialization.Rlp
                                   + MemorySizes.Align(MemorySizes.ArrayOverhead + Length)
                                   + MemorySizes.Align(sizeof(int));
 
-        public RlpStream(int length)
-        {
-            _data = new byte[length];
-        }
+        public RlpStream(int length) => _data = new byte[length];
 
-        public RlpStream(byte[] data)
-        {
-            _data = data;
-        }
+        public RlpStream(byte[] data) => _data = data;
 
-        public RlpStream(in CappedArray<byte> data)
-        {
-            _data = data;
-        }
+        public RlpStream(in CappedArray<byte> data) => _data = data;
 
         public void EncodeArray<T>(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -257,7 +248,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
                 {
@@ -274,7 +265,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
                 {
@@ -291,9 +282,9 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
-                var count = keccaks.Count;
+                int count = keccaks.Count;
                 for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);
@@ -310,9 +301,9 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
-                var count = keccaks.Count;
+                int count = keccaks.Count;
                 for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);

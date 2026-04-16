@@ -66,7 +66,7 @@ partial class LogIndexStorage
             _lastAtMin ??= _storage.MinBlockNumber;
             _lastAtMax ??= _storage.MaxBlockNumber;
 
-            var uncompacted = 0;
+            int uncompacted = 0;
             if (_storage.MinBlockNumber is { } storageMin && storageMin < _lastAtMin)
                 uncompacted += _lastAtMin.Value - storageMin;
             if (_storage.MaxBlockNumber is { } storageMax && storageMax > _lastAtMax)
@@ -132,7 +132,7 @@ partial class LogIndexStorage
                     {
                         if (_logger.IsInfo) _logger.Info($"Log index: compaction started, DB size: {_storage.GetDbSize()}");
 
-                        var timestamp = Stopwatch.GetTimestamp();
+                        long timestamp = Stopwatch.GetTimestamp();
                         _rootDb.Compact();
 
                         TimeSpan elapsed = Stopwatch.GetElapsedTime(timestamp);

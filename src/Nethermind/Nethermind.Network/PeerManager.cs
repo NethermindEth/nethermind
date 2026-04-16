@@ -748,18 +748,11 @@ namespace Nethermind.Network
             Incompatible
         }
 
-        private readonly struct PeerStats
+        private readonly struct PeerStats(Peer peer, bool failedValidation, long currentReputation)
         {
-            public Peer Peer { get; }
-            public bool FailedValidation { get; }
-            public long CurrentReputation { get; }
-
-            public PeerStats(Peer peer, bool failedValidation, long currentReputation)
-            {
-                Peer = peer;
-                FailedValidation = failedValidation;
-                CurrentReputation = currentReputation;
-            }
+            public Peer Peer { get; } = peer;
+            public bool FailedValidation { get; } = failedValidation;
+            public long CurrentReputation { get; } = currentReputation;
         }
 
         private class PeerStatsComparer : IComparer<PeerStats>

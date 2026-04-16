@@ -444,15 +444,12 @@ public unsafe class EvmOpcodesBenchmark
         _ => Enum.IsDefined(instruction) ? ((ushort)2, (ushort)1, (ushort)0) : throw new NotImplementedException($"opcode {instruction} not implemented yet"),
     };
 
-    private static (int InputCount, int OutputCount) GetStackIo(Instruction opcode)
+    private static (int InputCount, int OutputCount) GetStackIo(Instruction opcode) => opcode switch
     {
-        return opcode switch
-        {
-            Instruction.CALL or Instruction.CALLCODE => (7, 1),
-            Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 1),
-            _ => (StackRequirements(opcode).InputCount, StackRequirements(opcode).OutputCount),
-        };
-    }
+        Instruction.CALL or Instruction.CALLCODE => (7, 1),
+        Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 1),
+        _ => (StackRequirements(opcode).InputCount, StackRequirements(opcode).OutputCount),
+    };
 
     private int SetupStackForOpcode(Instruction opcode, int runs = 1)
     {
@@ -537,10 +534,7 @@ public unsafe class EvmOpcodesBenchmark
         return depth;
     }
 
-    private int SetupStackForBinaryRuns(int runs)
-    {
-        return SetupStackForBinaryRuns(runs, in ValueA, in ValueB);
-    }
+    private int SetupStackForBinaryRuns(int runs) => SetupStackForBinaryRuns(runs, in ValueA, in ValueB);
 
     private int SetupStackForTernaryRuns(int runs, in UInt256 first, in UInt256 second, in UInt256 modulus)
     {
@@ -596,10 +590,7 @@ public unsafe class EvmOpcodesBenchmark
         return inputCount;
     }
 
-    private void SetupCallStack(bool hasValue)
-    {
-        SetupCallStack(hasValue, in CallTarget);
-    }
+    private void SetupCallStack(bool hasValue) => SetupCallStack(hasValue, in CallTarget);
 
     private void SetupCallStack(bool hasValue, in UInt256 target)
     {
@@ -739,27 +730,18 @@ public unsafe class EvmOpcodesBenchmark
         }
     }
 
-    private static bool RequiresPerRunLocationSetup(Instruction opcode)
-    {
-        return PerRunRefreshedOpcodes.Contains(opcode);
-    }
+    private static bool RequiresPerRunLocationSetup(Instruction opcode) => PerRunRefreshedOpcodes.Contains(opcode);
 
-    private static bool IsCallOpcode(Instruction opcode)
-    {
-        return opcode is Instruction.CALL
+    private static bool IsCallOpcode(Instruction opcode) => opcode is Instruction.CALL
             or Instruction.CALLCODE
             or Instruction.DELEGATECALL
             or Instruction.STATICCALL;
-    }
 
-    private static bool RequiresIndependentBinaryInputs(Instruction opcode)
-    {
-        return opcode is Instruction.MUL
+    private static bool RequiresIndependentBinaryInputs(Instruction opcode) => opcode is Instruction.MUL
             or Instruction.DIV
             or Instruction.SDIV
             or Instruction.MOD
             or Instruction.SMOD;
-    }
 
     private int SetupStackForIndependentBinaryRuns(Instruction opcode, int runs)
     {
@@ -804,10 +786,8 @@ public unsafe class EvmOpcodesBenchmark
         }
     }
 
-    private static byte[] CreateDynamicCallCode(int index)
-    {
+    private static byte[] CreateDynamicCallCode(int index) =>
         // STOP halts immediately; trailing bytes make each code hash distinct.
-        return
         [
             (byte)Instruction.STOP,
             (byte)(index & 0xFF),
@@ -817,7 +797,6 @@ public unsafe class EvmOpcodesBenchmark
             (byte)Instruction.ADD,
             (byte)Instruction.POP,
         ];
-    }
 
     private void PreparePerRunLocationSetup(int runIndex)
     {

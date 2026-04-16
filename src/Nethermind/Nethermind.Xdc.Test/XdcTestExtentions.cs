@@ -7,18 +7,12 @@ namespace Nethermind.Core.Test.Builders;
 
 public static class BuildExtensions
 {
-    public static XdcBlockHeaderBuilder XdcBlockHeader(this Build build)
-    {
-        return new XdcBlockHeaderBuilder();
-    }
+    public static XdcBlockHeaderBuilder XdcBlockHeader(this Build build) =>
+        new();
 
-    public static XdcSubnetBlockHeaderBuilder XdcSubnetBlockHeader(this Build build)
-    {
-        return new XdcSubnetBlockHeaderBuilder();
-    }
+    public static XdcSubnetBlockHeaderBuilder XdcSubnetBlockHeader(this Build build) =>
+        new();
 
-    public static QuorumCertificateBuilder QuorumCertificate(this Build build)
-    {
-        return new QuorumCertificateBuilder();
-    }
+    public static QuorumCertificateBuilder QuorumCertificate(this Build build) =>
+        new();
 }

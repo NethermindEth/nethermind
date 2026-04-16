@@ -190,10 +190,7 @@ namespace Nethermind.Consensus.Producers
             Sealer.SealBlock(block, token);
 
         protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
-            CancellationToken token = default)
-        {
-            return Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);
-        }
+            CancellationToken token = default) => Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);
 
         private bool PreparedBlockCanBeMined(Block? block)
         {

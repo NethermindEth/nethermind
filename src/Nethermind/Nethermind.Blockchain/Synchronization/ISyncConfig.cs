@@ -21,8 +21,8 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
-    // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
-    [ConfigItem(Description = "In Fast sync mode, the min height threshold limit up to which the Full sync, if already on, stays on when the chain is behind the network head. If the limit is exceeded, it switches back to Fast sync. For regular usage scenarios, setting this value lower than 32 is not recommended as this can cause issues with chain reorgs. Note that the last 2 blocks are always processed in Full sync, so setting it lower than 2 has no effect.", DefaultValue = "8192")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated. Long range catch-up sync has been removed.", DefaultValue = "8192", HiddenFromDocs = true)]
     long? FastSyncCatchUpHeightDelta { get; set; }
 
     [Obsolete]
