@@ -162,6 +162,16 @@ public class AccountChanges : IEquatable<AccountChanges>
         return existing;
     }
 
+    public bool HasSlotChangesAtIndex(int index)
+    {
+        foreach (SlotChanges slotChanges in StorageChanges)
+        {
+            if (slotChanges.Changes.ContainsKey(index))
+                return true;
+        }
+        return false;
+    }
+
     public IEnumerable<SlotChanges> SlotChangesAtIndex(int index)
     {
         foreach (SlotChanges slotChanges in StorageChanges)
