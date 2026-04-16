@@ -16,8 +16,8 @@ namespace Nethermind.StateComposition.Test.Snapshots;
 
 /// <summary>
 /// Round-trips a <see cref="StateCompositionSnapshot"/> through the RLP decoder
-/// to confirm the schema extension for <see cref="CumulativeSizeStats.CodeBytesTotal"/>
-/// and <see cref="CumulativeSizeStats.SlotCountHistogram"/> survives persistence.
+/// to confirm the schema extension for <see cref="CumulativeTrieStats.CodeBytesTotal"/>
+/// and <see cref="CumulativeTrieStats.SlotCountHistogram"/> survives persistence.
 /// These two fields are the only ones that are not maintained incrementally —
 /// losing them on restart would zero-out a live production metric until the
 /// next scheduled full scan, which can be hours away.
@@ -25,7 +25,7 @@ namespace Nethermind.StateComposition.Test.Snapshots;
 [TestFixture]
 public class SnapshotRoundTripTests
 {
-    private static CumulativeSizeStats BuildStats(long codeBytes, ImmutableArray<long> slotHist) =>
+    private static CumulativeTrieStats BuildStats(long codeBytes, ImmutableArray<long> slotHist) =>
         new(
             AccountsTotal: 100,
             ContractsTotal: 20,
@@ -46,7 +46,7 @@ public class SnapshotRoundTripTests
         };
 
     private static StateCompositionSnapshot BuildSnapshot(
-        CumulativeSizeStats stats,
+        CumulativeTrieStats stats,
         long blockNumber,
         Hash256 stateRoot,
         int diffsSinceBaseline = 0,
@@ -81,7 +81,7 @@ public class SnapshotRoundTripTests
     public void RoundTrip_PreservesAllFields()
     {
         ImmutableArray<long> hist = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
-        CumulativeSizeStats stats = BuildStats(codeBytes: 987_654, slotHist: hist);
+        CumulativeTrieStats stats = BuildStats(codeBytes: 987_654, slotHist: hist);
 
         ValueHash256 addr1 = Keccak.Compute("addr1").ValueHash256;
         ValueHash256 addr2 = Keccak.Compute("addr2").ValueHash256;
@@ -132,7 +132,7 @@ public class SnapshotRoundTripTests
         // schema) and the decoder reconstructs them as a concrete length-16
         // array of zeros. This matches the Metrics fan-out contract, which
         // requires a length-16 array and does not defend against default.
-        CumulativeSizeStats stats = BuildStats(codeBytes: 0, slotHist: default);
+        CumulativeTrieStats stats = BuildStats(codeBytes: 0, slotHist: default);
         StateCompositionSnapshot original = BuildSnapshot(stats, 1, Keccak.Compute("r"));
 
         StateCompositionSnapshot decoded = RoundTrip(original);

@@ -247,7 +247,7 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     {
         _stateHolder.SetBaseline(stats, dist);
         _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
-        CumulativeSizeStats cumulativeBaseline = CumulativeSizeStats.FromScanStats(stats);
+        CumulativeTrieStats cumulativeBaseline = CumulativeTrieStats.FromScanStats(stats);
 
         // Hold _diffLock across InitializeIncremental and the snapshot write so an
         // OnNewHeadBlock dispatch cannot mutate the tracker dictionaries between
@@ -277,7 +277,7 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     /// for every snapshot write — interval writes, scan completion, and the
     /// graceful-shutdown flush all go through here so behavior cannot drift.
     /// </summary>
-    private void WriteSnapshotForHead(CumulativeSizeStats stats, long blockNumber, Hash256 stateRoot)
+    private void WriteSnapshotForHead(CumulativeTrieStats stats, long blockNumber, Hash256 stateRoot)
     {
         if (!_config.PersistSnapshots) return;
         _snapshotStore.WriteSnapshot(_stateHolder.BuildSnapshot(stats, blockNumber, stateRoot));
@@ -305,11 +305,11 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         {
             lock (_diffLock)
             {
-                if (!_stateHolder.IsIncrementalSeeded) return;
+                if (!_stateHolder.HasIncrementalBaseline) return;
                 Hash256 stateRoot = _stateHolder.LastProcessedStateRoot;
                 if (stateRoot == Hash256.Zero) return;
 
-                CumulativeSizeStats stats = _stateHolder.IncrementalStats;
+                CumulativeTrieStats stats = _stateHolder.IncrementalStats;
                 long blockNumber = _stateHolder.IncrementalBlock;
 
                 if (_logger.IsInfo)

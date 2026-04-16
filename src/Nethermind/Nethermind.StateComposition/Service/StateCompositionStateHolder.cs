@@ -20,10 +20,10 @@ internal sealed class StateCompositionStateHolder
     private StateCompositionStats _currentStats;
     private TrieDepthDistribution _currentDistribution;
     private ScanMetadata _lastScanMetadata;
-    private bool _isInitialized;
+    private bool _hasScanBaseline;
 
-    private CumulativeSizeStats _incrementalStats;
-    private bool _isIncrementalSeeded;
+    private CumulativeTrieStats _incrementalStats;
+    private bool _hasIncrementalBaseline;
     private readonly CumulativeDepthStats _currentDepthStats = new();
     private long _incrementalBlock;
     private int _diffsSinceBaseline;
@@ -46,11 +46,11 @@ internal sealed class StateCompositionStateHolder
 
     public ScanMetadata LastScanMetadata { get { lock (_lock) return _lastScanMetadata; } }
 
-    public bool IsInitialized { get { lock (_lock) return _isInitialized; } }
+    public bool HasScanBaseline { get { lock (_lock) return _hasScanBaseline; } }
 
-    public bool IsIncrementalSeeded { get { lock (_lock) return _isIncrementalSeeded; } }
+    public bool HasIncrementalBaseline { get { lock (_lock) return _hasIncrementalBaseline; } }
 
-    public CumulativeSizeStats IncrementalStats { get { lock (_lock) return _incrementalStats; } }
+    public CumulativeTrieStats IncrementalStats { get { lock (_lock) return _incrementalStats; } }
 
     /// <summary>
     /// Returns the live cumulative depth stats reference. Single-writer invariant:
@@ -72,16 +72,16 @@ internal sealed class StateCompositionStateHolder
     /// </summary>
     public Hash256 LastProcessedStateRoot { get { lock (_lock) return _lastProcessedStateRoot; } }
 
-    public CachedStatsResponse BuildCachedStatsResponse()
+    public StateCompositionReport BuildReport()
     {
         lock (_lock)
         {
-            return new CachedStatsResponse
+            return new StateCompositionReport
             {
-                CurrentStats = _incrementalStats,
+                TrieStats = _incrementalStats,
                 TrieDistribution = _currentDistribution,
                 BlockNumber = _incrementalBlock,
-                DiffsSinceLastScan = _diffsSinceBaseline,
+                DiffsSinceBaseline = _diffsSinceBaseline,
                 LastScanMetadata = _lastScanMetadata,
             };
         }
@@ -94,7 +94,7 @@ internal sealed class StateCompositionStateHolder
     /// is safe and avoids copying three dictionaries and a <c>long[9][16]</c> grid.
     /// </summary>
     public StateCompositionSnapshot BuildSnapshot(
-        CumulativeSizeStats stats,
+        CumulativeTrieStats stats,
         long blockNumber,
         Hash256 stateRoot)
     {
@@ -119,7 +119,7 @@ internal sealed class StateCompositionStateHolder
         {
             _currentStats = stats;
             _currentDistribution = dist;
-            _isInitialized = true;
+            _hasScanBaseline = true;
         }
     }
 
@@ -138,7 +138,7 @@ internal sealed class StateCompositionStateHolder
         }
     }
 
-    public void InitializeIncremental(CumulativeSizeStats baseline, long blockNumber, Hash256 stateRoot,
+    public void InitializeIncremental(CumulativeTrieStats baseline, long blockNumber, Hash256 stateRoot,
         TrieDepthDistribution? depthDistribution = null,
         Dictionary<ValueHash256, long>? slotCountByAddress = null,
         Dictionary<ValueHash256, int>? codeHashRefcounts = null,
@@ -147,7 +147,7 @@ internal sealed class StateCompositionStateHolder
         lock (_lock)
         {
             _incrementalStats = baseline;
-            _isIncrementalSeeded = true;
+            _hasIncrementalBaseline = true;
             _incrementalBlock = blockNumber;
             _diffsSinceBaseline = 0;
             _lastProcessedStateRoot = stateRoot;
@@ -178,7 +178,7 @@ internal sealed class StateCompositionStateHolder
     /// <summary>
     /// Apply a <see cref="TrieDiff"/> atomically: updates the cumulative stats,
     /// the per-address slot tracker (and the slot-count histogram), and the
-    /// per-code-hash refcount/size trackers (and <see cref="CumulativeSizeStats.CodeBytesTotal"/>).
+    /// per-code-hash refcount/size trackers (and <see cref="CumulativeTrieStats.CodeBytesTotal"/>).
     /// All mutation happens under <see cref="_lock"/> so callers see a consistent
     /// view across every field.
     /// <para>
@@ -187,13 +187,13 @@ internal sealed class StateCompositionStateHolder
     /// returned value is cached in the tracker for later refcount-0 decrements.
     /// </para>
     /// </summary>
-    public CumulativeSizeStats ApplyIncrementalDiffAndUpdate(
+    public CumulativeTrieStats ApplyIncrementalDiffAndUpdate(
         TrieDiff diff, long blockNumber, Hash256 stateRoot,
         Func<ValueHash256, int> codeSizeLookup)
     {
         lock (_lock)
         {
-            CumulativeSizeStats updated = _incrementalStats.ApplyDiff(diff);
+            CumulativeTrieStats updated = _incrementalStats.ApplyDiff(diff);
 
             long codeBytes = updated.CodeBytesTotal;
 
@@ -202,11 +202,11 @@ internal sealed class StateCompositionStateHolder
             // CreateBuilder(16) + MoveToImmutable() hands the backing array to the
             // ImmutableArray without a second allocation/copy pass.
             ImmutableArray<long>.Builder histogram =
-                ImmutableArray.CreateBuilder<long>(CumulativeSizeStats.SlotHistogramLength);
-            histogram.Count = CumulativeSizeStats.SlotHistogramLength;
+                ImmutableArray.CreateBuilder<long>(CumulativeTrieStats.SlotHistogramLength);
+            histogram.Count = CumulativeTrieStats.SlotHistogramLength;
             if (!updated.SlotCountHistogram.IsDefault)
             {
-                for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
+                for (int i = 0; i < CumulativeTrieStats.SlotHistogramLength; i++)
                     histogram[i] = updated.SlotCountHistogram[i];
             }
 
@@ -308,11 +308,11 @@ internal sealed class StateCompositionStateHolder
         lock (_lock)
         {
             _incrementalStats = snapshot.Stats;
-            _isIncrementalSeeded = true;
+            _hasIncrementalBaseline = true;
             _incrementalBlock = snapshot.BlockNumber;
             _diffsSinceBaseline = snapshot.DiffsSinceBaseline;
             _lastProcessedStateRoot = snapshot.StateRoot;
-            // _isInitialized stays false — baseline scan data (TopN, distribution)
+            // _hasScanBaseline stays false — baseline scan data (TopN, distribution)
             // is not persisted. statecomp_get() returns incremental stats;
             // depth distribution requires a fresh scan.
 

@@ -15,7 +15,7 @@ namespace Nethermind.StateComposition.Snapshots;
 /// RLP encoder/decoder for <see cref="StateCompositionSnapshot"/>.
 /// Field order:
 ///   0. schema version byte (current = 1)
-///   1. 13 longs (CumulativeSizeStats)
+///   1. 13 longs (CumulativeTrieStats)
 ///   2. blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber
 ///   3. depthPresent (long; 1 = depth stats follow, 0 = absent)
 ///   4. [optional] 162 longs of CumulativeDepthStats:
@@ -104,7 +104,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         // instead of dropping to zero until the next full scan.
         length += EncodeLong(stream, item.Stats.CodeBytesTotal);
         ImmutableArray<long> hist = item.Stats.SlotCountHistogram;
-        for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
+        for (int i = 0; i < CumulativeTrieStats.SlotHistogramLength; i++)
             length += EncodeLong(stream, hist.IsDefault ? 0L : hist[i]);
 
         length += EncodeOrLengthMap(stream, item.SlotCountByAddress,
@@ -175,7 +175,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         if (schemaVersion != SchemaVersion)
             throw new RlpException($"StateComposition snapshot schema version {schemaVersion} does not match expected {SchemaVersion}");
 
-        CumulativeSizeStats stats = new(
+        CumulativeTrieStats stats = new(
             AccountsTotal: ctx.DecodeLong(),
             ContractsTotal: ctx.DecodeLong(),
             StorageSlotsTotal: ctx.DecodeLong(),
@@ -211,8 +211,8 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         }
 
         long codeBytesTotal = ctx.DecodeLong();
-        long[] hist = new long[CumulativeSizeStats.SlotHistogramLength];
-        for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++) hist[i] = ctx.DecodeLong();
+        long[] hist = new long[CumulativeTrieStats.SlotHistogramLength];
+        for (int i = 0; i < CumulativeTrieStats.SlotHistogramLength; i++) hist[i] = ctx.DecodeLong();
 
         stats = stats with
         {

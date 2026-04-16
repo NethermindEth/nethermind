@@ -42,7 +42,7 @@ public class StateCompositionRpcModuleTests
             stateHolder,
             Substitute.For<IBlockTree>());
 
-        ResultWrapper<CachedStatsResponse> result = await rpc.statecomp_get();
+        ResultWrapper<StateCompositionReport> result = await rpc.statecomp_get();
 
         Assert.That(result.Data.LastScanMetadata.IsComplete, Is.False);
     }

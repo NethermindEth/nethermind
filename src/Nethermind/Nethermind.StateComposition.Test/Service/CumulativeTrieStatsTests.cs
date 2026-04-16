@@ -12,18 +12,18 @@ namespace Nethermind.StateComposition.Test.Service;
 /// <summary>
 /// Verifies freeze semantics for the two metrics that cannot be maintained
 /// incrementally without a refcount map:
-/// - <see cref="CumulativeSizeStats.CodeBytesTotal"/>
-/// - <see cref="CumulativeSizeStats.SlotCountHistogram"/>
+/// - <see cref="CumulativeTrieStats.CodeBytesTotal"/>
+/// - <see cref="CumulativeTrieStats.SlotCountHistogram"/>
 ///
 /// Both fields are seeded from a full <see cref="StateCompositionStats"/> scan
-/// via <see cref="CumulativeSizeStats.FromScanStats"/> and carried forward
-/// unchanged through <see cref="CumulativeSizeStats.ApplyDiff"/> until the next
+/// via <see cref="CumulativeTrieStats.FromScanStats"/> and carried forward
+/// unchanged through <see cref="CumulativeTrieStats.ApplyDiff"/> until the next
 /// scan refreshes them. This matches the "freeze pattern" approved for
 /// incremental updates — imprecision between scans is acceptable because a
 /// full scan restores correctness.
 /// </summary>
 [TestFixture]
-public class CumulativeSizeStatsTests
+public class CumulativeTrieStatsTests
 {
     private static StateCompositionStats BuildScanStats(
         long codeBytes,
@@ -53,7 +53,7 @@ public class CumulativeSizeStatsTests
         ImmutableArray<long> hist = [0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         StateCompositionStats scan = BuildScanStats(codeBytes: 9_000, slotHistogram: hist);
 
-        CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(scan);
+        CumulativeTrieStats cumulative = CumulativeTrieStats.FromScanStats(scan);
 
         using (Assert.EnterMultipleScope())
         {
@@ -67,7 +67,7 @@ public class CumulativeSizeStatsTests
     public void ApplyDiff_PreservesCodeBytesAndSlotHistogram()
     {
         ImmutableArray<long> hist = [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        CumulativeSizeStats baseline = CumulativeSizeStats.FromScanStats(
+        CumulativeTrieStats baseline = CumulativeTrieStats.FromScanStats(
             BuildScanStats(codeBytes: 12_345, slotHistogram: hist));
 
         TrieDiff diff = new(
@@ -88,7 +88,7 @@ public class CumulativeSizeStatsTests
             SlotCountChanges: Array.Empty<SlotCountChange>(),
             CodeHashChanges: Array.Empty<CodeHashChange>());
 
-        CumulativeSizeStats updated = baseline.ApplyDiff(diff);
+        CumulativeTrieStats updated = baseline.ApplyDiff(diff);
 
         using (Assert.EnterMultipleScope())
         {

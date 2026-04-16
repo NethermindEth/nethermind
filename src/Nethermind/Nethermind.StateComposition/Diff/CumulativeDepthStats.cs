@@ -44,7 +44,7 @@ public enum DepthSlot
 /// </summary>
 public sealed class CumulativeDepthStats
 {
-    internal const int SlotCount = 9;
+    internal const int CategoryCount = 9;
     internal const int DepthCount = 16;
 
     /// <summary>Nine contiguous <c>long[16]</c> rows, indexed by <see cref="DepthSlot"/>.</summary>
@@ -52,8 +52,8 @@ public sealed class CumulativeDepthStats
 
     public CumulativeDepthStats()
     {
-        ByDepth = new long[SlotCount][];
-        for (int s = 0; s < SlotCount; s++) ByDepth[s] = new long[DepthCount];
+        ByDepth = new long[CategoryCount][];
+        for (int s = 0; s < CategoryCount; s++) ByDepth[s] = new long[DepthCount];
     }
 
     public long[] AccountFullNodes => ByDepth[(int)DepthSlot.AccountFull];
@@ -85,7 +85,7 @@ public sealed class CumulativeDepthStats
     public void AddInPlace(CumulativeDepthStats other)
     {
         if (!IsSeeded) return;
-        for (int s = 0; s < SlotCount; s++)
+        for (int s = 0; s < CategoryCount; s++)
         {
             long[] dst = ByDepth[s];
             long[] src = other.ByDepth[s];
@@ -98,7 +98,7 @@ public sealed class CumulativeDepthStats
     public bool IsEmpty()
     {
         if (TotalBranchNodes != 0 || TotalBranchChildren != 0) return false;
-        for (int s = 0; s < SlotCount; s++)
+        for (int s = 0; s < CategoryCount; s++)
         {
             long[] row = ByDepth[s];
             for (int d = 0; d < DepthCount; d++)
@@ -109,7 +109,7 @@ public sealed class CumulativeDepthStats
 
     public void Reset()
     {
-        for (int s = 0; s < SlotCount; s++) Array.Clear(ByDepth[s]);
+        for (int s = 0; s < CategoryCount; s++) Array.Clear(ByDepth[s]);
         TotalBranchNodes = 0;
         TotalBranchChildren = 0;
         IsSeeded = false;
@@ -163,7 +163,7 @@ public sealed class CumulativeDepthStats
     public void SeedFromSnapshot(CumulativeDepthStats source)
     {
         Reset();
-        for (int s = 0; s < SlotCount; s++)
+        for (int s = 0; s < CategoryCount; s++)
             Array.Copy(source.ByDepth[s], ByDepth[s], DepthCount);
         TotalBranchNodes = source.TotalBranchNodes;
         TotalBranchChildren = source.TotalBranchChildren;

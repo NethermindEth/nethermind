@@ -55,7 +55,7 @@ public class StateCompositionServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.IsSuccess, Is.True);
-            Assert.That(stateHolder.IsInitialized, Is.True);
+            Assert.That(stateHolder.HasScanBaseline, Is.True);
             Assert.That(stateHolder.LastScanMetadata.IsComplete, Is.True);
         }
     }
@@ -192,12 +192,12 @@ public class StateCompositionServiceTests
         {
             await scanTask.WaitAsync(TimeSpan.FromSeconds(3), testCt);
             // If we reach here the task returned a Result rather than throwing —
-            // that's also acceptable as long as IsInitialized is false.
+            // that's also acceptable as long as HasScanBaseline is false.
         }
         catch (OperationCanceledException) { }
 
         // Baseline must NOT have been installed — partial scan must not corrupt state
-        Assert.That(stateHolder.IsInitialized, Is.False,
+        Assert.That(stateHolder.HasScanBaseline, Is.False,
             "Baseline must not be marked complete after mid-scan cancellation");
     }
 

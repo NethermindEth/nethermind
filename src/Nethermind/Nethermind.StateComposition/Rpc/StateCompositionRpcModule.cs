@@ -19,10 +19,10 @@ internal sealed class StateCompositionRpcModule(
     IBlockTree blockTree)
     : IStateCompositionRpcModule
 {
-    public Task<ResultWrapper<CachedStatsResponse>> statecomp_get()
+    public Task<ResultWrapper<StateCompositionReport>> statecomp_get()
     {
         return Task.FromResult(
-            ResultWrapper<CachedStatsResponse>.Success(stateHolder.BuildCachedStatsResponse()));
+            ResultWrapper<StateCompositionReport>.Success(stateHolder.BuildReport()));
     }
 
     public Task<ResultWrapper<bool>> statecomp_cancelScan()

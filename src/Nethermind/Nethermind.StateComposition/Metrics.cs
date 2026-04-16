@@ -143,7 +143,7 @@ public static class Metrics
     [Description("Contracts grouped by log2 storage slot count bucket")]
     public static ConcurrentDictionary<int, long> StateCompSlotCountHistogram { get; } = new();
 
-    internal static void UpdateFromCumulativeStats(CumulativeSizeStats s)
+    internal static void UpdateFromCumulativeStats(CumulativeTrieStats s)
     {
         StateCompAccountsTotal = s.AccountsTotal;
         StateCompContractsTotal = s.ContractsTotal;

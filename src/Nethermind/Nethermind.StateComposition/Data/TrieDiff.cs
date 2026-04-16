@@ -10,8 +10,8 @@ namespace Nethermind.StateComposition.Data;
 
 /// <summary>
 /// Exact delta between two state roots. Contains both additions and removals
-/// for every metric category. Apply to <see cref="CumulativeSizeStats"/> via
-/// <see cref="CumulativeSizeStats.ApplyDiff"/>.
+/// for every metric category. Apply to <see cref="CumulativeTrieStats"/> via
+/// <see cref="CumulativeTrieStats.ApplyDiff"/>.
 ///
 /// Content-addressed property: walking old root vs new root gives exact counts
 /// of nodes/accounts/slots that exist in one but not the other.

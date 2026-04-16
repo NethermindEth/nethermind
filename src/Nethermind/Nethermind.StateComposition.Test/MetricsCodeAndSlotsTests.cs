@@ -9,8 +9,8 @@ namespace Nethermind.StateComposition.Test;
 
 /// <summary>
 /// Verifies that <see cref="Metrics.UpdateFromCumulativeStats"/> publishes
-/// <see cref="CumulativeSizeStats.CodeBytesTotal"/> to <see cref="Metrics.StateCompCodeBytesTotal"/>
-/// and fans <see cref="CumulativeSizeStats.SlotCountHistogram"/> out into the
+/// <see cref="CumulativeTrieStats.CodeBytesTotal"/> to <see cref="Metrics.StateCompCodeBytesTotal"/>
+/// and fans <see cref="CumulativeTrieStats.SlotCountHistogram"/> out into the
 /// labeled <see cref="Metrics.StateCompSlotCountHistogram"/> gauge. Producers
 /// (visitor + snapshot decoder) always supply a length-16 histogram, so no
 /// default-array path is tested here.
@@ -23,7 +23,7 @@ public class MetricsCodeAndSlotsTests
 
     private static ImmutableArray<long> ZeroHistogram() => [..new long[16]];
 
-    private static CumulativeSizeStats BuildStats(long codeBytes, ImmutableArray<long> hist) =>
+    private static CumulativeTrieStats BuildStats(long codeBytes, ImmutableArray<long> hist) =>
         new(
             AccountsTotal: 0,
             ContractsTotal: 0,

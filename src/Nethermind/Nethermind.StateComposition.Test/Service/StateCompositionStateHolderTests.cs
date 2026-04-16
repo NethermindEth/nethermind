@@ -20,8 +20,8 @@ namespace Nethermind.StateComposition.Test.Service;
 /// Direct unit tests for the incremental tracker logic on <see cref="StateCompositionStateHolder"/>.
 /// These exercise <see cref="StateCompositionStateHolder.ApplyIncrementalDiffAndUpdate"/>
 /// with synthetic <see cref="TrieDiff"/> payloads so the refcount bookkeeping for
-/// <see cref="CumulativeSizeStats.CodeBytesTotal"/> and the slot-histogram bucketing
-/// for <see cref="CumulativeSizeStats.SlotCountHistogram"/> can be asserted without
+/// <see cref="CumulativeTrieStats.CodeBytesTotal"/> and the slot-histogram bucketing
+/// for <see cref="CumulativeTrieStats.SlotCountHistogram"/> can be asserted without
 /// building real tries.
 /// </summary>
 [TestFixture]
@@ -29,7 +29,7 @@ public class StateCompositionStateHolderTests
 {
     private static readonly Hash256 AnyRoot = Keccak.Compute("root");
 
-    private static CumulativeSizeStats EmptyBaseline(long codeBytes = 0, long[]? histogram = null) =>
+    private static CumulativeTrieStats EmptyBaseline(long codeBytes = 0, long[]? histogram = null) =>
         new(
             AccountsTotal: 0,
             ContractsTotal: 0,
@@ -47,7 +47,7 @@ public class StateCompositionStateHolderTests
         {
             CodeBytesTotal = codeBytes,
             SlotCountHistogram = ImmutableArray.Create(
-                histogram ?? new long[CumulativeSizeStats.SlotHistogramLength]),
+                histogram ?? new long[CumulativeTrieStats.SlotHistogramLength]),
         };
 
     private static TrieDiff DiffWithPayloads(
@@ -72,7 +72,7 @@ public class StateCompositionStateHolderTests
             CodeHashChanges: codeHashChanges ?? Array.Empty<CodeHashChange>());
 
     private static StateCompositionStateHolder HolderWithBaseline(
-        CumulativeSizeStats baseline,
+        CumulativeTrieStats baseline,
         Dictionary<ValueHash256, long>? slotCountByAddress = null,
         Dictionary<ValueHash256, int>? codeHashRefcounts = null,
         Dictionary<ValueHash256, int>? codeHashSizes = null)
@@ -97,7 +97,7 @@ public class StateCompositionStateHolderTests
             new CodeHashChange(Keccak.Compute("acc").ValueHash256, CodeHashChange.NoCode, proxy),
         ]);
 
-        CumulativeSizeStats updated = holder.ApplyIncrementalDiffAndUpdate(
+        CumulativeTrieStats updated = holder.ApplyIncrementalDiffAndUpdate(
             diff, blockNumber: 2, stateRoot: AnyRoot,
             codeSizeLookup: hash => hash == proxy ? 512 : 0);
 
@@ -127,7 +127,7 @@ public class StateCompositionStateHolderTests
             new CodeHashChange(acc2, CodeHashChange.NoCode, proxy),
         ]);
 
-        CumulativeSizeStats updated = holder.ApplyIncrementalDiffAndUpdate(
+        CumulativeTrieStats updated = holder.ApplyIncrementalDiffAndUpdate(
             diff, blockNumber: 2, stateRoot: AnyRoot, codeSizeLookup: Lookup);
 
         using (Assert.EnterMultipleScope())
@@ -157,14 +157,14 @@ public class StateCompositionStateHolderTests
         [
             new CodeHashChange(acc1, proxy, CodeHashChange.NoCode),
         ]);
-        CumulativeSizeStats afterFirstDrop = holder.ApplyIncrementalDiffAndUpdate(
+        CumulativeTrieStats afterFirstDrop = holder.ApplyIncrementalDiffAndUpdate(
             dropFirst, blockNumber: 2, stateRoot: AnyRoot, codeSizeLookup: _ => 0);
 
         TrieDiff dropSecond = DiffWithPayloads(codeHashChanges:
         [
             new CodeHashChange(acc2, proxy, CodeHashChange.NoCode),
         ]);
-        CumulativeSizeStats afterSecondDrop = holder.ApplyIncrementalDiffAndUpdate(
+        CumulativeTrieStats afterSecondDrop = holder.ApplyIncrementalDiffAndUpdate(
             dropSecond, blockNumber: 3, stateRoot: AnyRoot, codeSizeLookup: _ => 0);
 
         using (Assert.EnterMultipleScope())
@@ -194,7 +194,7 @@ public class StateCompositionStateHolderTests
         [
             new CodeHashChange(acc, oldImpl, newImpl),
         ]);
-        CumulativeSizeStats updated = holder.ApplyIncrementalDiffAndUpdate(
+        CumulativeTrieStats updated = holder.ApplyIncrementalDiffAndUpdate(
             diff, blockNumber: 2, stateRoot: AnyRoot,
             codeSizeLookup: h => h == newImpl ? 2048 : 0);
 
@@ -212,7 +212,7 @@ public class StateCompositionStateHolderTests
         [
             new SlotCountChange(acc, 5),
         ]);
-        CumulativeSizeStats updated = holder.ApplyIncrementalDiffAndUpdate(
+        CumulativeTrieStats updated = holder.ApplyIncrementalDiffAndUpdate(
             diff, blockNumber: 2, stateRoot: AnyRoot, codeSizeLookup: _ => 0);
 
         int expectedBucket = VisitorCounters.ComputeSlotBucket(5);
@@ -235,7 +235,7 @@ public class StateCompositionStateHolderTests
         int endBucket = VisitorCounters.ComputeSlotBucket(8);
         Assert.That(startBucket, Is.Not.EqualTo(endBucket), "bucket picks must actually differ");
 
-        long[] seedHist = new long[CumulativeSizeStats.SlotHistogramLength];
+        long[] seedHist = new long[CumulativeTrieStats.SlotHistogramLength];
         seedHist[startBucket] = 1;
         StateCompositionStateHolder holder = HolderWithBaseline(
             EmptyBaseline(histogram: seedHist),
@@ -245,7 +245,7 @@ public class StateCompositionStateHolderTests
         [
             new SlotCountChange(acc, 5),
         ]);
-        CumulativeSizeStats updated = holder.ApplyIncrementalDiffAndUpdate(
+        CumulativeTrieStats updated = holder.ApplyIncrementalDiffAndUpdate(
             diff, blockNumber: 2, stateRoot: AnyRoot, codeSizeLookup: _ => 0);
 
         using (Assert.EnterMultipleScope())
@@ -263,7 +263,7 @@ public class StateCompositionStateHolderTests
         ValueHash256 acc = Keccak.Compute("acc").ValueHash256;
         int bucket = VisitorCounters.ComputeSlotBucket(10);
 
-        long[] seedHist = new long[CumulativeSizeStats.SlotHistogramLength];
+        long[] seedHist = new long[CumulativeTrieStats.SlotHistogramLength];
         seedHist[bucket] = 1;
         StateCompositionStateHolder holder = HolderWithBaseline(
             EmptyBaseline(histogram: seedHist),
@@ -273,7 +273,7 @@ public class StateCompositionStateHolderTests
         [
             new SlotCountChange(acc, -10),
         ]);
-        CumulativeSizeStats updated = holder.ApplyIncrementalDiffAndUpdate(
+        CumulativeTrieStats updated = holder.ApplyIncrementalDiffAndUpdate(
             diff, blockNumber: 2, stateRoot: AnyRoot, codeSizeLookup: _ => 0);
 
         long totalContracts = updated.SlotCountHistogram.Sum();
@@ -289,7 +289,7 @@ public class StateCompositionStateHolderTests
         // writes the new value.
         ValueHash256 acc = Keccak.Compute("acc").ValueHash256;
 
-        long[] seed = new long[CumulativeSizeStats.SlotHistogramLength];
+        long[] seed = new long[CumulativeTrieStats.SlotHistogramLength];
         seed[2] = 5;
         StateCompositionStateHolder holder = HolderWithBaseline(EmptyBaseline(histogram: seed));
         ImmutableArray<long> capturedBaseline = holder.IncrementalStats.SlotCountHistogram;
