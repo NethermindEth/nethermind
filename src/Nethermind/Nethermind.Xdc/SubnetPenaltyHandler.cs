@@ -53,7 +53,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             listBlockHash.Add(parentHash);
             listBlockNumber.Add(parentNumber);
 
-            Address miner = parentHeader.Beneficiary ?? _ethereumEcdsa.RecoverAddress(new Signature(parentHeader.Validator.AsSpan(0, 64), parentHeader.Validator[64]), Keccak.Compute(_xdcHeaderDecoder.Encode(parentHeader, RlpBehaviors.ForSealing).Bytes));
+            Address miner = parentHeader.Beneficiary;
             minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
 
             bool isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
@@ -101,6 +101,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
                     penalties.Remove(fromSigner);
             }
         }
+        // TODO Optimize
         // Must use EIP-55 checksummed hex to match XDC Go node ordering (addr.Hex()).
         // Plain lowercase comparison gives wrong order: e.g. "0xAb..." < "0xaa..." but "0xab..." > "0xaa..."
         Address[] result = new Address[penalties.Count];

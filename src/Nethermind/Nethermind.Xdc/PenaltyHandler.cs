@@ -57,7 +57,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             if (isEpochSwitch)
                 break;
 
-            Address miner = parentHeader.Beneficiary ?? _ethereumEcdsa.RecoverAddress(new Signature(parentHeader.Validator.AsSpan(0, 64), parentHeader.Validator[64]), Keccak.Compute(_xdcHeaderDecoder.Encode(parentHeader, RlpBehaviors.ForSealing).Bytes));
+            Address miner = parentHeader.Beneficiary;
             minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
 
             parentNumber--;
