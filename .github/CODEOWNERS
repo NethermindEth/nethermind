@@ -16,6 +16,7 @@
 /src/Nethermind/Nethermind.EraE @svlachakis @Marchhill @smartprogrammer93 @ak88
 /src/Nethermind/Nethermind.Evm.Precompiles @LukaszRozmej @benaadams @rubo @Marchhill
 /src/Nethermind/Nethermind.Evm @LukaszRozmej @benaadams
+/src/Nethermind/Nethermind.Facade @LukaszRozmej @benaadams @svlachakis
 /src/Nethermind/Nethermind.ExternalSigner.Plugin @ak88
 /src/Nethermind/Nethermind.History @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Hive @flcl42 @marcindsobczak
