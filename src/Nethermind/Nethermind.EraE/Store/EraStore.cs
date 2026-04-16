@@ -200,8 +200,6 @@ public sealed class EraStore : IEraStore
         reader.Dispose();
     }
 
-
-
     private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable
     {
         public void Dispose() => store.ReturnReader(epoch, reader);

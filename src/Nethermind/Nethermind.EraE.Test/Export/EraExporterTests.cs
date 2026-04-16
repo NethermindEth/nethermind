@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using Nethermind.EraE.Config;
+using Nethermind.EraE.E2Store;
 using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Export;
 using NUnit.Framework;
@@ -168,9 +169,9 @@ public class EraExporterTests
         eraFiles.Should().HaveCount(1, "one epoch for blocks 1-15");
 
         List<ushort> types = EraFileFormatComplianceTests.ReadAllEntries(eraFiles[0]).Select(e => e.Type).ToList();
-        types.Should().NotContain(0x0b, "post-merge epochs have no Proof entries");
-        types.Should().NotContain(0x06, "post-merge epochs have no TotalDifficulty entries");
-        types.Should().NotContain(0x07, "post-merge epochs have no AccumulatorRoot entry");
+        types.Should().NotContain(EntryTypes.Proof, "post-merge epochs have no Proof entries");
+        types.Should().NotContain(EntryTypes.TotalDifficulty, "post-merge epochs have no TotalDifficulty entries");
+        types.Should().NotContain(EntryTypes.AccumulatorRoot, "post-merge epochs have no AccumulatorRoot entry");
     }
 
     [Test]

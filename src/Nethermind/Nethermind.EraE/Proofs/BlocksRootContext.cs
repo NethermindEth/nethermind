@@ -111,14 +111,14 @@ public sealed class BlocksRootContext : IDisposable
         _blockHashes.Dispose();
     }
 
-    private static AccumulatorType GetAccumulatorType(ForkActivation forkActivation, ISpecProvider? specProvider) =>
-        specProvider is null
-            ? AccumulatorType.HistoricalHashesAccumulator
-            : specProvider.GetSpec(forkActivation).IsEip4895Enabled
-                ? AccumulatorType.HistoricalSummaries
-                : specProvider.MergeBlockNumber is { BlockNumber: var merge } && forkActivation.BlockNumber >= merge
-                    ? AccumulatorType.HistoricalRoots
-                    : AccumulatorType.HistoricalHashesAccumulator;
+    private static AccumulatorType GetAccumulatorType(ForkActivation forkActivation, ISpecProvider? specProvider)
+    {
+        if (specProvider is null) return AccumulatorType.HistoricalHashesAccumulator;
+        if (specProvider.GetSpec(forkActivation).IsEip4895Enabled) return AccumulatorType.HistoricalSummaries;
+        if (specProvider.MergeBlockNumber is { BlockNumber: var merge } && forkActivation.BlockNumber >= merge)
+            return AccumulatorType.HistoricalRoots;
+        return AccumulatorType.HistoricalHashesAccumulator;
+    }
 
     private static ValueHash256 UInt256ToHash(ref UInt256 value) =>
         new(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref value, 1)));
