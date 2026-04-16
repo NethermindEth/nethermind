@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -24,7 +24,7 @@ internal class SubnetSnapshotManager(
         votingContract,
         specProvider,
         new SubnetSnapshotDecoder(),
-        "XDC Subnet Snapshot cache")
+        cacheName: "XDC Subnet Snapshot cache")
 {
     protected override SubnetSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
