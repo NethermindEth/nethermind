@@ -31,7 +31,7 @@ public class GasEstimator(
     private const double BasisPointsDivisor = 10000d;
 
     private const string InvalidErrorMarginNegative = "Invalid error margin, cannot be negative.";
-    private const string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
+    private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
     private const string TransactionExecutionFails = "Transaction execution fails";
     private const string InsufficientBalance = "insufficient balance";
