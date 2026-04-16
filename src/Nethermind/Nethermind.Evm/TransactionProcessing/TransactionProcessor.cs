@@ -840,6 +840,9 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
 
+        /// <summary>Computes block-level regular gas from a failed transaction's gas state.</summary>
+        /// <param name="spentGas">Gas burned: <c>tx.GasLimit - StateReservoir</c> (pre-floor).</param>
+        /// <param name="blockStateGas">State-dimension gas used (<see cref="IGasPolicy{TSelf}.GetStateGasUsed"/>).</param>
         protected delegate long BlockGasCalculation(long spentGas, long blockStateGas);
 
         protected virtual GasConsumed RefundOnFail(

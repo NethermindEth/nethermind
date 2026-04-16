@@ -330,7 +330,7 @@ public abstract class BlockchainTestBase
         return parentHeader;
     }
 
-    private static readonly Dictionary<int, int> s_newPayloadParamCounts = Enumerable
+    private static readonly Dictionary<int, int> NewPayloadParamCounts = Enumerable
         .Range(1, EngineApiVersions.NewPayload.Latest)
         .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
             ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
@@ -348,7 +348,7 @@ public abstract class BlockchainTestBase
             int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            int paramCount = s_newPayloadParamCounts[newPayloadVersion];
+            int paramCount = NewPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
@@ -433,7 +433,7 @@ public abstract class BlockchainTestBase
         ("BlockException.INVALID_RECEIPTS_ROOT", "InvalidReceiptsRoot: Receipts root in header does not match"),
         ("BlockException.INVALID_LOG_BLOOM", "InvalidLogsBloom: Logs bloom in header does not match"),
         ("BlockException.INVALID_STATE_ROOT", "InvalidStateRoot: State root in header does not match"),
-        ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"),
+        ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
         ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
     ];
