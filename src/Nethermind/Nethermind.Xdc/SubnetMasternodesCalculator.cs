@@ -31,8 +31,3 @@ internal class SubnetMasternodesCalculator(ISubnetSnapshotManager snapshotManage
         return (snapshot.NextEpochCandidates, snapshot.NextEpochPenalties);
     }
 }
-
-public interface ISubnetMasternodesCalculator : IMasternodesCalculator
-{
-    (Address[] nextEpochCandidates, Address[] nextPenalties) GetNextEpochCandidatesAndPenalties(Hash256 parentHash);
-}
