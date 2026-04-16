@@ -19,23 +19,11 @@ public class JsonRpcL1StorageProvider(IJsonRpcClient rpcClient, ILogManager logM
 
     public UInt256? GetStorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)
     {
-        if (L1PrecompileExecutionContext.Get() is { } ctx)
+        (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
+        if (!isValid)
         {
-            if (ctx.L1Origin < ctx.Anchor)
-            {
-                if (_logger.IsWarn) _logger.Warn($"L1SLOAD: context invariant violated — l1Origin={ctx.L1Origin} < anchor={ctx.Anchor}");
-                return null;
-            }
-            if (blockNumber > ctx.L1Origin)
-            {
-                if (_logger.IsWarn) _logger.Warn($"L1SLOAD: requested block {blockNumber} > l1Origin {ctx.L1Origin}");
-                return null;
-            }
-            if (ctx.L1Origin - blockNumber > (UInt256)L1PrecompileConstants.MaxBlockLookback)
-            {
-                if (_logger.IsWarn) _logger.Warn($"L1SLOAD: block {blockNumber} exceeds {L1PrecompileConstants.MaxBlockLookback}-block lookback from l1Origin {ctx.L1Origin}");
-                return null;
-            }
+            if (_logger.IsWarn) _logger.Warn($"L1SLOAD: {reason}");
+            return null;
         }
 
         try

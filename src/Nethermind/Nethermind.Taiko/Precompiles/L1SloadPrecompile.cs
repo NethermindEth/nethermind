@@ -58,15 +58,11 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
         UInt256 storageKey = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)], isBigEndian: true);
         UInt256 blockNumber = new(inputData.Span[(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)..], isBigEndian: true);
 
-        if (L1PrecompileExecutionContext.Get() is { } ctx)
+        (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
+        if (!isValid)
         {
-            if (ctx.L1Origin < ctx.Anchor
-                || blockNumber > ctx.L1Origin
-                || ctx.L1Origin - blockNumber > (UInt256)L1PrecompileConstants.MaxBlockLookback)
-            {
-                if (Logger.IsWarn) Logger.Warn($"L1SLOAD: block {blockNumber} outside valid range [l1Origin={ctx.L1Origin}, anchor={ctx.Anchor}, lookback={L1PrecompileConstants.MaxBlockLookback}]");
-                return L1StorageAccessFailed;
-            }
+            if (Logger.IsWarn) Logger.Warn($"L1SLOAD: {reason}");
+            return L1StorageAccessFailed;
         }
 
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: request contract={contractAddress}, key={storageKey}, block={blockNumber}");

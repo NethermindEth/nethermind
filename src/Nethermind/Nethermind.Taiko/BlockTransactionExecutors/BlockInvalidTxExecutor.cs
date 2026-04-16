@@ -11,10 +11,15 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Taiko.Precompiles;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
-public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(
+    ITransactionProcessorAdapter txProcessor,
+    IWorldState worldState,
+    IL1OriginStore l1OriginStore)
+    : IBlockProcessor.IBlockTransactionsExecutor
 {
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -34,40 +39,50 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         using ArrayPoolListRef<Transaction> correctTransactions = new(block.Transactions.Length);
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        try
         {
-            Snapshot snap = worldState.TakeSnapshot();
-            Transaction tx = block.Transactions[i];
-
-            if (tx.Type == TxType.Blob)
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                // Skip blob transactions
-                continue;
-            }
+                Snapshot snap = worldState.TakeSnapshot();
+                Transaction tx = block.Transactions[i];
 
-            using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
-
-            try
-            {
-                if (!txProcessor.Execute(tx, receiptsTracer))
+                if (tx.Type == TxType.Blob)
                 {
-                    // if the transaction was invalid, we ignore it and continue
+                    // Skip blob transactions
+                    continue;
+                }
+
+                using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
+
+                try
+                {
+                    if (!txProcessor.Execute(tx, receiptsTracer))
+                    {
+                        // if the transaction was invalid, we ignore it and continue
+                        worldState.Restore(snap);
+                        continue;
+                    }
+                }
+                catch
+                {
+                    // sometimes invalid transactions can throw exceptions because
+                    // they are detected later in the processing pipeline
                     worldState.Restore(snap);
                     continue;
                 }
+
+                L1PrecompileContextInitializer.TrySetFromAnchorTransaction(i, tx, block.Header.Number, l1OriginStore);
+
+                // only end the trace if the transaction was successful
+                // so that we don't increment the receipt index for failed transactions
+                receiptsTracer.EndTxTrace();
+                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, block.Header, receiptsTracer.LastReceipt));
+                correctTransactions.Add(tx);
             }
-            catch
-            {
-                // sometimes invalid transactions can throw exceptions because
-                // they are detected later in the processing pipeline
-                worldState.Restore(snap);
-                continue;
-            }
-            // only end the trace if the transaction was successful
-            // so that we don't increment the receipt index for failed transactions
-            receiptsTracer.EndTxTrace();
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, block.Header, receiptsTracer.LastReceipt));
-            correctTransactions.Add(tx);
+        }
+        finally
+        {
+            L1PrecompileExecutionContext.Clear();
         }
 
         block.TrySetTransactions([.. correctTransactions]);

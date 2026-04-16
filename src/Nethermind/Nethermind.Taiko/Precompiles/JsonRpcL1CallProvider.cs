@@ -19,23 +19,11 @@ public class JsonRpcL1CallProvider(IJsonRpcClient rpcClient, ILogManager logMana
 
     public L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, long gasLimit)
     {
-        if (L1PrecompileExecutionContext.Get() is { } ctx)
+        (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
+        if (!isValid)
         {
-            if (ctx.L1Origin < ctx.Anchor)
-            {
-                if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: context invariant violated — l1Origin={ctx.L1Origin} < anchor={ctx.Anchor}");
-                return L1CallResult.Failure();
-            }
-            if (blockNumber > ctx.L1Origin)
-            {
-                if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: requested block {blockNumber} > l1Origin {ctx.L1Origin}");
-                return L1CallResult.Failure();
-            }
-            if (ctx.L1Origin - blockNumber > (UInt256)L1PrecompileConstants.MaxBlockLookback)
-            {
-                if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: block {blockNumber} exceeds {L1PrecompileConstants.MaxBlockLookback}-block lookback from l1Origin {ctx.L1Origin}");
-                return L1CallResult.Failure();
-            }
+            if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: {reason}");
+            return L1CallResult.Failure();
         }
 
         try

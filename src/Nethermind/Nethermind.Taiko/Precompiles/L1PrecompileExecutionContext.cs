@@ -19,4 +19,26 @@ public static class L1PrecompileExecutionContext
     public static void Set(UInt256 anchor, UInt256 l1Origin) => _ctx.Value = (anchor, l1Origin);
     public static (UInt256 Anchor, UInt256 L1Origin)? Get() => _ctx.Value;
     public static void Clear() => _ctx.Value = null;
+
+    public static (bool IsValid, string? Reason) ValidateBlockRange(UInt256 blockNumber)
+    {
+        if (Get() is not { } ctx)
+            return (true, null);
+
+        if (ctx.L1Origin < ctx.Anchor)
+            return (false, $"context invariant: l1Origin={ctx.L1Origin} < anchor={ctx.Anchor}");
+
+        if (blockNumber > ctx.L1Origin)
+            return (false, $"block {blockNumber} > l1Origin {ctx.L1Origin}");
+
+        if (ctx.L1Origin - blockNumber > (UInt256)L1PrecompileConstants.MaxBlockLookback)
+        {
+            return (
+                false,
+                $"block {blockNumber} exceeds {L1PrecompileConstants.MaxBlockLookback}-block lookback from l1Origin {ctx.L1Origin}"
+            );
+        }
+
+        return (true, null);
+    }
 }
