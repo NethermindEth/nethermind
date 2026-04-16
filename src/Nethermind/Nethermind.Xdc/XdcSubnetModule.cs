@@ -17,7 +17,8 @@ public class XdcSubnetModule : XdcModule
     {
         base.Load(builder);
         builder
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider, IPenaltyHandler>(CreateSnapshotManager);
+            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider, IPenaltyHandler>(CreateSnapshotManager)
+            .AddSingleton<IPenaltyHandler, SubnetPenaltyHandler>();
 
     }
 
