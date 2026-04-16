@@ -582,9 +582,10 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        return !TryDecodeSingle(vm, ref programCounter, out int depth)
-            ? EvmExceptionType.BadInstruction
-            : stack.Dup<TTracingInst>(depth);
+        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
+            return StopOrBadInstruction(vm, programCounter);
+
+        return stack.Dup<TTracingInst>(depth);
     }
 
     /// <summary>
@@ -598,9 +599,10 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        return !TryDecodeSingle(vm, ref programCounter, out int depth)
-            ? EvmExceptionType.BadInstruction
-            : stack.Swap<TTracingInst>(depth + 1);
+        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
+            return StopOrBadInstruction(vm, programCounter);
+
+        return stack.Swap<TTracingInst>(depth + 1);
     }
 
     /// <summary>
@@ -614,12 +616,25 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        return !TryDecodePair(vm, ref programCounter, out int n, out int m)
-            ? EvmExceptionType.BadInstruction
-            : !stack.Exchange<TTracingInst>(n, m)
-                ? EvmExceptionType.StackUnderflow
-                : EvmExceptionType.None;
+        if (!TryDecodePair(vm, ref programCounter, out int n, out int m))
+            return StopOrBadInstruction(vm, programCounter);
+
+        if (!stack.Exchange<TTracingInst>(n, m))
+            return EvmExceptionType.StackUnderflow;
+
+        return EvmExceptionType.None;
     }
+
+    /// <summary>
+    /// Returns Stop if the program counter is at or past end of code, otherwise BadInstruction.
+    /// Used by EIP-8024 to distinguish end-of-code (graceful stop) from disallowed immediate.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType StopOrBadInstruction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => programCounter >= vm.VmState.Env.CodeInfo.CodeSpan.Length
+            ? EvmExceptionType.Stop
+            : EvmExceptionType.BadInstruction;
 
     /// <summary>
     /// Reads and decodes an immediate for EIP-8024 DUPN/SWAPN instructions.
