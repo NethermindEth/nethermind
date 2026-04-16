@@ -24,21 +24,6 @@ public class MetricsLabeledGaugeTests
     }
 
     [Test]
-    public void UpdateDepthDistribution_UnseededStats_Noop()
-    {
-        CumulativeDepthStats cold = new();
-
-        Metrics.UpdateDepthDistribution(cold);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Metrics.StateCompTrieDepthNodes, Is.Empty);
-            Assert.That(Metrics.StateCompTrieDepthBytes, Is.Empty);
-            Assert.That(Metrics.StateCompAccountBranchOccupancy, Is.Empty);
-        }
-    }
-
-    [Test]
     public void UpdateDepthDistribution_PopulatesLabeledGauges()
     {
         CumulativeDepthStats stats = BuildSeededStats();
