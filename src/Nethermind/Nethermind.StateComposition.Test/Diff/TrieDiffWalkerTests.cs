@@ -437,8 +437,6 @@ public class TrieDiffWalkerTests
         const int modifiedEOAsPerBlock = 100;
         const int modifiedContractsPerBlock = 10;
 
-        const string reportPath = "/private/tmp/claude/bench/nm-500k/verification-report.txt";
-
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
@@ -520,17 +518,6 @@ public class TrieDiffWalkerTests
         // --- Verification: scan(X) + diffs(X→Y) == scan(Y) ---
         (int from, int to)[] ranges = [(0, 5), (0, 10), (0, 19), (5, 15), (10, 19), (0, 1), (18, 19)];
 
-        Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
-        using StreamWriter report = new(reportPath);
-        report.WriteLine("=== TrieDiffWalker Scan/Diff/Scan Verification ===");
-        report.WriteLine($"Date: {DateTime.UtcNow:O}");
-        report.WriteLine($"Blocks: {totalBlocks}, EOAs/block: {newEOAsPerBlock}, Contracts/block: {newContractsPerBlock}");
-        report.WriteLine($"Storage slots/contract: {slotsPerContract}, Modified EOAs/block: {modifiedEOAsPerBlock}, Modified contracts/block: {modifiedContractsPerBlock}");
-        report.WriteLine($"Total accounts: {eoaAddresses.Count + contractAddresses.Count}");
-        report.WriteLine();
-
-        bool allPassed = true;
-
         foreach ((int from, int to) in ranges)
         {
             // 1. Full scan at 'from'
@@ -567,10 +554,8 @@ public class TrieDiffWalkerTests
 
             // 4. Compare
             bool match = cumulative == expected;
-            if (!match) allPassed = false;
 
             string status = match ? "PASS" : "FAIL";
-            report.WriteLine($"[{from,2} → {to,2}]  {status}");
             TestContext.Out.WriteLine($"[{from,2} → {to,2}]  {status}  accounts={cumulative.AccountsTotal} contracts={cumulative.ContractsTotal} storage={cumulative.StorageSlotsTotal}");
 
             if (!match)
@@ -590,20 +575,11 @@ public class TrieDiffWalkerTests
                     $"  StorTrieBytes:       cum={cumulative.StorageTrieBytes} exp={expected.StorageTrieBytes} Δ={cumulative.StorageTrieBytes - expected.StorageTrieBytes}",
                 ];
                 foreach (string f in fields)
-                {
-                    report.WriteLine(f);
                     TestContext.Out.WriteLine(f);
-                }
             }
 
             Assert.That(cumulative, Is.EqualTo(expected), $"scan({from}) + diffs({from}→{to}) must equal scan({to})");
         }
-
-        report.WriteLine();
-        report.WriteLine(allPassed ? "ALL RANGES PASSED" : "SOME RANGES FAILED");
-        report.Flush();
-
-        TestContext.Out.WriteLine($"\nReport: {reportPath}");
     }
 
     /// <summary>
