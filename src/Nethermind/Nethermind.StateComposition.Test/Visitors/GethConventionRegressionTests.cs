@@ -98,61 +98,6 @@ public class GethConventionRegressionTests
         }
     }
 
-    [Test]
-    public void Convention3_MaxDepth_PlusOne_StorageTrie()
-    {
-        VisitorCounters c = new();
-
-        c.BeginStorageTrie(default, default);
-        c.TrackStorageNode(depth: 5, byteSize: 10, isLeaf: true, isBranch: false);
-        c.Flush();
-
-        Assert.That(c.TopN.TopByDepth[0].MaxDepth, Is.EqualTo(6),
-            "C3: MaxDepth = raw(5) + 1 = 6");
-    }
-
-    [Test]
-    public void Convention4_TotalNodes_DoubleCountsLeaves()
-    {
-        VisitorCounters c = new();
-
-        c.BeginStorageTrie(default, default);
-        c.TrackStorageNode(depth: 0, byteSize: 100, isLeaf: false, isBranch: true);  // branch
-        c.TrackStorageNode(depth: 1, byteSize: 50, isLeaf: false, isBranch: false);  // extension
-        c.TrackStorageNode(depth: 2, byteSize: 30, isLeaf: true, isBranch: false);   // leaf
-        c.TrackStorageNode(depth: 2, byteSize: 30, isLeaf: true, isBranch: false);   // leaf
-        c.TrackStorageNode(depth: 2, byteSize: 30, isLeaf: true, isBranch: false);   // leaf
-        c.Flush();
-
-        TopContractEntry entry = c.TopN.TopByDepth[0];
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(entry.ValueNodes, Is.EqualTo(3), "3 leaf nodes");
-            // Physical: 1 branch + 1 ext + 3 leaves = 5; TotalNodes = 5 + 3 = 8
-            Assert.That(entry.TotalNodes, Is.EqualTo(8),
-                "C4: TotalNodes = physicalNodes(5) + valueNodes(3) = 8");
-        }
-    }
-
-    [Test]
-    public void Convention5_HistogramBucket_ShiftedByOne()
-    {
-        VisitorCounters c = new();
-
-        c.BeginStorageTrie(default, default);
-        c.TrackStorageNode(depth: 4, byteSize: 10, isLeaf: true, isBranch: false);
-        c.Flush();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(c.StorageMaxDepthHistogram[5], Is.EqualTo(1),
-                "C5: Histogram bucket = raw(4) + 1 = 5");
-            Assert.That(c.StorageMaxDepthHistogram[4], Is.Zero,
-                "C5: Raw depth bucket must be empty");
-        }
-    }
-
     /// <summary>
     /// Comprehensive test: all 5 conventions verified on a single storage trie
     /// with known structure: branch@0, extension@1, 3 leaves@2.
@@ -200,26 +145,4 @@ public class GethConventionRegressionTests
         }
     }
 
-    /// <summary>
-    /// Convention 1 for per-contract Levels: ShortNodeCount at each depth
-    /// includes both extension and leaf physical nodes at that depth.
-    /// </summary>
-    [Test]
-    public void Convention1_PerDepthLevels_ShortIncludesExtAndLeaf()
-    {
-        VisitorCounters c = new();
-
-        c.BeginStorageTrie(default, default);
-        // Depth 1: 1 extension + 2 leaves
-        c.TrackStorageNode(depth: 1, byteSize: 50, isLeaf: false, isBranch: false); // extension
-        c.TrackStorageNode(depth: 1, byteSize: 30, isLeaf: true, isBranch: false);  // leaf
-        c.TrackStorageNode(depth: 1, byteSize: 30, isLeaf: true, isBranch: false);  // leaf
-        c.Flush();
-
-        TopContractEntry entry = c.TopN.TopByDepth[0];
-
-        // Levels[1]: ShortNodeCount = extensions(1) + leaves(2) = 3
-        Assert.That(entry.Levels[1].ShortNodeCount, Is.EqualTo(3),
-            "C1: Per-depth ShortNodeCount = extension + leaf at that depth");
-    }
 }
