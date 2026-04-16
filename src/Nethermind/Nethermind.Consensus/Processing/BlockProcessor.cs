@@ -49,6 +49,7 @@ public partial class BlockProcessor(
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
     private readonly bool _replayBal = blocksConfig?.ReplayBal ?? false;
+    private readonly bool _recordBal = blocksConfig?.RecordBal ?? false;
     private readonly IRecordedBalStore _recordedBalStore = recordedBalStore ?? NullRecordedBalStore.Instance;
 
     /// <summary>
@@ -70,7 +71,7 @@ public partial class BlockProcessor(
 
         if (_balBuilder is not null)
         {
-            bool balsEnabled = spec.BlockLevelAccessListsEnabled || _replayBal;
+            bool balsEnabled = spec.BlockLevelAccessListsEnabled || _replayBal || _recordBal;
             _balBuilder.TracingEnabled = balsEnabled;
             if (balsEnabled)
             {
@@ -90,7 +91,7 @@ public partial class BlockProcessor(
             StoreTxReceipts(block, receipts, spec);
         }
 
-        if (_replayBal && _balBuilder is not null)
+        if (_recordBal && _balBuilder is not null)
         {
             _recordedBalStore.Insert(block, _balBuilder.GeneratedBlockAccessList);
         }
