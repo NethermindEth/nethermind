@@ -37,7 +37,7 @@ internal class XdcSubnetBlockProducer(
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
     {
         XdcSubnetBlockHeader headerCandidate = (XdcSubnetBlockHeader)base.PrepareBlockHeader(parent, payloadAttributes);
-
+        //Penalties are not set on epoch switch, but on gap+1
         headerCandidate.Penalties = [];
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(headerCandidate);
