@@ -246,9 +246,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
         {
             long stateRefund = GasCostOf.NewAccountState * codeInsertRefunds;
-            long executionStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
-            long remainingStateRefund = Math.Max(0, stateRefund - executionStateGas);
-            gas.StateReservoir += remainingStateRefund;
+            long stateGasAboveFloor = Math.Max(0, gas.StateGasUsed - stateGasFloor);
+            long refundToReservoir = Math.Max(0, stateRefund - stateGasAboveFloor);
+            gas.StateReservoir += refundToReservoir;
 
             long newFloor = Math.Max(0, stateGasFloor - stateRefund);
             gas.StateGasUsed = Math.Max(gas.StateGasUsed - stateRefund, newFloor);

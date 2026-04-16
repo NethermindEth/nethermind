@@ -391,10 +391,9 @@ public abstract class BlockchainTestBase
     private static bool MatchesExpectedValidationError(string validationError, string[] mappedValidationErrors, string expectedValidationError)
     {
         string[] expectedErrors = expectedValidationError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return expectedErrors.Any(expectedError =>
-            validationError.Contains(expectedError, StringComparison.Ordinal) ||
-            mappedValidationErrors.Any(mappedValidationError =>
-                string.Equals(mappedValidationError, expectedError, StringComparison.Ordinal)));
+        return expectedErrors.Any(expected =>
+            mappedValidationErrors.Contains(expected) ||
+            validationError.Contains(expected, StringComparison.Ordinal));
     }
 
     // Mirrors execution-specs NethermindExceptionMapper: client validation text -> EEST exception ids.
@@ -465,22 +464,18 @@ public abstract class BlockchainTestBase
 
     private static string[] MapValidationErrorsToEestExceptions(string validationError)
     {
-        List<string> normalizedErrors = [];
+        HashSet<string> normalizedErrors = [];
 
         foreach ((string expectedError, string substring) in ValidationErrorSubstringMappings)
         {
             if (validationError.Contains(substring, StringComparison.Ordinal))
-            {
-                AddIfMissing(normalizedErrors, expectedError);
-            }
+                normalizedErrors.Add(expectedError);
         }
 
         foreach ((string expectedError, Regex pattern) in ValidationErrorRegexMappings)
         {
             if (pattern.IsMatch(validationError))
-            {
-                AddIfMissing(normalizedErrors, expectedError);
-            }
+                normalizedErrors.Add(expectedError);
         }
 
         return [.. normalizedErrors];
@@ -488,14 +483,6 @@ public abstract class BlockchainTestBase
 
     private static Regex ValidationErrorRegex(string pattern) =>
         new(pattern, ValidationErrorRegexOptions);
-
-    private static void AddIfMissing(List<string> values, string value)
-    {
-        if (!values.Contains(value))
-        {
-            values.Add(value);
-        }
-    }
 
     private static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
     {
