@@ -15,5 +15,5 @@ public interface IEpochSwitchManager
     EpochSwitchInfo? GetEpochSwitchInfo(Hash256 blockHash);
     EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCertificate);
     BlockRoundInfo? GetBlockByEpochNumber(ulong epochNumber);
-    bool IsGapPlusOne(XdcBlockHeader parent, IXdcReleaseSpec spec);
+    bool IsGapPlusOne(XdcBlockHeader header, IXdcReleaseSpec spec);
 }

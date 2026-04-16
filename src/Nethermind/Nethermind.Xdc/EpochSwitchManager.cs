@@ -407,10 +407,10 @@ internal class EpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree
         return epochBlockInfo;
     }
 
-    public bool IsGapPlusOne(XdcBlockHeader parent, IXdcReleaseSpec spec)
+    public bool IsGapPlusOne(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        if (parent.Number == 1)
+        if (header.Number == 1)
             return true;
-        return (parent.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
+        return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
     }
 }

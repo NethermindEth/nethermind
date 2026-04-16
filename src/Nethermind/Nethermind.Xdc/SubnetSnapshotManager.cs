@@ -10,6 +10,7 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
+using System;
 
 namespace Nethermind.Xdc;
 
@@ -35,5 +36,5 @@ internal class SubnetSnapshotManager(
         return new SubnetSnapshot(header.Number, header.Hash, candidates, penalties);
     }
 
-    public SubnetSnapshot GetSnapshotByHash(Hash256 headerHash) => GetSnapshot(headerHash);
+    public SubnetSnapshot GetSnapshotByHash(Hash256 headerHash) => GetSnapshot(headerHash) ?? throw new ArgumentException($"No snapshot found for header hash {headerHash}");
 }
