@@ -200,7 +200,7 @@ public class RangeQueryVisitorTests
     public void StorageRangeFetchVisitor()
     {
         TestRawTrieStore store = new(new MemDb());
-        (StateTree inputStateTree, StorageTree _, Hash256 account) = TestItem.Tree.GetTrees(store);
+        (StateTree inputStateTree, StorageTree storageTree, Hash256 account) = TestItem.Tree.GetTrees(store);
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(Keccak.Zero, Keccak.MaxValue, leafCollector);

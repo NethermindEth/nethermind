@@ -631,7 +631,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Will_persist_storage_nodes_via_state_tree()
         {
             MemDb memDb = new();
-            NodeStorage nodeStorage = new NodeStorage(memDb, scheme, requirePath: scheme == INodeStorage.KeyScheme.HalfPath);
+            NodeStorage nodeStorage = new(memDb, scheme, requirePath: scheme == INodeStorage.KeyScheme.HalfPath);
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
