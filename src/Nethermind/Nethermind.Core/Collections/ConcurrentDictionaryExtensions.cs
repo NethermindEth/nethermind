@@ -113,6 +113,27 @@ public static class ConcurrentDictionaryExtensions
             (_, startValue, amount) => startValue + amount,
             amount
         );
+
+    /// <summary>
+    /// Like <see cref="ConcurrentDictionary{TKey,TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> but
+    /// disposes the value created by <paramref name="factory"/> when another thread wins the race.
+    /// Fast path avoids allocation when the key already exists.
+    /// </summary>
+    public static TValue GetOrAddDisposable<TKey, TValue>(
+        this ConcurrentDictionary<TKey, TValue> dictionary, TKey key, Func<TKey, TValue> factory)
+        where TKey : notnull
+        where TValue : class, IDisposable
+    {
+        if (dictionary.TryGetValue(key, out TValue? existing))
+            return existing;
+
+        TValue created = factory(key);
+        TValue actual = dictionary.GetOrAdd(key, created);
+        if (!ReferenceEquals(actual, created))
+            created.Dispose();
+        return actual;
+    }
+
 }
 
 

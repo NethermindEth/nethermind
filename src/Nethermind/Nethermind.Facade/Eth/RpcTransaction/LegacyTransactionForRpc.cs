@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 // ReSharper disable VirtualMemberCallInConstructor
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -38,9 +39,11 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     // Accept during deserialization, ignore during serialization
     // See: https://github.com/NethermindEth/nethermind/pull/6067
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Data { set { Input = value; } private get { return null; } }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Input { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
