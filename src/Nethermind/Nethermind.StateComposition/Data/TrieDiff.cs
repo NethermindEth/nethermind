@@ -16,7 +16,7 @@ namespace Nethermind.StateComposition.Data;
 /// Content-addressed property: walking old root vs new root gives exact counts
 /// of nodes/accounts/slots that exist in one but not the other.
 /// </summary>
-public readonly record struct TrieDiff(
+internal readonly record struct TrieDiff(
     int AccountsAdded,
     int AccountsRemoved,
     int ContractsAdded,
@@ -90,7 +90,7 @@ public readonly record struct TrieDiff(
 /// The state holder combines this with its per-address baseline to know which
 /// slot-histogram bucket a contract moved between.
 /// </summary>
-public readonly record struct SlotCountChange(ValueHash256 AddressHash, long SlotDelta);
+internal readonly record struct SlotCountChange(ValueHash256 AddressHash, long SlotDelta);
 
 /// <summary>
 /// Per-account code-hash transition across one diff. The <see cref="ValueHash256"/>
@@ -98,7 +98,7 @@ public readonly record struct SlotCountChange(ValueHash256 AddressHash, long Slo
 /// (gained it in this diff) or lost it entirely. Distinct from
 /// <see cref="Keccak.OfAnEmptyString"/> which is the empty-bytecode hash.
 /// </summary>
-public readonly record struct CodeHashChange(
+internal readonly record struct CodeHashChange(
     ValueHash256 AddressHash,
     ValueHash256 OldCodeHash,
     ValueHash256 NewCodeHash)

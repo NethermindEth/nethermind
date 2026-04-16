@@ -23,23 +23,14 @@ namespace Nethermind.StateComposition.Test.Rpc;
 [TestFixture]
 public class StateCompositionRpcModuleTests
 {
-    // Minimal subclass that lets tests override only what they need without
-    // satisfying the full StateCompositionService constructor.
-    private class FakeService() : StateCompositionService(Substitute.For<IStateReader>(),
+    private static StateCompositionService CreateService() => new(
+        Substitute.For<IStateReader>(),
         Substitute.For<IWorldStateManager>(),
         Substitute.For<IBlockTree>(),
         new StateCompositionStateHolder(),
         new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance),
         Substitute.For<IStateCompositionConfig>(),
-        LimboLogs.Instance)
-    {
-        public bool CancelScanCalled { get; private set; }
-
-        public override void CancelScan()
-        {
-            CancelScanCalled = true;
-        }
-    }
+        LimboLogs.Instance);
 
     [Test]
     public async Task GetCachedStats_ReturnsDefaultStats_WhenNotInitialized()
@@ -47,7 +38,7 @@ public class StateCompositionRpcModuleTests
         StateCompositionStateHolder stateHolder = new();
 
         StateCompositionRpcModule rpc = new(
-            new FakeService(),
+            CreateService(),
             stateHolder,
             Substitute.For<IBlockTree>(),
             new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
@@ -60,21 +51,15 @@ public class StateCompositionRpcModuleTests
     [Test]
     public async Task CancelScan_ReturnsTrue()
     {
-        FakeService service = new();
-
         StateCompositionRpcModule rpc = new(
-            service,
+            CreateService(),
             new StateCompositionStateHolder(),
             Substitute.For<IBlockTree>(),
             new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
 
         ResultWrapper<bool> result = await rpc.statecomp_cancelScan();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Data, Is.True);
-            Assert.That(service.CancelScanCalled, Is.True);
-        }
+        Assert.That(result.Data, Is.True);
     }
 
     [Test]
@@ -84,7 +69,7 @@ public class StateCompositionRpcModuleTests
         blockTree.Head.Returns(Build.A.Block.TestObject);
 
         StateCompositionRpcModule rpc = new(
-            new FakeService(),
+            CreateService(),
             new StateCompositionStateHolder(),
             blockTree,
             new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));

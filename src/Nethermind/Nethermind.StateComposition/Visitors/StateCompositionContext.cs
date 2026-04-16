@@ -7,7 +7,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.StateComposition.Visitors;
 
-public readonly struct StateCompositionContext(TreePath path, int level, bool isStorage, int? branchChildIndex, VisitorCounters? counters = null)
+internal readonly struct StateCompositionContext(TreePath path, int level, bool isStorage, int? branchChildIndex, VisitorCounters? counters = null)
     : INodeContext<StateCompositionContext>
 {
     public readonly TreePath Path = path;

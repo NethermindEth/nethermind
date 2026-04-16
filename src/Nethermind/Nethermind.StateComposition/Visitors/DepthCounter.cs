@@ -12,7 +12,7 @@ namespace Nethermind.StateComposition.Visitors;
 /// <c>ref DepthCounter dc = ref array[i];</c> when reading from arrays.
 /// </para>
 /// </summary>
-public struct DepthCounter
+internal struct DepthCounter
 {
     public long ShortNodes;
     public long FullNodes;

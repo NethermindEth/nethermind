@@ -14,7 +14,7 @@ using Nethermind.StateComposition.Diff;
 
 namespace Nethermind.StateComposition.Service;
 
-internal partial class StateCompositionService
+internal sealed partial class StateCompositionService
 {
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {

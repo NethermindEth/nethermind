@@ -20,7 +20,7 @@ using Nethermind.StateComposition.Snapshots;
 
 namespace Nethermind.StateComposition.Service;
 
-internal partial class StateCompositionService : IStoppableService, IDisposable
+internal sealed partial class StateCompositionService : IStoppableService, IDisposable
 {
     private const long MinMemoryBudgetBytes = 1_048_576L; // 1 MiB
     private const int MaxScanParallelism = 16;
@@ -187,7 +187,7 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
         }
     }
 
-    public virtual void CancelScan()
+    public void CancelScan()
     {
         // Capture to local variable to prevent TOCTOU race.
         // The CTS may be disposed between our read and Cancel() call
