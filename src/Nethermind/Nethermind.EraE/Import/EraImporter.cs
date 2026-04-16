@@ -60,13 +60,12 @@ public class EraImporter(
 
         using IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
 
-        long lastBlockInStore = eraStore.LastBlock;
+        (long firstBlockInStore, long lastBlockInStore) = eraStore.BlockRange;
         if (to is 0 or long.MaxValue)
             to = lastBlockInStore;
         else if (to > lastBlockInStore)
             throw new EraImportException($"Store highest block {lastBlockInStore} is lower than requested end {to}.");
 
-        long firstBlockInStore = eraStore.FirstBlock;
         if (from == 0)
             from = firstBlockInStore;
         else if (from < firstBlockInStore)

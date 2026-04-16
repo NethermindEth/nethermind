@@ -3,6 +3,7 @@
 
 using System.Security.Cryptography;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.EraE.Archive;
 using EraException = Nethermind.Era1.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
@@ -11,7 +12,7 @@ using NonBlocking;
 namespace Nethermind.EraE.Store;
 
 // Thread-safety model:
-//   Setup paths  (FirstBlock, LastBlock, NextEraStart) — called sequentially during initialization,
+//   Setup paths  (BlockRange, NextEraStart) — called sequentially during initialization,
 //                never from an async context; sync-over-async via GetAwaiter().GetResult() is safe.
 //   Read paths   (FindBlockAndReceipts) — called concurrently by multiple importer worker tasks;
 //                protected by per-epoch semaphores and a manifest lock.
@@ -30,8 +31,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     private readonly SemaphoreSlim _manifestLock = new(1, 1);
 
     // One semaphore per epoch prevents concurrent duplicate downloads.
-    // Lazy<T> ensures only one SemaphoreSlim is created per epoch even if GetOrAdd races.
-    private readonly ConcurrentDictionary<int, Lazy<SemaphoreSlim>> _epochLocks = new();
+    private readonly ConcurrentDictionary<int, SemaphoreSlim> _epochLocks = new();
 
     // Verified epoch paths — populated after successful SHA-256 check
     private readonly ConcurrentDictionary<int, string> _verifiedEpochs = new();
@@ -41,8 +41,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     private readonly ConcurrentDictionary<int, EraReader> _openedReaders = new();
 
     // Setup path — sequential, sync-over-async is safe (see thread-safety model above)
-    public long FirstBlock => GetFirstBlockAsync().GetAwaiter().GetResult();
-    public long LastBlock => GetLastBlockAsync().GetAwaiter().GetResult();
+    public (long First, long Last) BlockRange => GetBlockRangeAsync().GetAwaiter().GetResult();
 
     public RemoteEraStoreDecorator(
         IEraStore? localStore,
@@ -98,8 +97,8 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         _localStore?.Dispose();
         _manifestLock.Dispose();
-        foreach (Lazy<SemaphoreSlim> s in _epochLocks.Values)
-            if (s.IsValueCreated) s.Value.Dispose();
+        foreach (SemaphoreSlim s in _epochLocks.Values)
+            s.Dispose();
         foreach (EraReader reader in _openedReaders.Values)
             reader.Dispose();
     }
@@ -137,29 +136,21 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         public void Dispose() => store.ReturnReader(epoch, reader);
     }
 
-    private async Task<long> GetFirstBlockAsync(CancellationToken cancellation = default)
+    private async Task<(long First, long Last)> GetBlockRangeAsync(CancellationToken cancellation = default)
     {
-        if (_localStore is not null) return _localStore.FirstBlock;
+        if (_localStore is not null) return _localStore.BlockRange;
 
         IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation).ConfigureAwait(false);
         if (manifest.Count == 0) throw new EraException("Remote eraE manifest is empty.");
 
-        // Exact: era epochs are aligned to maxEraSize boundaries, so first epoch always starts at epoch * maxEraSize.
-        return (long)manifest.Keys.Min() * _maxEraSize;
-    }
+        (int minEpoch, int maxEpoch) = manifest.Keys.MinMax();
 
-    private async Task<long> GetLastBlockAsync(CancellationToken cancellation = default)
-    {
-        if (_localStore is not null) return _localStore.LastBlock;
-
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await GetManifestAsync(cancellation).ConfigureAwait(false);
-        if (manifest.Count == 0) throw new EraException("Remote eraE manifest is empty.");
-
-        // Upper-bound estimate: avoids downloading the last (potentially huge) epoch file just for validation.
+        // First is exact: era epochs are aligned to maxEraSize boundaries.
+        // Last is upper-bound estimate: avoids downloading the last (potentially huge) epoch file just for validation.
         // The actual last block may be slightly lower for a non-full final epoch.
         // FindBlockAndReceipts returns (null, null) when number > reader.LastBlock, so importers that
         // rely on this value (to=0 / auto mode) will stop naturally at the real end.
-        return (long)(manifest.Keys.Max() + 1) * _maxEraSize - 1;
+        return ((long)minEpoch * _maxEraSize, (long)(maxEpoch + 1) * _maxEraSize - 1);
     }
 
     private async Task<IReadOnlyDictionary<int, RemoteEraEntry>> GetManifestAsync(CancellationToken cancellation = default)
@@ -190,7 +181,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
 
         string destinationPath = Path.Join(_downloadDir, entry.Filename);
 
-        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, static _ => new Lazy<SemaphoreSlim>(() => new SemaphoreSlim(1, 1))).Value;
+        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, static _ => new SemaphoreSlim(1, 1));
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {

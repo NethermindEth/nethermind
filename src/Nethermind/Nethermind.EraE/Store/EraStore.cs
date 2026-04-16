@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
-using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,7 +25,7 @@ public sealed class EraStore : IEraStore
     private readonly Proofs.Validator? _validator;
 
     private readonly Dictionary<long, string> _epochs;
-    private readonly Dictionary<long, ValueHash256> _checksumsByEpoch;
+    private readonly Dictionary<long, ValueHash256> _checksumsByEpoch = new();
 
     private readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _epochLocks = new();
@@ -38,14 +37,12 @@ public sealed class EraStore : IEraStore
     private readonly int _verifyConcurrency;
     private bool _disposed;
 
-    private readonly Lazy<long> _firstBlock;
-    private readonly Lazy<long> _lastBlock;
+    private readonly Lazy<(long First, long Last)> _blockRange;
 
-    public long FirstBlock => _firstBlock.Value;
-    public long LastBlock => _lastBlock.Value;
+    public (long First, long Last) BlockRange => _blockRange.Value;
 
-    private int LastEpoch { get; set; }
-    private int FirstEpoch { get; set; } = int.MaxValue;
+    private int LastEpoch { get; }
+    private int FirstEpoch { get; } = int.MaxValue;
 
     public EraStore(
         ISpecProvider specProvider,
@@ -71,7 +68,6 @@ public sealed class EraStore : IEraStore
         _maxOpenFile = Environment.ProcessorCount * 2;
         _verifyConcurrency = verifyConcurrency == 0 ? Environment.ProcessorCount : verifyConcurrency;
 
-        _checksumsByEpoch = new Dictionary<long, ValueHash256>();
         foreach (string line in fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsSHA256FileName)))
         {
             (long checksumEpoch, ValueHash256 hash) = EraPathUtils.ParseChecksumEntry(line);
@@ -79,7 +75,7 @@ public sealed class EraStore : IEraStore
         }
 
         bool hasEraFile = false;
-        _epochs = new Dictionary<long, string>();
+        _epochs = [];
 
         foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
@@ -96,32 +92,25 @@ public sealed class EraStore : IEraStore
         if (!hasEraFile)
             throw new EraException($"No relevant erae files in directory {directory}.");
 
-        _firstBlock = new Lazy<long>(() =>
+        _blockRange = new Lazy<(long, long)>(() =>
         {
-            using EraRenter _ = RentReader(FirstEpoch, out EraReader reader);
-            return reader.FirstBlock;
-        });
-        _lastBlock = new Lazy<long>(() =>
-        {
-            using EraRenter _ = RentReader(LastEpoch, out EraReader reader);
-            return reader.LastBlock;
+            using EraRenter f = RentReader(FirstEpoch, out EraReader firstReader);
+            using EraRenter l = RentReader(LastEpoch, out EraReader lastReader);
+            return (firstReader.FirstBlock, lastReader.LastBlock);
         });
     }
 
     private long GetEpochNumber(long blockNumber) => blockNumber / _maxEraSize;
 
-    private EraReader GetReader(long epoch)
-    {
-        if (!_epochs.TryGetValue(epoch, out string? path))
-            throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.");
-        return new EraReader(new E2StoreReader(path));
-    }
+    private EraReader GetReader(long epoch) => !_epochs.TryGetValue(epoch, out string? path)
+        ? throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.")
+        : new EraReader(new E2StoreReader(path));
 
     private async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
     {
         if (_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified) return;
 
-        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, _ => new SemaphoreSlim(1, 1));
+        SemaphoreSlim epochLock = _epochLocks.GetOrAdd(epoch, static _ => new SemaphoreSlim(1, 1));
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {
@@ -166,7 +155,7 @@ public sealed class EraStore : IEraStore
 
     public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
-        ThrowIfNegative(number);
+        ArgumentOutOfRangeException.ThrowIfNegative(number);
 
         long epoch = GetEpochNumber(number);
         if (!_epochs.ContainsKey(epoch))
@@ -211,12 +200,6 @@ public sealed class EraStore : IEraStore
         reader.Dispose();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowIfNegative(long number)
-    {
-        if (number < 0)
-            throw new ArgumentOutOfRangeException(nameof(number), number, "Cannot be negative.");
-    }
 
 
     private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable
