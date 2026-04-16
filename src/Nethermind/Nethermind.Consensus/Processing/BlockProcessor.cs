@@ -8,7 +8,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Headers;
+using Nethermind.BalRecorder;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
@@ -77,9 +77,6 @@ public partial class BlockProcessor(
                 _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
             }
         }
-
-        if (suggestedBlock.BlockAccessList is not null)
-            stateProvider.HintBal(suggestedBlock.BlockAccessList);
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);

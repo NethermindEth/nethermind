@@ -3,10 +3,7 @@
 
 using System;
 using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 
@@ -42,11 +39,6 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => baseScope.StartWriteBatch(estimatedAccountNum);
-
-        public void HintBal(BlockAccessList bal) => baseScope.HintBal(bal);
-
-        public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
-            => baseScope.ReadBalAsync(bal, sink, cancellationToken);
 
         public void Commit(long blockNumber)
         {

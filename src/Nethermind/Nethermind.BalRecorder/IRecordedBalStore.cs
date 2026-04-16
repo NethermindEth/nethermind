@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Headers;
+namespace Nethermind.BalRecorder;
 
 public interface IRecordedBalStore
 {

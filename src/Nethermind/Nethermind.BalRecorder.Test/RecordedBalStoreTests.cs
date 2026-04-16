@@ -3,13 +3,13 @@
 
 using System.IO;
 using FluentAssertions;
-using Nethermind.Blockchain.Headers;
+using Nethermind.BalRecorder;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.BlockAccessLists;
+namespace Nethermind.BalRecorder.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]

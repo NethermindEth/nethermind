@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 
-namespace Nethermind.Blockchain.Headers;
+namespace Nethermind.BalRecorder;
 
 /// <summary>
 /// Stores recorded BALs in era files — one file per 8192-block range.
