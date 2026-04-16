@@ -171,9 +171,14 @@ namespace Nethermind.Evm.Test
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
-                byte[] code = Prepare.EvmCode
-                    .Op((byte)i)
-                    .Done;
+                Instruction opcode = (Instruction)i;
+
+                // EIP-8024 opcodes require an immediate byte; a bare opcode returns BadInstruction
+                // due to truncated immediate, not because the opcode is invalid. Provide a valid
+                // immediate (0x80) so the test checks opcode validity rather than immediate presence.
+                byte[] code = opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE
+                    ? Prepare.EvmCode.Op((byte)i).Data(0x80).Done
+                    : Prepare.EvmCode.Op((byte)i).Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
                 TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);
