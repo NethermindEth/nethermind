@@ -143,15 +143,6 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         }
     }
 
-    public Result<TrieDepthDistribution> GetTrieDistribution()
-    {
-        if (_stateHolder.IsInitialized)
-            return Result<TrieDepthDistribution>.Success(_stateHolder.CurrentDistribution);
-
-        return Result<TrieDepthDistribution>.Fail(
-            "No cached data available. Wait for the bootstrap scan to complete.");
-    }
-
     public async Task<Result<TopContractEntry?>> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)
     {
         bool acquired = await _inspectLock.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);

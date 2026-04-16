@@ -18,17 +18,11 @@ namespace Nethermind.StateComposition.Rpc;
 public interface IStateCompositionRpcModule : IRpcModule
 {
     [JsonRpcMethod(IsImplemented = true,
-        Description = "Get cached stats from last completed scan. " +
+        Description = "Get current state composition: cumulative stats, trie depth distribution, and scan metadata. " +
                       "Check LastScanMetadata.IsComplete to confirm a scan has run; " +
                       "stats are zero-valued before the first scan completes.",
-        ExampleResponse = "{\"currentStats\":{\"accountsTotal\":12345678},\"blockNumber\":19000000,\"diffsSinceLastScan\":42,\"lastScanMetadata\":{\"isComplete\":true}}")]
-    Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats();
-
-    [JsonRpcMethod(IsImplemented = true,
-        Description = "Get trie depth distribution with byte sizes. " +
-                      "Returns cached data or fails if no scan has been run.",
-        ExampleResponse = "{\"accountTrieLevels\":[{\"depth\":0,\"fullNodeCount\":1,\"shortNodeCount\":0,\"valueNodeCount\":0,\"totalSize\":532}],\"avgAccountPathDepth\":6.4,\"maxAccountDepth\":8}")]
-    Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution();
+        ExampleResponse = "{\"currentStats\":{\"accountsTotal\":12345678},\"trieDistribution\":{\"accountTrieLevels\":[...]},\"blockNumber\":19000000,\"diffsSinceLastScan\":42,\"lastScanMetadata\":{\"isComplete\":true}}")]
+    Task<ResultWrapper<CachedStatsResponse>> statecomp_get();
 
     [JsonRpcMethod(IsImplemented = true,
         Description = "Cancel the currently running scan, if any.",

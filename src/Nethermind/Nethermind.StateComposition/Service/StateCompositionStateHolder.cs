@@ -79,6 +79,7 @@ internal sealed class StateCompositionStateHolder
             return new CachedStatsResponse
             {
                 CurrentStats = _incrementalStats,
+                TrieDistribution = _currentDistribution,
                 BlockNumber = _incrementalBlock,
                 DiffsSinceLastScan = _diffsSinceBaseline,
                 LastScanMetadata = _lastScanMetadata,
@@ -312,8 +313,8 @@ internal sealed class StateCompositionStateHolder
             _diffsSinceBaseline = snapshot.DiffsSinceBaseline;
             _lastProcessedStateRoot = snapshot.StateRoot;
             // _isInitialized stays false — baseline scan data (TopN, distribution)
-            // is not persisted. getCachedStats() returns incremental stats;
-            // getTrieDistribution() requires a fresh scan.
+            // is not persisted. statecomp_get() returns incremental stats;
+            // depth distribution requires a fresh scan.
 
             _currentDepthStats.Reset();
             if (snapshot.DepthStats.IsSeeded)
