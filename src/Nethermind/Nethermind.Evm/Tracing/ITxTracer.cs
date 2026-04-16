@@ -430,6 +430,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
 
 /// <summary>
 /// Exposes block-local gas accounting needed to validate transaction gas allowance.
+/// Only meaningful when processing transactions sequentially within a single block —
+/// implementations are not required to be thread-safe.
 /// </summary>
 public interface IBlockGasAccountingTracer
 {

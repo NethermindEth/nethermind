@@ -351,50 +351,48 @@ public abstract class BlockchainTestBase
             int paramCount = s_newPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
-            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext,
-                "engine_newPayloadV" + newPayloadVersion, paramsJson);
+            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
             if (npResponse is JsonRpcErrorResponse errorResponse)
             {
-                Assert.That(validationError, Is.Not.Null,
-                    $"engine_newPayloadV{newPayloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
-                continue;
+                AssertExpectedRpcError(errorResponse, validationError, newPayloadVersion);
             }
-
-            PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
-            string expectedStatus = validationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
-            Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus),
-                $"engine_newPayloadV{newPayloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. " +
-                $"ValidationError: {payloadStatus.ValidationError}");
-
-            if (validationError is not null)
+            else
             {
-                Assert.That(payloadStatus.ValidationError, Is.Not.Null,
-                    $"engine_newPayloadV{newPayloadVersion} returned INVALID without validation error. Expected: {validationError}");
+                PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
 
-                string[] mappedValidationErrors = MapValidationErrorsToEestExceptions(payloadStatus.ValidationError!);
-
-                Assert.That(MatchesExpectedValidationError(payloadStatus.ValidationError!, mappedValidationErrors, validationError), Is.True,
-                    $"engine_newPayloadV{newPayloadVersion} returned unexpected validation error. " +
-                    $"Actual: {payloadStatus.ValidationError}. Normalized: {string.Join("|", mappedValidationErrors)}. Expected: {validationError}");
-            }
-
-            if (payloadStatus.Status == PayloadStatus.Valid)
-            {
-                string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
-                AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                if (payloadStatus.Status == PayloadStatus.Valid)
+                {
+                    string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
+                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                }
             }
         }
     }
 
-    private static bool MatchesExpectedValidationError(string validationError, string[] mappedValidationErrors, string expectedValidationError)
+    private static void AssertExpectedRpcError(JsonRpcErrorResponse errorResponse, string? validationError, int payloadVersion) =>
+        Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
     {
-        string[] expectedErrors = expectedValidationError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return expectedErrors.Any(expectedError =>
-            validationError.Contains(expectedError, StringComparison.Ordinal) ||
-            mappedValidationErrors.Any(mappedValidationError =>
-                string.Equals(mappedValidationError, expectedError, StringComparison.Ordinal)));
+        string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
+        Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
+
+        if (expectedValidationError is not null)
+            AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
+    }
+
+    private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
+    {
+        Assert.That(actualError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} returned INVALID without validation error. Expected: {expectedError}");
+
+        string[] mapped = MapValidationErrorsToEestExceptions(actualError!);
+        string[] expected = expectedError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        bool matches = expected.Any(e => mapped.Contains(e) || actualError!.Contains(e, StringComparison.Ordinal));
+
+        Assert.That(matches, Is.True, $"engine_newPayloadV{payloadVersion} unexpected validation error. Actual: {actualError}. Mapped: {string.Join("|", mapped)}. Expected: {expectedError}");
     }
 
     // Mirrors execution-specs NethermindExceptionMapper: client validation text -> EEST exception ids.
@@ -463,39 +461,18 @@ public abstract class BlockchainTestBase
         ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
     ];
 
-    private static string[] MapValidationErrorsToEestExceptions(string validationError)
-    {
-        List<string> normalizedErrors = [];
+    private static string[] MapValidationErrorsToEestExceptions(string validationError) =>
+    [
+        .. ValidationErrorSubstringMappings
+            .Where(m => validationError.Contains(m.Substring, StringComparison.Ordinal))
+            .Select(m => m.ExpectedError)
+            .Concat(ValidationErrorRegexMappings
+                .Where(m => m.Pattern.IsMatch(validationError))
+                .Select(m => m.ExpectedError))
+            .Distinct()
+    ];
 
-        foreach ((string expectedError, string substring) in ValidationErrorSubstringMappings)
-        {
-            if (validationError.Contains(substring, StringComparison.Ordinal))
-            {
-                AddIfMissing(normalizedErrors, expectedError);
-            }
-        }
-
-        foreach ((string expectedError, Regex pattern) in ValidationErrorRegexMappings)
-        {
-            if (pattern.IsMatch(validationError))
-            {
-                AddIfMissing(normalizedErrors, expectedError);
-            }
-        }
-
-        return [.. normalizedErrors];
-    }
-
-    private static Regex ValidationErrorRegex(string pattern) =>
-        new(pattern, ValidationErrorRegexOptions);
-
-    private static void AddIfMissing(List<string> values, string value)
-    {
-        if (!values.Contains(value))
-        {
-            values.Add(value);
-        }
-    }
+    private static Regex ValidationErrorRegex(string pattern) => new(pattern, ValidationErrorRegexOptions);
 
     private static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
     {
@@ -505,12 +482,10 @@ public abstract class BlockchainTestBase
     }
 
     private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
-        SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion,
-            $$$"""[{"headBlockHash":"{{{blockHash}}}","safeBlockHash":"{{{blockHash}}}","finalizedBlockHash":"{{{blockHash}}}"},null]""");
+        SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
 
     private static void AssertRpcSuccess(JsonRpcResponse response) =>
-        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(),
-            response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
+        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {

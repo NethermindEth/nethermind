@@ -217,19 +217,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     [TestCase(true, TestName = "Eip8037_create_in_static_context_must_not_charge_state_gas_or_increment_nonce_CREATE2")]
     public void Eip8037_create_in_static_context_must_not_charge_state_gas_or_increment_nonce(bool create2)
     {
-        byte[] childInitCode = Prepare.EvmCode
-            .Op(Instruction.STOP)
-            .Done;
-
-        byte[] createAttemptCode = create2
-            ? Prepare.EvmCode.Create2(childInitCode, [0x01], UInt256.Zero).Op(Instruction.STOP).Done
-            : Prepare.EvmCode.Create(childInitCode, UInt256.Zero).Op(Instruction.STOP).Done;
-        Address createdAddress = create2
-            ? ContractAddress.From(TestItem.AddressC, [0x01], childInitCode)
-            : ContractAddress.From(TestItem.AddressC, 0);
-
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, createAttemptCode, SpecProvider.GenesisSpec);
+        Address createdAddress = SetupStaticCreateAttempt(create2);
 
         byte[] outerCode = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 50_000)
@@ -248,19 +236,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     [TestCase(true, TestName = "Eip8037_static_create_followed_by_parent_sstore_must_not_leak_create_state_gas_CREATE2")]
     public void Eip8037_static_create_followed_by_parent_sstore_must_not_leak_create_state_gas(bool create2)
     {
-        byte[] childInitCode = Prepare.EvmCode
-            .Op(Instruction.STOP)
-            .Done;
-
-        byte[] createAttemptCode = create2
-            ? Prepare.EvmCode.Create2(childInitCode, [0x01], UInt256.Zero).Op(Instruction.STOP).Done
-            : Prepare.EvmCode.Create(childInitCode, UInt256.Zero).Op(Instruction.STOP).Done;
-        Address createdAddress = create2
-            ? ContractAddress.From(TestItem.AddressC, [0x01], childInitCode)
-            : ContractAddress.From(TestItem.AddressC, 0);
-
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, createAttemptCode, SpecProvider.GenesisSpec);
+        Address createdAddress = SetupStaticCreateAttempt(create2);
         TestState.Set(new StorageCell(Recipient, 0), [0xDE, 0xAD]);
 
         byte[] outerCode = Prepare.EvmCode
@@ -284,6 +260,25 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(TestState.Get(new StorageCell(Recipient, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
         Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(UInt256.Zero));
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
+    }
+
+    private Address SetupStaticCreateAttempt(bool create2)
+    {
+        byte[] childInitCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        byte[] createAttemptCode = create2
+            ? Prepare.EvmCode.Create2(childInitCode, [0x01], UInt256.Zero).Op(Instruction.STOP).Done
+            : Prepare.EvmCode.Create(childInitCode, UInt256.Zero).Op(Instruction.STOP).Done;
+        Address createdAddress = create2
+            ? ContractAddress.From(TestItem.AddressC, [0x01], childInitCode)
+            : ContractAddress.From(TestItem.AddressC, 0);
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, createAttemptCode, SpecProvider.GenesisSpec);
+
+        return createdAddress;
     }
 
     [Test]
