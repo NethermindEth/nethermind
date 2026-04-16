@@ -58,9 +58,8 @@ public class GasEstimator(
         int errorMargin,
         CancellationToken token)
     {
-        EstimationResult validationResult = ValidateErrorMargin(errorMargin);
-        if (!validationResult.IsSuccess)
-            return validationResult;
+        if (ValidateErrorMargin(errorMargin) is { } validationError)
+            return validationError;
 
         IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
         tx.SenderAddress ??= Address.Zero;
@@ -85,12 +84,12 @@ public class GasEstimator(
         return BinarySearchEstimate(tx, header, gasTracer, bounds, errorMargin, token);
     }
 
-    private static EstimationResult ValidateErrorMargin(int errorMargin) =>
+    private static EstimationResult? ValidateErrorMargin(int errorMargin) =>
         errorMargin switch
         {
             < 0 => EstimationResult.Failure(InvalidErrorMarginNegative),
             >= MaxErrorMargin => EstimationResult.Failure(InvalidErrorMarginTooHigh),
-            _ => EstimationResult.Success(0)
+            _ => null
         };
 
     // Returns null if funds are sufficient (estimation continues), or a terminal result to return immediately.
