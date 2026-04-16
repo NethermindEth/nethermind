@@ -45,8 +45,9 @@ public class Validator
     {
         if (!TrustedAccumulatorsProvided()) return true;
         ValueHash256? trusted = GetAccumulatorForEpoch(blockNumber / SlotsPerHistoricalRoot);
-        if (trusted is null) throw new EraVerificationException("Trusted accumulator root was not provided.");
-        return trusted.Equals(accumulatorRoot);
+        return trusted is null
+            ? throw new EraVerificationException("Trusted accumulator root was not provided.")
+            : trusted.Equals(accumulatorRoot);
     }
 
     public async Task VerifyBlocksRootContext(BlocksRootContext context)
@@ -61,9 +62,7 @@ public class Validator
             case AccumulatorType.HistoricalRoots:
                 if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalRoots verification.");
                 long slot = (long)_slotTime.GetSlot(context.StartingBlockTimestamp!.Value);
-                ValueHash256? trustedRoot = GetHistoricalRoot(slot);
-                if (trustedRoot is null)
-                    throw new EraVerificationException("Historical root not found.");
+                ValueHash256? trustedRoot = GetHistoricalRoot(slot) ?? throw new EraVerificationException("Historical root not found.");
                 if (!trustedRoot.Equals(context.HistoricalRoot))
                     throw new EraVerificationException("Computed historical root does not match trusted historical root.");
                 break;
@@ -71,9 +70,7 @@ public class Validator
             case AccumulatorType.HistoricalSummaries:
                 if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalSummaries verification.");
                 long summarySlot = (long)_slotTime.GetSlot(context.StartingBlockTimestamp!.Value);
-                HistoricalSummary? trustedSummary = await GetHistoricalSummary(summarySlot);
-                if (trustedSummary is null)
-                    throw new EraVerificationException("Historical summary not found.");
+                HistoricalSummary? trustedSummary = await GetHistoricalSummary(summarySlot) ?? throw new EraVerificationException("Historical summary not found.");
                 if (!trustedSummary.Value.BlockSummaryRoot.Equals(context.HistoricalSummary.BlockSummaryRoot))
                     throw new EraVerificationException("Computed block summary root does not match trusted historical block summary root.");
                 if (!trustedSummary.Value.StateSummaryRoot.Equals(context.HistoricalSummary.StateSummaryRoot))
@@ -82,29 +79,27 @@ public class Validator
         }
     }
 
-    private bool TrustedAccumulatorsProvided() =>
-        _trustedAccumulators is { Count: > 0 };
+    private bool TrustedAccumulatorsProvided() => _trustedAccumulators is { Count: > 0 };
 
-    private ValueHash256? GetAccumulatorForEpoch(long epochIdx)
-    {
-        if (_trustedAccumulators is not null && _trustedAccumulators.Count > epochIdx)
-            return _trustedAccumulators[(int)epochIdx];
-        return null;
-    }
+    private ValueHash256? GetAccumulatorForEpoch(long epochIdx) =>
+        _trustedAccumulators is not null && _trustedAccumulators.Count > epochIdx
+            ? _trustedAccumulators[(int)epochIdx]
+            : null;
 
     private ValueHash256? GetHistoricalRoot(long slotNumber)
     {
         long idx = slotNumber / SlotsPerHistoricalRoot;
-        if (_trustedHistoricalRoots is not null && _trustedHistoricalRoots.Count > idx)
-            return _trustedHistoricalRoots[(int)idx];
-        return null;
+        return _trustedHistoricalRoots is not null && _trustedHistoricalRoots.Count > idx
+            ? _trustedHistoricalRoots[(int)idx]
+            : null;
     }
 
     private async Task<HistoricalSummary?> GetHistoricalSummary(long slotNumber)
     {
         long idx = slotNumber / SlotsPerHistoricalRoot;
-        if (_historicalSummariesProvider is null) return null;
-        return await _historicalSummariesProvider.GetHistoricalSummary((int)idx);
+        return _historicalSummariesProvider is null
+            ? null
+            : await _historicalSummariesProvider.GetHistoricalSummary((int)idx);
     }
 
 }

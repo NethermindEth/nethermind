@@ -155,16 +155,18 @@ public class EraExporter(
                     {
                         Hash256 computedRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(block.Number), receipts, _receiptDecoder);
                         if (computedRoot != block.Header.ReceiptsRoot)
+                        {
                             throw new EraException(
                                 $"Receipt root mismatch at block {block.ToString(Block.Format.FullHashAndNumber)}: " +
                                 "the database contains stale or corrupt receipt data. " +
                                 "Re-import from the original ERA source before re-exporting.");
+                        }
                     }
 
                     await eraWriter.Add(block, receipts, cancel);
                     lastBlockHash = block.Hash!;
 
-                    if ((Interlocked.Increment(ref totalProcessed) % ProgressLogInterval) == 0)
+                    if (Interlocked.Increment(ref totalProcessed) % ProgressLogInterval == 0)
                     {
                         progress.Update(totalProcessed);
                         progress.LogProgress();

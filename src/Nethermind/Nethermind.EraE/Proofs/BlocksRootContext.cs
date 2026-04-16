@@ -66,15 +66,8 @@ public sealed class BlocksRootContext : IDisposable
             case AccumulatorType.HistoricalSummaries:
                 // Post-merge: collect beacon block roots and state roots per slot.
                 // Missed slots are represented by zero hashes (default ValueHash256).
-                if (beaconBlockRoot.HasValue)
-                    _blockRoots.Add(beaconBlockRoot.Value);
-                else
-                    _blockRoots.Add(default);
-
-                if (stateRoot.HasValue)
-                    _stateRoots.Add(stateRoot.Value);
-                else
-                    _stateRoots.Add(default);
+                _blockRoots.Add(beaconBlockRoot ?? default);
+                _stateRoots.Add(stateRoot ?? default);
                 break;
         }
         Populated = true;

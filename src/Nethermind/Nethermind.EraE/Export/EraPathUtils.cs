@@ -43,7 +43,7 @@ public static class EraPathUtils
 
     public static string Filename(string network, long epoch, Hash256 accumulatorRoot)
     {
-        ArgumentNullException.ThrowIfNullOrEmpty(network);
+        ArgumentException.ThrowIfNullOrEmpty(network);
         ArgumentNullException.ThrowIfNull(accumulatorRoot);
         ArgumentOutOfRangeException.ThrowIfLessThan(epoch, 0);
 

@@ -30,6 +30,8 @@ public class EraCliRunner(
             await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, token);
         }
         else if (!string.IsNullOrEmpty(eraConfig.ExportDirectory))
+        {
             await eraExporter.Export(eraConfig.ExportDirectory!, eraConfig.From, eraConfig.To, token);
+        }
     }
 }
