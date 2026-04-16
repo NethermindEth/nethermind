@@ -54,7 +54,9 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
                 return null;
             }
 
-            masterNodes = [.. header.ValidatorsAddress!.Value];
+            masterNodes = header.ValidatorsAddress is null
+                ? throw new InvalidOperationException($"ValidatorsAddress is null on epoch-switch block {header.Number}")
+                : [.. header.ValidatorsAddress.Value];
         }
 
         Snapshot snap = SnapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
