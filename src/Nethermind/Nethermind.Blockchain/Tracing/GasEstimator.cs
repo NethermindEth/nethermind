@@ -217,7 +217,6 @@ public class GasEstimator(
 
     private readonly record struct EstimationResult(long GasEstimate, string? Error)
     {
-        public bool IsSuccess => Error is null;
         public static EstimationResult Success(long gasEstimate) => new(gasEstimate, null);
         public static EstimationResult Failure(string error) => new(0, error);
     }
