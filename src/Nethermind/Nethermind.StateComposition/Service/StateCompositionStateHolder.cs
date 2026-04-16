@@ -36,9 +36,9 @@ internal sealed class StateCompositionStateHolder
     // forward across diffs, and persisted in the snapshot so a restart doesn't lose
     // them. All mutation happens under _lock together with _incrementalStats, so the
     // histogram and the tracker maps never drift relative to each other.
-    private Dictionary<ValueHash256, long> _slotCountByAddress = new();
-    private Dictionary<ValueHash256, int> _codeHashRefcounts = new();
-    private Dictionary<ValueHash256, int> _codeHashSizes = new();
+    private Dictionary<ValueHash256, long> _slotCountByAddress = [];
+    private Dictionary<ValueHash256, int> _codeHashRefcounts = [];
+    private Dictionary<ValueHash256, int> _codeHashSizes = [];
 
     public StateCompositionStats CurrentStats { get { lock (_lock) return _currentStats; } }
 
@@ -157,9 +157,9 @@ internal sealed class StateCompositionStateHolder
             // Caller hands ownership of the tracker maps to the holder. The visitor
             // produces them once at scan completion and no longer references them;
             // decoder-loaded maps are freshly materialized per decode call.
-            _slotCountByAddress = slotCountByAddress ?? new Dictionary<ValueHash256, long>();
-            _codeHashRefcounts = codeHashRefcounts ?? new Dictionary<ValueHash256, int>();
-            _codeHashSizes = codeHashSizes ?? new Dictionary<ValueHash256, int>();
+            _slotCountByAddress = slotCountByAddress ?? [];
+            _codeHashRefcounts = codeHashRefcounts ?? [];
+            _codeHashSizes = codeHashSizes ?? [];
         }
     }
 

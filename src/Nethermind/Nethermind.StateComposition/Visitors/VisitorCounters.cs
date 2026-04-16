@@ -65,14 +65,14 @@ internal sealed class VisitorCounters(int topN = 20)
     /// one worker thread, so no cross-thread deduplication is required).
     /// Feeds the state holder's incremental slot-count tracker.
     /// </summary>
-    public readonly Dictionary<ValueHash256, long> SlotCountsByOwner = new();
+    public readonly Dictionary<ValueHash256, long> SlotCountsByOwner = [];
 
     /// <summary>
     /// Per-code-hash reference count accumulated on this thread. Each account whose
     /// <c>HasCode</c> is true bumps the count for its code hash by one. Merged across
     /// threads in <see cref="MergeFrom"/> to produce the total refcount per hash.
     /// </summary>
-    public readonly Dictionary<ValueHash256, int> CodeHashRefcounts = new();
+    public readonly Dictionary<ValueHash256, int> CodeHashRefcounts = [];
 
     private ValueHash256 _currentStorageRoot;
     private ValueHash256 _currentOwner;

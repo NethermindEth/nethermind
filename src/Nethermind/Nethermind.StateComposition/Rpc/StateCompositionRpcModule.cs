@@ -30,7 +30,7 @@ internal sealed class StateCompositionRpcModule(
     public Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution()
     {
         Result<TrieDepthDistribution> result = service.GetTrieDistribution();
-        return Task.FromResult(!result.Success(out TrieDepthDistribution dist, out var error) ?
+        return Task.FromResult(!result.Success(out TrieDepthDistribution dist, out string? error) ?
             ResultWrapper<TrieDepthDistribution>.Fail(error, ErrorCodes.ResourceUnavailable) :
             ResultWrapper<TrieDepthDistribution>.Success(dist));
     }
@@ -54,7 +54,7 @@ internal sealed class StateCompositionRpcModule(
         {
             Result<TopContractEntry?> result = await service.InspectContractAsync(
                 address, head.Header, CancellationToken.None).ConfigureAwait(false);
-            return !result.Success(out TopContractEntry? entry, out var error)
+            return !result.Success(out TopContractEntry? entry, out string? error)
                 ? ResultWrapper<TopContractEntry?>.Fail(error, ErrorCodes.ResourceUnavailable)
                 : ResultWrapper<TopContractEntry?>.Success(entry);
         }

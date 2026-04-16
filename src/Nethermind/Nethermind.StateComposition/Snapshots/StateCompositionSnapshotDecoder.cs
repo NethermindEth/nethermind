@@ -220,9 +220,9 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             SlotCountHistogram = ImmutableArray.Create(hist),
         };
 
-        Dictionary<ValueHash256, long> slotCountByAddress = DecodeMap<long>(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeLong());
-        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeMap<int>(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeInt());
-        Dictionary<ValueHash256, int> codeHashSizes = DecodeMap<int>(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeInt());
+        Dictionary<ValueHash256, long> slotCountByAddress = DecodeMap(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeLong());
+        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeMap(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeInt());
+        Dictionary<ValueHash256, int> codeHashSizes = DecodeMap(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeInt());
 
         return new StateCompositionSnapshot(
             stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,

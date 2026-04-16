@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -59,7 +60,7 @@ internal sealed partial class TrieDiffWalker
         Hash256? normalizedOldStorage = oldAccount.HasStorage ? new Hash256(oldAccount.StorageRoot) : null;
         Hash256? normalizedNewStorage = newAccount.HasStorage ? new Hash256(newAccount.StorageRoot) : null;
 
-        ITrieNodeResolver storageResolver = rootResolver.GetStorageTrieNodeResolver(addressHash);
+        ITrieNodeResolver storageResolver = _rootResolver.GetStorageTrieNodeResolver(addressHash);
         TreePath storagePath = TreePath.Empty;
 
         BeginContractStorage(addressHash.ValueHash256);
@@ -75,8 +76,8 @@ internal sealed partial class TrieDiffWalker
 
     private static AccountStruct DecodeAccount(TrieNode leaf)
     {
-        var value = leaf.Value;
-        var ctx = new Rlp.ValueDecoderContext(value.AsSpan());
+        CappedArray<byte> value = leaf.Value;
+        Rlp.ValueDecoderContext ctx = new(value.AsSpan());
         AccountDecoder.Instance.TryDecodeStruct(ref ctx, out AccountStruct account);
         return account;
     }

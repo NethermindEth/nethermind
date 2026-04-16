@@ -4,7 +4,6 @@
 using System;
 
 using Nethermind.StateComposition.Data;
-using Nethermind.StateComposition.Service;
 
 namespace Nethermind.StateComposition.Diff;
 

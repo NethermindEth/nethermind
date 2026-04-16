@@ -68,7 +68,7 @@ internal readonly record struct TrieDiff(
     public long NetStorageTrieBytes => StorageTrieBytesAdded - StorageTrieBytesRemoved;
 
     /// <summary>
-    /// Zero-delta sentinel returned by <see cref="Diff.TrieDiffWalker.ComputeDiff"/>
+    /// Zero-delta sentinel returned by <see cref="TrieDiffWalker.ComputeDiff"/>
     /// when both roots are equal. Callers iterate <see cref="SlotCountChanges"/>
     /// / <see cref="CodeHashChanges"/> as empty lists and feed
     /// <see cref="DepthDelta"/> through the unseeded no-op path on the holder.
