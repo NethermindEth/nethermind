@@ -5,7 +5,6 @@ using System.IO;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
-using Nethermind.Config;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -90,5 +89,4 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb) =>
         new BlockAccessListStore(balDb);
-
 }
