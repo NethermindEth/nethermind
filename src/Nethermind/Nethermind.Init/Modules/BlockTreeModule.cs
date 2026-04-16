@@ -93,5 +93,5 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         new BlockAccessListStore(balDb);
 
     private IRecordedBalStore CreateRecordedBalStore([KeyFilter(DbNames.RecordedBal)] IDb recordedBalDb) =>
-        blocksConfig.ReplayBal ? new RecordedBalStore(recordedBalDb) : NullRecordedBalStore.Instance;
+        blocksConfig.ReplayBal || blocksConfig.RecordBal ? new RecordedBalStore(recordedBalDb) : NullRecordedBalStore.Instance;
 }
