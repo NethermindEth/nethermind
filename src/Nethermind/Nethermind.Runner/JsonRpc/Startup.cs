@@ -203,13 +203,12 @@ public class Startup : IStartup
                         endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")))
                             .RequireHost(healthHostPatterns);
                     }
+                    endpoints.MapDataFeeds(lifetime).RequireHost(healthHostPatterns);
                 }
                 catch (Exception e)
                 {
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
-
-                endpoints.MapDataFeeds(lifetime).RequireHost(healthHostPatterns);
             }
         });
 
