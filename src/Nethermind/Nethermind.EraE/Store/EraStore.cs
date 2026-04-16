@@ -36,7 +36,7 @@ public sealed class EraStore : IEraStore
 
     private readonly int _maxEraSize;
     private readonly int _verifyConcurrency;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     private readonly Lazy<(long First, long Last)> _blockRange;
 
@@ -189,6 +189,8 @@ public sealed class EraStore : IEraStore
 
     private void ReturnReader(long epoch, EraReader reader)
     {
+        if (_disposed) { reader.Dispose(); return; }
+
         int shardIdx = (int)(epoch % _maxOpenFile);
 
         if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;

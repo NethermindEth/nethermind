@@ -24,7 +24,7 @@ public sealed class BlocksRootContext : IDisposable
     private readonly ArrayPoolList<ValueHash256> _stateRoots = new(8192);
     private readonly ArrayPoolList<(Hash256 Hash, UInt256 Td)> _blockHashes = new(8192);
 
-    public readonly AccumulatorType AccumulatorType;
+    public AccumulatorType AccumulatorType { get; }
 
     private AccumulatorCalculator? _accumulatorCalculator;
     private ValueHash256? _accumulatorRoot;

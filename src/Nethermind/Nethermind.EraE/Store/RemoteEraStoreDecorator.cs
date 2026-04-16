@@ -26,6 +26,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     // Bounded reader pool: capped at ProcessorCount*2 to stay within OS fd limits.
     // Mainnet has ~1600 epochs; Linux default fd limit is 1024 — an unbounded pool would exhaust it.
     private readonly int _maxOpenReaders;
+    private volatile bool _disposed;
 
     // Manifest fetched once on first remote access
     private IReadOnlyDictionary<int, RemoteEraEntry>? _manifest;
@@ -96,6 +97,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
 
     public void Dispose()
     {
+        _disposed = true;
         _localStore?.Dispose();
         _manifestLock.Dispose();
         foreach (SemaphoreSlim s in _epochLocks.Values)
@@ -127,7 +129,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
 
     private void ReturnReader(int epoch, EraReader reader)
     {
-        if (!_openedReaders.TryAdd(epoch, reader))
+        if (_disposed || !_openedReaders.TryAdd(epoch, reader))
             reader.Dispose();
     }
 

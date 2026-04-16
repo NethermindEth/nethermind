@@ -50,7 +50,7 @@ public sealed class Validator
             : trusted.Equals(accumulatorRoot);
     }
 
-    public async Task VerifyBlocksRootContext(BlocksRootContext context)
+    public async Task VerifyBlocksRootContext(BlocksRootContext context, CancellationToken cancellation = default)
     {
         switch (context.AccumulatorType)
         {
@@ -70,7 +70,7 @@ public sealed class Validator
             case AccumulatorType.HistoricalSummaries:
                 if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalSummaries verification.");
                 long summarySlot = (long)_slotTime.GetSlot(context.StartingBlockTimestamp!.Value);
-                HistoricalSummary? trustedSummary = await GetHistoricalSummary(summarySlot) ?? throw new EraVerificationException("Historical summary not found.");
+                HistoricalSummary? trustedSummary = await GetHistoricalSummary(summarySlot, cancellation) ?? throw new EraVerificationException("Historical summary not found.");
                 if (!trustedSummary.Value.BlockSummaryRoot.Equals(context.HistoricalSummary.BlockSummaryRoot))
                     throw new EraVerificationException("Computed block summary root does not match trusted historical block summary root.");
                 if (!trustedSummary.Value.StateSummaryRoot.Equals(context.HistoricalSummary.StateSummaryRoot))
@@ -94,12 +94,12 @@ public sealed class Validator
             : null;
     }
 
-    private async Task<HistoricalSummary?> GetHistoricalSummary(long slotNumber)
+    private async Task<HistoricalSummary?> GetHistoricalSummary(long slotNumber, CancellationToken cancellation = default)
     {
         long idx = slotNumber / SlotsPerHistoricalRoot;
         return _historicalSummariesProvider is null
             ? null
-            : await _historicalSummariesProvider.GetHistoricalSummary((int)idx);
+            : await _historicalSummariesProvider.GetHistoricalSummary((int)idx, cancellationToken: cancellation);
     }
 
 }
