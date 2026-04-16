@@ -116,16 +116,12 @@ public sealed class BlocksRootContext : IDisposable
         if (specProvider is null)
             return AccumulatorType.HistoricalHashesAccumulator;
 
-        IReleaseSpec spec = specProvider.GetSpec(forkActivation);
-        if (spec.IsEip4895Enabled)
+        if (specProvider.GetSpec(forkActivation).IsEip4895Enabled)
             return AccumulatorType.HistoricalSummaries;
 
-        // Paris (The Merge) has no distinct execution-layer EIP flag; use MergeBlockNumber.
-        ForkActivation? mergeBlock = specProvider.MergeBlockNumber;
-        if (mergeBlock.HasValue && forkActivation.BlockNumber >= mergeBlock.Value.BlockNumber)
-            return AccumulatorType.HistoricalRoots;
-
-        return AccumulatorType.HistoricalHashesAccumulator;
+        return specProvider.MergeBlockNumber is { BlockNumber: var merge } && forkActivation.BlockNumber >= merge
+            ? AccumulatorType.HistoricalRoots
+            : AccumulatorType.HistoricalHashesAccumulator;
     }
 
     private static ValueHash256 UInt256ToHash(ref UInt256 value)
