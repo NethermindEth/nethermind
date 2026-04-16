@@ -176,6 +176,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("volta.json", true)]
     public void Snap_sync_settings_as_expected(string configWildcard, bool enabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.SnapSync, enabled);
 
+#pragma warning disable CS0612 // Type or member is obsolete
     [TestCase("^aura ^sepolia ^hoodi ^mainnet", false)]
     [TestCase("aura ^archive", true)]
     [TestCase("^archive ^spaceneth", true)]
@@ -183,6 +184,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("hoodi ^archive", true)]
     [TestCase("mainnet ^archive", true)]
     public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync) => Test<ISyncConfig, long?>(configWildcard, static c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
+#pragma warning restore CS0612
 
     [TestCase("^spaceneth.json")]
     public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard) => Test<IInitConfig, DiagnosticMode>(configWildcard, static c => c.DiagnosticMode, DiagnosticMode.None);
