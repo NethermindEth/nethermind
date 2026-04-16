@@ -1079,8 +1079,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public static TransactionResult CreateMinerPremiumNegative(Transaction tx, in UInt256 baseFee)
         {
-            UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.MaxPriorityFeePerGas;
-            string detail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {feeCap}, baseFee: {baseFee} (supplied gas {tx.GasLimit})";
+            string detail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {baseFee} (supplied gas {tx.GasLimit})";
             return new TransactionResult(ErrorType.MinerPremiumNegative) { SubstateError = detail };
         }
 
