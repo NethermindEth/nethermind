@@ -301,13 +301,24 @@ public class BlockchainProcessorTests
                 }
             };
 
+            // Subscribe to BlockRemoved before AllowToFail so we cannot miss the signal.
+            // BlockRemoved fires after Process() returns, which is after ProcessBranch's
+            // finally block runs DeleteInvalidBlocks. IsDeletedAsInvalid() waits on this
+            // to ensure deletion is complete before asserting.
+            ManualResetEvent pipelineCompleteEvent = new(false);
+            _processor.BlockRemoved += (_, args) =>
+            {
+                if (args.BlockHash == block.Hash)
+                    pipelineCompleteEvent.Set();
+            };
+
             _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
             _branchProcessor.AllowToFail(block.Hash!);
             processedEvent.WaitOne(ProcessingWait);
             Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
             Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
             _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
-            return new AfterBlock(_logManager, this, block);
+            return new AfterBlock(_logManager, this, block, pipelineCompleteEvent);
         }
 
         public ProcessingTestContext Suggested(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
@@ -448,7 +459,7 @@ public class BlockchainProcessorTests
             return this;
         }
 
-        public class AfterBlock(ILogManager logManager, ProcessingTestContext processingTestContext, Block block)
+        public class AfterBlock(ILogManager logManager, ProcessingTestContext processingTestContext, Block block, ManualResetEvent? pipelineCompleteEvent = null)
         {
             private const int IgnoreWait = 200;
 
@@ -494,12 +505,19 @@ public class BlockchainProcessorTests
             public ProcessingTestContext IsDeletedAsInvalid()
             {
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted");
+                if (pipelineCompleteEvent is not null)
+                {
+                    // ProcessedFail subscribed to BlockRemoved which fires after
+                    // DeleteInvalidBlocks completes. Wait for it so the block is
+                    // guaranteed to be gone before we assert.
+                    pipelineCompleteEvent.WaitOne(ProcessingWait);
+                }
+
                 // Drain any stale signal (no NewHeadBlock fires for invalid blocks, so this always times out).
                 processingTestContext._resetEvent.WaitOne(IgnoreWait);
                 Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
-                // Poll until the block is actually deleted — the 200 ms drain above is not enough on slow CI.
-                Assert.That(() => processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None),
-                    Is.Null.After(ProcessingWait, 50), $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
+                Assert.That(processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None),
+                    Is.Null, $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
                 _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be deleted");
                 return processingTestContext;
             }
