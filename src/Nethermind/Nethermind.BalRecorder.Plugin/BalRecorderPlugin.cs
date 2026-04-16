@@ -4,7 +4,9 @@
 using System;
 using Autofac;
 using Autofac.Core;
+using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.BalRecorder;
 
@@ -26,11 +28,16 @@ public class BalRecorderPlugin : INethermindPlugin
     public IModule? Module => Enabled ? new BalRecorderModule(ReplayEnabled, RecordingEnabled, BalPath) : null;
 }
 
-public class BalRecorderModule(bool replayEnabled, bool recordingEnabled, string directory) : Module
+public class BalRecorderModule(bool replayEnabled, bool recordingEnabled, string relativePath) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        builder.RegisterInstance(new RecordedBalStore(directory, replayEnabled, recordingEnabled))
+        builder.Register(ctx =>
+               {
+                   string directory = relativePath.GetApplicationResourcePath(
+                       ctx.Resolve<IInitConfig>().BaseDbPath);
+                   return new RecordedBalStore(directory, replayEnabled, recordingEnabled);
+               })
                .As<IRecordedBalStore>()
                .SingleInstance();
         builder.RegisterDecorator<BalRecordingBlockProcessor, Nethermind.Consensus.Processing.IBlockProcessor>();
