@@ -15,13 +15,15 @@ namespace Nethermind.EraE.Test.Archive;
 
 internal class EraReaderTests
 {
-    [Test]
-    public async Task GetBlockByNumber_InPreMergeEpoch_ReturnsCorrectBlockNumbers()
+    [TestCase(3, 0)]
+    [TestCase(0, 3)]
+    public async Task GetBlockByNumber_ReturnsCorrectBlockNumbers(int preMergeCount, int postMergeCount)
     {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
+        int totalCount = preMergeCount + postMergeCount;
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: preMergeCount, postMergeCount: postMergeCount);
         using EraReader sut = new(file.FilePath);
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < totalCount; i++)
         {
             (Block block, _) = await sut.GetBlockByNumber(i);
             block.Number.Should().Be(i);
@@ -73,19 +75,6 @@ internal class EraReaderTests
         List<(Block, TxReceipt[])> result = await sut.ToListAsync();
         result.Should().HaveCount(3);
         result.Select(r => r.Item1.Number).Should().BeEquivalentTo([0L, 1L, 2L]);
-    }
-
-    [Test]
-    public async Task GetBlockByNumber_InPostMergeEpoch_ReturnsCorrectBlockNumbers()
-    {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
-        using EraReader sut = new(file.FilePath);
-
-        for (int i = 0; i < 3; i++)
-        {
-            (Block block, _) = await sut.GetBlockByNumber(i);
-            block.Number.Should().Be(i);
-        }
     }
 
     [Test]

@@ -76,29 +76,22 @@ public sealed class HistoricalSummariesRpcProvider(
 
     private static HistoricalSummary[] ParseHistoricalSummaries(JsonElement root)
     {
-        if (!root.TryGetProperty("data", out JsonElement data))
-            return [];
-
-        if (!data.TryGetProperty("historical_summaries", out JsonElement historicalSummaries))
-            return [];
-
-        if (historicalSummaries.ValueKind != JsonValueKind.Array)
+        if (!root.TryGetProperty("data", out JsonElement data)
+            || !data.TryGetProperty("historical_summaries", out JsonElement historicalSummaries)
+            || historicalSummaries.ValueKind != JsonValueKind.Array)
             return [];
 
         List<HistoricalSummary> summaries = new(historicalSummaries.GetArrayLength());
         foreach (JsonElement summary in historicalSummaries.EnumerateArray())
         {
-            if (!summary.TryGetProperty("block_summary_root", out JsonElement blockSummaryRootEl))
-                continue;
-            if (!summary.TryGetProperty("state_summary_root", out JsonElement stateSummaryRootEl))
-                continue;
-
-            string? blockSummaryRoot = blockSummaryRootEl.GetString();
-            string? stateSummaryRoot = stateSummaryRootEl.GetString();
-            if (blockSummaryRoot is null || stateSummaryRoot is null)
-                continue;
-
-            summaries.Add(HistoricalSummary.From(blockSummaryRoot, stateSummaryRoot));
+            if (summary.TryGetProperty("block_summary_root", out JsonElement blockSummaryRootEl)
+                && summary.TryGetProperty("state_summary_root", out JsonElement stateSummaryRootEl))
+            {
+                string? blockSummaryRoot = blockSummaryRootEl.GetString();
+                string? stateSummaryRoot = stateSummaryRootEl.GetString();
+                if (blockSummaryRoot is not null && stateSummaryRoot is not null)
+                    summaries.Add(HistoricalSummary.From(blockSummaryRoot, stateSummaryRoot));
+            }
         }
 
         return [.. summaries];

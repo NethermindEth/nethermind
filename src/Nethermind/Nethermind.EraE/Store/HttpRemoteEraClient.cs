@@ -42,8 +42,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
 
         Dictionary<int, RemoteEraEntry> manifest = new();
 
-        string? line;
-        while ((line = await reader.ReadLineAsync(cancellation).ConfigureAwait(false)) is not null)
+        while (await reader.ReadLineAsync(cancellation).ConfigureAwait(false) is { } line)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
 

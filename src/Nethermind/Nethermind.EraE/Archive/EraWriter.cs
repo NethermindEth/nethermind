@@ -97,10 +97,8 @@ public sealed class EraWriter : IDisposable
 
         if (_finalized)
             throw new EraException("Finalize() has been called; no more blocks can be added.");
-        if (block.Header is null)
-            throw new ArgumentException("Block must have a header.", nameof(block));
-        if (block.Hash is null)
-            throw new ArgumentException("Block must have a hash.", nameof(block));
+        ArgumentNullException.ThrowIfNull(block.Header);
+        ArgumentNullException.ThrowIfNull(block.Hash);
         if (_headers.Count >= MaxEraSize)
             throw new ArgumentException($"Era file cannot contain more than {MaxEraSize} blocks.");
 
@@ -109,7 +107,7 @@ public sealed class EraWriter : IDisposable
             _startNumber = block.Number;
             _blocksRootContext = new BlocksRootContext(block.Number, block.Header.Timestamp, _specProvider);
             _firstBlock = false;
-            await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
+            await _e2StoreWriter.WriteEntry(EntryTypes.Version, Memory<byte>.Empty, cancellation);
         }
         else if (block.Number != _startNumber + _headers.Count)
         {
@@ -354,11 +352,11 @@ public sealed class EraWriter : IDisposable
 
     private async Task WriteCompressed(ushort entryType, ReadOnlyMemory<byte> data, CancellationToken cancellation)
     {
-        using RecyclableMemoryStream ms = RecyclableStream.GetStream(nameof(EraWriter));
-        using (SnappyStream compressor = new(ms, CompressionMode.Compress, leaveOpen: true))
+        await using RecyclableMemoryStream ms = RecyclableStream.GetStream(nameof(EraWriter));
+        await using (SnappyStream compressor = new(ms, CompressionMode.Compress, leaveOpen: true))
         {
             compressor.Write(data.Span);
-            compressor.Flush();
+            await compressor.FlushAsync(cancellation);
         }
 
         bool ok = ms.TryGetBuffer(out ArraySegment<byte> segment);

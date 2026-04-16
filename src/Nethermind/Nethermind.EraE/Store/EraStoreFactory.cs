@@ -47,9 +47,7 @@ public class EraStoreFactory(
 
         if (remoteClient is null)
         {
-            if (localStore is null)
-                throw new EraException($"No eraE files found in '{src}' and no remote URL is configured.");
-            return localStore;
+            return localStore ?? throw new EraException($"No eraE files found in '{src}' and no remote URL is configured.");
         }
 
         string downloadDir = !string.IsNullOrWhiteSpace(eraConfig.RemoteDownloadDirectory)

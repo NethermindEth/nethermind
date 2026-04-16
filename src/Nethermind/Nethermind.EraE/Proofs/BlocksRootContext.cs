@@ -66,15 +66,8 @@ public sealed class BlocksRootContext : IDisposable
             case AccumulatorType.HistoricalSummaries:
                 // Post-merge: collect beacon block roots and state roots per slot.
                 // Missed slots are represented by zero hashes (default ValueHash256).
-                if (beaconBlockRoot.HasValue)
-                    _blockRoots.Add(beaconBlockRoot.Value);
-                else
-                    _blockRoots.Add(default);
-
-                if (stateRoot.HasValue)
-                    _stateRoots.Add(stateRoot.Value);
-                else
-                    _stateRoots.Add(default);
+                _blockRoots.Add(beaconBlockRoot ?? default);
+                _stateRoots.Add(stateRoot ?? default);
                 break;
         }
         Populated = true;
@@ -118,26 +111,15 @@ public sealed class BlocksRootContext : IDisposable
         _blockHashes.Dispose();
     }
 
-    private static AccumulatorType GetAccumulatorType(ForkActivation forkActivation, ISpecProvider? specProvider)
-    {
-        if (specProvider is null)
-            return AccumulatorType.HistoricalHashesAccumulator;
+    private static AccumulatorType GetAccumulatorType(ForkActivation forkActivation, ISpecProvider? specProvider) =>
+        specProvider switch
+        {
+            null => AccumulatorType.HistoricalHashesAccumulator,
+            _ when specProvider.GetSpec(forkActivation).IsEip4895Enabled => AccumulatorType.HistoricalSummaries,
+            _ when specProvider.MergeBlockNumber is { BlockNumber: var merge } && forkActivation.BlockNumber >= merge => AccumulatorType.HistoricalRoots,
+            _ => AccumulatorType.HistoricalHashesAccumulator
+        };
 
-        IReleaseSpec spec = specProvider.GetSpec(forkActivation);
-        if (spec.IsEip4895Enabled)
-            return AccumulatorType.HistoricalSummaries;
-
-        // Paris (The Merge) has no distinct execution-layer EIP flag; use MergeBlockNumber.
-        ForkActivation? mergeBlock = specProvider.MergeBlockNumber;
-        if (mergeBlock.HasValue && forkActivation.BlockNumber >= mergeBlock.Value.BlockNumber)
-            return AccumulatorType.HistoricalRoots;
-
-        return AccumulatorType.HistoricalHashesAccumulator;
-    }
-
-    private static ValueHash256 UInt256ToHash(ref UInt256 value)
-    {
-        ReadOnlySpan<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref value, 1));
-        return new ValueHash256(bytes);
-    }
+    private static ValueHash256 UInt256ToHash(ref UInt256 value) =>
+        new(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref value, 1)));
 }

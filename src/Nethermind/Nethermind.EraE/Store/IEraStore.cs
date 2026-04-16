@@ -8,8 +8,7 @@ namespace Nethermind.EraE.Store;
 public interface IEraStore : IDisposable
 {
     Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default);
-    long LastBlock { get; }
-    long FirstBlock { get; }
+    (long First, long Last) BlockRange { get; }
 
     bool HasEpoch(long blockNumber);
 

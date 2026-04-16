@@ -118,7 +118,7 @@ public sealed class E2StoreReader : IDisposable
         return (value, (long)entry.Length + EntryHeaderSize);
     }
 
-    public Entry ReadEntry(long position, ushort? expectedType, CancellationToken token = default)
+    private Entry ReadEntry(long position, ushort? expectedType)
     {
         ushort type = ReadUInt16(position);
         uint length = ReadUInt32(position + 2);

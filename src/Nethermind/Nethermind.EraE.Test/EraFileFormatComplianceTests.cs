@@ -166,7 +166,7 @@ public class EraFileFormatComplianceTests
             e.Length.Should().Be(32, "TotalDifficulty entry must be 32-byte LE uint256"));
     }
 
-    private static List<EntryRecord> ReadAllEntries(string filePath)
+    internal static List<EntryRecord> ReadAllEntries(string filePath)
     {
         List<EntryRecord> entries = [];
         byte[] bytes = File.ReadAllBytes(filePath);
@@ -183,6 +183,6 @@ public class EraFileFormatComplianceTests
         return entries;
     }
 
-    private sealed record EntryRecord(ushort Type, uint Length, long Offset);
+    internal sealed record EntryRecord(ushort Type, uint Length, long Offset);
 
 }

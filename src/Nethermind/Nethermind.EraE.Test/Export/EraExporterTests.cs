@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using Nethermind.EraE.Config;
+using Nethermind.EraE.E2Store;
 using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Export;
 using NUnit.Framework;
@@ -43,27 +44,17 @@ public class EraExporterTests
         eraFiles.Length.Should().Be(expectedEraFiles);
     }
 
-    [Test]
-    public async Task Export_WhenCalled_CreatesChecksumsFile()
+    [TestCase("checksums_sha256.txt")]
+    [TestCase("checksums.txt")]
+    [TestCase("accumulators.txt")]
+    public async Task Export_WhenCalled_CreatesMetadataFile(string fileName)
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
 
         string tmpDirectory = container.ResolveTempDirPath();
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
 
-        System.IO.File.Exists(System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsSHA256FileName))
-            .Should().BeTrue();
-    }
-
-    [Test]
-    public async Task Export_WhenCalled_CreatesAccumulatorsFile()
-    {
-        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
-
-        string tmpDirectory = container.ResolveTempDirPath();
-        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
-
-        System.IO.File.Exists(System.IO.Path.Combine(tmpDirectory, EraExporter.AccumulatorFileName))
+        System.IO.File.Exists(System.IO.Path.Combine(tmpDirectory, fileName))
             .Should().BeTrue();
     }
 
@@ -177,30 +168,11 @@ public class EraExporterTests
         string[] eraFiles = Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
         eraFiles.Should().HaveCount(1, "one epoch for blocks 1-15");
 
-        List<ushort> types = ReadAllEntryTypes(eraFiles[0]);
-        types.Should().NotContain(EntryTypeProof, "post-merge epochs have no Proof entries");
-        types.Should().NotContain(EntryTypeTotalDifficulty, "post-merge epochs have no TotalDifficulty entries");
-        types.Should().NotContain(EntryTypeAccumulatorRoot, "post-merge epochs have no AccumulatorRoot entry");
+        List<ushort> types = EraFileFormatComplianceTests.ReadAllEntries(eraFiles[0]).Select(e => e.Type).ToList();
+        types.Should().NotContain(EntryTypes.Proof, "post-merge epochs have no Proof entries");
+        types.Should().NotContain(EntryTypes.TotalDifficulty, "post-merge epochs have no TotalDifficulty entries");
+        types.Should().NotContain(EntryTypes.AccumulatorRoot, "post-merge epochs have no AccumulatorRoot entry");
     }
-
-    private static List<ushort> ReadAllEntryTypes(string filePath)
-    {
-        List<ushort> types = [];
-        byte[] bytes = File.ReadAllBytes(filePath);
-        long pos = 0;
-        while (pos + 8 <= bytes.Length)
-        {
-            ushort type = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan((int)pos, 2));
-            uint length = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan((int)pos + 2, 4));
-            types.Add(type);
-            pos += 8 + length;
-        }
-        return types;
-    }
-
-    private const ushort EntryTypeProof = 0x0b;
-    private const ushort EntryTypeTotalDifficulty = 0x06;
-    private const ushort EntryTypeAccumulatorRoot = 0x07;
 
     [Test]
     public void Export_WhenLastBlockBodyNotAvailable_ThrowsInvalidOperationException()
