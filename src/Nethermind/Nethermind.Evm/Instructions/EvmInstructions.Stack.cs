@@ -614,12 +614,11 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        if (!TryDecodePair(vm, ref programCounter, out int n, out int m))
-            return EvmExceptionType.BadInstruction;
-
-        return !stack.Exchange<TTracingInst>(n, m)
-            ? EvmExceptionType.StackUnderflow
-            : EvmExceptionType.None;
+        return !TryDecodePair(vm, ref programCounter, out int n, out int m)
+            ? EvmExceptionType.BadInstruction
+            : !stack.Exchange<TTracingInst>(n, m)
+                ? EvmExceptionType.StackUnderflow
+                : EvmExceptionType.None;
     }
 
     /// <summary>
