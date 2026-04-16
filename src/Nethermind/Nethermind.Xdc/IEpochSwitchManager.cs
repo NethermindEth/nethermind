@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
@@ -14,4 +15,5 @@ public interface IEpochSwitchManager
     EpochSwitchInfo? GetEpochSwitchInfo(Hash256 blockHash);
     EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCertificate);
     BlockRoundInfo? GetBlockByEpochNumber(ulong epochNumber);
+    bool IsGapPlusOne(XdcBlockHeader parent, IXdcReleaseSpec spec);
 }

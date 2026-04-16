@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Xdc.Contracts;
@@ -24,7 +25,7 @@ internal class SubnetSnapshotManager(
         votingContract,
         specProvider,
         new SubnetSnapshotDecoder(),
-        cacheName: "XDC Subnet Snapshot cache")
+        cacheName: "XDC Subnet Snapshot cache"), ISubnetSnapshotManager
 {
     protected override SubnetSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
@@ -33,4 +34,6 @@ internal class SubnetSnapshotManager(
 
         return new SubnetSnapshot(header.Number, header.Hash, candidates, penalties);
     }
+
+    public SubnetSnapshot GetSnapshotByHash(Hash256 headerHash) => GetSnapshot(headerHash);
 }
