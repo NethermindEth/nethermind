@@ -12,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.EraE.Store;
 
-public class EraStoreFactory(
+public sealed class EraStoreFactory(
     ISpecProvider specProvider,
     IBlockValidator blockValidator,
     IFileSystem fileSystem,

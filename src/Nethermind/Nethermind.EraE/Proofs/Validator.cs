@@ -9,7 +9,7 @@ using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationExcep
 
 namespace Nethermind.EraE.Proofs;
 
-public class Validator
+public sealed class Validator
 {
     private readonly ISpecProvider _specProvider;
     private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;

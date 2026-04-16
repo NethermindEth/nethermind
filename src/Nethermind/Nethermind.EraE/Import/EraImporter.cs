@@ -20,7 +20,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.EraE.Import;
 
-public class EraImporter(
+public sealed class EraImporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
     IReceiptStorage receiptStorage,

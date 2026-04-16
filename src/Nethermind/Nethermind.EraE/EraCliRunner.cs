@@ -9,7 +9,7 @@ using EraException = Nethermind.Era1.EraException;
 
 namespace Nethermind.EraE;
 
-public class EraCliRunner(
+public sealed class EraCliRunner(
     IEraEConfig eraConfig,
     IHistoryConfig historyConfig,
     IEraImporter eraImporter,

@@ -9,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.EraE.Admin;
 
-public class AdminEraService(
+public sealed class AdminEraService(
     IEraImporter eraImporter,
     IEraExporter eraExporter,
     IProcessExitSource processExit,

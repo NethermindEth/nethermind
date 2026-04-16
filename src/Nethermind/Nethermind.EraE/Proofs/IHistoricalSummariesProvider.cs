@@ -5,10 +5,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.EraE.Proofs;
 
-public struct HistoricalSummary(ValueHash256 blockSummaryRoot, ValueHash256 stateSummaryRoot)
+public readonly struct HistoricalSummary(ValueHash256 blockSummaryRoot, ValueHash256 stateSummaryRoot)
 {
-    public ValueHash256 BlockSummaryRoot { get; set; } = blockSummaryRoot;
-    public ValueHash256 StateSummaryRoot { get; set; } = stateSummaryRoot;
+    public ValueHash256 BlockSummaryRoot { get; } = blockSummaryRoot;
+    public ValueHash256 StateSummaryRoot { get; } = stateSummaryRoot;
 
     public static HistoricalSummary From(string blockSummaryRootHex, string stateSummaryRootHex) =>
         new(new ValueHash256(blockSummaryRootHex), new ValueHash256(stateSummaryRootHex));

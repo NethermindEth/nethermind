@@ -19,7 +19,7 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.EraE.Export;
 
-public class EraExporter(
+public sealed class EraExporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
     IReceiptStorage receiptStorage,
