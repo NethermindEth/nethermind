@@ -628,6 +628,19 @@
           "Nethermind.Sockets": "[1.37.0-unstable, )"
         }
       },
+      "nethermind.balrecorder": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Blockchain": "[1.37.0-unstable, )"
+        }
+      },
+      "nethermind.balrecorder.plugin": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[1.37.0-unstable, )",
+          "Nethermind.BalRecorder": "[1.37.0-unstable, )"
+        }
+      },
       "nethermind.blockchain": {
         "type": "Project",
         "dependencies": {
@@ -660,6 +673,7 @@
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
+          "Nethermind.BalRecorder": "[1.37.0-unstable, )",
           "Nethermind.Blockchain": "[1.37.0-unstable, )",
           "Nethermind.Config": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",

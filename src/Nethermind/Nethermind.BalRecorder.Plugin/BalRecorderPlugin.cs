@@ -5,7 +5,6 @@ using System;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Headers;
 
 namespace Nethermind.BalRecorder;
 

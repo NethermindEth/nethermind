@@ -94,8 +94,6 @@ namespace Nethermind.Config
 
         public bool BuildBlocksOnMainState { get; set; }
 
-
-
         public byte[] GetExtraDataBytes() => _extraDataBytes;
 
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
