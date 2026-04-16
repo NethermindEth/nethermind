@@ -8,10 +8,8 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.BalRecorder;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -41,15 +39,11 @@ public partial class BlockProcessor(
     IBlockhashStore blockHashStore,
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
-    IExecutionRequestsProcessor executionRequestsProcessor,
-    IRecordedBalStore? recordedBalStore = null)
+    IExecutionRequestsProcessor executionRequestsProcessor)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
-    private readonly IRecordedBalStore _recordedBalStore = recordedBalStore ?? NullRecordedBalStore.Instance;
-    private readonly bool _replayBal = recordedBalStore?.ReplayEnabled ?? false;
-    private readonly bool _recordBal = recordedBalStore?.RecordingEnabled ?? false;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -63,16 +57,10 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        if (_replayBal && suggestedBlock.BlockAccessList is null)
-        {
-            suggestedBlock.BlockAccessList = _recordedBalStore.Get(suggestedBlock.Number, suggestedBlock.Hash);
-        }
-
         if (_balBuilder is not null)
         {
-            bool balsEnabled = spec.BlockLevelAccessListsEnabled || _replayBal || _recordBal;
-            _balBuilder.TracingEnabled = balsEnabled;
-            if (balsEnabled)
+            _balBuilder.TracingEnabled |= spec.BlockLevelAccessListsEnabled;
+            if (_balBuilder.TracingEnabled)
             {
                 _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
             }
@@ -85,11 +73,6 @@ public partial class BlockProcessor(
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
-        }
-
-        if (_recordBal && _balBuilder is not null)
-        {
-            _recordedBalStore.Insert(block, _balBuilder.GeneratedBlockAccessList);
         }
 
         return (block, receipts);

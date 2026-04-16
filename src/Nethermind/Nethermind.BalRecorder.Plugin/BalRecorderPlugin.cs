@@ -28,8 +28,11 @@ public class BalRecorderPlugin : INethermindPlugin
 
 public class BalRecorderModule(bool replayEnabled, bool recordingEnabled, string directory) : Module
 {
-    protected override void Load(ContainerBuilder builder) =>
+    protected override void Load(ContainerBuilder builder)
+    {
         builder.RegisterInstance(new RecordedBalStore(directory, replayEnabled, recordingEnabled))
                .As<IRecordedBalStore>()
                .SingleInstance();
+        builder.RegisterDecorator<BalRecordingBlockProcessor, Nethermind.Consensus.Processing.IBlockProcessor>();
+    }
 }
