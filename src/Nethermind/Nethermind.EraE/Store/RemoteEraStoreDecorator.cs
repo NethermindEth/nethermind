@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.EraE.Archive;
 using EraException = Nethermind.Era1.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
-using NonBlocking;
 
 namespace Nethermind.EraE.Store;
 
@@ -181,12 +182,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
 
         string destinationPath = Path.Join(_downloadDir, entry.Filename);
 
-        if (!_epochLocks.TryGetValue(epoch, out SemaphoreSlim? epochLock))
-        {
-            SemaphoreSlim created = new(1, 1);
-            epochLock = _epochLocks.GetOrAdd(epoch, created);
-            if (!ReferenceEquals(epochLock, created)) created.Dispose();
-        }
+        SemaphoreSlim epochLock = _epochLocks.GetOrAddDisposable(epoch, static _ => new SemaphoreSlim(1, 1));
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {

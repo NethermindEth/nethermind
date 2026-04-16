@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
@@ -11,7 +13,6 @@ using Nethermind.EraE.E2Store;
 using EraException = Nethermind.Era1.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Export;
-using NonBlocking;
 
 namespace Nethermind.EraE.Store;
 
@@ -110,12 +111,7 @@ public sealed class EraStore : IEraStore
     {
         if (_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified) return;
 
-        if (!_epochLocks.TryGetValue(epoch, out SemaphoreSlim? epochLock))
-        {
-            SemaphoreSlim created = new(1, 1);
-            epochLock = _epochLocks.GetOrAdd(epoch, created);
-            if (!ReferenceEquals(epochLock, created)) created.Dispose();
-        }
+        SemaphoreSlim epochLock = _epochLocks.GetOrAddDisposable(epoch, static _ => new SemaphoreSlim(1, 1));
         await epochLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {
