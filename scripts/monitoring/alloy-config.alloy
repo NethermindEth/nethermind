@@ -1,0 +1,125 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// Outputs
+// ──────────────────────────────────────────────────────────────────────────────
+
+loki.write "loki_endpoint" {
+  endpoint {
+    url = sys.env("LOKI_PUSH_URL")
+    basic_auth {
+      username = sys.env("LOKI_USERNAME")
+      password = sys.env("LOKI_PASSWORD")
+    }
+  }
+}
+
+prometheus.remote_write "metrics_endpoint" {
+  endpoint {
+    url = sys.env("PROMETHEUS_URL")
+    basic_auth {
+      username = sys.env("PROMETHEUS_USERNAME")
+      password = sys.env("PROMETHEUS_PASSWORD")
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Logs — Nethermind container stdout via Docker socket
+// ──────────────────────────────────────────────────────────────────────────────
+
+discovery.docker "nethermind_container" {
+  host = "unix:///var/run/docker.sock"
+
+  filter {
+    name   = "name"
+    values = ["sedge-execution-client"]
+  }
+}
+
+discovery.relabel "nethermind_log_labels" {
+  targets = discovery.docker.nethermind_container.targets
+
+  // Platform required labels — aligned with central monitoring conventions.
+  rule {
+    target_label = "job"
+    replacement  = "nethermind"
+  }
+
+  rule {
+    target_label = "project"
+    replacement  = "core-monitoring"
+  }
+
+  rule {
+    target_label = "external_provider"
+    replacement  = "linode"
+  }
+
+  // Node specific labels.
+  rule {
+    target_label = "Instance"
+    replacement  = sys.env("NODE_NAME")
+  }
+
+  rule {
+    target_label = "Network"
+    replacement  = sys.env("SEDGE_NETWORK")
+  }
+
+  rule {
+    target_label = "sync_mode"
+    replacement  = sys.env("SYNC_MODE")
+  }
+
+  rule {
+    target_label = "run_id"
+    replacement  = sys.env("RUN_ID")
+  }
+
+  rule {
+    target_label = "User"
+    replacement  = sys.env("GITHUB_USER")
+  }
+}
+
+loki.source.docker "nethermind_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.nethermind_log_labels.output
+  forward_to = [loki.write.loki_endpoint.receiver]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Metrics — Nethermind Prometheus endpoint
+// ──────────────────────────────────────────────────────────────────────────────
+
+prometheus.scrape "nethermind_metrics" {
+  targets = [{
+    __address__ = "localhost:8008",
+  }]
+  forward_to = [prometheus.relabel.nethermind_metric_labels.receiver]
+}
+
+prometheus.relabel "nethermind_metric_labels" {
+  forward_to = [prometheus.remote_write.metrics_endpoint.receiver]
+
+  // Platform required labels — aligned with central monitoring conventions.
+  rule {
+    target_label = "job"
+    replacement  = "nethermind"
+  }
+
+  rule {
+    target_label = "project"
+    replacement  = "core-monitoring"
+  }
+
+  rule {
+    target_label = "external_provider"
+    replacement  = "linode"
+  }
+
+  // Node specific labels.
+  rule {
+    target_label = "User"
+    replacement  = sys.env("GITHUB_USER")
+  }
+}
