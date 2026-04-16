@@ -8,7 +8,6 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Messages;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -64,7 +63,7 @@ namespace Nethermind.Consensus.Processing
 
                 [DebuggerHidden]
                 [DoesNotReturn]
-                static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, BlockErrorMessages.ExceededGasLimit);
+                static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
             }
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
