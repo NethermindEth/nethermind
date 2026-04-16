@@ -74,7 +74,7 @@ public partial class BlockProcessor
 
             for (int i = 0; i < len; i++)
             {
-                BlockReceiptsTracer tracer = new();
+                BlockReceiptsTracer tracer = new(true);
                 tracer.StartNewBlockTrace(block);
                 receiptsTracers[i] = tracer;
                 gasResults[i] = new TaskCompletionSource<(long? BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>();

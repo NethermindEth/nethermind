@@ -14,7 +14,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
+public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
@@ -88,7 +88,10 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
 
         // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
-        Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
+        if (!parallel)
+        {
+            Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
+        }
 
         // Track cumulative receipt gas (post-refund)
         _cumulativeReceiptGas += gasConsumed.SpentGas;
