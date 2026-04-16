@@ -37,7 +37,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
-            .AddSingleton<IRecordedBalStore, IDb>(CreateRecordedBalStore)
+            .AddSingleton<IRecordedBalStore, IInitConfig>(CreateRecordedBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
@@ -92,6 +92,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb) =>
         new BlockAccessListStore(balDb);
 
-    private IRecordedBalStore CreateRecordedBalStore([KeyFilter(DbNames.RecordedBal)] IDb recordedBalDb) =>
-        blocksConfig.ReplayBal || blocksConfig.RecordBal ? new RecordedBalStore(recordedBalDb) : NullRecordedBalStore.Instance;
+    private IRecordedBalStore CreateRecordedBalStore(IInitConfig initConfig) =>
+        blocksConfig.ReplayBal || blocksConfig.RecordBal
+            ? new RecordedBalStore(Path.Combine(initConfig.BaseDbPath, "recordedBal"))
+            : NullRecordedBalStore.Instance;
 }
