@@ -189,16 +189,17 @@ public sealed class EraStore : IEraStore
 
     private void ReturnReader(long epoch, EraReader reader)
     {
-        if (_disposed) { reader.Dispose(); return; }
+        if (!_disposed)
+        {
+            int shardIdx = (int)(epoch % _maxOpenFile);
 
-        int shardIdx = (int)(epoch % _maxOpenFile);
+            if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;
 
-        if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;
+            if (_openedReader.TryRemove(shardIdx, out (long Epoch, EraReader Reader) existing))
+                existing.Reader.Dispose();
 
-        if (_openedReader.TryRemove(shardIdx, out (long Epoch, EraReader Reader) existing))
-            existing.Reader.Dispose();
-
-        if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;
+            if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;
+        }
 
         reader.Dispose();
     }
