@@ -238,6 +238,7 @@ public class BlockAccessListManager(
         }
     }
 
+    // todo: optimize early validation
     public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true)
     {
         if (block.BlockAccessList is null)

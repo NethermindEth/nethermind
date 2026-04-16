@@ -299,6 +299,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public int TakeSnapshot()
         => _changes.Count;
 
+    // todo: this will be simplified when BlockAccessList structure is refactored
     public void Restore(int snapshot)
     {
         snapshot = int.Max(0, snapshot);
@@ -354,6 +355,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
+    // todo: optimize early validation
     public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
     {
         foreach (AccountChanges accountChanges in AccountChanges)
