@@ -40,10 +40,4 @@ public interface IStateCompositionRpcModule : IRpcModule
                       "Returns null if the address has no storage.",
         ExampleResponse = "{\"owner\":\"0xabc...\",\"storageRoot\":\"0xdef...\",\"maxDepth\":5,\"totalNodes\":1234,\"valueNodes\":890,\"totalSize\":56789}")]
     Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Address? address);
-
-    [JsonRpcMethod(IsImplemented = true,
-        Description = "Get persisted stats snapshot at a specific block number. " +
-                      "Returns null if no snapshot exists for that block.",
-        ExampleResponse = "{\"stats\":{\"accountsTotal\":12345678},\"blockNumber\":19000000,\"stateRoot\":\"0xabc...\",\"diffsSinceBaseline\":0,\"scanBlockNumber\":19000000}")]
-    Task<ResultWrapper<StateCompositionSnapshot?>> statecomp_getStatsAtBlock(long blockNumber);
 }

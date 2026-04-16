@@ -40,8 +40,7 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             CreateService(),
             stateHolder,
-            Substitute.For<IBlockTree>(),
-            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
+            Substitute.For<IBlockTree>());
 
         ResultWrapper<CachedStatsResponse> result = await rpc.statecomp_getCachedStats();
 
@@ -54,8 +53,7 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             CreateService(),
             new StateCompositionStateHolder(),
-            Substitute.For<IBlockTree>(),
-            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
+            Substitute.For<IBlockTree>());
 
         ResultWrapper<bool> result = await rpc.statecomp_cancelScan();
 
@@ -71,8 +69,7 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             CreateService(),
             new StateCompositionStateHolder(),
-            blockTree,
-            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
+            blockTree);
 
         ResultWrapper<TopContractEntry?> result = await rpc.statecomp_inspectContract(null);
 

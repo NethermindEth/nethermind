@@ -10,15 +10,13 @@ using Nethermind.JsonRpc;
 
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Service;
-using Nethermind.StateComposition.Snapshots;
 
 namespace Nethermind.StateComposition.Rpc;
 
 internal sealed class StateCompositionRpcModule(
     StateCompositionService service,
     StateCompositionStateHolder stateHolder,
-    IBlockTree blockTree,
-    StateCompositionSnapshotStore snapshotStore)
+    IBlockTree blockTree)
     : IStateCompositionRpcModule
 {
     public Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats()
@@ -64,13 +62,4 @@ internal sealed class StateCompositionRpcModule(
         }
     }
 
-    public Task<ResultWrapper<StateCompositionSnapshot?>> statecomp_getStatsAtBlock(long blockNumber)
-    {
-        if (blockNumber < 0)
-            return Task.FromResult(
-                ResultWrapper<StateCompositionSnapshot?>.Fail("Block number must be non-negative", ErrorCodes.InvalidInput));
-
-        StateCompositionSnapshot? snapshot = snapshotStore.ReadSnapshot(blockNumber);
-        return Task.FromResult(ResultWrapper<StateCompositionSnapshot?>.Success(snapshot));
-    }
 }
