@@ -17,13 +17,11 @@ namespace Nethermind.StateComposition.Data;
 /// of nodes/accounts/slots that exist in one but not the other.
 /// </summary>
 public readonly record struct TrieDiff(
-    // Account-level changes
     int AccountsAdded,
     int AccountsRemoved,
     int ContractsAdded,
     int ContractsRemoved,
 
-    // Account trie structure changes
     int AccountTrieBranchesAdded,
     int AccountTrieBranchesRemoved,
     int AccountTrieExtensionsAdded,
@@ -33,7 +31,6 @@ public readonly record struct TrieDiff(
     long AccountTrieBytesAdded,
     long AccountTrieBytesRemoved,
 
-    // Storage trie structure changes (aggregate across all contracts)
     int StorageTrieBranchesAdded,
     int StorageTrieBranchesRemoved,
     int StorageTrieExtensionsAdded,
@@ -43,11 +40,9 @@ public readonly record struct TrieDiff(
     long StorageTrieBytesAdded,
     long StorageTrieBytesRemoved,
 
-    // Storage slot changes
     long StorageSlotsAdded,
     long StorageSlotsRemoved,
 
-    // Semantic account state changes (HasStorage / IsTotallyEmpty transitions)
     int ContractsWithStorageAdded,
     int ContractsWithStorageRemoved,
     int EmptyAccountsAdded,
@@ -59,8 +54,6 @@ public readonly record struct TrieDiff(
     // merged into the holder's baseline via CumulativeDepthStats.AddInPlace.
     CumulativeDepthStats DepthDelta,
 
-    // Per-account payloads that feed the incremental trackers in the state holder.
-    // Empty arrays on diffs that don't need them — never null.
     IReadOnlyList<SlotCountChange> SlotCountChanges,
     IReadOnlyList<CodeHashChange> CodeHashChanges
 )

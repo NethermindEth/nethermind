@@ -16,7 +16,6 @@ public readonly record struct CachedStatsResponse
     /// <summary>Block number these stats correspond to. 0 until the first scan completes.</summary>
     public long BlockNumber { get; init; }
 
-    /// <summary>Number of diffs applied since the last full scan (0 = fresh from scan).</summary>
     public int DiffsSinceLastScan { get; init; }
 
     /// <summary>Metadata from the last full scan; <see cref="ScanMetadata.IsComplete"/> false until a scan finishes.</summary>

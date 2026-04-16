@@ -31,6 +31,18 @@ public class StateCompositionSnapshotStore(
 
     public void WriteSnapshot(StateCompositionSnapshot snapshot)
     {
+        byte[]? prevBytes = db.Get(LatestKey);
+        if (prevBytes is not null && prevBytes.Length >= 8)
+        {
+            long prevBlock = BinaryPrimitives.ReadInt64BigEndian(prevBytes);
+            if (prevBlock != snapshot.BlockNumber)
+            {
+                Span<byte> prevKey = stackalloc byte[8];
+                BinaryPrimitives.WriteInt64BigEndian(prevKey, prevBlock);
+                db.Remove(prevKey);
+            }
+        }
+
         Span<byte> key = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(key, snapshot.BlockNumber);
 
@@ -86,10 +98,27 @@ public class StateCompositionSnapshotStore(
         return ReadSnapshot(latestBlock);
     }
 
-    public void DeleteSnapshot(long blockNumber)
+    public void PurgeOldEntries()
     {
-        Span<byte> key = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(key, blockNumber);
-        db.Remove(key);
+        byte[]? latestBytes = db.Get(LatestKey);
+        long latestBlock = -1;
+        if (latestBytes is not null && latestBytes.Length >= 8)
+            latestBlock = BinaryPrimitives.ReadInt64BigEndian(latestBytes);
+
+        Span<byte> latestKey = stackalloc byte[8];
+        BinaryPrimitives.WriteInt64BigEndian(latestKey, latestBlock);
+
+        int removed = 0;
+        foreach (byte[] key in db.GetAllKeys())
+        {
+            if (key.AsSpan().SequenceEqual(LatestKey)) continue;
+            if (latestBlock >= 0 && key.AsSpan().SequenceEqual(latestKey)) continue;
+
+            db.Remove(key);
+            removed++;
+        }
+
+        if (removed > 0 && _logger.IsInfo)
+            _logger.Info($"StateComposition: purged {removed} old snapshot entries");
     }
 }

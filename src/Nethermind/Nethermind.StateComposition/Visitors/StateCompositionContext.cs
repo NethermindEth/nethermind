@@ -29,10 +29,6 @@ public readonly struct StateCompositionContext(TreePath path, int level, bool is
 
     public StateCompositionContext AddStorage(in ValueHash256 storage)
     {
-        // Reset path and level for storage trie traversal.
-        // Level resets to 0 so per-contract Levels[16] indexes from depth 0 (matching Geth).
-        // Path resets to Empty since storage trie has its own independent path space.
-        // Counters is preserved — same worker, same ThreadLocal slot.
         return new StateCompositionContext(TreePath.Empty, 0, true, null, Counters);
     }
 }

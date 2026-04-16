@@ -14,7 +14,6 @@ internal sealed partial class TrieDiffWalker
 {
     private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, bool isStorage, int depth)
     {
-        // Record both leaf nodes (old removed, new added)
         RecordNode(NodeType.Leaf, oldLeaf.FullRlp.Length, isStorage, added: false);
         RecordNode(NodeType.Leaf, newLeaf.FullRlp.Length, isStorage, added: true);
 
@@ -38,15 +37,12 @@ internal sealed partial class TrieDiffWalker
         AccountStruct oldAccount = DecodeAccount(oldLeaf);
         AccountStruct newAccount = DecodeAccount(newLeaf);
 
-        // Contract status change
         if (!oldAccount.HasCode && newAccount.HasCode) _contractsAdded++;
         else if (oldAccount.HasCode && !newAccount.HasCode) _contractsRemoved++;
 
-        // Contract-with-storage transition (HasStorage = StorageRoot != EmptyTreeHash)
         if (!oldAccount.HasStorage && newAccount.HasStorage) _contractsWithStorageAdded++;
         else if (oldAccount.HasStorage && !newAccount.HasStorage) _contractsWithStorageRemoved++;
 
-        // Empty-account transition (matches StateCompositionVisitor: nonce=0, balance=0, no code, no storage)
         if (!oldAccount.IsTotallyEmpty && newAccount.IsTotallyEmpty) _emptyAccountsAdded++;
         else if (oldAccount.IsTotallyEmpty && !newAccount.IsTotallyEmpty) _emptyAccountsRemoved++;
 
@@ -58,7 +54,6 @@ internal sealed partial class TrieDiffWalker
         Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
         RecordCodeHashChange(addressHash.ValueHash256, oldAccount.CodeHash, newAccount.CodeHash);
 
-        // Storage trie diff — skip allocation when storage roots are identical
         if (storageUnchanged) return;
 
         Hash256? normalizedOldStorage = oldAccount.HasStorage ? new Hash256(oldAccount.StorageRoot) : null;
@@ -70,7 +65,6 @@ internal sealed partial class TrieDiffWalker
         BeginContractStorage(addressHash.ValueHash256);
         try
         {
-            // Storage tries always start at depth 0 (independent trie)
             DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true, depth: 0);
         }
         finally
@@ -89,7 +83,6 @@ internal sealed partial class TrieDiffWalker
 
     private static Hash256 GetAddressHash(TrieNode leaf, ref TreePath path)
     {
-        // Append leaf's key nibbles to build the full 64-nibble path
         int prevLen = path.Length;
         if (leaf.Key is not null)
         {

@@ -27,7 +27,6 @@ internal sealed partial class TrieDiffWalker
                 RecordDepthShort(newExt.FullRlp.Length, d, isStorage, added: true);
             }
 
-            // Extension child hash is at RLP index 1
             Hash256? oldChildHash = oldExt.GetChildHash(1);
             Hash256? newChildHash = newExt.GetChildHash(1);
 
@@ -44,7 +43,6 @@ internal sealed partial class TrieDiffWalker
             }
             else
             {
-                // At least one child is inline — resolve via GetChildWithChildPath
                 TreePath oldChildPath = path;
                 TrieNode? oldChild = oldExt.GetChildWithChildPath(resolver, ref oldChildPath, 0);
                 TreePath newChildPath = path;

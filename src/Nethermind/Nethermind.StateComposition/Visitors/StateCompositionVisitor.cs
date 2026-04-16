@@ -144,7 +144,6 @@ internal sealed class StateCompositionVisitor(
 
         if (excludeStorage)
         {
-            // ExcludeStorage mode: flush any pending and skip storage traversal
             c.Flush();
         }
         else if (account.HasStorage)
