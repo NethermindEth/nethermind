@@ -59,15 +59,19 @@ public record SlotChanges([property: JsonPropertyName("key")] UInt256 Slot, Sort
 
     public byte[] Get(int blockAccessIndex)
     {
+        Span<byte> tmp = stackalloc byte[32];
         UInt256 lastValue = 0;
         foreach (KeyValuePair<int, StorageChange> change in Changes)
         {
             if (change.Key >= blockAccessIndex)
             {
-                return [.. lastValue.ToBigEndian().WithoutLeadingZeros()];
+                lastValue.ToBigEndian(tmp);
+                return [.. tmp.WithoutLeadingZeros()];
             }
             lastValue = change.Value.NewValue;
         }
-        return [.. lastValue.ToBigEndian().WithoutLeadingZeros()];
+
+        lastValue.ToBigEndian(tmp);
+        return [.. tmp.WithoutLeadingZeros()];
     }
 }
