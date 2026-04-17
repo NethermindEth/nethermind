@@ -262,7 +262,7 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public async Task SetMinDeletableBlockNumber_preserves_blocks_below_minimum()
+    public async Task MinDeletableBlockNumber_preserves_blocks_below_minimum()
     {
         const int blocks = 100;
         const int cutoff = 36;
@@ -272,7 +272,8 @@ public class HistoryPrunerTests
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
-            PruningInterval = 0
+            PruningInterval = 0,
+            MinDeletableBlockNumber = minDeletable
         };
 
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
@@ -288,7 +289,6 @@ public class HistoryPrunerTests
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.SetMinDeletableBlockNumber(minDeletable);
 
         CheckOldestAndCutoff(minDeletable, cutoff, historyPruner);
 
@@ -318,7 +318,7 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public async Task SetMinDeletableBlockNumber_clamps_stale_db_pointer()
+    public async Task MinDeletableBlockNumber_clamps_stale_db_pointer()
     {
         const int blocks = 100;
         const long stalePointer = 5;
@@ -328,7 +328,8 @@ public class HistoryPrunerTests
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
-            PruningInterval = 0
+            PruningInterval = 0,
+            MinDeletableBlockNumber = minDeletable
         };
 
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
@@ -345,11 +346,45 @@ public class HistoryPrunerTests
         metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(stalePointer).Bytes);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.SetMinDeletableBlockNumber(minDeletable);
 
         // Trigger pointer load — stale DB value must be clamped to minDeletable
         Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(minDeletable),
             "Delete pointer loaded from DB must be clamped to the configured minimum deletable block number");
+    }
+
+    [Test]
+    public async Task MinDeletableBlockNumber_does_not_reset_pointer_on_restart()
+    {
+        const int blocks = 100;
+        const long advancedPointer = 50;
+        const long minDeletable = 1; // default — lower than the advanced pointer
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 2,
+            PruningInterval = 0,
+            MinDeletableBlockNumber = minDeletable
+        };
+
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
+
+        for (int i = 0; i < blocks; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
+
+        // Simulate a DB pointer that was advanced by a previous pruning run
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(advancedPointer).Bytes);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        // Trigger pointer load — DB value must be respected, not reset to minDeletable
+        Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(advancedPointer),
+            "Delete pointer must resume from the persisted DB value, not be reset by MinDeletableBlockNumber");
     }
 
     [Test]

@@ -30,6 +30,11 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "2")]
     uint PruningTimeoutSeconds { get; set; }
 
+    [ConfigItem(
+        Description = "The minimum block number that may be deleted during pruning. Block 0 is never deleted. Override when the chain genesis is not block 0.",
+        DefaultValue = "1")]
+    long MinDeletableBlockNumber { get; set; }
+
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
     bool Enabled() => Pruning != PruningModes.Disabled;

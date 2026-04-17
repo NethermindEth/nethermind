@@ -15,6 +15,5 @@ public interface IHistoryPruner
 
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
 
-    void SetMinDeletableBlockNumber(long minBlockNumber);
     void SchedulePruneHistory(CancellationToken cancellationToken);
 }

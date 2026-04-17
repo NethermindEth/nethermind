@@ -52,7 +52,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly int _deletionProgressLoggingInterval;
     private readonly long _ancientBarrier;
     private long _deletePointer = 1;
-    private long _minDeletableBlockNumber = 1;
+    private readonly long _minDeletableBlockNumber;
     private BlockHeader? _deletePointerHeader;
     private long _lastSavedDeletePointer = 1;
     private long? _cutoffPointer;
@@ -91,6 +91,7 @@ public class HistoryPruner : IHistoryPruner
         _epochLength = (long)blocksConfig.SecondsPerSlot * SlotsPerEpoch; // must be changed if slot length changes
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
+        _minDeletableBlockNumber = Math.Max(1, historyConfig.MinDeletableBlockNumber);
 
         CheckConfig();
 
@@ -294,23 +295,6 @@ public class HistoryPruner : IHistoryPruner
                     }
                 }
             });
-        }
-    }
-
-    /// <summary>
-    /// Sets the minimum block number that may be deleted during pruning.
-    /// Defaults to 1 (block 0 is never deleted). Override when the chain genesis is not block 0.
-    /// </summary>
-    public void SetMinDeletableBlockNumber(long minBlockNumber)
-    {
-        lock (_pruneLock)
-        {
-            _minDeletableBlockNumber = Math.Max(1, minBlockNumber);
-            // Only bump _deletePointer when the pointer has already been loaded from DB or discovered
-            // via SetDeletePointerToOldestBlock. If the pointer has not been loaded yet,
-            // TryLoadDeletePointer will enforce _minDeletableBlockNumber when it runs.
-            if (_hasLoadedDeletePointer && _deletePointer < _minDeletableBlockNumber)
-                _deletePointer = _minDeletableBlockNumber;
         }
     }
 
