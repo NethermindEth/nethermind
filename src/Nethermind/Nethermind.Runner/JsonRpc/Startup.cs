@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,7 +9,6 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,6 +52,28 @@ public class Startup : IStartup
     private static ReadOnlySpan<byte> _jsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> _jsonComma => [(byte)','];
     private static ReadOnlySpan<byte> _jsonClosingBracket => [(byte)']'];
+
+    public Startup() { }
+
+    // for tests
+    internal Startup(
+        JsonRpcProcessor jsonRpcProcessor,
+        JsonRpcService jsonRpcService,
+        IJsonRpcLocalStats jsonRpcLocalStats,
+        EthereumJsonSerializer jsonSerializer,
+        IJsonRpcConfig jsonRpcConfig,
+        IRpcAuthentication? rpcAuthentication = null,
+        ILogger logger = default
+    )
+    {
+        _jsonRpcProcessor = jsonRpcProcessor;
+        _jsonRpcService = jsonRpcService;
+        _jsonRpcLocalStats = jsonRpcLocalStats;
+        _jsonSerializer = jsonSerializer;
+        _jsonRpcConfig = jsonRpcConfig;
+        _logger = logger;
+        _rpcAuthentication = rpcAuthentication;
+    }
 
     IServiceProvider IStartup.ConfigureServices(IServiceCollection services) => Build(services);
 
@@ -280,7 +301,7 @@ public class Startup : IStartup
         await ctx.Response.CompleteAsync();
     }
 
-    private async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
+    internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
         {
@@ -474,10 +495,10 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(Utf8JsonWriter writer, object? id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
+        void WriteOther(Utf8JsonWriter writer, object id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
     }
 
-    private static async ValueTask WriteStreamableResponseAsync(
+    internal static async ValueTask WriteStreamableResponseAsync(
         CountingWriter writer, JsonRpcResponse response,
         IStreamableResult streamable, CancellationToken ct)
     {
@@ -506,31 +527,18 @@ public class Startup : IStartup
                     writer.Advance(written);
                     break;
                 }
+            case null:
+                {
+                    writer.Write("null"u8);
+                    break;
+                }
             default:
                 WriteOther(writer, id);
                 break;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(PipeWriter writer, object? id)
-        {
-            switch (id)
-            {
-                case string strId:
-                    {
-                        // JSON-RPC IDs are simple values (typically numeric); no escaping needed
-                        Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
-                        buf[0] = (byte)'"';
-                        int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
-                        buf[len + 1] = (byte)'"';
-                        writer.Advance(len + 2);
-                        break;
-                    }
-                default:
-                    writer.Write("null"u8);
-                    break;
-            }
-        }
+        void WriteOther(PipeWriter writer, object id) => JsonSerializer.Serialize(writer.AsStream(), id, id.GetType(), EthereumJsonSerializer.JsonOptions);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
