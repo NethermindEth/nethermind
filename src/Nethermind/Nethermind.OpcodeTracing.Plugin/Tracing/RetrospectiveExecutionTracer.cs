@@ -45,7 +45,7 @@ public sealed class RetrospectiveExecutionTracer
     /// <param name="blockTree">The block tree for finding blocks.</param>
     /// <param name="specProvider">The spec provider for getting release specs.</param>
     /// <param name="txProcessingEnvFactory">Factory to create isolated transaction processing environments per block.</param>
-    /// <param name="ecdsa">The ECDSA implementation for recovering sender addresses from signatures.</param>
+    /// <param name="ecdsa">ECDSA helper used to recover sender addresses on transaction clones before tracing.</param>
     /// <param name="counter">The opcode counter to accumulate into.</param>
     /// <param name="maxDegreeOfParallelism">Maximum degree of parallelism. 0 or negative uses processor count.</param>
     /// <param name="logManager">The log manager.</param>
@@ -94,7 +94,7 @@ public sealed class RetrospectiveExecutionTracer
         IEnumerable<long> blockNumbers = GenerateBlockNumbers(range);
 
         // Configure parallel processing options
-        var parallelOptions = new ParallelOptions
+        ParallelOptions parallelOptions = new()
         {
             MaxDegreeOfParallelism = _maxDegreeOfParallelism,
             CancellationToken = cancellationToken
@@ -209,10 +209,26 @@ public sealed class RetrospectiveExecutionTracer
                 BlobGasCalculator.TryCalculateFeePerBlobGas(tracingHeader, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
             }
 
-            // Recover sender addresses from ECDSA signatures - transactions from database don't have sender set
-            foreach (Transaction tx in block.Transactions)
+            // Sender recovery has to happen BEFORE TransactionProcessor.Trace(): the processor
+            // dereferences tx.SenderAddress when building the TxExecutionContext (via Address.ToHash())
+            // *before* its own RecoverSenderIfNeeded runs, so a DB-decoded tx with a null sender
+            // would NRE. The normal block-processing pipeline solves this by running the
+            // RecoverSignatures preprocessor step ahead of TransactionProcessor — we bypass that
+            // pipeline here (we call Trace directly on the read-only scope), so we must mirror it.
+            //
+            // We recover onto CLONES rather than the BlockTree-cached instances. FindBlock can return
+            // Block/Transaction objects that are shared across the client (RPC responses, mempool
+            // lookups, subsequent FindBlock hits); mutating tx.SenderAddress in-place would race
+            // with those readers once MaxDegreeOfParallelism > 1 and leak our recovery into paths
+            // that expect the cache to be immutable. Transaction.CopyTo gives us independent
+            // per-tracer instances we can freely mutate.
+            Transaction[] tracedTxs = new Transaction[block.Transactions.Length];
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                Transaction clone = new();
+                block.Transactions[i].CopyTo(clone);
+                clone.SenderAddress ??= _ecdsa.RecoverAddress(clone, !spec.ValidateChainId);
+                tracedTxs[i] = clone;
             }
 
             // Reset GasUsed to 0 for tracing on the cloned header - the finalized header has the total gas used,
@@ -232,8 +248,8 @@ public sealed class RetrospectiveExecutionTracer
             // Create block execution context using the cloned header
             BlockExecutionContext blockExecutionContext = new(tracingHeader, spec, blobBaseFee);
 
-            // Process each transaction in the block
-            foreach (Transaction tx in block.Transactions)
+            // Process each transaction in the block (using the recovered clones above)
+            foreach (Transaction tx in tracedTxs)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 

@@ -16,8 +16,9 @@ public static class DirectoryHelper
     /// to match the actual path used by writers.
     /// </summary>
     /// <param name="path">The directory path to validate.</param>
+    /// <param name="logManager">Optional log manager used to record why validation failed.</param>
     /// <returns>True if the directory is writable; otherwise, false.</returns>
-    public static bool ValidateWritable(string path)
+    public static bool ValidateWritable(string path, ILogManager? logManager = null)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -39,8 +40,16 @@ public static class DirectoryHelper
             File.Delete(testFile);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            if (logManager is not null)
+            {
+                ILogger logger = logManager.GetClassLogger();
+                if (logger.IsDebug)
+                {
+                    logger.Debug($"Output directory '{path}' failed write probe: {ex.Message}");
+                }
+            }
             return false;
         }
     }
