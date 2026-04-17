@@ -357,15 +357,11 @@ public class ForkchoiceUpdatedHandler(
         if (candidateHeader is null) return false;
         if (candidateHeader.Number > newHeadBlock.Number) return true;
 
-        // Canonical head's ancestry is purely canonical, so consistency reduces to
-        // whether the candidate itself sits on the canonical chain.
         if (_blockTree.IsMainChain(newHeadBlock.Header))
         {
             return !_blockTree.IsMainChain(candidateHeader);
         }
 
-        // Head is non-canonical: walk its parents down to the candidate's level and
-        // compare the block at that level against the candidate.
         BlockHeader? cursor = newHeadBlock.Header;
         while (cursor is not null && cursor.Number > candidateHeader.Number)
         {
