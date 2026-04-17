@@ -1470,72 +1470,42 @@ public partial class EngineModuleTests
         (await rpc.engine_forkchoiceUpdatedV1(ordering)).ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
     }
 
-    [Test]
-    public async Task forkchoiceUpdated_rejects_cached_finalized_when_head_on_sibling_branch()
+    [TestCase(false, TestName = "forkchoiceUpdated_rejects_repeated_finalized_when_head_on_sibling_branch")]
+    [TestCase(true, TestName = "forkchoiceUpdated_rejects_repeated_safe_when_head_on_sibling_branch")]
+    public async Task forkchoiceUpdated_rejects_repeated_hash_when_head_on_sibling_branch(bool cachedSafe)
     {
-        // Regression: the finalizedUnchanged shortcut (finalizedBlockHash == LastFinalizedHash)
-        // must not bypass ancestry validation. The binding is (head, finalized), not finalized alone;
-        // a CL can legally repeat the finalized hash while the head moves to a sibling branch that
-        // is not a descendant of that finalized block. Such an FCU must be rejected.
+        // A repeated finalized/safe hash must not bypass ancestry validation against the requested head.
+        // The binding is (head, finalized, safe); if the head moves to a sibling branch that is not a
+        // descendant of the previously-accepted hash, the FCU must be rejected.
         using MergeTestBlockchain chain =
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        // Branch A: g -> a1 -> a2
-        ExecutionPayload a1 = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
-        (await rpc.engine_newPayloadV1(a1)).Data.Status.Should().Be(PayloadStatus.Valid);
-        ExecutionPayload a2 = CreateBlockRequest(chain, a1, TestItem.AddressA);
-        (await rpc.engine_newPayloadV1(a2)).Data.Status.Should().Be(PayloadStatus.Valid);
-
-        // Branch B: g -> b1 -> b2 (diverges at genesis; a1 is NOT an ancestor of b2).
-        ExecutionPayload b1 = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressB);
-        (await rpc.engine_newPayloadV1(b1)).Data.Status.Should().Be(PayloadStatus.Valid);
-        ExecutionPayload b2 = CreateBlockRequest(chain, b1, TestItem.AddressB);
-        (await rpc.engine_newPayloadV1(b2)).Data.Status.Should().Be(PayloadStatus.Valid);
-
-        // FCU1: head=a2, finalized=a1, safe=a1. Caches LastFinalizedHash=a1.
-        ForkchoiceStateV1 fcu1 = new(headBlockHash: a2.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: a1.BlockHash);
-        (await rpc.engine_forkchoiceUpdatedV1(fcu1)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-
-        // FCU2: head=b2, finalized=a1 (SAME hash as cached LastFinalizedHash), safe=b1 (a valid ancestor of b2
-        // so the safe check alone cannot reject this). a1 is NOT an ancestor of b2; must be rejected.
-        ForkchoiceStateV1 fcu2 = new(headBlockHash: b2.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: b1.BlockHash);
-        (await rpc.engine_forkchoiceUpdatedV1(fcu2)).ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
-    }
-
-    [Test]
-    public async Task forkchoiceUpdated_rejects_cached_safe_when_head_on_sibling_branch()
-    {
-        // Regression: the safeUnchanged shortcut (safeBlockHash == _blockTree.SafeHash) must not
-        // bypass ancestry validation. Isolated from the finalized-unchanged case by picking a
-        // finalized block that is a genuine common ancestor of both branches.
-        using MergeTestBlockchain chain =
-            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        // Common ancestor c1, then branches diverge.
+        // Common ancestor c1, then two branches diverge: c1 -> a1/b1 -> a2/b2
         ExecutionPayload c1 = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
         (await rpc.engine_newPayloadV1(c1)).Data.Status.Should().Be(PayloadStatus.Valid);
 
-        // Branch A: c1 -> a1 -> a2
         ExecutionPayload a1 = CreateBlockRequest(chain, c1, TestItem.AddressA);
         (await rpc.engine_newPayloadV1(a1)).Data.Status.Should().Be(PayloadStatus.Valid);
         ExecutionPayload a2 = CreateBlockRequest(chain, a1, TestItem.AddressA);
         (await rpc.engine_newPayloadV1(a2)).Data.Status.Should().Be(PayloadStatus.Valid);
 
-        // Branch B: c1 -> b1 -> b2 (shares c1; a1 is NOT an ancestor of b2)
         ExecutionPayload b1 = CreateBlockRequest(chain, c1, TestItem.AddressB);
         (await rpc.engine_newPayloadV1(b1)).Data.Status.Should().Be(PayloadStatus.Valid);
         ExecutionPayload b2 = CreateBlockRequest(chain, b1, TestItem.AddressB);
         (await rpc.engine_newPayloadV1(b2)).Data.Status.Should().Be(PayloadStatus.Valid);
 
-        // FCU1: head=a2, finalized=c1, safe=a1. Caches SafeHash=a1.
-        ForkchoiceStateV1 fcu1 = new(headBlockHash: a2.BlockHash, finalizedBlockHash: c1.BlockHash, safeBlockHash: a1.BlockHash);
+        // FCU1 on branch A: cache either finalized=a1 or safe=a1 (a1 is NOT an ancestor of b2).
+        ForkchoiceStateV1 fcu1 = cachedSafe
+            ? new(headBlockHash: a2.BlockHash, finalizedBlockHash: c1.BlockHash, safeBlockHash: a1.BlockHash)
+            : new(headBlockHash: a2.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: a1.BlockHash);
         (await rpc.engine_forkchoiceUpdatedV1(fcu1)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-        // FCU2: head=b2, finalized=c1 (genuine common ancestor, passes ancestry),
-        // safe=a1 (SAME hash as cached SafeHash, but a1 is NOT an ancestor of b2). Must be rejected.
-        ForkchoiceStateV1 fcu2 = new(headBlockHash: b2.BlockHash, finalizedBlockHash: c1.BlockHash, safeBlockHash: a1.BlockHash);
+        // FCU2: head on branch B, reusing the cached a1 as either safe or finalized.
+        // a1 is NOT an ancestor of b2; must be rejected regardless of caching.
+        ForkchoiceStateV1 fcu2 = cachedSafe
+            ? new(headBlockHash: b2.BlockHash, finalizedBlockHash: c1.BlockHash, safeBlockHash: a1.BlockHash)
+            : new(headBlockHash: b2.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: b1.BlockHash);
         (await rpc.engine_forkchoiceUpdatedV1(fcu2)).ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
     }
 
