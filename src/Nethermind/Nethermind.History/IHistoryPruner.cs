@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
@@ -13,4 +14,7 @@ public interface IHistoryPruner
     public BlockHeader? OldestBlockHeader { get; }
 
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
+
+    void SetMinDeletableBlockNumber(long minBlockNumber);
+    void SchedulePruneHistory(CancellationToken cancellationToken);
 }

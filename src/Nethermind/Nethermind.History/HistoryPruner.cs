@@ -249,6 +249,10 @@ public class HistoryPruner : IHistoryPruner
     private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
         => SchedulePruneHistory(_processExitSource.Token);
 
+    /// <summary>
+    /// Schedules a pruning operation if one is not already running. Pruning will only be performed if the configured pruning interval has elapsed and there are blocks eligible for pruning.
+    /// </summary>
+    /// <param name="cancellationToken"></param>
     public void SchedulePruneHistory(CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _currentlyPruning) == 0)
@@ -298,14 +302,16 @@ public class HistoryPruner : IHistoryPruner
     /// Must be called before the first pruning pass. Defaults to 1 (block 0 is never deleted).
     /// Override when the chain genesis is not block 0.
     /// </summary>
+    /// <param name="minBlockNumber">Minimum deletable block number.</param>
+    /// <exception cref="InvalidOperationException">Thrown if called after the delete pointer has already been loaded.</exception>
     public void SetMinDeletableBlockNumber(long minBlockNumber)
     {
-        _minDeletableBlockNumber = Math.Max(1, minBlockNumber);
-        // Only bump _deletePointer when the pointer has already been loaded from DB or discovered
-        // via SetDeletePointerToOldestBlock. If the pointer has not been loaded yet,
-        // TryLoadDeletePointer will enforce _minDeletableBlockNumber when it runs.
-        if (_hasLoadedDeletePointer && _deletePointer < _minDeletableBlockNumber)
-            _deletePointer = _minDeletableBlockNumber;
+        lock (_pruneLock)
+        {
+            if (_hasLoadedDeletePointer)
+                throw new InvalidOperationException($"{nameof(SetMinDeletableBlockNumber)} must be called before the first pruning pass.");
+            _minDeletableBlockNumber = Math.Max(1, minBlockNumber);
+        }
     }
 
     internal void TryPruneHistory(CancellationToken cancellationToken)
@@ -455,7 +461,7 @@ public class HistoryPruner : IHistoryPruner
                 // should never happen
                 if (number < _minDeletableBlockNumber || number >= _blockTree.SyncPivot.BlockNumber)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Encountered unexpected block #{number} while pruning history, this block will not be deleted. Should be in range ({_minDeletableBlockNumber}, {_blockTree.SyncPivot.BlockNumber}).");
+                    if (_logger.IsWarn) _logger.Warn($"Encountered unexpected block #{number} while pruning history, this block will not be deleted. Should be in range [{_minDeletableBlockNumber}, {_blockTree.SyncPivot.BlockNumber}).");
                     continue;
                 }
 
