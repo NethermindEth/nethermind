@@ -1481,6 +1481,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             dbMetricsUpdater.Dispose();
         }
 
+        _reader.Dispose();
+
         if (_perTableDbConfig.FlushOnExit) InnerFlush(false);
         ReleaseUnmanagedResources();
 
@@ -1913,14 +1915,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         private int _disposed;
 
-        public void Dispose()
+        public override void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
             {
                 return;
             }
 
-            DisposeOwnedReadOptions();
+            base.Dispose();
             snapshot.Dispose();
         }
     }

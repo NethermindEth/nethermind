@@ -25,7 +25,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DbOnTheRocks.IteratorManager? iteratorManager = null,
-    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore
+    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
@@ -46,7 +46,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         _hintCacheMissOptions.SetFillCache(false);
     }
 
-    protected void DisposeOwnedReadOptions()
+    public virtual void Dispose()
     {
         if (!_ownsReadOptions)
         {
@@ -57,7 +57,11 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         DestroyReadOptions(_hintCacheMissOptions);
     }
 
-    private static void DestroyReadOptions(ReadOptions options)
+    /// <summary>
+    /// Destroys a native ReadOptions handle and suppresses its finalizer to prevent
+    /// finalizer queue buildup from short-lived ReadOptions instances.
+    /// </summary>
+    internal static void DestroyReadOptions(ReadOptions options)
     {
         RocksDbSharp.Native.Instance.rocksdb_readoptions_destroy(options.Handle);
         GC.SuppressFinalize(options);
