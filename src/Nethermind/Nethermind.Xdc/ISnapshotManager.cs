@@ -6,7 +6,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-public interface ISnapshotManager
+public interface ISnapshotManager : IDisposable
 {
     static bool IsTimeForSnapshot(long blockNumber, IXdcReleaseSpec spec)
     {
