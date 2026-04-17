@@ -254,12 +254,10 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed, isComplete);
         CumulativeTrieStats cumulativeBaseline = CumulativeTrieStats.FromScanStats(stats);
 
-        // Hold _diffLock across InitializeIncremental and the depth publish so an
-        // OnNewHeadBlock dispatch cannot mutate _currentDepthStats between the seed
-        // and the gauge read, which would otherwise publish a torn view of the 9×16
-        // table. Lock order across the service is always _scanLock (held by the
-        // caller) → _diffLock; the diff path only ever takes _diffLock, so this
-        // nested acquire is deadlock-free.
+        // Seed and publish under _diffLock so a concurrent incremental diff cannot
+        // clobber the fresh baseline's metrics or read a torn 9×16 depth table.
+        // Lock order _scanLock → _diffLock is held; the diff path only takes
+        // _diffLock, so the nested acquire is deadlock-free.
         lock (_diffLock)
         {
             _stateHolder.InitializeIncremental(
@@ -269,14 +267,13 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
                 codeHashSizes: stats.CodeHashSizes);
 
             Metrics.UpdateDepthDistribution(_stateHolder.CurrentDepthStats);
+            Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
+            Metrics.StateCompScanDurationSeconds = sw.Elapsed.TotalSeconds;
+            Metrics.StateCompScanBlock = header.Number;
+            Metrics.StateCompIncrementalBlock = header.Number;
+            Metrics.StateCompDiffsSinceBaseline = 0;
+            Metrics.StateCompScansCompleted++;
         }
-
-        Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
-        Metrics.StateCompScanDurationSeconds = sw.Elapsed.TotalSeconds;
-        Metrics.StateCompScanBlock = header.Number;
-        Metrics.StateCompIncrementalBlock = header.Number;
-        Metrics.StateCompDiffsSinceBaseline = 0;
-        Metrics.StateCompScansCompleted++;
     }
 
     /// <summary>
