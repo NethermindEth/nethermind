@@ -1,0 +1,83 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "all_types",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Nethermind/artifacts/bin/Nethermind.Test.Runner/debug/nethtest.dll",
+            "args": ["-b", "-i", "/Users/marc/Downloads/fixtures/blockchain_tests_engine/for_amsterdam/amsterdam/eip7928_block_level_access_lists/block_access_lists/bal_all_transaction_types.json"],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "env": {
+                "DOTNET_LAUNCH_PROFILE": "Blockchain Test"
+            }
+        },
+        {
+            "name": "gas_accounting",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Nethermind/artifacts/bin/Nethermind.Test.Runner/debug/nethtest.dll",
+            "args": ["-b", "-i", "/Users/marc/Downloads/fixtures/blockchain_tests_engine/for_amsterdam/amsterdam/eip7778_block_gas_accounting_without_refunds/gas_accounting/multi_transaction_gas_accounting.json"],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "env": {
+                "DOTNET_LAUNCH_PROFILE": "Blockchain Test"
+            }
+        },
+        {
+            "name": "extraneous_entries",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Nethermind/artifacts/bin/Nethermind.Test.Runner/debug/nethtest.dll",
+            "args": ["-b", "-i", "/Users/marc/Downloads/fixtures/blockchain_tests_engine/for_amsterdam/amsterdam/eip7928_block_level_access_lists/block_access_lists_invalid/bal_invalid_extraneous_entries.json"],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "env": {
+                "DOTNET_LAUNCH_PROFILE": "Blockchain Test"
+            }
+        },
+        {
+            "name": "regular_gas_limit",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Nethermind/artifacts/bin/Nethermind.Test.Runner/debug/nethtest.dll",
+            "args": ["-b", "-i", "/Users/marc/Downloads/fixtures/blockchain_tests_engine/for_amsterdam/amsterdam/eip8037_state_creation_gas_cost_increase/state_gas_reservoir/block_regular_gas_limit.json"],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "env": {
+                "DOTNET_LAUNCH_PROFILE": "Blockchain Test"
+            }
+        },
+        {
+            "name": "partial_sweep",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Nethermind/artifacts/bin/Nethermind.Test.Runner/debug/nethtest.dll",
+            "args": ["-b", "-i", "/Users/marc/Downloads/fixtures/blockchain_tests_engine/for_amsterdam/amsterdam/eip7928_block_level_access_lists/block_access_lists_eip7002/bal_7002_partial_sweep.json"],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "env": {
+                "DOTNET_LAUNCH_PROFILE": "Blockchain Test"
+            }
+        },
+        {
+            "name": "run node",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Nethermind/artifacts/bin/Nethermind.Runner/release/nethermind",
+            "args": ["-c", "gnosis"],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+        },
+    ]
+}

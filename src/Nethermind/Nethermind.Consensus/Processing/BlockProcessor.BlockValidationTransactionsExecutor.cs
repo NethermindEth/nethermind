@@ -33,13 +33,24 @@ public partial class BlockProcessor
         {
             Metrics.ResetBlockStats();
 
+            bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+
+                if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
+                {
+                    ThrowInvalidBlockForGasLimit(block);
+                }
             }
 
             return [.. receiptsTracer.TxReceipts];
+
+            [DebuggerHidden]
+            [DoesNotReturn]
+            static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
         }
 
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
