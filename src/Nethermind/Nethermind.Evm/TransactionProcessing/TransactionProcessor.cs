@@ -1086,7 +1086,8 @@ namespace Nethermind.Evm.TransactionProcessing
             ErrorType.InsufficientMaxFeePerGasForSenderBalance => "insufficient MaxFeePerGas for sender balance",
             ErrorType.InsufficientSenderBalance => "insufficient sender balance",
             ErrorType.MalformedTransaction => "malformed",
-            ErrorType.MinerPremiumNegative => SubstateError ?? "miner premium is negative",
+            ErrorType.MaxFeePerGasBelowBaseFee => SubstateError!,
+            ErrorType.MinerPremiumNegative => "miner premium is negative",
             ErrorType.NonceOverflow => "nonce overflow",
             ErrorType.SenderHasDeployedCode => "sender has deployed code",
             ErrorType.SenderNotSpecified => "sender not specified",
@@ -1110,7 +1111,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static TransactionResult CreateMinerPremiumNegative(Transaction tx, in UInt256 baseFee)
         {
             string detail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {baseFee} (supplied gas {tx.GasLimit})";
-            return new TransactionResult(ErrorType.MinerPremiumNegative) { SubstateError = detail };
+            return new TransactionResult(ErrorType.MaxFeePerGasBelowBaseFee) { SubstateError = detail };
         }
 
         public static readonly TransactionResult Ok = new();
@@ -1136,6 +1137,7 @@ namespace Nethermind.Evm.TransactionProcessing
             InsufficientMaxFeePerGasForSenderBalance,
             InsufficientSenderBalance,
             MalformedTransaction,
+            MaxFeePerGasBelowBaseFee,
             MinerPremiumNegative,
             NonceOverflow,
             SenderHasDeployedCode,

@@ -336,7 +336,7 @@ public class TransactionProcessorFeeTests
         BlockExecutionContext blkCtx = new(block.Header, _spec);
         TransactionResult result = _transactionProcessor.CallAndRestore(tx, blkCtx, NullTxTracer.Instance);
 
-        result.Error.Should().Be(TransactionResult.ErrorType.MinerPremiumNegative);
+        result.Error.Should().Be(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee);
         result.ErrorDescription.Should().Contain($"maxFeePerGas: {feeCap}");
         result.ErrorDescription.Should().Contain($"baseFee: {baseFee}");
         result.ErrorDescription.Should().Contain(TestItem.AddressA.ToString());
