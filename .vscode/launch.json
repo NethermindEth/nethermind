@@ -57,6 +57,19 @@
             }
         },
         {
+            "name": "gas_limit_boundary",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/Nethermind/artifacts/bin/Nethermind.Test.Runner/debug/nethtest.dll",
+            "args": ["-b", "-i", "/Users/marc/Downloads/fixtures/blockchain_tests_engine/for_amsterdam/amsterdam/eip7928_block_level_access_lists/block_access_lists/bal_gas_limit_boundary.json"],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "env": {
+                "DOTNET_LAUNCH_PROFILE": "Blockchain Test"
+            }
+        },
+        {
             "name": "partial_sweep",
             "type": "coreclr",
             "request": "launch",
