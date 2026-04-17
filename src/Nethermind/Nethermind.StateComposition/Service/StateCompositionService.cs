@@ -48,6 +48,10 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     // volatile guarantees the read sees the most recent write without a lock.
     private volatile CancellationTokenSource? _currentScanCts;
 
+    // Set by StopAsync before teardown so diff tasks queued between `-=` and
+    // disposal short-circuit instead of racing IWorldStateManager/IDb.
+    private volatile bool _shuttingDown;
+
     public StateCompositionService(
         IStateReader stateReader,
         IWorldStateManager worldStateManager,
@@ -296,6 +300,8 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     /// </summary>
     public async Task StopAsync()
     {
+        _shuttingDown = true;
+
         // Stop dispatching new diffs first. Delegate `-=` is idempotent, so this
         // is safe even if Dispose later runs the same line.
         _blockTree.NewHeadBlock -= OnNewHeadBlock;

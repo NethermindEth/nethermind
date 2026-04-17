@@ -18,10 +18,10 @@ internal sealed partial class StateCompositionService
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         Hash256 lastRoot = _stateHolder.LastProcessedStateRoot;
-        if (lastRoot == Hash256.Zero) return; // No baseline yet
+        if (lastRoot == Hash256.Zero) return;
 
         Hash256? newRoot = e.Block.Header.StateRoot;
-        if (newRoot is null || newRoot == lastRoot) return; // No state change
+        if (newRoot is null || newRoot == lastRoot) return;
 
         _ = Task.Run(RunIncrementalDiff);
     }
@@ -33,6 +33,7 @@ internal sealed partial class StateCompositionService
     /// </summary>
     internal void RunIncrementalDiff()
     {
+        if (_shuttingDown) return;
         if (!_diffLock.TryEnter()) return;
         Hash256 prevRoot = Hash256.Zero;
         Block? head = null;
