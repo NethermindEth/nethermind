@@ -123,7 +123,7 @@ internal sealed class StateCompositionStateHolder
         }
     }
 
-    public void MarkScanCompleted(long blockNumber, Hash256 stateRoot, TimeSpan duration)
+    public void MarkScanCompleted(long blockNumber, Hash256 stateRoot, TimeSpan duration, bool isComplete)
     {
         lock (_lock)
         {
@@ -133,7 +133,7 @@ internal sealed class StateCompositionStateHolder
                 StateRoot = stateRoot,
                 CompletedAt = DateTimeOffset.UtcNow,
                 Duration = duration,
-                IsComplete = true,
+                IsComplete = isComplete,
             };
         }
     }

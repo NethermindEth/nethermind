@@ -32,9 +32,14 @@ internal sealed class StateCompositionVisitor(
 
     private VisitorCounters? _aggregated;
 
+    // Write-once latch (0→1); no interlock needed for a single-bit transition.
+    private volatile bool _missingNodesObserved;
+
     public bool IsFullDbScan => true;
     public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
     public bool ExpectAccounts => true;
+
+    public bool MissingNodesObserved => _missingNodesObserved;
 
     public bool ShouldVisit(in StateCompositionContext ctx, in ValueHash256 nextNode)
     {
@@ -56,6 +61,8 @@ internal sealed class StateCompositionVisitor(
 
     public void VisitMissingNode(in StateCompositionContext ctx, in ValueHash256 nodeHash)
     {
+        _missingNodesObserved = true;
+        Metrics.StateCompScanMissingNodes++;
         if (_logger.IsWarn)
             _logger.Warn($"StateComposition: missing node at depth {ctx.Level}, storage={ctx.IsStorage}");
     }
