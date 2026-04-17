@@ -78,8 +78,11 @@ public class GasEstimator(
         if (leftBound > rightBound)
             return EstimationResult.Failure(CannotEstimateGasExceeded);
 
+        UInt256 feeCap = tx.MaxFeePerGas > UInt256.Zero ? tx.MaxFeePerGas
+                       : tx.GasPrice > UInt256.Zero ? tx.GasPrice
+                       : UInt256.Zero;
         // tx.ValueRef <= senderBalance is guaranteed here; subtract so the cap reflects gas budget only.
-        EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), tx, senderBalance - tx.ValueRef);
+        EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), senderBalance - tx.ValueRef, feeCap);
 
         return BinarySearchEstimate(tx, header, gasTracer, bounds, errorMargin, token);
     }
@@ -104,12 +107,12 @@ public class GasEstimator(
             : EstimationResult.Failure(GetError(gasTracer, InsufficientBalance));
     }
 
-    private static EstimationBounds CapByAllowance(EstimationBounds bounds, Transaction tx, UInt256 available)
+    private static EstimationBounds CapByAllowance(EstimationBounds bounds, UInt256 available, UInt256 feeCap = default)
     {
-        if (tx.MaxFeePerGas == UInt256.Zero)
+        if (feeCap == UInt256.Zero)
             return bounds;
 
-        long allowance = (long)UInt256.Min(available / tx.MaxFeePerGas, (UInt256)long.MaxValue);
+        long allowance = (long)UInt256.Min(available / feeCap, (UInt256)long.MaxValue);
         return bounds with { RightBound = Math.Min(bounds.RightBound, allowance) };
     }
 
@@ -178,6 +181,7 @@ public class GasEstimator(
         txClone.GasLimit = gasLimit;
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, specProvider.GetSpec(header)));
+        // Ensure IsEstimate is set for gas estimation
         TransactionResult callResult = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
         if (IsGasRelatedFailure(callResult))

@@ -103,7 +103,12 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Commit and later restore state also skip validation, use for CallAndRestore
             /// </summary>
-            CommitAndRestore = Commit | Restore | SkipValidation
+            CommitAndRestore = Commit | Restore | SkipValidation,
+
+            /// <summary>
+            /// Indicates execution is for gas estimation (eth_estimateGas)
+            /// </summary>
+            IsEstimate = 16
         }
 
         protected TransactionProcessorBase(
@@ -147,7 +152,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
+            ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore | ExecutionOptions.IsEstimate);
 
         public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer)
         {
@@ -610,7 +615,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             bool overflows;
-            if (spec.IsEip1559Enabled && !tx.IsFree())
+            if (spec.IsEip1559Enabled && !tx.IsFree() && !opts.HasFlag(ExecutionOptions.IsEstimate))
             {
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
                 if (overflows || balanceLeft < maxGasFee)
@@ -635,21 +640,21 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
                 if (!overflows)
-                {
                     overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
-                }
             }
-
+            if (!opts.HasFlag(ExecutionOptions.IsEstimate)) {
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
                 return TransactionResult.InsufficientSenderBalance;
             }
+            }
 
-            if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
-
+            if (!opts.HasFlag(ExecutionOptions.IsEstimate) &&!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
             return TransactionResult.Ok;
         }
+
+        protected virtual void DecrementNonce(Transaction tx) => WorldState.DecrementNonce(tx.SenderAddress!);
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -663,11 +668,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
             WorldState.SetNonce(tx.SenderAddress, newNonce);
-
             return TransactionResult.Ok;
         }
-
-        protected virtual void DecrementNonce(Transaction tx) => WorldState.DecrementNonce(tx.SenderAddress!);
 
         [SkipLocalsInit]
         private TransactionResult BuildExecutionEnvironment(
