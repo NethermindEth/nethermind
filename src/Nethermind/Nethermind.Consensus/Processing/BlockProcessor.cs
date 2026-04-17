@@ -43,14 +43,22 @@ public partial class BlockProcessor(
     IBlockAccessListManager balManager)
     : IBlockProcessor
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     protected readonly ISpecProvider _specProvider = specProvider;
-    protected readonly ILogManager _logManager = logManager;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
-    private readonly SystemContractHandler _standardSystemContractHandler = new(
-        beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor);
+    protected readonly ILogManager _logManager = logManager;
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
+    private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
+        new(
+            beaconBlockRootHandler,
+            blockHashStore,
+            withdrawalProcessor,
+            executionRequestsProcessor,
+            balManager
+        ));
+    private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private SystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -64,12 +72,11 @@ public partial class BlockProcessor(
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
-#if ZK_EVM
-        _systemContractHandler = _standardSystemContractHandler;
-#else
+
         _balManager.PrepareForProcessing(suggestedBlock, spec, options);
-        _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler : _standardSystemContractHandler;
-#endif
+
+        _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
+
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
@@ -115,9 +122,9 @@ public partial class BlockProcessor(
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
-#if !ZK_EVM
+
         _balManager.Setup(block);
-#endif
+
         _systemContractHandler.StoreBeaconRoot(block, spec);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
@@ -164,9 +171,8 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-#if !ZK_EVM
         _balManager.SetBlockAccessList(block);
-#endif
+
         header.Hash = header.CalculateHash();
 
         return receipts;

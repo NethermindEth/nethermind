@@ -14,14 +14,6 @@ namespace Nethermind.Consensus.Processing;
 
 public partial class BlockProcessor
 {
-    private readonly BlockAccessListSystemContractHandler _balSystemContractHandler = new(
-        beaconBlockRootHandler,
-        blockHashStore,
-        withdrawalProcessor,
-        executionRequestsProcessor,
-        balManager
-    );
-
     public class BlockAccessListSystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
