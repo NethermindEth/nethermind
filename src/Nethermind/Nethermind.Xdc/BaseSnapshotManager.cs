@@ -16,7 +16,7 @@ using System;
 
 namespace Nethermind.Xdc;
 
-internal abstract class BaseSnapshotManager<TSnapshot> : IDisposable, ISnapshotManager
+internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     where TSnapshot : Snapshot
 {
     private readonly LruCache<Hash256, TSnapshot> _snapshotCache;
