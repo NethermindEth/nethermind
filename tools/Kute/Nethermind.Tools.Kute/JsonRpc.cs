@@ -59,20 +59,9 @@ public abstract class JsonRpc
             public string? Id { get => _id.Value; }
 
             public Batch(JsonNode node) : base(node) => _id = new(() =>
-                                                                     {
-                                                                         if (Items().Any())
-                                                                         {
-                                                                             string? first = Items().First()?.Id;
-                                                                             string? last = Items().Last()?.Id;
-
-                                                                             if (first is not null && last is not null)
-                                                                             {
-                                                                                 return $"{first}:{last}";
-                                                                             }
-                                                                         }
-
-                                                                         return null;
-                                                                     });
+                Items().FirstOrDefault()?.Id is { } first && Items().LastOrDefault()?.Id is { } last
+                    ? $"{first}:{last}"
+                    : null);
 
             public IEnumerable<Single?> Items()
             {
@@ -93,14 +82,7 @@ public abstract class JsonRpc
         public string? Id { get => _id.Value; }
 
         public Response(JsonNode node) : base(node) => _id = new(() =>
-                                                                {
-                                                                    if (_node["id"] is { } id)
-                                                                    {
-                                                                        return ((Int64)id).ToString();
-                                                                    }
-
-                                                                    return null;
-                                                                });
+            _node["id"] is { } id ? ((Int64)id).ToString() : null);
 
         public static async Task<Response> FromHttpResponseAsync(HttpResponseMessage response, CancellationToken token = default)
         {
