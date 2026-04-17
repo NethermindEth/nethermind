@@ -124,9 +124,13 @@ internal sealed partial class StateCompositionService
                 if (!result.IsSuccess && _logger.IsWarn)
                     _logger.Warn($"StateComposition: auto-rescan skipped: {result.Error}");
             }
-            catch (Exception ex) when (_logger.IsError)
+            catch (Exception ex)
             {
-                _logger.Error("StateComposition: auto-rescan failed", ex);
+                // Guard the log call itself, not the catch: a `when (IsError)`
+                // filter would let the exception escape into the unobserved-task
+                // pipeline whenever Error logging is off.
+                if (_logger.IsError)
+                    _logger.Error("StateComposition: auto-rescan failed", ex);
             }
         });
     }

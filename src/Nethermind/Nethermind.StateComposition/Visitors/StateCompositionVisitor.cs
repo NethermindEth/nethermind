@@ -9,9 +9,8 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Trie;
-
 using Nethermind.StateComposition.Data;
+using Nethermind.Trie;
 
 namespace Nethermind.StateComposition.Visitors;
 
@@ -281,7 +280,7 @@ internal sealed class StateCompositionVisitor(
         TopContractEntry[] entries, int count, TopNTracker.EntryComparer comparer)
     {
         if (count == 0)
-            return ImmutableArray<TopContractEntry>.Empty;
+            return [];
 
         TopContractEntry[] sorted = entries.AsSpan(0, count).ToArray();
         Array.Sort(sorted, 0, count, Comparer<TopContractEntry>.Create((a, b) => comparer(b, a)));
@@ -313,10 +312,7 @@ internal sealed class StateCompositionVisitor(
         return 0;
     }
 
-    public void Dispose()
-    {
-        _localCounters.Dispose();
-    }
+    public void Dispose() => _localCounters.Dispose();
 }
 
 internal readonly record struct ScanSnapshot(

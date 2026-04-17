@@ -18,16 +18,10 @@ public class StateCompositionVisitorTests
     private StateCompositionVisitor _visitor;
 
     [SetUp]
-    public void SetUp()
-    {
-        _visitor = new StateCompositionVisitor(LimboLogs.Instance);
-    }
+    public void SetUp() => _visitor = new StateCompositionVisitor(LimboLogs.Instance);
 
     [TearDown]
-    public void TearDown()
-    {
-        _visitor.Dispose();
-    }
+    public void TearDown() => _visitor.Dispose();
 
     [Test]
     public void Visitor_ShouldVisit_TracksBranchChildren()

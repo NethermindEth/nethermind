@@ -38,10 +38,6 @@ public interface IStateCompositionConfig : IConfig
         DefaultValue = "true")]
     bool PersistSnapshots { get; set; }
 
-    [ConfigItem(Description = "Number of historical snapshot blocks to keep (0 = keep all)",
-        DefaultValue = "10000")]
-    int SnapshotBlocksToKeep { get; set; }
-
     [ConfigItem(Description = "Write a snapshot every N blocks. Graceful shutdown always " +
                               "force-flushes the latest state via IStoppableService, so " +
                               "per-interval writes are just a crash-safety fallback.",
@@ -51,6 +47,12 @@ public interface IStateCompositionConfig : IConfig
     [ConfigItem(Description = "Track per-depth trie distribution incrementally on every new head block",
         DefaultValue = "true")]
     bool TrackDepthIncrementally { get; set; }
+
+    [ConfigItem(Description = "Timeout in seconds for a single statecomp_inspectContract RPC call. " +
+                              "Long storage-trie walks that exceed this deadline are cancelled so " +
+                              "the RPC worker is not pinned indefinitely. 0 or negative disables the timeout.",
+        DefaultValue = "30")]
+    int InspectContractTimeoutSeconds { get; set; }
 }
 
 public class StateCompositionConfig : IStateCompositionConfig
@@ -62,7 +64,7 @@ public class StateCompositionConfig : IStateCompositionConfig
     public int TopNContracts { get; set; } = 20;
     public bool ExcludeStorage { get; set; }
     public bool PersistSnapshots { get; set; } = true;
-    public int SnapshotBlocksToKeep { get; set; } = 10_000;
     public int SnapshotInterval { get; set; } = 1024;
     public bool TrackDepthIncrementally { get; set; } = true;
+    public int InspectContractTimeoutSeconds { get; set; } = 30;
 }

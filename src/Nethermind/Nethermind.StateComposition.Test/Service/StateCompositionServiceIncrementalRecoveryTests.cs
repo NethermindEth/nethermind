@@ -74,10 +74,8 @@ public class StateCompositionServiceIncrementalRecoveryTests
                 new long[CumulativeTrieStats.SlotHistogramLength]),
         };
 
-    private static void SeedBaseline(StateCompositionStateHolder holder, long blockNumber, Hash256 stateRoot)
-    {
+    private static void SeedBaseline(StateCompositionStateHolder holder, long blockNumber, Hash256 stateRoot) =>
         holder.InitializeIncremental(EmptyBaseline(), blockNumber, stateRoot);
-    }
 
     [Test]
     public void InvalidateBaseline_ClearsLastProcessedStateRoot_ButPreservesTrackers()

@@ -32,6 +32,8 @@ public class StateCompositionRpcModuleTests
         Substitute.For<IStateCompositionConfig>(),
         LimboLogs.Instance);
 
+    private static IStateCompositionConfig CreateConfig() => new StateCompositionConfig();
+
     [Test]
     public async Task GetCachedStats_ReturnsDefaultStats_WhenNotInitialized()
     {
@@ -40,7 +42,8 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             CreateService(),
             stateHolder,
-            Substitute.For<IBlockTree>());
+            Substitute.For<IBlockTree>(),
+            CreateConfig());
 
         ResultWrapper<StateCompositionReport> result = await rpc.statecomp_get();
 
@@ -53,7 +56,8 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             CreateService(),
             new StateCompositionStateHolder(),
-            Substitute.For<IBlockTree>());
+            Substitute.For<IBlockTree>(),
+            CreateConfig());
 
         ResultWrapper<bool> result = await rpc.statecomp_cancelScan();
 
@@ -69,7 +73,8 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             CreateService(),
             new StateCompositionStateHolder(),
-            blockTree);
+            blockTree,
+            CreateConfig());
 
         ResultWrapper<TopContractEntry?> result = await rpc.statecomp_inspectContract(null);
 
