@@ -17,7 +17,7 @@ using System;
 namespace Nethermind.Xdc;
 
 internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
-    where TSnapshot : Snapshot
+    where TSnapshot : Snapshot, IDisposable
 {
     private readonly LruCache<Hash256, TSnapshot> _snapshotCache;
     private readonly BaseSnapshotDecoder<TSnapshot> _snapshotDecoder;
@@ -126,4 +126,6 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     }
 
     protected abstract TSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec);
+
+    public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
 }
