@@ -7,5 +7,4 @@ public static class CodeSizeConstants
 {
     public const int MaxCodeSizeEip170 = 24_576; // 24KiB
     public const int MaxCodeSizeEip7954 = 32_768; // 32KiB
-    public const int MaxCodeSizeEip7907 = 262_144; // 256KiB
 }
