@@ -1911,6 +1911,17 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         Snapshot snapshot
     ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot
     {
-        public void Dispose() => snapshot.Dispose();
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            DisposeOwnedReadOptions();
+            snapshot.Dispose();
+        }
     }
 }

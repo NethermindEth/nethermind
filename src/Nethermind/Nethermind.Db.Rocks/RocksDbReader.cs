@@ -34,12 +34,34 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     private readonly ReadOptions _options = options;
     private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
+    private readonly bool _ownsReadOptions;
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DbOnTheRocks.IteratorManager? iteratorManager = null,
         ColumnFamilyHandle? columnFamily = null)
-        : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily) => _hintCacheMissOptions.SetFillCache(false);
+        : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
+    {
+        _ownsReadOptions = true;
+        _hintCacheMissOptions.SetFillCache(false);
+    }
+
+    protected void DisposeOwnedReadOptions()
+    {
+        if (!_ownsReadOptions)
+        {
+            return;
+        }
+
+        DestroyReadOptions(_options);
+        DestroyReadOptions(_hintCacheMissOptions);
+    }
+
+    private static void DestroyReadOptions(ReadOptions options)
+    {
+        RocksDbSharp.Native.Instance.rocksdb_readoptions_destroy(options.Handle);
+        GC.SuppressFinalize(options);
+    }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
