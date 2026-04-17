@@ -240,24 +240,22 @@ public class ForkchoiceUpdatedHandler(
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
 
-        // Spec ordering: prevFinalized <= finalized <= safe <= head. Cache hit on the previously-
-        // accepted hash skips the ancestry walk: finalized/safe advance only once per epoch.
+        // Spec ordering: prevFinalized <= finalized <= safe <= head. Ancestry must be re-validated
+        // on every FCU - the binding is (head, finalized, safe), so a repeated finalized/safe hash
+        // paired with a new head on a sibling branch is still a spec violation.
         long prevFinalizedLevel = _manualBlockFinalizationManager.LastFinalizedBlockLevel;
         long finalizedNumber = finalizedHeader?.Number ?? 0;
-        bool finalizedUnchanged = finalizedBlockHash == _manualBlockFinalizationManager.LastFinalizedHash;
 
         if ((finalizedHeader is not null && (finalizedNumber < prevFinalizedLevel || finalizedNumber > newHeadBlock.Number))
-            || (!finalizedUnchanged && IsInconsistent(finalizedHeader, newHeadBlock)))
+            || IsInconsistent(finalizedHeader, newHeadBlock))
         {
             string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
-        bool safeUnchanged = safeBlockHash == _blockTree.SafeHash;
-
         if ((safeBlockHeader is not null && (safeBlockHeader.Number < finalizedNumber || safeBlockHeader.Number > newHeadBlock.Number))
-            || (!safeUnchanged && IsInconsistent(safeBlockHeader, newHeadBlock)))
+            || IsInconsistent(safeBlockHeader, newHeadBlock))
         {
             string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
