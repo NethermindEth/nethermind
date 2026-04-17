@@ -74,9 +74,8 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
             _storageSlotsAdded, _storageSlotsRemoved,
             _contractsWithStorageAdded, _contractsWithStorageRemoved,
             _emptyAccountsAdded, _emptyAccountsRemoved,
-            // Clone the in-flight _depthDelta so the TrieDiff value can outlive
-            // the next ComputeDiff call (which Reset()s _depthDelta in place).
-            // SlotCountChanges / CodeHashChanges are already snapshotted via ToArray().
+            // Clone so the TrieDiff outlives the next ComputeDiff, which Reset()s
+            // _depthDelta in place.
             DepthDelta: _depthDelta.CloneAsDelta(),
             SlotCountChanges: _slotCountChanges.ToArray(),
             CodeHashChanges: _codeHashChanges.ToArray()
