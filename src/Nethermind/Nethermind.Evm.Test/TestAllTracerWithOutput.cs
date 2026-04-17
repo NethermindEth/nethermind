@@ -9,7 +9,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Test
 {
-    public class TestAllTracerWithOutput : TxTracer, IBlockGasAccountingTracer
+    public class TestAllTracerWithOutput : TxTracer
     {
         public TestAllTracerWithOutput() => IsTracingAccess = true;
 
@@ -37,7 +37,6 @@ namespace Nethermind.Evm.Test
 
         public GasConsumed GasConsumedResult { get; private set; }
         public long CumulativeRegularGasUsed { get; private set; }
-        public long CumulativeReceiptGasUsed { get; private set; }
 
         public long Refund { get; private set; }
 
@@ -45,7 +44,7 @@ namespace Nethermind.Evm.Test
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
-            UpdateGasAccounting(in gasSpent);
+            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
             GasSpent = gasSpent.SpentGas;
             GasConsumedResult = gasSpent;
             ReturnValue = output;
@@ -54,7 +53,7 @@ namespace Nethermind.Evm.Test
 
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
-            UpdateGasAccounting(in gasSpent);
+            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
             GasSpent = gasSpent.SpentGas;
             GasConsumedResult = gasSpent;
             Error = error;
@@ -66,10 +65,5 @@ namespace Nethermind.Evm.Test
 
         public override void ReportRefund(long refund) => Refund += refund;
 
-        private void UpdateGasAccounting(in GasConsumed gasSpent)
-        {
-            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
-            CumulativeReceiptGasUsed += gasSpent.SpentGas;
-        }
     }
 }
