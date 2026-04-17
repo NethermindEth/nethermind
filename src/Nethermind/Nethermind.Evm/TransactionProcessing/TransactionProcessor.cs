@@ -881,8 +881,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
 
                 _codeInfoRepository.InsertCode(code, codeOwner, spec);
-                if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
-                    accessedItems.WarmUpLargeContract(codeOwner);
 
                 unspentGas = gasAfterCodeDeposit;
             }
