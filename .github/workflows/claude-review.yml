@@ -18,6 +18,10 @@
 
 name: Claude Code Review
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
 on:
   issue_comment:
     types: [created]
@@ -53,11 +57,12 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    env:
+      RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
     permissions:
       contents: write
       pull-requests: write
       issues: write
-      id-token: write
       actions: read # Required for Claude to read CI results on PRs
       statuses: write # Required to post the claude-review/reviewed commit status
     steps:
@@ -100,6 +105,7 @@ jobs:
       #   parse in the status-posting step below. This JSON is NOT shown to humans — Claude
       #   still posts rich prose comments via the gh/MCP tools; the JSON is just the verdict.
       - name: Run Claude Code (review path)
+        timeout-minutes: 20
         if: steps.detect.outputs.is_review == 'true'
         id: claude_review
         uses: anthropics/claude-code-action@v1
@@ -134,6 +140,7 @@ jobs:
       # preserving the original "@claude do this thing" behaviour for implementation help,
       # explanations, etc. No commit status is posted in this path.
       - name: Run Claude Code (mention path)
+        timeout-minutes: 20
         if: steps.detect.outputs.is_review != 'true'
         id: claude_mention
         uses: anthropics/claude-code-action@v1
@@ -176,7 +183,8 @@ jobs:
           gh api "repos/$REPO/statuses/$SHA" \
             -f state="$STATE" \
             -f context=claude-review/reviewed \
-            -f description="$DESC"
+            -f description="$DESC" \
+            -f target_url="$RUN_URL"
 
       # If the action itself errored out (API timeout, rate limit, schema violation, etc.)
       # we still need to record a non-success status so branch protection keeps the PR
@@ -193,4 +201,5 @@ jobs:
           gh api "repos/$REPO/statuses/$SHA" \
             -f state=error \
             -f context=claude-review/reviewed \
-            -f description="Claude review workflow failed; please re-run with @claude review"
+            -f description="Claude review workflow failed; please re-run with @claude review" \
+            -f target_url="$RUN_URL"
