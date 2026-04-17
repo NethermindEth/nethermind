@@ -107,7 +107,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         // Only merge reads for slots that don't already have changes in this BAL.
         foreach (UInt256 read in other._storageReads)
         {
-            if (!_storageChanges.ContainsKey(read))
+            if (!HasStorageChange(read))
             {
                 _storageReads.Add(read);
             }
@@ -122,11 +122,10 @@ public class AccountChanges : IEquatable<AccountChanges>
             else
             {
                 _storageChanges.Add(kv.Key, kv.Value);
+                // When a new change is merged for a slot that previously only had a read,
+                // remove the now-redundant read. A change entry supersedes a read.
+                _storageReads.Remove(kv.Key);
             }
-
-            // When a new change is merged for a slot that previously only had a read,
-            // remove the now-redundant read. A change entry supersedes a read.
-            _storageReads.Remove(kv.Key);
         }
 
         _balanceChanges.AddRange(other._balanceChanges);
