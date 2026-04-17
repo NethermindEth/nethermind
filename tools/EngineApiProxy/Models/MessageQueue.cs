@@ -15,19 +15,16 @@ public class MessageQueue(ILogManager logManager)
     private readonly ConcurrentQueue<QueuedMessage> _messageQueue = new();
     private readonly ConcurrentDictionary<string, QueuedMessage> _messageById = new();
 
-    // Fields for pause/resume functionality
-    private volatile bool _processingPaused = false;
-    private readonly SemaphoreSlim _pauseSemaphore = new(1, 1);
+    // 0 = running, 1 = paused — atomically toggled via Interlocked.CompareExchange
+    private int _processingPaused;
 
     /// <summary>
     /// Pauses message processing
     /// </summary>
     public void PauseProcessing()
     {
-        if (!_processingPaused)
+        if (Interlocked.CompareExchange(ref _processingPaused, 1, 0) == 0)
         {
-            _processingPaused = true;
-            _pauseSemaphore.Wait(0); // Acquire the semaphore to block processing
             _logger.Debug("Message processing paused");
         }
     }
@@ -37,17 +34,8 @@ public class MessageQueue(ILogManager logManager)
     /// </summary>
     public void ResumeProcessing()
     {
-        if (_processingPaused)
+        if (Interlocked.CompareExchange(ref _processingPaused, 0, 1) == 1)
         {
-            _processingPaused = false;
-            try
-            {
-                _pauseSemaphore.Release(); // Release the semaphore to allow processing
-            }
-            catch (SemaphoreFullException)
-            {
-                // Semaphore was already released
-            }
             _logger.Debug("Message processing resumed");
         }
     }
@@ -55,7 +43,7 @@ public class MessageQueue(ILogManager logManager)
     /// <summary>
     /// Checks if processing is currently paused
     /// </summary>
-    public bool IsProcessingPaused => _processingPaused;
+    public bool IsProcessingPaused => Volatile.Read(ref _processingPaused) == 1;
 
     /// <summary>
     /// Checks if the queue is empty
@@ -91,19 +79,8 @@ public class MessageQueue(ILogManager logManager)
     /// <returns>The next message, or null if queue is empty or processing is paused</returns>
     public QueuedMessage? DequeueNextMessage()
     {
-        // Check if processing is paused
-        if (_processingPaused)
+        if (IsProcessingPaused)
         {
-            try
-            {
-                // Wait on the semaphore to block processing
-                _pauseSemaphore.Wait(0);
-                _pauseSemaphore.Release(); // Release it immediately to not block other threads
-            }
-            catch (SemaphoreFullException)
-            {
-                // Semaphore was already released
-            }
             return null;
         }
 

@@ -37,20 +37,14 @@ public class ProxyServer
 
     // Utility services
     private readonly RequestForwarder _requestForwarder;
+    private Task? _messageProcessingTask;
 
     public ProxyServer(ProxyConfig config, ILogManager logManager)
     {
-        Console.WriteLine("Application starting...");
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logManager?.GetClassLogger<ProxyServer>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        // Add this line to ensure console output
-        Console.WriteLine($"Logger initialized with level: {_config.LogLevel}");
-
-        // Duplicate logger messages to console to ensure visibility
         _logger.Info("Setting up logging...");
-
-        Console.WriteLine($"Engine API Proxy initializing with config: {_config}");
 
         // Validate configuration
         if (string.IsNullOrWhiteSpace(_config.ExecutionClientEndpoint))
@@ -58,17 +52,7 @@ public class ProxyServer
             throw new ArgumentException("Execution client endpoint must be provided", nameof(config));
         }
 
-        // Configure a socket handler with enhanced keep-alive settings
-        var defaultClientHandler = new SocketsHttpHandler
-        {
-            KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-            KeepAlivePingTimeout = TimeSpan.FromSeconds(180),
-            PooledConnectionLifetime = TimeSpan.FromMinutes(10),
-            EnableMultipleHttp2Connections = true,
-            AutomaticDecompression = System.Net.DecompressionMethods.All
-        };
-
-        _httpClient = new HttpClient(defaultClientHandler)
+        _httpClient = new HttpClient(CreateSocketsHttpHandler())
         {
             BaseAddress = new Uri(_config.ExecutionClientEndpoint),
             Timeout = TimeSpan.FromSeconds(_config.RequestTimeoutSeconds)
@@ -79,8 +63,7 @@ public class ProxyServer
         {
             _logger.Info($"Configuring consensus client with endpoint: {_config.ConsensusClientEndpoint}");
 
-            // Use similar settings for consensus client
-            _consensusClient = new HttpClient(defaultClientHandler)
+            _consensusClient = new HttpClient(CreateSocketsHttpHandler())
             {
                 BaseAddress = new Uri(_config.ConsensusClientEndpoint),
                 Timeout = TimeSpan.FromSeconds(_config.RequestTimeoutSeconds)
@@ -165,7 +148,7 @@ public class ProxyServer
         await _webHost.StartAsync(cancellationToken);
 
         // Start background tasks for message processing
-        _ = ProcessMessageQueueAsync(cancellationToken);
+        _messageProcessingTask = ProcessMessageQueueAsync(cancellationToken);
 
         _logger.Info($"Engine API Proxy started on port {_config.ListenPort}");
     }
@@ -174,6 +157,23 @@ public class ProxyServer
     {
         await _webHost.StopAsync(cancellationToken);
 
+        // Wait for background processing to finish
+        if (_messageProcessingTask is not null)
+        {
+            try
+            {
+                await _messageProcessingTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during shutdown
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Background message processing faulted: {ex.Message}", ex);
+            }
+        }
+
         // Dispose of the handlers that require it
         if (_forkChoiceUpdatedHandler is IDisposable disposableHandler)
         {
@@ -181,28 +181,37 @@ public class ProxyServer
             _logger.Debug("Disposed ForkChoiceUpdatedHandler");
         }
 
+        // Dispose HTTP clients and web host
+        _httpClient.Dispose();
+        _consensusClient?.Dispose();
+        if (_webHost is IAsyncDisposable asyncDisposable)
+        {
+            await asyncDisposable.DisposeAsync();
+        }
+
         _logger.Info("Engine API Proxy stopped");
     }
 
     private async Task ProcessMessageQueueAsync(CancellationToken cancellationToken)
     {
-        // Exit with Ctrl+C
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
                 if (!_messageQueue.IsEmpty)
                 {
-                    var message = _messageQueue.DequeueNextMessage();
+                    QueuedMessage? message = _messageQueue.DequeueNextMessage();
                     if (message is not null)
                     {
-                        // Process the dequeued message based on its type
-                        JsonRpcResponse response = await HandleRequest(message.Request);
-
-                        // Complete the message with the response
-                        if (message.Request.Id is not null)
+                        try
                         {
+                            JsonRpcResponse response = await HandleRequest(message.Request);
                             message.CompletionTask.TrySetResult(response);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error($"Error processing message {message.Request.Method}: {ex.Message}", ex);
+                            message.CompletionTask.TrySetException(ex);
                         }
                     }
                 }
@@ -210,10 +219,14 @@ public class ProxyServer
                 // Add a short delay to prevent high CPU usage
                 await Task.Delay(10, cancellationToken);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
             catch (Exception ex)
             {
                 _logger.Error($"Error processing message queue: {ex.Message}", ex);
-                await Task.Delay(100, cancellationToken); // Longer delay after error
+                await Task.Delay(100, cancellationToken);
             }
         }
     }
@@ -343,6 +356,15 @@ public class ProxyServer
             return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Routing request: {ex.Message}");
         }
     }
+
+    private static SocketsHttpHandler CreateSocketsHttpHandler() => new()
+    {
+        KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+        KeepAlivePingTimeout = TimeSpan.FromSeconds(180),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+        EnableMultipleHttp2Connections = true,
+        AutomaticDecompression = System.Net.DecompressionMethods.All
+    };
 
     private static async Task SendErrorResponse(HttpContext context, int statusCode, string message)
     {

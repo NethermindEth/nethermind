@@ -68,7 +68,7 @@ public class ProxyConfig
     /// <summary>
     /// Default fee recipient address to use when generating payload attributes
     /// </summary>
-    public string DefaultFeeRecipient { get; set; } = "0x1268ad189526ac0b386faf06effc46779c340ee6";
+    public string DefaultFeeRecipient { get; set; } = "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
 
     /// <summary>
     /// Time offset in seconds for block timestamp calculation

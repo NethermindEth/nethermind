@@ -15,17 +15,6 @@ public class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        // Parse command line arguments
-        for (int i = 0; i < args.Length; i++)
-        {
-            switch (args[i])
-            {
-                case "-h":
-                case "--help":
-                    return DisplayHelp();
-            }
-        }
-
         // Create command line options
         var executionClientOption = new Option<string?>(
             name: "--ec-endpoint",
@@ -149,7 +138,8 @@ public class Program
                 if (string.IsNullOrWhiteSpace(ecEndpoint))
                 {
                     logger.Error("Execution Client endpoint is required. Use --ec-endpoint or -e to specify.");
-                    Environment.Exit(1);
+                    context.ExitCode = 1;
+                    return;
                 }
 
                 // Create and configure proxy
@@ -197,7 +187,7 @@ public class Program
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error: {ex.Message}");
-                Environment.Exit(1);
+                context.ExitCode = 1;
             }
         });
 
@@ -256,24 +246,4 @@ public class Program
         LogManager.Configuration = config;
     }
 
-    private static int DisplayHelp()
-    {
-        Console.WriteLine("Engine API Proxy - Nethermind");
-        Console.WriteLine("Usage: EngineApiProxy [options]");
-        Console.WriteLine();
-        Console.WriteLine("Options:");
-        Console.WriteLine("  -e, --ec-endpoint <url>           Execution client endpoint URL (required)");
-        Console.WriteLine("  -c, --cl-endpoint <url>           Consensus client endpoint URL (optional)");
-        Console.WriteLine("  -p, --listen-port <port>          Port to listen on (default: 8551)");
-        Console.WriteLine("  -l, --log-level <level>           Logging level (default: Info)");
-        Console.WriteLine("  -f, --log-file <path>             Log file path (default: console only)");
-        Console.WriteLine("  --validate-all-blocks             Validate all blocks, even without CL request");
-        Console.WriteLine("  --fee-recipient <address>         Default fee recipient address");
-        Console.WriteLine("  --validation-mode <mode>          Validation mode (ForkChoiceUpdated, NewPayload, Merged, Lighthouse)");
-        Console.WriteLine("  --request-timeout <seconds>       HTTP request timeout in seconds (default: 100)");
-        Console.WriteLine("  --get-payload-method <method>     Engine API method for getting payloads (default: engine_getPayloadV4)");
-        Console.WriteLine("  --new-payload-method <method>     Engine API method for sending new payloads (default: engine_newPayloadV4)");
-        Console.WriteLine("  -h, --help                        Display this help message");
-        return 0;
-    }
 }

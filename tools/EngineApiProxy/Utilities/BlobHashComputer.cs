@@ -166,9 +166,15 @@ public class BlobHashComputer
             return [];
         }
 
-        return hashArray
-            .Select(h => h?.ToString() ?? string.Empty)
-            .Where(h => !string.IsNullOrEmpty(h))
-            .ToArray();
+        List<string> result = new(hashArray.Count);
+        foreach (JToken? token in hashArray)
+        {
+            string? value = token?.ToString();
+            if (!string.IsNullOrEmpty(value))
+            {
+                result.Add(value);
+            }
+        }
+        return result.ToArray();
     }
 }

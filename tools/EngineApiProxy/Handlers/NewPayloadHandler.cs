@@ -130,7 +130,7 @@ public class NewPayloadHandler(
             catch (Exception ex)
             {
                 // If the validation flow fails due to unsupported methods, log and fall back to normal flow
-                if (ex.ToString().Contains("is not supported"))
+                if (ex.Message.Contains("is not supported"))
                 {
                     _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
                     _logger.Info("Falling back to direct forwarding of request to execution client");

@@ -193,8 +193,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
             catch (Exception ex)
             {
                 // If the validation flow fails due to unsupported methods, log and fall back to normal flow
-                string exceptionMessage = ex.ToString();
-                if (exceptionMessage.Contains("is not supported") || exceptionMessage.Contains("is not implemented"))
+                if (ex.Message.Contains("is not supported") || ex.Message.Contains("is not implemented"))
                 {
                     _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
                     _logger.Info("Falling back to direct forwarding of request to execution client");
@@ -322,7 +321,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                     {
                         if (DateTime.UtcNow - timestamp < _lhCacheExpiryTime)
                         {
-                            _logger.Info($"LH mode: Duplicate FCU request detected (fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}...), returning cached response to CL");
+                            _logger.Info($"LH mode: Duplicate FCU request detected (fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}...), returning cached response to CL");
 
                             // Update ID to match the current request
                             var clonedResponse = CloneResponseWithNewId(cachedResponse, request.Id);
@@ -331,14 +330,14 @@ public class ForkChoiceUpdatedHandler : IDisposable
                         else
                         {
                             // Cache entry expired, remove it
-                            _logger.Debug($"LH mode: Cache entry expired for fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}..., will forward to EL");
+                            _logger.Debug($"LH mode: Cache entry expired for fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}..., will forward to EL");
                             _lhResponseCache.TryRemove(requestFingerprint, out _);
                             _lhCacheTimestamps.TryRemove(requestFingerprint, out _);
                         }
                     }
                 }
 
-                _logger.Info($"LH mode: New unique FCU request with payload attributes (fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}...)");
+                _logger.Info($"LH mode: New unique FCU request with payload attributes (fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}...)");
 
                 // Extract the head block hash for tracking
                 string headBlockHashStr = string.Empty;
@@ -399,7 +398,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                         {
                             _lhResponseCache[requestFingerprint] = response;
                             _lhCacheTimestamps[requestFingerprint] = DateTime.UtcNow;
-                            _logger.Debug($"LH mode: Cached response for FCU request (fingerprint: {GetSafeSubstring(requestFingerprint, 0, 10)}...)");
+                            _logger.Debug($"LH mode: Cached response for FCU request (fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}...)");
                         }
                         else
                         {
@@ -538,14 +537,17 @@ public class ForkChoiceUpdatedHandler : IDisposable
             int removedCount = 0;
             var now = DateTime.UtcNow;
 
-            // Find all expired entries
-            var expiredKeys = _lhCacheTimestamps
-                .Where(kvp => now - kvp.Value > _lhCacheExpiryTime)
-                .Select(kvp => kvp.Key)
-                .ToList();
+            // Find and remove expired entries
+            List<string> expiredKeys = new();
+            foreach (KeyValuePair<string, DateTime> kvp in _lhCacheTimestamps)
+            {
+                if (now - kvp.Value > _lhCacheExpiryTime)
+                {
+                    expiredKeys.Add(kvp.Key);
+                }
+            }
 
-            // Remove expired entries
-            foreach (var key in expiredKeys)
+            foreach (string key in expiredKeys)
             {
                 if (_lhResponseCache.TryRemove(key, out _))
                 {
@@ -564,22 +566,6 @@ public class ForkChoiceUpdatedHandler : IDisposable
         {
             _logger.Error($"Error during cache cleanup: {ex.Message}", ex);
         }
-    }
-
-    /// <summary>
-    /// Safe substring helper that handles null or short strings
-    /// </summary>
-    private static string GetSafeSubstring(string input, int startIndex, int length)
-    {
-        if (string.IsNullOrEmpty(input))
-            return string.Empty;
-
-        if (startIndex >= input.Length)
-            return string.Empty;
-
-        // Calculate safe length to prevent going past end of string
-        int safeLength = Math.Min(length, input.Length - startIndex);
-        return input.Substring(startIndex, safeLength);
     }
 
     public void Dispose()
