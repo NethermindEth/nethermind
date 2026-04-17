@@ -333,7 +333,8 @@ public class BlockAccessListManager(
             AdvanceSuggested();
         }
 
-        if (validateStorageReads && _gasRemaining < (suggestedReads - generatedReads) * Eip7928Constants.ItemCost)
+        int surplusSuggestedReads = suggestedReads - generatedReads;
+        if (validateStorageReads && surplusSuggestedReads > 0 && _gasRemaining < surplusSuggestedReads * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
