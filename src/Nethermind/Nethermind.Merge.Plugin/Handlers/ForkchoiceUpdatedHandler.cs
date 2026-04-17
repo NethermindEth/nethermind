@@ -240,14 +240,30 @@ public class ForkchoiceUpdatedHandler(
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
 
-        if (IsInconsistent(finalizedHeader, newHeadBlock))
+        // Spec ordering: prevFinalized <= finalized <= safe <= head. Cheap O(1) checks first,
+        // then ancestry walks. Casper FFG: finality is monotonic, so finalized must not regress
+        // below the previously-accepted finalized level (cached on the finalization manager).
+        // Cache hit on finalizedBlockHash itself skips the ancestry walk entirely — finalized
+        // typically advances only once per epoch (~32 slots), so most FCUs reuse the same hash.
+        long prevFinalizedLevel = _manualBlockFinalizationManager.LastFinalizedBlockLevel;
+        long finalizedNumber = finalizedHeader?.Number ?? 0;
+        bool finalizedUnchanged = finalizedBlockHash == _manualBlockFinalizationManager.LastFinalizedHash;
+
+        if ((finalizedHeader is not null && (finalizedNumber < prevFinalizedLevel || finalizedNumber > newHeadBlock.Number))
+            || (!finalizedUnchanged && IsInconsistent(finalizedHeader, newHeadBlock)))
         {
             string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
-        if (IsInconsistent(safeBlockHeader, newHeadBlock))
+        // Same cache-hit shortcut as finalized: safe also typically advances only every epoch.
+        // _blockTree.SafeHash is set on accepted FCUs only, so it reliably holds the last
+        // accepted safe hash to compare against.
+        bool safeUnchanged = safeBlockHash == _blockTree.SafeHash;
+
+        if ((safeBlockHeader is not null && (safeBlockHeader.Number < finalizedNumber || safeBlockHeader.Number > newHeadBlock.Number))
+            || (!safeUnchanged && IsInconsistent(safeBlockHeader, newHeadBlock)))
         {
             string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
@@ -342,30 +358,37 @@ public class ForkchoiceUpdatedHandler(
         if (isSyncInitialized && _logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
 
-    // Per Engine API spec, safeBlockHash and finalizedBlockHash MUST be ancestors of headBlockHash
-    // *in the same FCU request*:
+    // Per Engine API spec, safe/finalized MUST be ancestors of headBlockHash *in the same FCU request*:
     // https://github.com/ethereum/execution-apis/blob/main/src/engine/paris.md#specification-1
     // A null candidateHeader signals Keccak.Zero (no value supplied), which is consistent.
-    //
-    // Fast path (steady state): if BOTH the candidate and newHeadBlock are on the canonical
-    // main chain, then by chain linearity (one canonical block per level, candidate.Number
-    // <= newHeadBlock.Number) the candidate is necessarily an ancestor of newHeadBlock. Two
-    // O(1) ChainLevelInfo lookups vs. the parent walk in the fallback. The IsMainChain check
-    // on newHeadBlock is essential — IsMainChain(candidate) alone would silently accept a
-    // non-ancestor when newHeadBlock sits on a side branch (the inverse of issue #11185).
-    //
-    // Slow path: walk parents from newHeadBlock and compare hashes. Required when the EL has
-    // not yet reconciled its canonical view to newHeadBlock — the case the original
-    // _blockTree.IsMainChain(blockHash) check got wrong (issue #11185).
+    // Walk depth is bounded by callers' upfront number-ordering checks (finalized >= prevFinalized,
+    // safe >= finalized) so candidate.Number never sits more than ~a few epochs below newHeadBlock.
     private bool IsInconsistent(BlockHeader? candidateHeader, Block newHeadBlock)
     {
         if (candidateHeader is null) return false;
         if (candidateHeader.Number > newHeadBlock.Number) return true;
 
-        if (_blockTree.IsMainChain(candidateHeader) && _blockTree.IsMainChain(newHeadBlock.Header))
-            return false;
+        bool candidateOnMain = _blockTree.IsMainChain(candidateHeader);
+        bool headOnMain = _blockTree.IsMainChain(newHeadBlock.Header);
+
+        if (candidateOnMain && headOnMain) return false;
+        if (headOnMain) return true;
 
         BlockHeader? cursor = newHeadBlock.Header;
+
+        if (candidateOnMain)
+        {
+            // Walk newHeadBlock's parents until the first canonical ancestor (fork point).
+            // candidate is canonical at its level; if the fork point is at or above that level,
+            // candidate lies on the shared canonical sub-chain.
+            while (cursor is not null && !_blockTree.IsMainChain(cursor))
+            {
+                cursor = _blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+            return cursor is null || cursor.Number < candidateHeader.Number;
+        }
+
+        // Both off the canonical chain. Walk down to candidate.Number and compare hashes.
         while (cursor is not null && cursor.Number > candidateHeader.Number)
         {
             cursor = _blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

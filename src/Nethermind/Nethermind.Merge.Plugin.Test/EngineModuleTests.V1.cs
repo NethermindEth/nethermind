@@ -1002,7 +1002,10 @@ public partial class EngineModuleTests
         }
 
         IReadOnlyList<ExecutionPayload> branch1 = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
-        IReadOnlyList<ExecutionPayload> branch2 = await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
+        // setHead=false on the sibling branch: producing each block with head=safe=finalized=block
+        // would regress the finalized number from branch1[9] (level 10) to branch2[0] (level 5),
+        // which violates Casper FFG monotonicity (now enforced by ForkchoiceUpdatedHandler).
+        IReadOnlyList<ExecutionPayload> branch2 = await ProduceBranchV1(rpc, chain, 6, branch1[3], setHead: false, TestItem.KeccakC);
 
         await CanReorganizeToLastBlock(chain, branch1, branch2);
     }
@@ -1024,7 +1027,8 @@ public partial class EngineModuleTests
         }
 
         IReadOnlyList<ExecutionPayload> branch1 = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
-        IReadOnlyList<ExecutionPayload> branch2 = await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
+        // setHead=false on the sibling branch — see comment in forkchoiceUpdatedV1_can_reorganize_to_last_block.
+        IReadOnlyList<ExecutionPayload> branch2 = await ProduceBranchV1(rpc, chain, 6, branch1[3], setHead: false, TestItem.KeccakC);
 
         await CanReorganizeToBlock(branch2.Last(), chain);
     }
@@ -1446,8 +1450,9 @@ public partial class EngineModuleTests
         chain.BlockTree.IsMainChain(block2B.BlockHash).Should().BeFalse();
         chain.BlockTree.IsMainChain(block3B.BlockHash).Should().BeFalse();
 
-        // head = 3B, safe = 2B (real ancestor of 3B), finalized = block1 (also a real ancestor).
-        ForkchoiceStateV1 fcu = new(block3B.BlockHash, block2B.BlockHash, block1.BlockHash);
+        // head = 3B, finalized = block1, safe = 2B (both real ancestors of 3B; safe >= finalized).
+        // Note: ForkchoiceStateV1 ctor order is (head, FINALIZED, SAFE).
+        ForkchoiceStateV1 fcu = new(block3B.BlockHash, block1.BlockHash, block2B.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
         result.ErrorCode.Should().Be(0);
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
@@ -1468,6 +1473,34 @@ public partial class EngineModuleTests
         chain.BlockTree.Head!.Hash.Should().Be(block3B.BlockHash);
     }
 
+    [Test]
+    public async Task forkchoiceUpdated_rejects_spec_ordering_violations()
+    {
+        // Covers the explicit O(1) ordering checks added to ForkchoiceUpdatedHandler:
+        //  - Casper FFG monotonicity: finalized must not regress below previously-accepted finalized
+        //  - safe >= finalized
+        // None of these were exercised by the prior tests (they cover sibling-branch ancestry only).
+        // Note: ForkchoiceStateV1 ctor order is (head, FINALIZED, SAFE).
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+
+        // Establish a high-water-mark finalized at blocks[2] (level 3).
+        ForkchoiceStateV1 setup = new(blocks[2].BlockHash, blocks[2].BlockHash, blocks[2].BlockHash);
+        (await rpc.engine_forkchoiceUpdatedV1(setup)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        // Monotonicity: finalized=blocks[0] (level 1) is below previously-accepted finalized (level 3).
+        ForkchoiceStateV1 monotonicity = new(blocks[3].BlockHash, blocks[0].BlockHash, blocks[0].BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> r1 = await rpc.engine_forkchoiceUpdatedV1(monotonicity);
+        r1.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+
+        // safe < finalized: head=blocks[3], finalized=blocks[2], safe=blocks[1]. Real ancestors of head but safe(2) < finalized(3).
+        ForkchoiceStateV1 ordering = new(blocks[3].BlockHash, blocks[2].BlockHash, blocks[1].BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> r2 = await rpc.engine_forkchoiceUpdatedV1(ordering);
+        r2.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+    }
 
     [Test]
     public async Task payloadV1_latest_block_after_reorg()
