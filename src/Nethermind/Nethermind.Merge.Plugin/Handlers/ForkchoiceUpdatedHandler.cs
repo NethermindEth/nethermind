@@ -246,21 +246,20 @@ public class ForkchoiceUpdatedHandler(
         long prevFinalizedLevel = _manualBlockFinalizationManager.LastFinalizedBlockLevel;
         long finalizedNumber = finalizedHeader?.Number ?? 0;
 
-        if ((finalizedHeader is not null && (finalizedNumber < prevFinalizedLevel || finalizedNumber > newHeadBlock.Number))
-            || IsInconsistent(finalizedHeader, newHeadBlock))
+        ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(BlockHeader? header, long lowerBound, string label)
         {
-            string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
-            if (_logger.IsWarn) _logger.Warn(errorMsg);
-            return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            if ((header is not null && (header.Number < lowerBound || header.Number > newHeadBlock.Number))
+                || IsInconsistent(header, newHeadBlock))
+            {
+                string errorMsg = $"Inconsistent ForkChoiceState - {label} block hash. Request: {requestStr}";
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            }
+            return null;
         }
 
-        if ((safeBlockHeader is not null && (safeBlockHeader.Number < finalizedNumber || safeBlockHeader.Number > newHeadBlock.Number))
-            || IsInconsistent(safeBlockHeader, newHeadBlock))
-        {
-            string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
-            if (_logger.IsWarn) _logger.Warn(errorMsg);
-            return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
-        }
+        if (RejectIfInconsistent(finalizedHeader, prevFinalizedLevel, "finalized") is { } finalizedError) return finalizedError;
+        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe") is { } safeError) return safeError;
 
         bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
@@ -358,23 +357,16 @@ public class ForkchoiceUpdatedHandler(
         if (candidateHeader is null) return false;
         if (candidateHeader.Number > newHeadBlock.Number) return true;
 
-        bool candidateOnMain = _blockTree.IsMainChain(candidateHeader);
-        bool headOnMain = _blockTree.IsMainChain(newHeadBlock.Header);
-
-        if (candidateOnMain && headOnMain) return false;
-        if (headOnMain) return true;
-
-        BlockHeader? cursor = newHeadBlock.Header;
-
-        if (candidateOnMain)
+        // Canonical head's ancestry is purely canonical, so consistency reduces to
+        // whether the candidate itself sits on the canonical chain.
+        if (_blockTree.IsMainChain(newHeadBlock.Header))
         {
-            while (cursor is not null && !_blockTree.IsMainChain(cursor))
-            {
-                cursor = _blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-            return cursor is null || cursor.Number < candidateHeader.Number;
+            return !_blockTree.IsMainChain(candidateHeader);
         }
 
+        // Head is non-canonical: walk its parents down to the candidate's level and
+        // compare the block at that level against the candidate.
+        BlockHeader? cursor = newHeadBlock.Header;
         while (cursor is not null && cursor.Number > candidateHeader.Number)
         {
             cursor = _blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
