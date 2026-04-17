@@ -64,6 +64,11 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
+    // Lower bound for the Casper FFG monotonicity check on finalized block. L1-derived finality
+    // models (e.g. Taiko) follow L1 reorgs and need to permit finalized-regression; they override
+    // this to disable the check.
+    protected virtual long PreviousFinalizedBlockLevel => _manualBlockFinalizationManager.LastFinalizedBlockLevel;
+
     protected virtual bool IsOnMainChainBehindHead(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
@@ -234,7 +239,7 @@ public class ForkchoiceUpdatedHandler(
         // Spec ordering: prevFinalized <= finalized <= safe <= head. Ancestry must be re-validated
         // on every FCU - the binding is (head, finalized, safe), so a repeated finalized/safe hash
         // paired with a new head on a sibling branch is still a spec violation.
-        long prevFinalizedLevel = _manualBlockFinalizationManager.LastFinalizedBlockLevel;
+        long prevFinalizedLevel = PreviousFinalizedBlockLevel;
         long finalizedNumber = finalizedHeader?.Number ?? 0;
 
         ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(BlockHeader? header, long lowerBound, string label)

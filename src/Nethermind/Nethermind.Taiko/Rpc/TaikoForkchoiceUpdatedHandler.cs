@@ -60,6 +60,10 @@ internal class TaikoForkchoiceUpdatedHandler(
         return true;
     }
 
+    // Taiko finality follows L1 and may regress on L1 reorgs, so Ethereum's Casper FFG
+    // monotonicity on finalized block number does not apply.
+    protected override long PreviousFinalizedBlockLevel => 0;
+
     protected override BlockHeader? ValidateBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;
