@@ -1481,6 +1481,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             dbMetricsUpdater.Dispose();
         }
 
+        _reader.Dispose();
+
         if (_perTableDbConfig.FlushOnExit) InnerFlush(false);
         ReleaseUnmanagedResources();
 
@@ -1890,7 +1892,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
 
         Iterator iterator = CreateIterator(readOptions, cf);
-        return new RocksdbSortedView(iterator, iterateLowerBound, iterateUpperBound);
+        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
     }
 
     public IKeyValueStoreSnapshot CreateSnapshot()
@@ -1904,13 +1906,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }, null, snapshot);
     }
 
-    public class RocksDbSnapshot(
+    public sealed class RocksDbSnapshot(
         DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         ColumnFamilyHandle? columnFamily,
         Snapshot snapshot
     ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot
     {
-        public void Dispose() => snapshot.Dispose();
+        private int _disposed;
+
+        public override void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            base.Dispose();
+            snapshot.Dispose();
+        }
     }
 }

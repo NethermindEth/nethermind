@@ -220,13 +220,6 @@ public static partial class EvmInstructions
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
-            // If contract is large, charge for access
-            if (spec.IsEip7907Enabled)
-            {
-                uint excessContractSize = (uint)Math.Max(0, externalCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
-                if (excessContractSize > 0 && !TGasPolicy.ConsumeLargeContractAccessGas(ref gas, excessContractSize, address, in vm.VmState.AccessTracker))
-                    goto OutOfGas;
-            }
 
             // Slice the external code starting at the source offset with appropriate zero-padding.
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
