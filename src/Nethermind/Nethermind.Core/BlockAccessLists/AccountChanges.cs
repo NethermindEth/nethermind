@@ -104,6 +104,15 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public void Merge(AccountChanges other)
     {
+        // Only merge reads for slots that don't already have changes in this BAL.
+        foreach (UInt256 read in other._storageReads)
+        {
+            if (!_storageChanges.ContainsKey(read))
+            {
+                _storageReads.Add(read);
+            }
+        }
+
         foreach (KeyValuePair<UInt256, SlotChanges> kv in other._storageChanges)
         {
             if (_storageChanges.TryGetValue(kv.Key, out SlotChanges? existing))
@@ -114,8 +123,12 @@ public class AccountChanges : IEquatable<AccountChanges>
             {
                 _storageChanges.Add(kv.Key, kv.Value);
             }
+
+            // When a new change is merged for a slot that previously only had a read,
+            // remove the now-redundant read. A change entry supersedes a read.
+            _storageReads.Remove(kv.Key);
         }
-        _storageReads.AddRange(other._storageReads);
+
         _balanceChanges.AddRange(other._balanceChanges);
         _nonceChanges.AddRange(other._nonceChanges);
         _codeChanges.AddRange(other._codeChanges);
