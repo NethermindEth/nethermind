@@ -77,6 +77,7 @@ public class BlockAccessListManager(
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
 
+            // cache last loaded bal to avoid loading prestate again
             if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
             {
                 _lastLoadedBal = suggestedBlock.Hash;
