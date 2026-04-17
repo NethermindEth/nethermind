@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
@@ -181,9 +182,14 @@ public class Startup : IStartup
             builder => builder.UseWebSocketsModules());
         }
 
+        string[] healthHostPatterns = jsonRpcUrlCollection.Values
+            .Where(url => url.IsModuleEnabled(ModuleType.Health))
+            .Select(url => $"*:{url.Port}")
+            .ToArray();
+
         app.UseEndpoints(endpoints =>
         {
-            if (healthChecksConfig.Enabled)
+            if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
             {
                 try
                 {
@@ -191,18 +197,18 @@ public class Startup : IStartup
                     {
                         Predicate = _ => true,
                         ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-                    });
+                    }).RequireHost(healthHostPatterns);
                     if (healthChecksConfig.UIEnabled)
                     {
-                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
+                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")))
+                            .RequireHost(healthHostPatterns);
                     }
+                    endpoints.MapDataFeeds(lifetime).RequireHost(healthHostPatterns);
                 }
                 catch (Exception e)
                 {
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
-
-                endpoints.MapDataFeeds(lifetime);
             }
         });
 
@@ -238,12 +244,17 @@ public class Startup : IStartup
             }
         }));
 
-        if (healthChecksConfig.Enabled)
+        if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
         {
             ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
 
-            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
-            app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+            app.UseWhen(
+                ctx => jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) && url.IsModuleEnabled(ModuleType.Health),
+                builder =>
+                {
+                    builder.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+                    builder.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+                });
         }
     }
 

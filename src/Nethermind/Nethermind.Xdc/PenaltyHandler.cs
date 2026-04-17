@@ -5,8 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
@@ -17,9 +15,6 @@ namespace Nethermind.Xdc;
 
 internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
 {
-    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
-    private readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
-
     public Address[] GetPenalties(XdcBlockHeader header) => epochSwitchManager.GetEpochSwitchInfo(header)?.Penalties ?? [];
 
     private Address[] GetPreviousPenalties(Hash256 currentHash, IXdcReleaseSpec spec, ulong limit)
@@ -57,7 +52,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             if (isEpochSwitch)
                 break;
 
-            Address miner = parentHeader.Beneficiary ?? _ethereumEcdsa.RecoverAddress(new Signature(parentHeader.Validator.AsSpan(0, 64), parentHeader.Validator[64]), Keccak.Compute(_xdcHeaderDecoder.Encode(parentHeader, RlpBehaviors.ForSealing).Bytes));
+            Address miner = parentHeader.Beneficiary;
             minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
 
             parentNumber--;

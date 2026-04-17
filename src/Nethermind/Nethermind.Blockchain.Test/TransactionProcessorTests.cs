@@ -278,7 +278,13 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
 
-        if (txValue + (UInt256)gasLimit > AccountBalance)
+        if (txValue == AccountBalance)
+        {
+            // All balance is consumed by value; nothing left for gas — allowance cap fires before execution.
+            Assert.That(err, Is.Not.Null);
+            Assert.That(err, Does.StartWith(GasEstimator.GasExceedsAllowanceMsgPrefix));
+        }
+        else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
             Assert.That(err, Is.Not.Null); // Should have error
             Assert.That(err, Is.EqualTo("Transaction execution fails"));

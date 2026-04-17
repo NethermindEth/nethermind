@@ -45,16 +45,16 @@ public class MergeSynchronizer(
     }
 
     private void StartBeaconHeadersComponents() => beaconHeaderComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
-                                                        {
-                                                            if (t.IsFaulted)
-                                                            {
-                                                                if (_logger.IsError) _logger.Error("Beacon headers downloader failed", t.Exception);
-                                                            }
-                                                            else
-                                                            {
-                                                                if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
-                                                            }
-                                                        });
+    {
+        if (t.IsFaulted)
+        {
+            if (_logger.IsError) _logger.Error("Beacon headers downloader failed", t.Exception);
+        }
+        else
+        {
+            if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
+        }
+    });
 
     private void WireMultiSyncModeSelector() => baseSynchronizer.WireFeedWithModeSelector(beaconHeaderComponent.Feed);
 
