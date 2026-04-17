@@ -156,31 +156,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         bool chargeForWarm = true);
 
     /// <summary>
-    /// Charges gas for accessing the excess bytes of a large contract (EIP-7907).
-    /// Charges once per (tx, contract) via <see cref="StackAccessTracker.WarmUpLargeContract"/>.
-    /// Default implementation routes the charge through <see cref="UpdateGas"/>, so policies
-    /// with resource categorization pick it up automatically via their own <c>UpdateGas</c> override.
-    /// </summary>
-    /// <param name="gas">The gas state to update.</param>
-    /// <param name="excessContractSize">Number of bytes by which the contract exceeds <c>MaxCodeSizeEip170</c>.</param>
-    /// <param name="codeAddress">The address of the contract being accessed.</param>
-    /// <param name="accessTracker">The access tracker for cold/warm state.</param>
-    /// <returns>True if the gas charge was successful; otherwise false (out of gas).</returns>
-    static virtual bool ConsumeLargeContractAccessGas(ref TSelf gas,
-        uint excessContractSize,
-        Address codeAddress,
-        ref readonly StackAccessTracker accessTracker)
-    {
-        if (accessTracker.WarmUpLargeContract(codeAddress))
-        {
-            long largeContractCost = GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !TSelf.UpdateGas(ref gas, largeContractCost)) return false;
-        }
-
-        return true;
-    }
-
-    /// <summary>
     /// Charges the appropriate gas cost for accessing a storage cell, taking into account whether the access is cold or warm.
     /// <para>
     /// For cold storage accesses (or if not previously warmed up), a higher gas cost is applied. For warm access during SLOAD,
