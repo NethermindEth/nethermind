@@ -16,7 +16,18 @@ internal sealed class OpcodeCountingTxTracer : TxTracer
     /// <summary>
     /// Gets the total number of opcodes executed in this transaction.
     /// </summary>
-    public long TotalOpcodes => _opcodeCounters.Sum();
+    public long TotalOpcodes
+    {
+        get
+        {
+            long total = 0;
+            for (int i = 0; i < OpcodeSpace; i++)
+            {
+                total += _opcodeCounters[i];
+            }
+            return total;
+        }
+    }
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
