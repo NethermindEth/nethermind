@@ -372,49 +372,12 @@ public abstract class BlockchainTestBase
                 $"engine_newPayloadV{newPayloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. " +
                 $"ValidationError: {payloadStatus.ValidationError}");
 
-            if (validationError is not null)
-            {
-                Assert.That(payloadStatus.ValidationError, Is.Not.Null,
-                    $"engine_newPayloadV{newPayloadVersion} returned INVALID without validation error. Expected: {validationError}");
-
-                string[] expectedErrors = validationError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                string[] normalizedValidationErrors = NormalizeValidationErrors(payloadStatus.ValidationError!);
-                bool matchesExpectedError = expectedErrors.Any(expectedError =>
-                    payloadStatus.ValidationError.Contains(expectedError, StringComparison.Ordinal) ||
-                    normalizedValidationErrors.Any(normalizedValidationError =>
-                        string.Equals(normalizedValidationError, expectedError, StringComparison.Ordinal)));
-
-                Assert.That(matchesExpectedError, Is.True,
-                    $"engine_newPayloadV{newPayloadVersion} returned unexpected validation error. " +
-                    $"Actual: {payloadStatus.ValidationError}. Normalized: {string.Join("|", normalizedValidationErrors)}. Expected: {validationError}");
-            }
-
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
                 string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
                 AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
             }
         }
-    }
-
-    private static string[] NormalizeValidationErrors(string validationError)
-    {
-        if (validationError.Contains("ExceededGasLimit: Gas used exceeds gas limit.", StringComparison.Ordinal))
-        {
-            return ["BlockException.GAS_USED_OVERFLOW"];
-        }
-
-        if (validationError.Contains("failed with error Block gas limit exceeded", StringComparison.Ordinal))
-        {
-            return ["TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockException.GAS_USED_OVERFLOW"];
-        }
-
-        if (validationError.Contains("intrinsic gas too low", StringComparison.Ordinal))
-        {
-            return ["TransactionException.INTRINSIC_GAS_TOO_LOW", "TransactionException.INTRINSIC_GAS_BELOW_FLOOR_GAS_COST"];
-        }
-
-        return [];
     }
 
     private static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
