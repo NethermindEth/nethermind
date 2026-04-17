@@ -1411,8 +1411,8 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdated_safe_block_that_is_real_ancestor_of_new_head_is_accepted()
     {
-        // Regression for #11185: an FCU whose safe/finalized are real ancestors of the new head
-        // (but not yet on the EL's currently-canonical chain) must be accepted as Valid.
+        // Spec acceptance case for #11185: an FCU whose safe/finalized are real ancestors of the
+        // new head (but not yet on the EL's currently-canonical chain) must be accepted as Valid.
         using MergeTestBlockchain chain =
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -1447,6 +1447,57 @@ public partial class EngineModuleTests
         chain.BlockTree.IsMainChain(block3B.BlockHash).Should().BeTrue();
         chain.BlockTree.IsMainChain(block2B.BlockHash).Should().BeTrue();
         chain.BlockTree.IsMainChain(block1.BlockHash).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task forkchoiceUpdated_safe_block_that_is_real_ancestor_of_current_head_is_accepted_when_canonical_markers_are_stale()
+    {
+        // Strong regression for #11185: keep Head at a2, then simulate sync moving the canonical
+        // marker at H=1 to sibling b1 without advancing Head. a1 is still a real ancestor of a2
+        // via parent pointers, but the old single-hash IsMainChain(a1) check would reject it.
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ExecutionPayload a1 = CreateBlockRequest(
+            chain, CreateParentBlockRequestOnHead(chain.BlockTree),
+            TestItem.AddressA);
+        (await rpc.engine_newPayloadV1(a1)).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        ExecutionPayload a2 = CreateBlockRequest(chain, a1, TestItem.AddressA);
+        (await rpc.engine_newPayloadV1(a2)).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        ForkchoiceStateV1 initialFcu = new(headBlockHash: a2.BlockHash, finalizedBlockHash: Keccak.Zero, safeBlockHash: a1.BlockHash);
+        (await rpc.engine_forkchoiceUpdatedV1(initialFcu)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        Block genesis = chain.BlockTree.FindBlock(chain.BlockTree.GenesisHash, BlockTreeLookupOptions.None)!;
+        ExecutionPayload genesisPayload = new()
+        {
+            BlockNumber = genesis.Number,
+            BlockHash = genesis.Hash!,
+            StateRoot = genesis.StateRoot!,
+            ReceiptsRoot = genesis.ReceiptsRoot!,
+            GasLimit = genesis.GasLimit,
+            Timestamp = genesis.Timestamp,
+            BaseFeePerGas = genesis.BaseFeePerGas,
+        };
+
+        ExecutionPayload b1 = CreateBlockRequest(chain, genesisPayload, TestItem.AddressB);
+        (await rpc.engine_newPayloadV1(b1)).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        Block sibling = chain.BlockTree.FindBlock(b1.BlockHash, BlockTreeLookupOptions.None)!;
+        chain.BlockTree.UpdateMainChain(new[] { sibling }, wereProcessed: false);
+
+        chain.BlockTree.Head!.Hash.Should().Be(a2.BlockHash, "Head stays on a2 when sync marks b1 canonical");
+        chain.BlockTree.IsMainChain(a1.BlockHash).Should().BeFalse("precondition: a1 is no longer canonical at H=1");
+        chain.BlockTree.IsMainChain(a2.BlockHash).Should().BeFalse("precondition: a2 marker was cleared above the sync target");
+        chain.BlockTree.IsMainChain(b1.BlockHash).Should().BeTrue("precondition: b1 became canonical at H=1");
+
+        ForkchoiceStateV1 repeatedHeadFcu = new(headBlockHash: a2.BlockHash, finalizedBlockHash: Keccak.Zero, safeBlockHash: a1.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeatedHeadFcu);
+
+        result.ErrorCode.Should().Be(0);
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
     }
 
     [Test]
