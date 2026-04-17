@@ -299,18 +299,18 @@ public class HistoryPruner : IHistoryPruner
 
     /// <summary>
     /// Sets the minimum block number that may be deleted during pruning.
-    /// Must be called before the first pruning pass. Defaults to 1 (block 0 is never deleted).
-    /// Override when the chain genesis is not block 0.
+    /// Defaults to 1 (block 0 is never deleted). Override when the chain genesis is not block 0.
     /// </summary>
-    /// <param name="minBlockNumber">Minimum deletable block number.</param>
-    /// <exception cref="InvalidOperationException">Thrown if called after the delete pointer has already been loaded.</exception>
     public void SetMinDeletableBlockNumber(long minBlockNumber)
     {
         lock (_pruneLock)
         {
-            if (_hasLoadedDeletePointer)
-                throw new InvalidOperationException($"{nameof(SetMinDeletableBlockNumber)} must be called before the first pruning pass.");
             _minDeletableBlockNumber = Math.Max(1, minBlockNumber);
+            // Only bump _deletePointer when the pointer has already been loaded from DB or discovered
+            // via SetDeletePointerToOldestBlock. If the pointer has not been loaded yet,
+            // TryLoadDeletePointer will enforce _minDeletableBlockNumber when it runs.
+            if (_hasLoadedDeletePointer && _deletePointer < _minDeletableBlockNumber)
+                _deletePointer = _minDeletableBlockNumber;
         }
     }
 
