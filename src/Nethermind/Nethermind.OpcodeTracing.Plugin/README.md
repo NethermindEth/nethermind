@@ -34,18 +34,20 @@ The Opcode Tracing Plugin enables tracing of EVM opcode usage across configurabl
 2. **Cumulative file** (`opcode-trace-all-{sessionId}.json`): Updated after each block with aggregated counts from all blocks processed in the session
 
 **Block Range Behavior**:
+
+> **Note**: In RealTime mode, `EndBlock` marks the end of the *reporting window*, not a hard stop. The tracer keeps running for as long as the node runs — it only stops when the plugin is disposed (node shutdown).
+
 When `StartBlock` and `EndBlock` are configured:
 
-- Blocks before `StartBlock` are skipped
-- After `EndBlock` is reached, the cumulative file is finalized with `completionStatus="complete"`
-- Tracing continues beyond `EndBlock` for any new blocks, writing per-block files and updating the cumulative totals
+- Blocks before `StartBlock` are skipped.
+- When `EndBlock` is first reached, the cumulative file is finalized once with `completionStatus="complete"`.
+- **Tracing then continues past `EndBlock`** for every further block processed by the node, writing per-block files and updating the cumulative totals. To stop tracing, stop the node (or disable the plugin and restart).
 
 When `RecentBlocks` is configured:
 
-- All blocks after the current chain tip **are traced** (i.e. the next `RecentBlocks` blocks)
-- Blocks before the current chain tip are **not** traced
-- The plugin calculates the effective start and end blocks based on the current chain tip and the `RecentBlocks` parameter
-- After the effective end block is reached, tracer starts to create per-block files and update the cumulative file with the aggregated counts from all traced blocks
+- Blocks up to the current chain tip are **not** traced. Only the next `RecentBlocks` blocks (starting at `tip + 1`) are in scope.
+- The plugin computes `EffectiveStartBlock = tip + 1` and `EffectiveEndBlock = tip + RecentBlocks` at the moment the tracer attaches.
+- Once `EffectiveEndBlock` is first reached, the cumulative file is finalized with `completionStatus="complete"` — and, as above, **tracing continues indefinitely** past that point until the node stops.
 
 **Best for**:
 

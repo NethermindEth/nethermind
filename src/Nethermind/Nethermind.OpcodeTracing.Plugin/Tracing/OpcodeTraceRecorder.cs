@@ -5,7 +5,9 @@ using System.Diagnostics;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
@@ -26,6 +28,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
 
     private TraceConfiguration? _traceConfig;
     private OpcodeBlockTracer? _blockTracer;
+    private ITracerBag? _attachedTracerBag;
     private RealTimeTracer? _realTimeTracer;
     private TracingProgress? _progress;
     private Stopwatch? _stopwatch;
@@ -81,13 +84,13 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             // Parse mode for validation
             TracingMode mode = TracingMode.RealTime;
             if (!string.IsNullOrEmpty(_config.Mode) &&
-                Enum.TryParse<TracingMode>(_config.Mode, ignoreCase: true, out var parsedMode))
+                Enum.TryParse<TracingMode>(_config.Mode, ignoreCase: true, out TracingMode parsedMode))
             {
                 mode = parsedMode;
             }
 
             // Validate configuration (mode-aware: Retrospective can wait for blocks during sync)
-            var validationResult = BlockRangeValidator.Validate(_config, currentChainTip, mode);
+            ValidationResult validationResult = BlockRangeValidator.Validate(_config, currentChainTip, mode);
             if (validationResult.IsError)
             {
                 if (_logger.IsError)
@@ -106,7 +109,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             _traceConfig = TraceConfiguration.FromConfig(_config, currentChainTip);
 
             // Log warnings from configuration
-            foreach (var warning in _traceConfig.Warnings)
+            foreach (string warning in _traceConfig.Warnings)
             {
                 if (_logger.IsWarn)
                 {
@@ -115,7 +118,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             }
 
             // Validate output directory
-            if (!DirectoryHelper.ValidateWritable(_traceConfig.OutputDirectory))
+            if (!DirectoryHelper.ValidateWritable(_traceConfig.OutputDirectory, api.LogManager))
             {
                 throw new InvalidOperationException($"Output directory is not writable: {_traceConfig.OutputDirectory}");
             }
@@ -170,7 +173,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             return;
         }
 
-        var processingContext = api.MainProcessingContext;
+        IMainProcessingContext? processingContext = api.MainProcessingContext;
         if (processingContext is null)
         {
             if (_logger.IsWarn)
@@ -215,7 +218,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 }
             }
 
-            var range = new BlockRange(effectiveStart, effectiveEnd);
+            BlockRange range = new(effectiveStart, effectiveEnd);
             _realTimeTracer = new RealTimeTracer(
                 _counter,
                 range,
@@ -225,7 +228,8 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 api.LogManager);
 
             _blockTracer = new OpcodeBlockTracer(_realTimeTracer.OnBlockCompleted);
-            processingContext.BlockchainProcessor.Tracers.Add(_blockTracer);
+            _attachedTracerBag = processingContext.BlockchainProcessor.Tracers;
+            _attachedTracerBag.Add(_blockTracer);
 
             _stopwatch = Stopwatch.StartNew();
 
@@ -283,7 +287,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
         if ((args.Current & SyncMode.WaitingForBlock) != 0 && !_waitingForBlockLogged && _logger.IsInfo)
         {
             // Use the actual range from the tracer (which may have been recalculated at attach time)
-            var range = _realTimeTracer?.Range;
+            BlockRange? range = _realTimeTracer?.Range;
             _logger.Info(
                 $"Sync state changed to {args.Current}. " +
                 $"RealTime opcode tracing is now waiting for new blocks in range {range?.StartBlock ?? _traceConfig?.EffectiveStartBlock}-{range?.EndBlock ?? _traceConfig?.EffectiveEndBlock}.");
@@ -341,7 +345,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
 
             try
             {
-                var blockTree = api.BlockTree;
+                IBlockTree? blockTree = api.BlockTree;
                 if (blockTree is null)
                 {
                     if (_logger.IsError)
@@ -351,19 +355,19 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                     return;
                 }
 
-                var range = new BlockRange(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
+                BlockRange range = new(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
 
                 if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
                 {
                     // Use RetrospectiveExecutionTracer for actual EVM execution replay
                     // Pass factory so each parallel block gets its own isolated processing environment
-                    var txProcessingEnvFactory = api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
+                    IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory = api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
 
-                    var executionTracer = new RetrospectiveExecutionTracer(
+                    RetrospectiveExecutionTracer executionTracer = new(
                         blockTree,
                         api.SpecProvider!,
                         txProcessingEnvFactory,
-                        api.EthereumEcdsa,
+                        api.EthereumEcdsa!,
                         _counter,
                         _traceConfig.MaxDegreeOfParallelism,
                         api.LogManager);
@@ -388,7 +392,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 else
                 {
                     // Use RetrospectiveTracer for static bytecode analysis
-                    var tracer = new RetrospectiveTracer(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, api.LogManager);
+                    RetrospectiveTracer tracer = new(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, api.LogManager);
 
                     if (_logger.IsInfo)
                     {
@@ -460,7 +464,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
         {
             _stopwatch?.Stop();
 
-            var metadata = new TraceMetadata
+            TraceMetadata metadata = new()
             {
                 StartBlock = _traceConfig.EffectiveStartBlock,
                 EndBlock = _isComplete ? _traceConfig.EffectiveEndBlock : _lastProcessedBlock,
@@ -472,8 +476,8 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 SkippedBlocks = skippedBlocks
             };
 
-            var opcodeCounts = _counter.ToOpcodeCountsDictionary();
-            var traceOutput = new TraceOutput
+            Dictionary<byte, long> opcodeCounts = _counter.ToOpcodeCountsDictionary();
+            TraceOutput traceOutput = new()
             {
                 Metadata = metadata,
                 OpcodeCounts = opcodeCounts
@@ -495,28 +499,30 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Disposes of the tracer resources.
+    /// Disposes of the tracer resources. Delegates to <see cref="DisposeAsync"/> so the async
+    /// teardown path is the single source of truth.
     /// </summary>
-    public void Dispose()
-    {
-        if (_syncModeSelector is not null)
-        {
-            _syncModeSelector.Changed -= OnSyncModeChanged;
-        }
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _tracingTask?.Wait(TimeSpan.FromSeconds(5));
-    }
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     /// <summary>
     /// Asynchronously disposes of the tracer resources.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // Detach the block tracer from the blockchain processor so it stops receiving events and
+        // can be garbage-collected along with the recorder.
+        if (_attachedTracerBag is not null && _blockTracer is not null)
+        {
+            _attachedTracerBag.Remove(_blockTracer);
+            _attachedTracerBag = null;
+            _blockTracer = null;
+        }
+
         // Unsubscribe from sync mode changes
         if (_syncModeSelector is not null)
         {
             _syncModeSelector.Changed -= OnSyncModeChanged;
+            _syncModeSelector = null;
         }
 
         // Cancel any running tasks
@@ -539,6 +545,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 }
             }
             _cts.Dispose();
+            _cts = null;
         }
 
         // Finalize RealTime tracer if active
@@ -557,6 +564,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             }
 
             await _realTimeTracer.DisposeAsync().ConfigureAwait(false);
+            _realTimeTracer = null;
         }
     }
 }

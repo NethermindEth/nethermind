@@ -117,7 +117,7 @@ public sealed class AsyncFileWriteQueue : IAsyncDisposable
         }
 
         // Wait for processing to complete with timeout
-        using var timeoutCts = new CancellationTokenSource(timeout);
+        using CancellationTokenSource timeoutCts = new(timeout);
 
         try
         {

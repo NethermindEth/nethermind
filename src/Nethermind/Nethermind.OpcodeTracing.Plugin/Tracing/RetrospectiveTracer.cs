@@ -68,13 +68,13 @@ public sealed class RetrospectiveTracer
         // Generate block numbers without int cast to avoid overflow for large ranges
         IEnumerable<long> blockNumbers = GenerateBlockNumbers(range);
 
-        var parallelOptions = new ParallelOptions
+        ParallelOptions parallelOptions = new()
         {
             MaxDegreeOfParallelism = _maxDegreeOfParallelism,
             CancellationToken = cancellationToken
         };
 
-        await Parallel.ForEachAsync(blockNumbers, parallelOptions, async (blockNumber, ct) =>
+        await Parallel.ForEachAsync(blockNumbers, parallelOptions, (blockNumber, ct) =>
         {
             ct.ThrowIfCancellationRequested();
 
@@ -86,13 +86,13 @@ public sealed class RetrospectiveTracer
                     _logger.Warn($"Block {blockNumber} not found in database");
                 }
                 progress.UpdateProgress(blockNumber);
-                return;
+                return ValueTask.CompletedTask;
             }
 
             // Process transactions in the block
             if (block.Transactions is not null && block.Transactions.Length > 0)
             {
-                foreach (var transaction in block.Transactions)
+                foreach (Transaction transaction in block.Transactions)
                 {
                     ct.ThrowIfCancellationRequested();
 
@@ -109,7 +109,7 @@ public sealed class RetrospectiveTracer
                 _logger.Info($"Retrospective tracing progress: block {blockNumber} ({progress.PercentComplete:F2}% complete)");
             }
 
-            await Task.CompletedTask.ConfigureAwait(false);
+            return ValueTask.CompletedTask;
         }).ConfigureAwait(false);
     }
 

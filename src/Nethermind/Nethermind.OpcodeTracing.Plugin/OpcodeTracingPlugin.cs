@@ -5,6 +5,7 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Logging;
+using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Tracing;
 
 namespace Nethermind.OpcodeTracing.Plugin;
@@ -73,9 +74,9 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
 
         try
         {
-            // Initialize dependencies from DI container or create them directly
-            var counter = new OpcodeCounter();
-            var outputWriter = new Output.TraceOutputWriter(_api.LogManager);
+            // Plugin entry point wires dependencies directly — see OpcodeTracingModule for the DI story.
+            OpcodeCounter counter = new();
+            TraceOutputWriter outputWriter = new(_api.LogManager);
             _traceRecorder = new OpcodeTraceRecorder(_config!, counter, outputWriter, _sessionId!, _api.LogManager);
 
             await _traceRecorder.PrepareAsync(_api).ConfigureAwait(false);
@@ -83,7 +84,10 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
             _logger?.Info($"Opcode tracing plugin initialized (session={_sessionId}).");
 
             // Provide guidance for RealTime mode users
-            if (string.Equals(_config!.Mode, "RealTime", StringComparison.OrdinalIgnoreCase))
+            TracingMode mode = Enum.TryParse(_config!.Mode, ignoreCase: true, out TracingMode parsedMode)
+                ? parsedMode
+                : TracingMode.RealTime;
+            if (mode == TracingMode.RealTime)
             {
                 _logger?.Info(
                     "RealTime mode: Tracing will begin automatically when the node reaches the chain tip. " +
