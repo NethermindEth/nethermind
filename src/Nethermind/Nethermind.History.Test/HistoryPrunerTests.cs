@@ -287,7 +287,7 @@ public class HistoryPrunerTests
 
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.SetMinDeletableBlockNumber(minDeletable);
 
         CheckOldestAndCutoff(minDeletable, cutoff, historyPruner);
@@ -344,10 +344,10 @@ public class HistoryPrunerTests
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
         metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(stalePointer).Bytes);
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.SetMinDeletableBlockNumber(minDeletable);
 
-        // Trigger pointer load — stale DB value must be clamped to minDeletable
+        // Trigger pointer load â€” stale DB value must be clamped to minDeletable
         Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(minDeletable),
             "Delete pointer loaded from DB must be clamped to the configured minimum deletable block number");
     }
@@ -365,10 +365,10 @@ public class HistoryPrunerTests
             PruningInterval = 0
         };
 
-        var scheduler = new CapturingScheduler();
+        CapturingScheduler scheduler = new();
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.SchedulePruneHistory(CancellationToken.None);
 
         await scheduler.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -386,10 +386,10 @@ public class HistoryPrunerTests
             PruningInterval = 0
         };
 
-        var scheduler = new CapturingScheduler();
+        CapturingScheduler scheduler = new();
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.SchedulePruneHistory(CancellationToken.None);
 
         await scheduler.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
