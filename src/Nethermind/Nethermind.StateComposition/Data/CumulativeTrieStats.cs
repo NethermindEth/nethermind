@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Immutable;
-using Nethermind.StateComposition.Visitors;
 
 namespace Nethermind.StateComposition.Data;
 
@@ -80,7 +79,7 @@ public readonly record struct CumulativeTrieStats(
     /// <summary>
     /// Initialize from a full scan's <see cref="StateCompositionStats"/>.
     /// Converts Geth vocabulary (FullNode/ShortNode/ValueNode from
-    /// <see cref="Data.TrieLevelStat"/>) to standard MPT (Branches/Extensions/Leaves):
+    /// <see cref="TrieLevelStat"/>) to standard MPT (Branches/Extensions/Leaves):
     /// Branches = FullNodes, Extensions = ShortNodes − ValueNodes, Leaves = ValueNodes.
     /// </summary>
     internal static CumulativeTrieStats FromScanStats(StateCompositionStats scan) => new(

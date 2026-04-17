@@ -31,15 +31,13 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
     public bool MustInitialize => true;
     public IModule Module => new StateCompositionModule();
 
-    public void InitTxTypesAndRlpDecoders(INethermindApi api)
-    {
+    public void InitTxTypesAndRlpDecoders(INethermindApi api) =>
         // Register the snapshot RLP decoder in the global registry so any code
         // using Rlp.Decode<StateCompositionSnapshot>() can resolve it. The local
         // StateCompositionSnapshotStore path still uses the .Instance singleton
         // directly, but global registration keeps the plugin consistent with the
         // rest of the Nethermind RLP ecosystem.
         Rlp.RegisterDecoders(typeof(StateCompositionSnapshotDecoder).Assembly, true);
-    }
 
     public Task Init(INethermindApi nethermindApi)
     {
@@ -132,9 +130,13 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
                 if (!result.IsSuccess && logger.IsWarn)
                     logger.Warn($"StateComposition: bootstrap scan skipped: {result.Error}");
             }
-            catch (Exception ex) when (logger.IsError)
+            catch (Exception ex)
             {
-                logger.Error("StateComposition: bootstrap scan failed", ex);
+                // Guard the log call itself, not the catch: a `when (IsError)`
+                // filter would let the exception escape into the unobserved-task
+                // pipeline whenever Error logging is off.
+                if (logger.IsError)
+                    logger.Error("StateComposition: bootstrap scan failed", ex);
             }
         });
     }

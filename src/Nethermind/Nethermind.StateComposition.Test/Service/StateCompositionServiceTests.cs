@@ -69,7 +69,7 @@ public class StateCompositionServiceTests
         TaskCompletionSource blocker = new();
 
         stateReader.WhenForAnyArgs(x =>
-                x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            x.RunTreeVisitor<StateCompositionContext>(null!, null))
             .Do(_ =>
             {
                 entered.Set();
@@ -117,7 +117,7 @@ public class StateCompositionServiceTests
             });
 
         stateReader.WhenForAnyArgs(x =>
-                x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            x.RunTreeVisitor<StateCompositionContext>(null!, null))
             .Do(_ =>
             {
                 entered.Set();
@@ -168,7 +168,7 @@ public class StateCompositionServiceTests
         // cts is captured by reference; cts.Token.WaitHandle is the live handle that
         // await cts.CancelAsync() below signals, so the mock unblocks cooperatively.
         stateReader.WhenForAnyArgs(x =>
-                x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            x.RunTreeVisitor<StateCompositionContext>(null!, null))
             .Do(_ =>
             {
                 visitorEntered.Set();
@@ -215,7 +215,7 @@ public class StateCompositionServiceTests
 
         // Block only the scan visitor (StateCompositionContext), not SingleContractVisitor
         stateReader.WhenForAnyArgs(x =>
-                x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            x.RunTreeVisitor<StateCompositionContext>(null!, null))
             .Do(_ =>
             {
                 scanEntered.Set();

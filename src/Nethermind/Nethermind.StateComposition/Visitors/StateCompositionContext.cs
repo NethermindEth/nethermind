@@ -17,18 +17,9 @@ internal readonly struct StateCompositionContext(TreePath path, int level, bool 
 
     public readonly VisitorCounters? Counters = counters;
 
-    public StateCompositionContext Add(ReadOnlySpan<byte> nibblePath)
-    {
-        return new StateCompositionContext(Path.Append(nibblePath), Level + 1, IsStorage, null, Counters);
-    }
+    public StateCompositionContext Add(ReadOnlySpan<byte> nibblePath) => new(Path.Append(nibblePath), Level + 1, IsStorage, null, Counters);
 
-    public StateCompositionContext Add(byte nibble)
-    {
-        return new StateCompositionContext(Path.Append(nibble), Level + 1, IsStorage, nibble, Counters);
-    }
+    public StateCompositionContext Add(byte nibble) => new(Path.Append(nibble), Level + 1, IsStorage, nibble, Counters);
 
-    public StateCompositionContext AddStorage(in ValueHash256 storage)
-    {
-        return new StateCompositionContext(TreePath.Empty, 0, true, null, Counters);
-    }
+    public StateCompositionContext AddStorage(in ValueHash256 storage) => new(TreePath.Empty, 0, true, null, Counters);
 }

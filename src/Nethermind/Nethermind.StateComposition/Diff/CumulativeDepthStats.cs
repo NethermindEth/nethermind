@@ -38,7 +38,7 @@ public enum DepthSlot
 /// The Geth +1 depth shift for ValueNodeCount is applied only at presentation
 /// time in <see cref="Metrics.UpdateDepthDistribution"/> — never stored here.
 ///
-/// Uses Geth vocabulary (see <see cref="Data.TrieLevelStat"/> for full mapping):
+/// Uses Geth vocabulary (see <see cref="TrieLevelStat"/> for full mapping):
 /// AccountShortNodes[d] = extensions + leaves at physical depth d.
 /// AccountValueNodes[d] = leaves at physical depth d (unshifted).
 /// </summary>
@@ -170,4 +170,19 @@ public sealed class CumulativeDepthStats
         IsSeeded = true;
     }
 
+    /// <summary>
+    /// Deep copy intended for handing a diff's DepthDelta to a consumer without
+    /// sharing mutable state with the producer. Preserves raw counters but leaves
+    /// <see cref="IsSeeded"/> at its default (false) — a delta is always accumulated
+    /// into a seeded target, so the seeded flag is immaterial for consumers.
+    /// </summary>
+    public CumulativeDepthStats CloneAsDelta()
+    {
+        CumulativeDepthStats copy = new();
+        for (int s = 0; s < CategoryCount; s++)
+            Array.Copy(ByDepth[s], copy.ByDepth[s], DepthCount);
+        copy.TotalBranchNodes = TotalBranchNodes;
+        copy.TotalBranchChildren = TotalBranchChildren;
+        return copy;
+    }
 }

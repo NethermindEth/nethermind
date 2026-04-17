@@ -162,10 +162,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         return map;
     }
 
-    public override int GetLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(EncodeOrLength(null, item));
-    }
+    public override int GetLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(EncodeOrLength(null, item));
 
     protected override StateCompositionSnapshot DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -220,9 +217,9 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             SlotCountHistogram = ImmutableArray.Create(hist),
         };
 
-        Dictionary<ValueHash256, long> slotCountByAddress = DecodeMap(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeLong());
-        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeMap(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeInt());
-        Dictionary<ValueHash256, int> codeHashSizes = DecodeMap(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeInt());
+        Dictionary<ValueHash256, long> slotCountByAddress = DecodeMap(ref ctx, static (ref c) => c.DecodeLong());
+        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeMap(ref ctx, static (ref c) => c.DecodeInt());
+        Dictionary<ValueHash256, int> codeHashSizes = DecodeMap(ref ctx, static (ref c) => c.DecodeInt());
 
         return new StateCompositionSnapshot(
             stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,
