@@ -34,17 +34,16 @@ internal sealed class StateCompositionSnapshotStore(
 
     public void WriteSnapshot(StateCompositionSnapshot snapshot)
     {
+        // Write order: put new → update LatestKey → remove old. A crash after the
+        // put but before the LatestKey update leaves the old entry reachable via
+        // LatestKey, so the next boot's PurgeOldEntries keeps it and warm-restart
+        // still works. The reverse order (remove-first) would let PurgeOldEntries
+        // delete the freshly written snapshot because LatestKey still pointed at
+        // the already-removed old block.
+        long prevBlock = long.MinValue;
         byte[]? prevBytes = db.Get(LatestKey);
         if (prevBytes is not null && prevBytes.Length >= 8)
-        {
-            long prevBlock = BinaryPrimitives.ReadInt64BigEndian(prevBytes);
-            if (prevBlock != snapshot.BlockNumber)
-            {
-                Span<byte> prevKey = stackalloc byte[8];
-                BinaryPrimitives.WriteInt64BigEndian(prevKey, prevBlock);
-                db.Remove(prevKey);
-            }
-        }
+            prevBlock = BinaryPrimitives.ReadInt64BigEndian(prevBytes);
 
         Span<byte> key = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(key, snapshot.BlockNumber);
@@ -65,6 +64,13 @@ internal sealed class StateCompositionSnapshotStore(
         Span<byte> blockBytes = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(blockBytes, snapshot.BlockNumber);
         db.PutSpan(LatestKey, blockBytes);
+
+        if (prevBlock != long.MinValue && prevBlock != snapshot.BlockNumber)
+        {
+            Span<byte> prevKey = stackalloc byte[8];
+            BinaryPrimitives.WriteInt64BigEndian(prevKey, prevBlock);
+            db.Remove(prevKey);
+        }
     }
 
     public StateCompositionSnapshot? ReadSnapshot(long blockNumber)

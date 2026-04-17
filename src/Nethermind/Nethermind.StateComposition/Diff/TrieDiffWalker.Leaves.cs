@@ -35,8 +35,11 @@ internal sealed partial class TrieDiffWalker
 
     private void DecodeAndDiffAccountLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path)
     {
-        AccountStruct oldAccount = DecodeAccount(oldLeaf);
-        AccountStruct newAccount = DecodeAccount(newLeaf);
+        if (!TryDecodeAccount(oldLeaf, out AccountStruct oldAccount) ||
+            !TryDecodeAccount(newLeaf, out AccountStruct newAccount))
+        {
+            return;
+        }
 
         if (!oldAccount.HasCode && newAccount.HasCode) _contractsAdded++;
         else if (oldAccount.HasCode && !newAccount.HasCode) _contractsRemoved++;
@@ -74,12 +77,11 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    private static AccountStruct DecodeAccount(TrieNode leaf)
+    private static bool TryDecodeAccount(TrieNode leaf, out AccountStruct account)
     {
         CappedArray<byte> value = leaf.Value;
         Rlp.ValueDecoderContext ctx = new(value.AsSpan());
-        AccountDecoder.Instance.TryDecodeStruct(ref ctx, out AccountStruct account);
-        return account;
+        return AccountDecoder.Instance.TryDecodeStruct(ref ctx, out account);
     }
 
     private static Hash256 GetAddressHash(TrieNode leaf, ref TreePath path)

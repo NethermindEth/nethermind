@@ -163,7 +163,10 @@ internal sealed partial class TrieDiffWalker
         if (added) _accountsAdded++;
         else _accountsRemoved++;
 
-        AccountStruct account = DecodeAccount(leaf);
+        // Degenerate leaves (length-1 empty stubs) still count toward accounts_added/removed
+        // because the node physically entered/left the trie — but we cannot derive code /
+        // storage / empty-account classifications from them, so skip the rest.
+        if (!TryDecodeAccount(leaf, out AccountStruct account)) return;
 
         if (account.HasCode)
         {

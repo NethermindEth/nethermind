@@ -126,12 +126,13 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
 
             StateCompositionStats stats = visitor.GetStats(header.Number, header.StateRoot);
             TrieDepthDistribution dist = visitor.GetTrieDistribution();
+            bool scanComplete = !visitor.MissingNodesObserved;
 
-            PublishScanResults(stats, dist, header, sw);
+            PublishScanResults(stats, dist, header, sw, scanComplete);
 
             if (_logger.IsInfo)
-                _logger.Info($"StateComposition: scan completed in {sw.Elapsed}. " +
-                             $"Accounts={stats.AccountsTotal}, Contracts={stats.ContractsTotal}, " +
+                _logger.Info($"StateComposition: scan {(scanComplete ? "completed" : "finished with MISSING NODES")} " +
+                             $"in {sw.Elapsed}. Accounts={stats.AccountsTotal}, Contracts={stats.ContractsTotal}, " +
                              $"StorageSlots={stats.StorageSlotsTotal}");
 
             return Result<StateCompositionStats>.Success(stats);
@@ -243,17 +244,18 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         return progressTimer;
     }
 
-    private void PublishScanResults(StateCompositionStats stats, TrieDepthDistribution dist, BlockHeader header, Stopwatch sw)
+    private void PublishScanResults(StateCompositionStats stats, TrieDepthDistribution dist, BlockHeader header, Stopwatch sw, bool isComplete)
     {
         _stateHolder.SetBaseline(stats, dist);
-        _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
+        _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed, isComplete);
         CumulativeTrieStats cumulativeBaseline = CumulativeTrieStats.FromScanStats(stats);
 
-        // Hold _diffLock across InitializeIncremental and the snapshot write so an
-        // OnNewHeadBlock dispatch cannot mutate the tracker dictionaries between
-        // baseline install and the encoder iterating them. Lock order across the
-        // service is always _scanLock (held by the caller) → _diffLock; the diff
-        // path only ever takes _diffLock, so this nested acquire is deadlock-free.
+        // Hold _diffLock across InitializeIncremental and the depth publish so an
+        // OnNewHeadBlock dispatch cannot mutate _currentDepthStats between the seed
+        // and the gauge read, which would otherwise publish a torn view of the 9×16
+        // table. Lock order across the service is always _scanLock (held by the
+        // caller) → _diffLock; the diff path only ever takes _diffLock, so this
+        // nested acquire is deadlock-free.
         lock (_diffLock)
         {
             _stateHolder.InitializeIncremental(
@@ -261,10 +263,11 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
                 slotCountByAddress: stats.SlotCountByAddress,
                 codeHashRefcounts: stats.CodeHashRefcounts,
                 codeHashSizes: stats.CodeHashSizes);
+
+            Metrics.UpdateDepthDistribution(_stateHolder.CurrentDepthStats);
         }
 
         Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
-        Metrics.UpdateDepthDistribution(_stateHolder.CurrentDepthStats);
         Metrics.StateCompScanDurationSeconds = sw.Elapsed.TotalSeconds;
         Metrics.StateCompScanBlock = header.Number;
         Metrics.StateCompIncrementalBlock = header.Number;
@@ -288,9 +291,8 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     /// snapshot RocksDB is disposed. Unsubscribes from <see cref="IBlockTree.NewHeadBlock"/>
     /// to stop dispatching diffs, cancels any in-flight scan, then drains the diff
     /// path via <see cref="_diffLock"/> so the snapshot capture and the RLP encoder
-    /// observe a consistent view of the holder. Force-writes the latest incremental
-    /// state (bypassing <see cref="IStateCompositionConfig.SnapshotInterval"/>) so the
-    /// next startup can resume without a full rescan.
+    /// observe a consistent view of the holder. Writes the latest incremental
+    /// state so the next startup can resume without a full rescan.
     /// </summary>
     public async Task StopAsync()
     {
@@ -300,7 +302,17 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
 
         CancelScan();
 
-        await _scanLock.WaitAsync().ConfigureAwait(false);
+        // Bounded wait: if the in-flight scan ignores cancellation we would otherwise
+        // stall node shutdown indefinitely. Dropping the snapshot flush on timeout is
+        // preferable to a hang — the next startup falls back to a bootstrap scan.
+        bool acquired = await _scanLock.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        if (!acquired)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn("StateComposition: shutdown flush skipped — scan did not release within 10s");
+            return;
+        }
+
         try
         {
             lock (_diffLock)

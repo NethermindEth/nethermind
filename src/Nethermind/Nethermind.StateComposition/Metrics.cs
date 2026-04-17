@@ -88,6 +88,10 @@ public static class Metrics
     [Description("Times the incremental baseline was detected as stale (prevRoot missing from DB) and auto-rescan was scheduled")]
     public static long StateCompBaselineInvalidations { get; set; }
 
+    [CounterMetric]
+    [Description("Times a full or contract scan encountered a missing trie node (pruned/corrupt DB); the resulting stats are incomplete")]
+    public static long StateCompScanMissingNodes { get; set; }
+
     [GaugeMetric]
     [Description("Contracts with non-empty storage")]
     public static long StateCompContractsWithStorage { get; set; }

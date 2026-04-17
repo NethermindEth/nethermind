@@ -38,12 +38,6 @@ public interface IStateCompositionConfig : IConfig
         DefaultValue = "true")]
     bool PersistSnapshots { get; set; }
 
-    [ConfigItem(Description = "Write a snapshot every N blocks. Graceful shutdown always " +
-                              "force-flushes the latest state via IStoppableService, so " +
-                              "per-interval writes are just a crash-safety fallback.",
-        DefaultValue = "1024")]
-    int SnapshotInterval { get; set; }
-
     [ConfigItem(Description = "Track per-depth trie distribution incrementally on every new head block",
         DefaultValue = "true")]
     bool TrackDepthIncrementally { get; set; }
@@ -64,7 +58,6 @@ public class StateCompositionConfig : IStateCompositionConfig
     public int TopNContracts { get; set; } = 20;
     public bool ExcludeStorage { get; set; }
     public bool PersistSnapshots { get; set; } = true;
-    public int SnapshotInterval { get; set; } = 1024;
     public bool TrackDepthIncrementally { get; set; } = true;
     public int InspectContractTimeoutSeconds { get; set; } = 30;
 }
