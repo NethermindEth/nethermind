@@ -59,7 +59,7 @@ public class MessageQueue(ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(message);
 
-        var queuedMessage = new QueuedMessage(message);
+        QueuedMessage queuedMessage = new(message);
         _messageQueue.Enqueue(queuedMessage);
 
         if (message.Id is not null)
@@ -84,14 +84,14 @@ public class MessageQueue(ILogManager logManager)
             return null;
         }
 
-        if (_messageQueue.TryDequeue(out var message))
+        if (_messageQueue.TryDequeue(out QueuedMessage? message))
         {
             if (message.Request.Id is not null)
             {
                 string messageId = message.Request.Id.ToString()!;
                 _messageById.TryRemove(messageId, out _);
             }
-            var host = message.Request.OriginalHeaders?.FirstOrDefault(h => h.Key == "Host").Value;
+            string? host = message.Request.OriginalHeaders?.FirstOrDefault(h => h.Key == "Host").Value;
             _logger.Debug($"Dequeued message: {message.Request.Method} with id {message.Request.Id} from {host}");
             return message;
         }
@@ -128,7 +128,7 @@ public class MessageQueue(ILogManager logManager)
         }
 
         string messageId = id.ToString() ?? string.Empty;
-        return _messageById.TryGetValue(messageId, out var message) ? message : null;
+        return _messageById.TryGetValue(messageId, out QueuedMessage? message) ? message : null;
     }
 
     /// <summary>

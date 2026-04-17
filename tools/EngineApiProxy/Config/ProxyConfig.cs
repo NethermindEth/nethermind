@@ -96,8 +96,5 @@ public class ProxyConfig
     /// </summary>
     public string NewPayloadMethod { get; set; } = "engine_newPayloadV4";
 
-    public override string ToString()
-    {
-        return $"EC Endpoint: {ExecutionClientEndpoint}, CL Endpoint: {ConsensusClientEndpoint ?? "not set"}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}, GetPayloadMethod: {GetPayloadMethod}, NewPayloadMethod: {NewPayloadMethod}, RequestTimeout: {RequestTimeoutSeconds}s";
-    }
+    public override string ToString() => $"EC Endpoint: {ExecutionClientEndpoint}, CL Endpoint: {ConsensusClientEndpoint ?? "not set"}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}, GetPayloadMethod: {GetPayloadMethod}, NewPayloadMethod: {NewPayloadMethod}, RequestTimeout: {RequestTimeoutSeconds}s";
 }

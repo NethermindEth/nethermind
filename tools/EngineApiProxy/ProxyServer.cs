@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Primitives;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Handlers;
 using Nethermind.EngineApiProxy.Models;
@@ -83,15 +84,15 @@ public class ProxyServer
         _requestForwarder = new RequestForwarder(_httpClient, config, logManager);
 
         // Initialize specialized components
-        var blockDataFetcher = new BlockDataFetcher(_httpClient, logManager, _consensusClient);
+        BlockDataFetcher blockDataFetcher = new(_httpClient, logManager, _consensusClient);
         // Set CL endpoint on block data fetcher for reference
         if (_consensusClient is not null)
         {
             blockDataFetcher.ConsensusClientEndpoint = _config.ConsensusClientEndpoint;
         }
 
-        var payloadAttributesGenerator = new PayloadAttributesGenerator(config, logManager);
-        var requestOrchestrator = new RequestOrchestrator(
+        PayloadAttributesGenerator payloadAttributesGenerator = new(config, logManager);
+        RequestOrchestrator requestOrchestrator = new(
             _httpClient,
             blockDataFetcher,
             payloadAttributesGenerator,
@@ -127,14 +128,14 @@ public class ProxyServer
             _requestForwarder,
             logManager);
 
-        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
         {
             Args = [$"--urls=http://*:{_config.ListenPort}"]
         });
         builder.Services.AddSingleton(this);
         builder.Services.AddRouting();
 
-        var app = builder.Build();
+        WebApplication app = builder.Build();
         app.UseRouting();
         app.MapPost("/", HandleCLJsonRpcRequest);
 
@@ -234,7 +235,7 @@ public class ProxyServer
     private async Task HandleCLJsonRpcRequest(HttpContext context)
     {
         string requestBody;
-        using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8))
+        using (StreamReader reader = new(context.Request.Body, Encoding.UTF8))
         {
             requestBody = await reader.ReadToEndAsync();
         }
@@ -244,7 +245,7 @@ public class ProxyServer
         string method;
         try
         {
-            var requestObj = JObject.Parse(requestBody);
+            JObject requestObj = JObject.Parse(requestBody);
             method = requestObj["method"]?.ToString() ?? "unknown";
         }
         catch
@@ -267,7 +268,7 @@ public class ProxyServer
             request.OriginalHeaders = context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString());
 
             // Check if there's an Authorization header and set it on the HttpClient for all future requests
-            if (context.Request.Headers.TryGetValue("Authorization", out var authHeader))
+            if (context.Request.Headers.TryGetValue("Authorization", out StringValues authHeader))
             {
                 _logger.Trace("Found Authorization header in client request, storing for future internal requests");
                 _httpClient.DefaultRequestHeaders.Remove("Authorization");

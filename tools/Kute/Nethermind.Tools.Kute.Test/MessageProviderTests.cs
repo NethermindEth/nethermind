@@ -19,11 +19,11 @@ public class MessageProviderTests
         [{"jsonrpc":"2.0","id":3,"result":"0x456"},{"jsonrpc":"2.0","id":4,"error":{"code":-32602,"message":"Invalid params"}}]
         """;
 
-        var stringProvider = Substitute.For<IMessageProvider<string>>();
+        IMessageProvider<string> stringProvider = Substitute.For<IMessageProvider<string>>();
         stringProvider.Messages().Returns(lines.Split('\n').ToAsyncEnumerable());
 
-        var provider = new JsonRpcMessageProvider(stringProvider);
-        var jsonRpcs = await provider.Messages().ToListAsync();
+        JsonRpcMessageProvider provider = new(stringProvider);
+        List<JsonRpc> jsonRpcs = await provider.Messages().ToListAsync();
 
         jsonRpcs.Should().HaveCount(3);
         jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();
@@ -39,11 +39,11 @@ public class MessageProviderTests
         [{"jsonrpc":"2.0","id":1,"result":"0x123"},{"jsonrpc":"2.0","id":2,"result":"0x456"}]
         """;
 
-        var stringProvider = Substitute.For<IMessageProvider<string>>();
+        IMessageProvider<string> stringProvider = Substitute.For<IMessageProvider<string>>();
         stringProvider.Messages().Returns(lines.Split('\n').ToAsyncEnumerable());
 
-        var provider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(stringProvider));
-        var jsonRpcs = await provider.Messages().ToListAsync();
+        UnwrapBatchJsonRpcMessageProvider provider = new(new JsonRpcMessageProvider(stringProvider));
+        List<JsonRpc> jsonRpcs = await provider.Messages().ToListAsync();
 
         jsonRpcs.Should().HaveCount(3);
         jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();

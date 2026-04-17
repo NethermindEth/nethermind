@@ -43,7 +43,7 @@ public class PayloadAttributesGenerator(ProxyConfig config, ILogManager logManag
             string parentBeaconBlockRoot = blockData["parentBeaconBlockRoot"]?.ToString() ?? GenerateRandomHash();
 
             // Create payload attributes
-            var payloadAttributes = new JObject
+            JObject payloadAttributes = new()
             {
                 ["timestamp"] = nextTimestamp,
                 ["prevRandao"] = prevRandao,
@@ -83,10 +83,7 @@ public class PayloadAttributesGenerator(ProxyConfig config, ILogManager logManag
     /// Generates a random prevRandao value (32 bytes)
     /// </summary>
     /// <returns>Random prevRandao as 0x-prefixed hex string</returns>
-    private static string GenerateRandomPrevRandao()
-    {
-        return GenerateRandomHash();
-    }
+    private static string GenerateRandomPrevRandao() => GenerateRandomHash();
 
     /// <summary>
     /// Generates a random 32-byte hash

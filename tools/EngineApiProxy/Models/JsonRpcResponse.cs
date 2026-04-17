@@ -30,10 +30,7 @@ public class JsonRpcResponse
         Error = error;
     }
 
-    public static JsonRpcResponse CreateErrorResponse(object? id, int code, string message)
-    {
-        return new JsonRpcResponse(id, null, new JsonRpcError { Code = code, Message = message });
-    }
+    public static JsonRpcResponse CreateErrorResponse(object? id, int code, string message) => new(id, null, new JsonRpcError { Code = code, Message = message });
 }
 
 public class JsonRpcError

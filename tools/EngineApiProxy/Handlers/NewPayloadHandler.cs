@@ -103,8 +103,8 @@ public class NewPayloadHandler(
                 }
 
                 // Extract blobVersionedHashes from incoming request (params[1]) and store them
-                var parentHashObj = new Hash256(Bytes.FromHexString(parentHash));
-                var incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
+                Hash256 parentHashObj = new(Bytes.FromHexString(parentHash));
+                JArray incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
                 if (incomingBlobHashes.Count > 0)
                 {
                     string[] hashArray = BlobHashComputer.ToStringArray(incomingBlobHashes);
@@ -178,10 +178,10 @@ public class NewPayloadHandler(
             try
             {
                 // Convert parentHash to Hash256 to look up in the payload tracker
-                var parentHashObj = new Hash256(Bytes.FromHexString(parentHash));
+                Hash256 parentHashObj = new(Bytes.FromHexString(parentHash));
 
                 // Extract blobVersionedHashes from incoming request (params[1])
-                var incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
+                JArray incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
                 if (incomingBlobHashes.Count > 0)
                 {
                     // Store the blob versioned hashes for this block for later retrieval
@@ -191,7 +191,7 @@ public class NewPayloadHandler(
                 }
 
                 // Try to get payloadId associated with this parent hash
-                if (_payloadTracker.TryGetPayloadId(parentHashObj, out var payloadId) && !string.IsNullOrEmpty(payloadId))
+                if (_payloadTracker.TryGetPayloadId(parentHashObj, out string? payloadId) && !string.IsNullOrEmpty(payloadId))
                 {
                     _logger.Info($"Found payloadId {payloadId} for parent hash {parentHash}, starting validation");
 
@@ -215,7 +215,7 @@ public class NewPayloadHandler(
             _payloadTracker.RegisterNewPayload(blockHash, parentHash);
 
             // Forward the original request to get the actual response
-            var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+            JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
             // Log the response status for monitoring
             if (response.Result is JObject result && result["status"] is not null)
@@ -234,36 +234,33 @@ public class NewPayloadHandler(
         }
     }
 
-    private static JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash)
+    private static JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash) => originalRequest.Method switch
     {
-        return originalRequest.Method switch
-        {
-            "engine_newPayloadV3" or "engine_newPayloadV4" => new JsonRpcRequest(
-                "engine_forkchoiceUpdatedV3",
-                new JArray(
-                    new JObject
-                    {
-                        [HeadBlockHashKey] = parentHash,
-                        [FinalizedBlockHashKey] = ZeroHash,
-                        [SafeBlockHashKey] = ZeroHash
-                    }
-                ),
-                Guid.NewGuid().ToString()
+        "engine_newPayloadV3" or "engine_newPayloadV4" => new JsonRpcRequest(
+            "engine_forkchoiceUpdatedV3",
+            new JArray(
+                new JObject
+                {
+                    [HeadBlockHashKey] = parentHash,
+                    [FinalizedBlockHashKey] = ZeroHash,
+                    [SafeBlockHashKey] = ZeroHash
+                }
             ),
-            _ => new JsonRpcRequest(
-                "engine_forkchoiceUpdated",
-                new JArray(
-                    new JObject
-                    {
-                        [HeadBlockHashKey] = parentHash,
-                        [FinalizedBlockHashKey] = ZeroHash,
-                        [SafeBlockHashKey] = ZeroHash
-                    }
-                ),
-                Guid.NewGuid().ToString()
-            )
-        };
-    }
+            Guid.NewGuid().ToString()
+        ),
+        _ => new JsonRpcRequest(
+            "engine_forkchoiceUpdated",
+            new JArray(
+                new JObject
+                {
+                    [HeadBlockHashKey] = parentHash,
+                    [FinalizedBlockHashKey] = ZeroHash,
+                    [SafeBlockHashKey] = ZeroHash
+                }
+            ),
+            Guid.NewGuid().ToString()
+        )
+    };
 
     private static string ExtractBlockHashFromPayload(JsonRpcRequest request)
     {
@@ -317,7 +314,7 @@ public class NewPayloadHandler(
             return string.Empty;
 
         // The parentBeaconBlockRoot is the third parameter in the NewPayloadV4 request
-        var parentBeaconBlockRoot = parameters[2];
+        JToken? parentBeaconBlockRoot = parameters[2];
         if (parentBeaconBlockRoot is null || parentBeaconBlockRoot.Type == JTokenType.Null)
             return string.Empty;
 
