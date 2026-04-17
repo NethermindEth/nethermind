@@ -22,8 +22,5 @@ public class SyncedTxGossipPolicy : ITxGossipPolicy, IDisposable
 
     public void Dispose() => _syncModeSelector.Changed -= OnSyncModeChanged;
 
-    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
-    {
-        _shouldListen = (e.Current & SyncMode.WaitingForBlock) != 0;
-    }
+    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e) => _shouldListen = (e.Current & SyncMode.WaitingForBlock) != 0;
 }

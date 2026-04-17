@@ -47,10 +47,7 @@ namespace Nethermind.Consensus.Ethash
         public const int CacheRounds = 3; // blockNumber of rounds in cache production
         public const int Accesses = 64; // blockNumber of accesses in hashimoto loop
 
-        public static uint GetEpoch(long blockNumber)
-        {
-            return (uint)(blockNumber / EpochLength);
-        }
+        public static uint GetEpoch(long blockNumber) => (uint)(blockNumber / EpochLength);
 
         /// Improvement from @AndreaLanfranchi
         public static ulong GetDataSize(uint epoch)
@@ -122,7 +119,7 @@ namespace Nethermind.Consensus.Ethash
 
         public static Hash256 GetSeedHash(uint epoch)
         {
-            ValueHash256 seed = new ValueHash256();
+            ValueHash256 seed = new();
             for (uint i = 0; i < epoch; i++)
             {
                 seed = ValueKeccak.Compute(seed.Bytes);
@@ -192,20 +189,11 @@ namespace Nethermind.Consensus.Ethash
             }
         }
 
-        internal static uint Fnv(uint v1, uint v2)
-        {
-            return (v1 * FnvPrime) ^ v2;
-        }
+        internal static uint Fnv(uint v1, uint v2) => (v1 * FnvPrime) ^ v2;
 
-        private static uint GetUInt(byte[] bytes, uint offset)
-        {
-            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
-        }
+        private static uint GetUInt(byte[] bytes, uint offset) => BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
 
-        public void HintRange(Guid guid, long start, long end)
-        {
-            _hintBasedCache.Hint(guid, start, end);
-        }
+        public void HintRange(Guid guid, long start, long end) => _hintBasedCache.Hint(guid, start, end);
 
         private readonly Guid _hintBasedCacheUser = Guid.Empty;
 

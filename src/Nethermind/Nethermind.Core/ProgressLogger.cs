@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
-    public class ProgressLogger
+    public class ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
     {
         public const int QueuePaddingLength = 8;
         public const int SkippedPaddingLength = 7;
@@ -16,18 +16,11 @@ namespace Nethermind.Core
         public const int BlockPaddingLength = 10;
         public const int PrefixAlignment = -13;
 
-        private readonly ITimestamper _timestamper;
-        private readonly ILogger _logger;
-        private string _prefix;
+        private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
+        private readonly ILogger _logger = logManager.GetClassLogger<ProgressLogger>();
+        private string _prefix = prefix;
         private (long, long, long, long) _lastReportState = (0, 0, 0, 0);
         private Func<ProgressLogger, string>? _formatter;
-
-        public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
-        {
-            _logger = logManager.GetClassLogger<ProgressLogger>();
-            _prefix = prefix;
-            _timestamper = timestamper ?? Timestamper.Default;
-        }
 
         public void Update(long value)
         {
@@ -42,10 +35,7 @@ namespace Nethermind.Core
             CurrentValue = value;
         }
 
-        public void IncrementSkipped(int skipped = 1)
-        {
-            Interlocked.Add(ref _skipped, skipped);
-        }
+        public void IncrementSkipped(int skipped = 1) => Interlocked.Add(ref _skipped, skipped);
 
         public void SetMeasuringPoint(bool resetCompletion = true)
         {
@@ -155,10 +145,7 @@ namespace Nethermind.Core
             }
         }
 
-        public void SetFormat(Func<ProgressLogger, string> formatter)
-        {
-            _formatter = formatter;
-        }
+        public void SetFormat(Func<ProgressLogger, string> formatter) => _formatter = formatter;
 
         public void LogProgress()
         {
@@ -172,10 +159,7 @@ namespace Nethermind.Core
             SetMeasuringPoint(resetCompletion: false);
         }
 
-        private string DefaultFormatter()
-        {
-            return GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
-        }
+        private string DefaultFormatter() => GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
 
         private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed, decimal skippedPerSecond)
         {

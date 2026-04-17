@@ -28,7 +28,7 @@ public class PrecompileCachedCodeInfoRepository(
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
-        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
+        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo cachedCodeInfo))
         {
             delegationAddress = null;
             return cachedCodeInfo;
@@ -36,26 +36,18 @@ public class PrecompileCachedCodeInfoRepository(
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
-    {
-        return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
-    }
+    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
+        baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
-    {
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
-    }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
-    {
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
-    }
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec,
-        [NotNullWhen(true)] out Address? delegatedAddress)
-    {
-        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
-    }
+        [NotNullWhen(true)] out Address? delegatedAddress) =>
+        baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,

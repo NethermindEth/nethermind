@@ -51,10 +51,7 @@ public class TransactionReceiptsSubscription : Subscription
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will track ReceiptsInserted.");
     }
 
-    private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
-    {
-        ScheduleAction(async () => await TryPublishReceipts(e));
-    }
+    private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(async () => await TryPublishReceipts(e));
 
     private async Task TryPublishReceipts(ReceiptsEventArgs e)
     {
@@ -88,7 +85,7 @@ public class TransactionReceiptsSubscription : Subscription
 
             // Create receipt for RPC
             // Using basic TxGasInfo with null values since tests don't check gas info
-            ReceiptForRpc receiptForRpc = new ReceiptForRpc(
+            ReceiptForRpc receiptForRpc = new(
                 receipt.TxHash!,
                 receipt,
                 e.BlockHeader.Timestamp,

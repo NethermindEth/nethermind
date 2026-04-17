@@ -61,9 +61,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         StepDependencyException.ThrowIfNull(_api);
 
-        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
+        OptimismGasLimitCalculator gasLimitCalculator = new();
 
-        IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
+        IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.CreatePersistent();
 
         return new OptimismPostMergeBlockProducer(
             new OptimismPayloadTxSource(),
@@ -194,13 +194,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         return Task.CompletedTask;
     }
 
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-    {
-        return new StandardBlockProducerRunner(
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
             DefaultBlockProductionTrigger,
             _api!.BlockTree!,
             blockProducer);
-    }
 
     public bool MustInitialize => true;
 

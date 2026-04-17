@@ -21,10 +21,7 @@ public class CacheEvictionQualityTests
     private const int KeyPoolSize = 100_000;
 
     [OneTimeSetUp]
-    public void Setup()
-    {
-        (_keys, _values) = CacheTestData.Build(KeyPoolSize);
-    }
+    public void Setup() => (_keys, _values) = CacheTestData.Build(KeyPoolSize);
 
     [Test]
     [TestCase(256)]

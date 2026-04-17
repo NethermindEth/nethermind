@@ -11,10 +11,7 @@ namespace Nethermind.Evm.Test
 {
     public class TestAllTracerWithOutput : TxTracer
     {
-        public TestAllTracerWithOutput()
-        {
-            IsTracingAccess = true;
-        }
+        public TestAllTracerWithOutput() => IsTracingAccess = true;
 
         public override bool IsTracingReceipt => true;
         public override bool IsTracingActions => true;
@@ -61,14 +58,8 @@ namespace Nethermind.Evm.Test
             StatusCode = Evm.StatusCode.Failure;
         }
 
-        public override void ReportActionError(EvmExceptionType exceptionType)
-        {
-            ReportedActionErrors.Add(exceptionType);
-        }
+        public override void ReportActionError(EvmExceptionType exceptionType) => ReportedActionErrors.Add(exceptionType);
 
-        public override void ReportRefund(long refund)
-        {
-            Refund += refund;
-        }
+        public override void ReportRefund(long refund) => Refund += refund;
     }
 }

@@ -1,36 +1,34 @@
-/.github/ @nethermindeth/core-devops @rubo
-/scripts/ @nethermindeth/core-devops @rubo
+/.github @rubo
+/scripts @rubo
 
-#/src/ @nethermindeth/core-general
-/src/Nethermind/**/I*Config.cs @rubo
-#/tools/ @nethermindeth/core-general
-#/.* @nethermindeth/core-general
-
-/Dockerfile* @nethermindeth/core-devops @rubo
+/Dockerfile* @rubo
 /LICENSE* @rubo @LukaszRozmej @MarekM25
 *.md @rubo @LukaszRozmej @MarekM25
 
-/src/Nethermind/Ethereum.Test.Base/ @flcl42
+/src/Nethermind/**/I*Config.cs @rubo
+/src/Nethermind/Ethereum.Test.Base @flcl42
 /src/Nethermind/Nethermind.Abi @LukaszRozmej
 /src/Nethermind/Nethermind.Blockchain @LukaszRozmej @MarekM25 @flcl42
 /src/Nethermind/Nethermind.Consensus @LukaszRozmej @MarekM25 @flcl42
 /src/Nethermind/Nethermind.Crypto @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Db.Rocks @LukaszRozmej @asdacap @damian-orzechowski
 /src/Nethermind/Nethermind.Era1 @ak88 @Marchhill @smartprogrammer93
+/src/Nethermind/Nethermind.EraE @svlachakis @Marchhill @smartprogrammer93 @ak88
 /src/Nethermind/Nethermind.Evm.Precompiles @LukaszRozmej @benaadams @rubo @Marchhill
-/src/Nethermind/Nethermind.Evm @LukaszRozmej @benaadams @Demuirgos
+/src/Nethermind/Nethermind.Evm @LukaszRozmej @benaadams
+/src/Nethermind/Nethermind.Facade @LukaszRozmej @benaadams @svlachakis
 /src/Nethermind/Nethermind.ExternalSigner.Plugin @ak88
 /src/Nethermind/Nethermind.History @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Hive @flcl42 @marcindsobczak
 /src/Nethermind/Nethermind.Init @LukaszRozmej @asdacap
-/src/Nethermind/Nethermind.JsonRpc.TraceStore @LukaszRozmej
-/src/Nethermind/Nethermind.JsonRpc @LukaszRozmej @benaadams @smartprogrammer93
+/src/Nethermind/Nethermind.JsonRpc.TraceStore @LukaszRozmej @svlachakis
+/src/Nethermind/Nethermind.JsonRpc @LukaszRozmej @benaadams @smartprogrammer93 @svlachakis
 /src/Nethermind/Nethermind.Merge.Plugin @LukaszRozmej @MarekM25 @flcl42 @benaadams @Marchhill
 /src/Nethermind/Nethermind.Merkleization @ak88 @Marchhill @smartprogrammer93 @flcl42
 /src/Nethermind/Nethermind.Network.Discovery @LukaszRozmej @flcl42 @asdacap
 /src/Nethermind/Nethermind.Network @LukaszRozmej @flcl42 @asdacap @marcindsobczak
 /src/Nethermind/Nethermind.Optimism @emlautarom1 @deffrian
-/src/Nethermind/Nethermind.Runner @LukaszRozmej @flcl42
+/src/Nethermind/Nethermind.Runner @LukaszRozmej @flcl42 @rubo
 /src/Nethermind/Nethermind.Serialization.Json @LukaszRozmej @benaadams
 /src/Nethermind/Nethermind.Serialization.Rlp @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Serialization.Ssz @flcl42 @ak88 @Marchhill
@@ -39,9 +37,16 @@
 /src/Nethermind/Nethermind.Sockets @LukaszRozmej @benaadams
 /src/Nethermind/Nethermind.Specs @smartprogrammer93
 /src/Nethermind/Nethermind.State @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski
+/src/Nethermind/Nethermind.Stateless* @rubo @LukaszRozmej
 /src/Nethermind/Nethermind.Synchronization @LukaszRozmej @benaadams @asdacap @flcl42 @marcindsobczak
 /src/Nethermind/Nethermind.Taiko @smartprogrammer93 @dipkakwani
 /src/Nethermind/Nethermind.Trie @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski
 /src/Nethermind/Nethermind.TxPool @LukaszRozmej @benaadams @flcl42 @marcindsobczak
 /src/Nethermind/Nethermind.UI @benaadams
-/src/Nethermind/Nethermind.Xdc @ak88 @Demuirgos @cicr99
+/src/Nethermind/Nethermind.Xdc @ak88 @cicr99
+
+/tools/DocGen @rubo
+/tools/Kute @emlautarom1
+/tools/PgoTrim @benaadams
+/tools/SendBlobs @flcl42
+/tools/StatelessInputGen @rubo

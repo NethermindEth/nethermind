@@ -37,10 +37,7 @@ namespace Nethermind.Logging
             if (IsError) Console.Error.WriteLine(DateTime.Now.ToString(dateFormat) + text + (ex is not null ? " " + ex : string.Empty));
         }
 
-        private void WriteEntry(string text)
-        {
-            Console.Out.WriteLine(DateTime.Now.ToString(dateFormat) + text);
-        }
+        private void WriteEntry(string text) => Console.Out.WriteLine(DateTime.Now.ToString(dateFormat) + text);
 
         public bool IsInfo => logLevel >= LogLevel.Info;
         public bool IsWarn => logLevel >= LogLevel.Warn;

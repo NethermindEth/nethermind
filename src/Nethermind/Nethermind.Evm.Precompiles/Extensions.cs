@@ -56,11 +56,6 @@ public static class Extensions
             AddPrecompile<SecP256r1Precompile>();
         }
 
-        if (spec.IsRip7728Enabled)
-        {
-            AddPrecompile<L1SloadPrecompile>();
-        }
-
         return precompiles;
 
         void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Name] = T.Address;

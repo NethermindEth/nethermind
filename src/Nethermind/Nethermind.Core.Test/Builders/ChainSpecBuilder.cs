@@ -17,13 +17,10 @@ public class ChainSpecBuilder : BuilderBase<ChainSpec>
         return this;
     }
 
-    protected override void BeforeReturn()
+    protected override void BeforeReturn() => TestObjectInternal = new ChainSpec()
     {
-        TestObjectInternal = new ChainSpec()
-        {
-            Parameters = new ChainParameters(),
-            Allocations = _allocations,
-            Genesis = Build.A.Block.Genesis.TestObject
-        };
-    }
+        Parameters = new ChainParameters(),
+        Allocations = _allocations,
+        Genesis = Build.A.Block.Genesis.TestObject
+    };
 }

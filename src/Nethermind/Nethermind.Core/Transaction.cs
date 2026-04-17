@@ -211,12 +211,9 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
-        {
-            return shouldCountBlobs
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
-        }
 
         public string ToShortString()
         {
@@ -274,10 +271,7 @@ namespace Nethermind.Core
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
-            public Transaction Create()
-            {
-                return new Transaction();
-            }
+            public Transaction Create() => new();
 
             public bool Return(Transaction obj)
             {

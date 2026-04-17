@@ -153,19 +153,10 @@ namespace Nethermind.JsonRpc.Test
             _testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal));
         }
 
-        private void MakeTimePass(int seconds)
-        {
-            _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(seconds);
-        }
+        private void MakeTimePass(int seconds) => _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(seconds);
 
-        private void MakeTimePass()
-        {
-            _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(_config.ReportIntervalSeconds + 1);
-        }
+        private void MakeTimePass() => _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(_config.ReportIntervalSeconds + 1);
 
-        private void CheckLogLine(string line)
-        {
-            _testLogger.LogList.Exists(l => l.Replace(" ", String.Empty).Contains(line)).Should().BeTrue(string.Join(Environment.NewLine, _testLogger.LogList));
-        }
+        private void CheckLogLine(string line) => _testLogger.LogList.Exists(l => l.Replace(" ", String.Empty).Contains(line)).Should().BeTrue(string.Join(Environment.NewLine, _testLogger.LogList));
     }
 }

@@ -32,8 +32,5 @@ public static class MemoryExtensions
         return memory.Span.ToArray();
     }
 
-    public static void Clear<T>(this ref Memory<T> memory)
-    {
-        memory.Span.Clear();
-    }
+    public static void Clear<T>(this ref Memory<T> memory) => memory.Span.Clear();
 }

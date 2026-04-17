@@ -38,15 +38,9 @@ namespace Nethermind.Network
             _onDisconnected = OnDisconnected;
         }
 
-        public void Start()
-        {
-            StartPingTimer();
-        }
+        public void Start() => StartPingTimer();
 
-        public void Stop()
-        {
-            StopPingTimer();
-        }
+        public void Stop() => StopPingTimer();
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         public IEnumerable<ISession> Sessions => _sessions.Values;
@@ -73,7 +67,7 @@ namespace Nethermind.Network
 
         private async Task SendPingMessagesAsync()
         {
-            var token = _cancellationTokenSource.Token;
+            CancellationToken token = _cancellationTokenSource.Token;
             while (!token.IsCancellationRequested
                 && await _pingTimer.WaitForNextTickAsync(token))
             {

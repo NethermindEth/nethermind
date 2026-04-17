@@ -12,25 +12,17 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.CL.P2P;
 
-public class P2PBlockValidator : IP2PBlockValidator
+public class P2PBlockValidator(
+    UInt256 chainId,
+    Address sequencerP2PAddress,
+    ITimestamper timestamper,
+    ILogManager logManager) : IP2PBlockValidator
 {
-    private readonly byte[] _chainId;
-    private readonly Address _sequencerP2PAddress;
-    private readonly ITimestamper _timestamper;
-    private readonly ILogger _logger;
+    private readonly byte[] _chainId = chainId.ToBigEndian();
+    private readonly Address _sequencerP2PAddress = sequencerP2PAddress;
+    private readonly ITimestamper _timestamper = timestamper;
+    private readonly ILogger _logger = logManager.GetClassLogger<P2PBlockValidator>();
     private readonly Dictionary<long, long> _numberOfBlocksSeen = [];
-
-    public P2PBlockValidator(
-        UInt256 chainId,
-        Address sequencerP2PAddress,
-        ITimestamper timestamper,
-        ILogManager logManager)
-    {
-        _chainId = chainId.ToBigEndian();
-        _sequencerP2PAddress = sequencerP2PAddress;
-        _timestamper = timestamper;
-        _logger = logManager.GetClassLogger<P2PBlockValidator>();
-    }
 
     public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
     {
@@ -48,15 +40,12 @@ public class P2PBlockValidator : IP2PBlockValidator
     public ValidityStatus IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload)
     {
         // [REJECT] if more than 5 different blocks have been seen with the same block height
-        _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out var currentCount);
+        _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out long currentCount);
         _numberOfBlocksSeen[payload.BlockNumber] = currentCount + 1;
         return currentCount > 5 ? ValidityStatus.Reject : ValidityStatus.Valid;
     }
 
-    public ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature)
-    {
-        return IsSignatureValid(payloadData, signature) ? ValidityStatus.Valid : ValidityStatus.Reject;
-    }
+    public ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature) => IsSignatureValid(payloadData, signature) ? ValidityStatus.Valid : ValidityStatus.Reject;
 
     private bool IsTopicValid(P2PTopic topic)
     {

@@ -130,50 +130,38 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public Task<T> Build()
-            {
-                return Build((ISpecProvider?)null);
-            }
+            public Task<T> Build() => Build((ISpecProvider?)null);
 
-            public Task<T> Build(ISpecProvider? specProvider)
+            public Task<T> Build(ISpecProvider? specProvider) => Build((builder) =>
             {
-                return Build((builder) =>
+                if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+            });
+
+            public Task<T> Build(UInt256 initialValues) => Build((builder) =>
+            {
+                builder.ConfigureTestConfiguration(conf =>
                 {
-                    if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                    conf.AccountInitialValue = initialValues;
                 });
-            }
+            });
 
-            public Task<T> Build(UInt256 initialValues)
+            public async Task<T> Build(Action<ContainerBuilder> configurer) => (T)await _blockchain.Build(configurer: (builder) =>
             {
-                return Build((builder) =>
-                {
-                    builder.ConfigureTestConfiguration(conf =>
-                    {
-                        conf.AccountInitialValue = initialValues;
-                    });
-                });
-            }
+                configurer?.Invoke(builder);
 
-            public async Task<T> Build(Action<ContainerBuilder> configurer)
-            {
-                return (T)await _blockchain.Build(configurer: (builder) =>
-                {
-                    configurer?.Invoke(builder);
+                // So only the rpc module need to have actual reward calculator....
+                // Can't set globally as that would cause block production to fail with invalid stateroot
+                // as the reward is being applied.
+                // TODO: Double check if block production have the same reward calculator
+                builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
 
-                    // So only the rpc module need to have actual reward calculator....
-                    // Can't set globally as that would cause block production to fail with invalid stateroot
-                    // as the reward is being applied.
-                    // TODO: Double check if block production have the same reward calculator
-                    builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
+                if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
+                if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
+                if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
+                if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
 
-                    if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
-                    if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
-                    if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
-                    if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
-
-                    builder.AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator());
-                });
-            }
+                builder.AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator());
+            });
         }
 
         private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(

@@ -11,21 +11,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public sealed class TransactionPermissionContractV3 : TransactionPermissionContract
+    public sealed class TransactionPermissionContractV3(
+        IAbiEncoder abiEncoder,
+        Address contractAddress,
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+        ISpecProvider specProvider) : TransactionPermissionContract(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
     {
-        private readonly ISpecProvider _specProvider;
+        private readonly ISpecProvider _specProvider = specProvider;
         private static readonly UInt256 Three = 3;
-
-        public TransactionPermissionContractV3(
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
-        {
-            _specProvider = specProvider;
-        }
-
 
         protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader)
         {

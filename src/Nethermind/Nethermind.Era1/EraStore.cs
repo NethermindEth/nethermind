@@ -99,7 +99,7 @@ public class EraStore : IEraStore
 
         bool hasEraFile = false;
         _epochs = new();
-        foreach (var file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
+        foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
             int epoch;
@@ -240,15 +240,12 @@ public class EraStore : IEraStore
     private void GuardMissingEpoch(long epoch)
     {
         if (!HasEpoch(epoch))
-            throw new ArgumentOutOfRangeException($"Epoch not available.", epoch, nameof(epoch));
+            throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.");
     }
 
     private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable
     {
-        public void Dispose()
-        {
-            store.ReturnReader(epoch, reader);
-        }
+        public void Dispose() => store.ReturnReader(epoch, reader);
     }
 
     public void Dispose()

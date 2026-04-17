@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test
             IReleaseSpec spec = isIstanbul
                 ? Istanbul.Instance
                 : MainnetSpecProvider.Instance.GetSpec((ForkActivation)(MainnetSpecProvider.IstanbulBlockNumber - 1));
-            Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
+            Transaction transaction = new() { Data = new byte[] { 1 }, To = Address.Zero };
             EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, spec);
             Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + expectedNonZeroCost,
                 FloorGas: 0)));
@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Zero_transaction_data_cost_should_be_4()
         {
-            Transaction transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
+            Transaction transaction = new() { Data = new byte[] { 0 }, To = Address.Zero };
             EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
             Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
                 FloorGas: 0)));

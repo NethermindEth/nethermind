@@ -44,10 +44,7 @@ namespace Nethermind.Db.Blooms
 
             public (long FromBlock, long ToBlock) CurrentIndices { get; } = (0, 0);
 
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return GetEnumerator();
-            }
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }
 
         public void Dispose() { }

@@ -20,20 +20,18 @@ public partial class FlashbotsModuleTests
     TestKeyAndAddress? TestKeysAndAddress;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         TestKeysAndAddress = new TestKeyAndAddress();
-    }
 
     internal class TestKeyAndAddress
     {
-        public PrivateKey PrivateKey = new PrivateKey("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        public PrivateKey PrivateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
         public Address TestAddr;
 
-        public PrivateKey TestValidatorKey = new PrivateKey("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0");
+        public PrivateKey TestValidatorKey = new("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0");
         public Address TestValidatorAddr;
 
-        public PrivateKey TestBuilderKey = new PrivateKey("0bfbbbc68fefd990e61ba645efb84e0a62e94d5fff02c9b1da8eb45fea32b4e0");
+        public PrivateKey TestBuilderKey = new("0bfbbbc68fefd990e61ba645efb84e0a62e94d5fff02c9b1da8eb45fea32b4e0");
         public Address TestBuilderAddr;
 
         public UInt256 TestBalance = UInt256.Parse("2000000000000000000");

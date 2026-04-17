@@ -13,10 +13,7 @@ public interface ITotalDifficultyStrategy
 
 public sealed class CumulativeTotalDifficultyStrategy : ITotalDifficultyStrategy
 {
-    public UInt256 ParentTotalDifficulty(BlockHeader header)
-    {
-        return (header.TotalDifficulty ?? 0) - header.Difficulty;
-    }
+    public UInt256 ParentTotalDifficulty(BlockHeader header) => (header.TotalDifficulty ?? 0) - header.Difficulty;
 }
 
 public sealed class FixedTotalDifficultyStrategy(
@@ -25,10 +22,7 @@ public sealed class FixedTotalDifficultyStrategy(
     UInt256 toTotalDifficulty
 ) : ITotalDifficultyStrategy
 {
-    public UInt256 ParentTotalDifficulty(BlockHeader header)
-    {
-        return header.Number > 0 && header.Number - 1 == fixesBlockNumber
+    public UInt256 ParentTotalDifficulty(BlockHeader header) => header.Number > 0 && header.Number - 1 == fixesBlockNumber
             ? toTotalDifficulty
             : strategy.ParentTotalDifficulty(header);
-    }
 }

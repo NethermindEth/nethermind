@@ -46,10 +46,7 @@ public abstract class AssociativeCacheTestsBase
     /// Asserts that <paramref name="key"/> is present and maps to <c>_accounts[expectedIndex]</c>.
     /// Key-only caches just assert presence.
     /// </summary>
-    protected virtual void AssertValue(in AddressAsKey key, int expectedIndex)
-    {
-        Get(in key).Should().BeTrue();
-    }
+    protected virtual void AssertValue(in AddressAsKey key, int expectedIndex) => Get(in key).Should().BeTrue();
 
     [Test]
     public void At_capacity()
@@ -69,10 +66,7 @@ public abstract class AssociativeCacheTestsBase
     }
 
     [Test]
-    public void Can_ask_before_first_set()
-    {
-        Get(in _keys[0]).Should().BeFalse();
-    }
+    public void Can_ask_before_first_set() => Get(in _keys[0]).Should().BeFalse();
 
     [Test]
     public void Beyond_capacity()
@@ -108,22 +102,17 @@ public abstract class AssociativeCacheTestsBase
     }
 
     [Test]
-    public void Beyond_capacity_parallel()
+    public void Beyond_capacity_parallel() => Parallel.For(0, Environment.ProcessorCount * 8, iter =>
     {
-        Parallel.For(0, Environment.ProcessorCount * 8, iter =>
-        {
-            for (int i = 0; i < Capacity * 2; i++)
-                Set(in _keys[i], i);
-            for (int i = 0; i < Capacity * 2; i++)
-                Get(in _keys[i]);
-            for (int i = 0; i < Capacity / 2; i++)
-                Delete(in _keys[i]);
-            if (iter % Environment.ProcessorCount == 0)
-                Clear();
-        });
-
-        // No crash means success
-    }
+        for (int i = 0; i < Capacity * 2; i++)
+            Set(in _keys[i], i);
+        for (int i = 0; i < Capacity * 2; i++)
+            Get(in _keys[i]);
+        for (int i = 0; i < Capacity / 2; i++)
+            Delete(in _keys[i]);
+        if (iter % Environment.ProcessorCount == 0)
+            Clear();
+    });// No crash means success
 
     [Test]
     public void Can_delete()
@@ -136,11 +125,8 @@ public abstract class AssociativeCacheTestsBase
 
     [TestCase(-1)]
     [TestCase(134_217_729)]
-    public void Capacity_out_of_range_throws(int capacity)
-    {
-        FluentActions.Invoking(() => CreateCache(capacity))
+    public void Capacity_out_of_range_throws(int capacity) => FluentActions.Invoking(() => CreateCache(capacity))
             .Should().Throw<ArgumentOutOfRangeException>();
-    }
 
     [TestCase(0)]
     [TestCase(4096)]

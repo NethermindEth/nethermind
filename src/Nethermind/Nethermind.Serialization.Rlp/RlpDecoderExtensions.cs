@@ -237,7 +237,7 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < cache.Length; i++)
             {
                 int size = Rlp.LengthOf(i);
-                var buffer = new byte[size];
+                byte[] buffer = new byte[size];
                 buffer.AsRlpStream().Encode(i);
                 cache[i] = new CappedArray<byte>(buffer);
             }

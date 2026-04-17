@@ -25,10 +25,8 @@ namespace Nethermind.Hive.Tests
     public class HivePluginTests
     {
         [Test]
-        public void Can_create()
-        {
+        public void Can_create() =>
             _ = new HivePlugin(new HiveConfig() { Enabled = true });
-        }
 
         [Test]
         public void Can_initialize()

@@ -88,10 +88,7 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
         }
 
         // Duck typing
-        public void Dispose()
-        {
-            _releaseLocksMethod(_dictionary, _locksAcquired);
-        }
+        public void Dispose() => _releaseLocksMethod(_dictionary, _locksAcquired);
     }
 }
 
@@ -106,25 +103,37 @@ public static class ConcurrentDictionaryExtensions
         where TKey : notnull =>
         ConcurrentDictionaryLock<TKey, TValue>.Acquire(dictionary);
 
-    public static void Increment<TKey>(this ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull
-    {
-        dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
-    }
+    public static void Increment<TKey>(this ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull => dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
 
-    public static void Increment<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull
-    {
-        dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
-    }
+    public static void Increment<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull => dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
 
-    public static void AddBy<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key, long amount) where TKey : notnull
-    {
-        dictionary.AddOrUpdate(
+    public static void AddBy<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key, long amount) where TKey : notnull => dictionary.AddOrUpdate(
             key,
             (_, amount) => amount,
             (_, startValue, amount) => startValue + amount,
             amount
         );
+
+    /// <summary>
+    /// Like <see cref="ConcurrentDictionary{TKey,TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> but
+    /// disposes the value created by <paramref name="factory"/> when another thread wins the race.
+    /// Fast path avoids allocation when the key already exists.
+    /// </summary>
+    public static TValue GetOrAddDisposable<TKey, TValue>(
+        this ConcurrentDictionary<TKey, TValue> dictionary, TKey key, Func<TKey, TValue> factory)
+        where TKey : notnull
+        where TValue : class, IDisposable
+    {
+        if (dictionary.TryGetValue(key, out TValue? existing))
+            return existing;
+
+        TValue created = factory(key);
+        TValue actual = dictionary.GetOrAdd(key, created);
+        if (!ReferenceEquals(actual, created))
+            created.Dispose();
+        return actual;
     }
+
 }
 
 

@@ -25,10 +25,7 @@ public class TransactionForRpcDeserializationTests
     }
 
     [Test]
-    public void Test_TxTypeIsDeclined_WhenUnknown()
-    {
-        Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>("""{"type":"0x10"}"""));
-    }
+    public void Test_TxTypeIsDeclined_WhenUnknown() => Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>("""{"type":"0x10"}"""));
 
     public static IEnumerable TxJsonTestCases
     {
@@ -122,6 +119,11 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{}""", null);
         }
     }
+
+    [TestCase("""{"input":"0x23e52","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length input")]
+    [TestCase("""{"data":"0xABC","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length data")]
+    [TestCase("""{"input":"0x1ab"}""", TestName = "EIP1559 tx odd-length input")]
+    public void Test_OddLengthInputOrData_ThrowsJsonException(string txJson) => Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>(txJson));
 
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)

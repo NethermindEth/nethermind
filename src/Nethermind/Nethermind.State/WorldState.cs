@@ -71,10 +71,7 @@ namespace Nethermind.State
         }
 
         [StackTraceHidden, DoesNotReturn]
-        private void ThrowOutOfScope()
-        {
-            throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
-        }
+        private void ThrowOutOfScope() => throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
 
         public Account GetAccount(Address address)
         {
@@ -92,25 +89,13 @@ namespace Nethermind.State
             return !account.IsTotallyEmpty;
         }
 
-        UInt256 IAccountStateProvider.GetNonce(Address address)
-        {
-            return _stateProvider.GetAccount(address).Nonce;
-        }
+        UInt256 IAccountStateProvider.GetNonce(Address address) => _stateProvider.GetAccount(address).Nonce;
 
-        UInt256 IAccountStateProvider.GetBalance(Address address)
-        {
-            return _stateProvider.GetAccount(address).Balance;
-        }
+        UInt256 IAccountStateProvider.GetBalance(Address address) => _stateProvider.GetAccount(address).Balance;
 
-        bool IAccountStateProvider.IsStorageEmpty(Address address)
-        {
-            return _persistentStorageProvider.IsStorageEmpty(address);
-        }
+        bool IAccountStateProvider.IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
 
-        bool IAccountStateProvider.HasCode(Address address)
-        {
-            return _stateProvider.GetAccount(address).HasCode;
-        }
+        bool IAccountStateProvider.HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
         public bool IsContract(Address address)
         {
@@ -188,10 +173,7 @@ namespace Nethermind.State
             _stateProvider.CreateAccount(address, balance, nonce);
         }
 
-        public void CreateEmptyAccountIfDeleted(Address address)
-        {
-            _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
-        }
+        public void CreateEmptyAccountIfDeleted(Address address) => _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {

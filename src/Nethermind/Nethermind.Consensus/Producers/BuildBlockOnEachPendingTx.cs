@@ -16,16 +16,10 @@ namespace Nethermind.Consensus.Producers
             _txPool.NewPending += TxPoolOnNewPending;
         }
 
-        private void TxPoolOnNewPending(object? sender, TxEventArgs e)
-        {
-            TriggerBlockProduction?.Invoke(this, new BlockProductionEventArgs());
-        }
+        private void TxPoolOnNewPending(object? sender, TxEventArgs e) => TriggerBlockProduction?.Invoke(this, new BlockProductionEventArgs());
 
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
-        public void Dispose()
-        {
-            _txPool.NewPending -= TxPoolOnNewPending;
-        }
+        public void Dispose() => _txPool.NewPending -= TxPoolOnNewPending;
     }
 }

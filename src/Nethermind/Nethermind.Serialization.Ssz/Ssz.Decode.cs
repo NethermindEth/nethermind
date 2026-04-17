@@ -14,10 +14,7 @@ namespace Nethermind.Serialization.Ssz;
 public static partial class Ssz
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Decode(ReadOnlySpan<byte> span, out bool result)
-    {
-        result = span[0] != 0;
-    }
+    public static void Decode(ReadOnlySpan<byte> span, out bool result) => result = span[0] != 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Decode(ReadOnlySpan<byte> span, out byte result)
@@ -82,10 +79,7 @@ public static partial class Ssz
         value = new UInt256(span);
     }
 
-    public static void Decode(ReadOnlySpan<byte> span, out ReadOnlySpan<byte> result)
-    {
-        result = span;
-    }
+    public static void Decode(ReadOnlySpan<byte> span, out ReadOnlySpan<byte> result) => result = span;
 
     public static void Decode(ReadOnlySpan<byte> span, out ReadOnlySpan<ushort> result)
     {

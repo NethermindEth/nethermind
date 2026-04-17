@@ -7,16 +7,10 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing;
 
-public readonly struct TraceMemory
+public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
 {
-    public ulong Size { get; }
-    private readonly ReadOnlyMemory<byte> _memory;
-
-    public TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
-    {
-        Size = size;
-        _memory = memory;
-    }
+    public ulong Size { get; } = size;
+    private readonly ReadOnlyMemory<byte> _memory = memory;
 
     public string[] ToHexWordList()
     {

@@ -21,8 +21,5 @@ public class MemoryByteConverter : JsonConverter<Memory<byte>>
         }
     }
 
-    public override Memory<byte> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        return ByteArrayConverter.Convert(ref reader);
-    }
+    public override Memory<byte> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => ByteArrayConverter.Convert(ref reader);
 }

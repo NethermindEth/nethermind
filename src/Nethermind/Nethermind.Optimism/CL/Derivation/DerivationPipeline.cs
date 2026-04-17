@@ -52,10 +52,10 @@ public class DerivationPipeline(
             SystemConfig = l2Parent.SystemConfig
         };
         int originIdx = 0;
-        foreach (var singularBatch in batch.ToSingularBatches(chainId, l2GenesisTimestamp, l2BlockTime))
+        foreach (SingularBatch singularBatch in batch.ToSingularBatches(chainId, l2GenesisTimestamp, l2BlockTime))
         {
             if (singularBatch.IsFirstBlockInEpoch) originIdx++;
-            var payloadAttributes = payloadAttributesDeriver.TryDerivePayloadAttributes(
+            PayloadAttributesRef? payloadAttributes = payloadAttributesDeriver.TryDerivePayloadAttributes(
                 singularBatch,
                 l2ParentPayloadAttributes,
                 l1Origins[originIdx],
@@ -83,8 +83,8 @@ public class DerivationPipeline(
             _logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Hash}");
             return (null, null);
         }
-        var l1Origins = new L1Block[numberOfL1Origins];
-        var l1Receipts = new ReceiptForRpc[numberOfL1Origins][];
+        L1Block[] l1Origins = new L1Block[numberOfL1Origins];
+        ReceiptForRpc[][] l1Receipts = new ReceiptForRpc[numberOfL1Origins][];
         l1Origins[numberOfL1Origins - 1] = lastL1Origin;
         ReceiptForRpc[] lastReceipts = await l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Hash, token);
         l1Receipts[numberOfL1Origins - 1] = lastReceipts;

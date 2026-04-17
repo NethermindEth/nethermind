@@ -48,10 +48,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [TearDown]
-        public void Teardown()
-        {
-            _discoveryDb.Dispose();
-        }
+        public void Teardown() => _discoveryDb.Dispose();
 
         [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
@@ -62,7 +59,7 @@ namespace Nethermind.Network.Discovery.Test
                 new Node(TestItem.PublicKeyB, "192.168.1.2", 30303)
             ];
 
-            using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
             INodeLifecycleManager[] lifecycleManagers = nodes.Select((node) =>
             {
