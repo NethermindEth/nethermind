@@ -40,12 +40,23 @@ public static class BlockRangeValidator
             {
                 return ValidationResult.Error("StartBlock must be non-negative");
             }
+
+            if (config.EndBlock.Value < 0)
+            {
+                return ValidationResult.Error("EndBlock must be non-negative");
+            }
         }
 
         // Validate StartBlock non-negative when only StartBlock is specified
         if (config.StartBlock.HasValue && !config.EndBlock.HasValue && config.StartBlock.Value < 0)
         {
             return ValidationResult.Error("StartBlock must be non-negative");
+        }
+
+        // Validate EndBlock non-negative when only EndBlock is specified
+        if (config.EndBlock.HasValue && !config.StartBlock.HasValue && config.EndBlock.Value < 0)
+        {
+            return ValidationResult.Error("EndBlock must be non-negative");
         }
 
         // Validate RecentBlocks parameter

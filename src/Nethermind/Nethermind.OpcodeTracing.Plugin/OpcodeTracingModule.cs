@@ -3,8 +3,6 @@
 
 using Autofac;
 using Nethermind.Core;
-using Nethermind.OpcodeTracing.Plugin.Output;
-using Nethermind.OpcodeTracing.Plugin.Tracing;
 
 namespace Nethermind.OpcodeTracing.Plugin;
 
@@ -19,10 +17,9 @@ public class OpcodeTracingModule : Module
     /// <param name="builder">The container builder.</param>
     protected override void Load(ContainerBuilder builder)
     {
-        builder
-            .AddSingleton<IOpcodeTracingConfig, OpcodeTracingConfig>()
-            .AddSingleton<OpcodeCounter>()
-            .AddSingleton<TraceOutputWriter>()
-            .AddSingleton<OpcodeTraceRecorder>();
+        // OpcodeCounter, TraceOutputWriter and OpcodeTraceRecorder are constructed directly
+        // by OpcodeTracingPlugin.Init — they are not resolved from the container, so we do not
+        // register them here (registering + hand-rolling would leave dead entries behind).
+        builder.AddSingleton<IOpcodeTracingConfig, OpcodeTracingConfig>();
     }
 }

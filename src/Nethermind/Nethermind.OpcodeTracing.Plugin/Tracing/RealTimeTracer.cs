@@ -33,6 +33,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
     private long _lastBlock = -1;
     private long _totalBlocksProcessed;
     private bool _rangeCompleted;
+    private Task? _rangeCompleteFinalizeTask;
 
     /// <summary>
     /// Gets a value indicating whether the configured block range has been completed.
@@ -143,8 +144,10 @@ public sealed class RealTimeTracer : IAsyncDisposable
                 _logger.Info($"RealTime: configured range {_range.StartBlock}-{_range.EndBlock} completed. Continuing to trace new blocks.");
             }
 
-            // Write cumulative with completionStatus="complete" for initial range
-            _ = _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("complete"), "complete");
+            // Write cumulative with completionStatus="complete" for initial range.
+            // OnBlockCompleted is sync, so track the task and let FinalizePartialAsync await it
+            // during shutdown — otherwise a fast shutdown can race this write and drop it.
+            _rangeCompleteFinalizeTask = _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("complete"), "complete");
         }
     }
 
@@ -238,6 +241,32 @@ public sealed class RealTimeTracer : IAsyncDisposable
 
         // Flush pending per-block writes
         await _writeQueue.FlushAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+
+        // If the configured range already completed, let that "complete" write finish and skip the
+        // partial overwrite — otherwise a fast shutdown can replace a correct "complete" status
+        // with a misleading "partial" one.
+        if (_rangeCompleted)
+        {
+            if (_rangeCompleteFinalizeTask is not null)
+            {
+                try
+                {
+                    await _rangeCompleteFinalizeTask.ConfigureAwait(false);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsWarn)
+                    {
+                        _logger.Warn($"Range-complete cumulative write failed, falling back to partial: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                return;
+            }
+        }
 
         // Write final cumulative with partial status
         await _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("partial"), "partial").ConfigureAwait(false);

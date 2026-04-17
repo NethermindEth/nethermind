@@ -100,11 +100,11 @@ public sealed record TraceConfiguration
             throw new ArgumentNullException(nameof(config));
         }
 
-        TracingMode mode = Enum.TryParse<TracingMode>(config.Mode, true, out var parsedMode)
+        TracingMode mode = Enum.TryParse<TracingMode>(config.Mode, true, out TracingMode parsedMode)
             ? parsedMode
             : TracingMode.RealTime;
 
-        var traceConfig = new TraceConfiguration(
+        TraceConfiguration traceConfig = new(
             config.Enabled,
             config.OutputDirectory,
             config.StartBlock,
@@ -116,7 +116,7 @@ public sealed record TraceConfiguration
         // Resolve effective block range
         long effectiveStart;
         long effectiveEnd;
-        var warnings = new List<string>();
+        List<string> warnings = new();
 
         // Check for conflicting parameters
         if (config.StartBlock.HasValue && config.EndBlock.HasValue && config.RecentBlocks.HasValue)
