@@ -515,7 +515,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            long gasUsedForAllowance = _parallel ? header.GasLimit : spec switch
+            long gasUsedForAllowance = _parallel ? 0 : spec switch
             {
                 { IsEip8037Enabled: true } => _blockCumulativeRegularGas,
                 { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
@@ -525,7 +525,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
             if (tx.GasLimit > maxTransactionGasLimit)
             {
-                string limitDescription = _parallel || spec.IsEip8037Enabled
+                string limitDescription = _parallel
                     ? $"{header.GasLimit}"
                     : $"{header.GasLimit} - {gasUsedForAllowance}";
                 TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
