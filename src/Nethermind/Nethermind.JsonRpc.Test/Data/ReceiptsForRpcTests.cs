@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data

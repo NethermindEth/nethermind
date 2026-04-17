@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 
@@ -240,7 +237,7 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < cache.Length; i++)
             {
                 int size = Rlp.LengthOf(i);
-                var buffer = new byte[size];
+                byte[] buffer = new byte[size];
                 buffer.AsRlpStream().Encode(i);
                 cache[i] = new CappedArray<byte>(buffer);
             }

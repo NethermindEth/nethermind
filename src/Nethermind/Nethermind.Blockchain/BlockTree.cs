@@ -532,10 +532,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        public AddBlockResult SuggestHeader(BlockHeader header)
-        {
-            return Suggest(null, header);
-        }
+        public AddBlockResult SuggestHeader(BlockHeader header) => Suggest(null, header);
 
         public async ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions suggestOptions = BlockTreeSuggestOptions.ShouldProcess)
         {
@@ -601,7 +598,7 @@ namespace Nethermind.Blockchain
                     // TODO: would be great to remove it, he?
                     // TODO: we should remove it - readonly method modifies DB
                     bool isSearchingForBeaconBlock = (BestKnownBeaconNumber > BestKnownNumber && header.Number > BestKnownNumber);  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
-                    if (createLevelIfMissing == false || isSearchingForBeaconBlock)
+                    if (!createLevelIfMissing || isSearchingForBeaconBlock)
                     {
                         if (Logger.IsInfo) Logger.Info($"Missing block info - ignoring creation of the level in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {header.ToString(BlockHeader.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                     }
@@ -654,10 +651,7 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        public Hash256? FindHash(long number)
-        {
-            return GetBlockHashOnMainOrBestDifficultyHash(number);
-        }
+        public Hash256? FindHash(long number) => GetBlockHashOnMainOrBestDifficultyHash(number);
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256? blockHash, int numberOfBlocks, int skip, bool reverse)
         {
@@ -1025,8 +1019,11 @@ namespace Nethermind.Blockchain
             }
 
             // Clear stale canonical markers above the new head left by beacon sync.
-            // Covers both same-height FCU (previousHeadNumber <= lastNumber) and ePBS FCU to ancestor.
-            ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
+            // Only needed on FCU reorgs (forceUpdateHeadBlock == true). During forward sync
+            // (BlockDownloader) and forward processing (BlockchainProcessor), the markers above
+            // are either not yet set or belong to the same chain and must not be cleared.
+            if (forceUpdateHeadBlock)
+                ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
             for (int i = 0; i < blocks.Count; i++)
             {
@@ -1143,7 +1140,7 @@ namespace Nethermind.Blockchain
         }
 
 
-        public bool IsBetterThanHead(BlockHeader? header) =>
+        public virtual bool IsBetterThanHead(BlockHeader? header) =>
             header is not null // null is never better
             && ((header.IsGenesis && Genesis is null) // is genesis
                 || header.TotalDifficulty >= SpecProvider.TerminalTotalDifficulty // is post-merge block, we follow engine API
@@ -1236,7 +1233,7 @@ namespace Nethermind.Blockchain
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 
-        private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+        protected virtual bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
             if (BestSuggestedHeader is null) return true;
 
@@ -1365,7 +1362,7 @@ namespace Nethermind.Blockchain
             // Yes, this is measurably faster
             using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(blockNumbers);
 
-            for (var i = 0; i < blockInfos.Count; i++)
+            for (int i = 0; i < blockInfos.Count; i++)
             {
                 (long number, BlockInfo blockInfo) = blockInfos[i];
 
@@ -1412,15 +1409,10 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="number"></param>
         /// <returns></returns>
-        private bool ShouldCache(long number)
-        {
-            return number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
-        }
+        private bool ShouldCache(long number) =>
+            number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
 
-        public ChainLevelInfo? FindLevel(long number)
-        {
-            return _chainLevelInfoRepository.LoadLevel(number);
-        }
+        public ChainLevelInfo? FindLevel(long number) => _chainLevelInfoRepository.LoadLevel(number);
 
         public Hash256? HeadHash => Head?.Hash;
         public Hash256? GenesisHash => Genesis?.Hash;
@@ -1473,7 +1465,7 @@ namespace Nethermind.Blockchain
                     // TODO: would be great to remove it, he?
                     // TODO: we should remove it - readonly method modifies DB
                     bool isSearchingForBeaconBlock = BestKnownBeaconNumber > BestKnownNumber && block.Number > BestKnownNumber;  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
-                    if (createLevelIfMissing == false || isSearchingForBeaconBlock)
+                    if (!createLevelIfMissing || isSearchingForBeaconBlock)
                     {
                         if (Logger.IsInfo) Logger.Info($"Missing block info - ignoring creation of the level in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {block.ToString(Block.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                     }
@@ -1506,12 +1498,10 @@ namespace Nethermind.Blockchain
             return block;
         }
 
-        private bool IsTotalDifficultyAlwaysZero()
-        {
+        private bool IsTotalDifficultyAlwaysZero() =>
             // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
             // We also checking TTD is zero to ensure that block after genesis have zero difficulty
-            return Genesis?.Difficulty == 0 && SpecProvider.TerminalTotalDifficulty == 0;
-        }
+            Genesis?.Difficulty == 0 && SpecProvider.TerminalTotalDifficulty == 0;
 
         private void SetTotalDifficultyFromBlockInfo(BlockHeader header, BlockInfo blockInfo)
         {

@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
             IHistoryPruner historyPruner,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager)
-            : base(metadataDb, specProvider, logManager?.GetClassLogger() ?? default)
+            : base(metadataDb, specProvider, logManager?.GetClassLogger<ReceiptsSyncFeed>() ?? default)
         {
             _receiptStorage = receiptStorage;
             _syncPointers = syncPointers;
@@ -106,14 +106,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _syncConfig.AncientReceiptsBarrierCalc);
         }
 
-        private void ResetSyncStatusList()
-        {
-            _syncStatusList = new SyncStatusList(
+        private void ResetSyncStatusList() => _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedReceiptBlockNumber,
                 _syncConfig.AncientReceiptsBarrier);
-        }
 
         protected override SyncMode ActivationSyncModes { get; }
             = SyncMode.FastReceipts & ~SyncMode.FastBlocks;

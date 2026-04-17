@@ -60,7 +60,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
             GethLikeTxTrace? trace = _currentTxTracer.BuildResult();
 
             // Write the final summary line for this transaction
-            using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions { Indented = false });
+            using Utf8JsonWriter writer = new(_output, new JsonWriterOptions { Indented = false });
 
             writer.WriteStartObject();
             writer.WritePropertyName("output");
@@ -83,11 +83,9 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         }
     }
 
-    public void EndBlockTrace()
-    {
+    public void EndBlockTrace() =>
         // Track block count for end marker
         _blockCount++;
-    }
 
     /// <summary>
     /// Writes a JSONL-compliant test end marker to the trace stream.
@@ -96,7 +94,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
     /// </summary>
     public void TestFinished(string testName, bool pass, IReleaseSpec spec, TimeSpan? duration, Hash256? headStateRoot)
     {
-        using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions
+        using Utf8JsonWriter writer = new(_output, new JsonWriterOptions
         {
             Indented = false  // Critical: Single line for JSONL compliance
         });
@@ -139,7 +137,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
 
     private void WriteTraceEntry(GethTxFileTraceEntry entry)
     {
-        using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions { Indented = false });
+        using Utf8JsonWriter writer = new(_output, new JsonWriterOptions { Indented = false });
 
         // Write trace entry (same format as GethLikeTxTraceJsonLinesConverter)
         writer.WriteStartObject();
@@ -161,7 +159,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
 
         if ((entry.Memory?.Length ?? 0) != 0)
         {
-            var memory = string.Concat(entry.Memory);
+            string memory = string.Concat(entry.Memory);
             writer.WritePropertyName("memory");
             writer.WriteStringValue($"0x{memory}");
         }
@@ -170,7 +168,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         {
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
-            foreach (var s in entry.Stack)
+            foreach (string s in entry.Stack)
                 writer.WriteStringValue(s);
             writer.WriteEndArray();
         }
@@ -196,9 +194,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         _output.Write(_newLine);
     }
 
-    public void Dispose()
-    {
+    public void Dispose() =>
         // Don't dispose of Console.Error, but flush it
         _output.Flush();
-    }
 }

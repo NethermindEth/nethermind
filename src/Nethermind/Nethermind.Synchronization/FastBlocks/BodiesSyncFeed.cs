@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
-            : base(metadataDb, specProvider, logManager.GetClassLogger())
+            : base(metadataDb, specProvider, logManager.GetClassLogger<BodiesSyncFeed>())
         {
             _blockTree = blockTree;
             _blockValidator = blockValidator;
@@ -108,14 +108,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncConfig.AncientBodiesBarrierCalc);
         }
 
-        private void ResetSyncStatusList()
-        {
-            _syncStatusList = new SyncStatusList(
+        private void ResetSyncStatusList() => _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedBodyNumber,
                 _syncConfig.AncientBodiesBarrier);
-        }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 

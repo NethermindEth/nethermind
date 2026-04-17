@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -32,10 +31,7 @@ internal class TestBlockTree : IBlockTree
     public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain { add { } remove { } }
     public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated { add { } remove { } }
 
-    public void RaiseBlockAddedToMain(BlockReplacementEventArgs args)
-    {
-        BlockAddedToMain?.Invoke(this, args);
-    }
+    public void RaiseBlockAddedToMain(BlockReplacementEventArgs args) => BlockAddedToMain?.Invoke(this, args);
 
     public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader!;
 

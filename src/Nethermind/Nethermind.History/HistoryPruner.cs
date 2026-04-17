@@ -77,7 +77,7 @@ public class HistoryPruner : IHistoryPruner
         IBlockProcessingQueue blockProcessingQueue,
         ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<HistoryPruner>();
         _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
@@ -263,7 +263,7 @@ public class HistoryPruner : IHistoryPruner
                                 {
                                     try
                                     {
-                                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
+                                        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
                                             cancellationToken);
                                         TryPruneHistory(cts.Token);
                                     }

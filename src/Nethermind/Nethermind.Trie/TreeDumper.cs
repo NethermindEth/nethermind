@@ -14,17 +14,11 @@ namespace Nethermind.Trie
         private readonly StringBuilder _builder = new();
         public bool ExpectAccounts => expectAccounts;
 
-        public void Reset()
-        {
-            _builder.Clear();
-        }
+        public void Reset() => _builder.Clear();
 
         public bool IsFullDbScan { get; init; } = true;
 
-        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
-        {
-            return true;
-        }
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode) => true;
 
         public void VisitTree(in OldStyleTrieVisitContext context, in ValueHash256 rootHash)
         {
@@ -43,20 +37,11 @@ namespace Nethermind.Trie
         private static string GetIndent(int level) => new('+', level * 2);
         private static string GetChildIndex(in OldStyleTrieVisitContext context) => context.BranchChildIndex is null ? string.Empty : $"{context.BranchChildIndex:x2} ";
 
-        public void VisitMissingNode(in OldStyleTrieVisitContext context, in ValueHash256 nodeHash)
-        {
-            _builder.AppendLine($"{GetIndent(context.Level)}{GetChildIndex(context)}MISSING {nodeHash}");
-        }
+        public void VisitMissingNode(in OldStyleTrieVisitContext context, in ValueHash256 nodeHash) => _builder.AppendLine($"{GetIndent(context.Level)}{GetChildIndex(context)}MISSING {nodeHash}");
 
-        public void VisitBranch(in OldStyleTrieVisitContext context, TrieNode node)
-        {
-            _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
-        }
+        public void VisitBranch(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
 
-        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node)
-        {
-            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
-        }
+        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
 
         public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
         {
@@ -83,14 +68,8 @@ namespace Nethermind.Trie
             }
         }
 
-        public override string ToString()
-        {
-            return _builder.ToString();
-        }
+        public override string ToString() => _builder.ToString();
 
-        private static string? KeccakOrRlpStringOfNode(TrieNode node)
-        {
-            return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
-        }
+        private static string? KeccakOrRlpStringOfNode(TrieNode node) => node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
     }
 }

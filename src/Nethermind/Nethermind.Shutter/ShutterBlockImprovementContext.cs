@@ -91,7 +91,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         _improvementToken = cts.Token;
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterBlockImprovementContext>();
         _blockProducer = blockProducer;
         _txSignal = shutterTxSignal;
         _shutterConfig = shutterConfig;
@@ -144,7 +144,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
-        using var txTimeout = new CancellationTokenSource((int)waitTime);
+        using CancellationTokenSource txTimeout = new((int)waitTime);
         CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_improvementToken, txTimeout.Token);
         _linkedCancellation = linkedCancellation;
 

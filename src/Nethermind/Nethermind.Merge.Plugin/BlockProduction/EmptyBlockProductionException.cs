@@ -3,8 +3,6 @@
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public class EmptyBlockProductionException : System.Exception
+public class EmptyBlockProductionException(string message) : System.Exception($"Couldn't produce empty block: {message}")
 {
-    public EmptyBlockProductionException(string message)
-        : base($"Couldn't produce empty block: {message}") { }
 }

@@ -27,7 +27,7 @@ namespace Nethermind.Init.Steps
         ILogManager logManager
     ) : IStep
     {
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
 
         public Task Execute(CancellationToken cancellationToken)
         {
@@ -96,9 +96,6 @@ namespace Nethermind.Init.Steps
 
         private readonly TaskCompletionSource _blocksProcessedTaskSource = new();
 
-        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
-        {
-            _blocksProcessedTaskSource.SetResult();
-        }
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.SetResult();
     }
 }

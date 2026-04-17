@@ -63,14 +63,11 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, Rlp
         }
     }
 
-    public UInt256? ReadHeadL1Origin()
+    public UInt256? ReadHeadL1Origin() => db.Get(L1OriginHeadKey) switch
     {
-        return db.Get(L1OriginHeadKey) switch
-        {
-            null => null,
-            byte[] bytes => new UInt256(bytes, isBigEndian: true)
-        };
-    }
+        null => null,
+        byte[] bytes => new UInt256(bytes, isBigEndian: true)
+    };
 
     public void WriteHeadL1Origin(UInt256 blockId)
     {

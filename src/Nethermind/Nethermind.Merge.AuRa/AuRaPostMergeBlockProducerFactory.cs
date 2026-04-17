@@ -10,23 +10,19 @@ using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.AuRa
 {
-    public class AuRaPostMergeBlockProducerFactory : PostMergeBlockProducerFactory
+    public class AuRaPostMergeBlockProducerFactory(
+        ISpecProvider specProvider,
+        ISealEngine sealEngine,
+        ITimestamper timestamper,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager,
+        IGasLimitCalculator? gasLimitCalculator = null) : PostMergeBlockProducerFactory(
+            specProvider,
+            sealEngine,
+            timestamper,
+            blocksConfig,
+            logManager,
+            gasLimitCalculator)
     {
-        public AuRaPostMergeBlockProducerFactory(
-            ISpecProvider specProvider,
-            ISealEngine sealEngine,
-            ITimestamper timestamper,
-            IBlocksConfig blocksConfig,
-            ILogManager logManager,
-            IGasLimitCalculator? gasLimitCalculator = null)
-            : base(
-                specProvider,
-                sealEngine,
-                timestamper,
-                blocksConfig,
-                logManager,
-                gasLimitCalculator)
-        {
-        }
     }
 }

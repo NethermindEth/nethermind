@@ -8,14 +8,9 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class LocalTxFilter : ITxFilter
+    public class LocalTxFilter(ISigner signer) : ITxFilter
     {
-        private readonly ISigner _signer;
-
-        public LocalTxFilter(ISigner signer)
-        {
-            _signer = signer;
-        }
+        private readonly ISigner _signer = signer;
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {

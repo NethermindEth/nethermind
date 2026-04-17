@@ -9,16 +9,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus
 {
-    public class SealEngine : ISealEngine
+    public class SealEngine(ISealer? sealer, ISealValidator? sealValidator) : ISealEngine
     {
-        private readonly ISealer _sealer;
-        private readonly ISealValidator _sealValidator;
-
-        public SealEngine(ISealer? sealer, ISealValidator? sealValidator)
-        {
-            _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
-            _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-        }
+        private readonly ISealer _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
+        private readonly ISealValidator _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) =>
             _sealer.SealBlock(block, cancellationToken);

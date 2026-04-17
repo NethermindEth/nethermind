@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Synchronization.FastSync;
@@ -223,6 +221,16 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// </summary>
     private static DeletionRange ComputeSubtreeRangeForNibble(TreePath path, int from, int to) =>
         new(path.Append(from).ToLowerBoundPath(), path.Append(to).ToUpperBoundPath());
+
+    public void EnsureStorageEmpty(Hash256 address)
+    {
+        // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
+        // because the trie is always traversed from the account's storage root hash — if the root
+        // is EmptyTreeHash, no storage trie nodes will ever be reached.
+        using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        ValueHash256 addressHash = address.ValueHash256;
+        writeBatch.DeleteStorageRange(addressHash, ValueKeccak.Zero, ValueKeccak.MaxValue);
+    }
 
     public void FinalizeSync(BlockHeader pivotHeader)
     {

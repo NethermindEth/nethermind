@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -83,7 +82,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<VmState<TGasPolicy>> _stateStack = new();
 
     protected IWorldState _worldState;
@@ -393,9 +392,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             regularDepositCost, stateDepositCost, invalidCode, callResult.Output);
     }
 
-    protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
-    {
-        return new TransactionSubstate(
+    protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult) => new(
             callResult.Output,
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
@@ -404,7 +401,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             isTracerConnected: _txTracer.IsTracing,
             callResult.ExceptionType,
             _logger);
-    }
 
     private void TryChargeAndDepositCode(
         VmState<TGasPolicy> previousState,
@@ -445,6 +441,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
+            // The CREATE opcode's own state charge belongs to the parent frame and remains consumed.
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
@@ -900,6 +897,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         state.Gas = gas;
 
+        return ExecutePrecompileCall(state, precompile, callData, spec);
+    }
+
+    /// <summary>
+    /// Executes a precompile's <see cref="IPrecompile.Run"/> method after base and data gas have been deducted.
+    /// Subclasses may override this to support precompile variants that compute and report their own dynamic
+    /// gas consumption after execution.
+    /// </summary>
+    protected virtual CallResult ExecutePrecompileCall(
+        VmState<TGasPolicy> state,
+        IPrecompile precompile,
+        ReadOnlyMemory<byte> callData,
+        IReleaseSpec spec)
+    {
         try
         {
             Result<byte[]> output = precompile.Run(callData, spec);
@@ -925,19 +936,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(default, precompileSuccess: false, shouldRevert: true);
         }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogExecutionException(IPrecompile precompile, Exception exception)
-            => _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMissingDependency(IPrecompile precompile, DllNotFoundException exception)
-            => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static string GetErrorString(IPrecompile precompile, string? error)
-            => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected void LogExecutionException(IPrecompile precompile, Exception exception)
+        => _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected void LogMissingDependency(IPrecompile precompile, DllNotFoundException exception)
+        => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected static string GetErrorString(IPrecompile precompile, string? error)
+        => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
 
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,
@@ -1011,8 +1022,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
         EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
 
-        // Cache the available gas from the state for local use.
-        TGasPolicy gas = vmState.Gas;
+        // Operate on the frame gas by reference so exceptional halts keep the latest
+        // gas/state-gas accounting without needing interpreter-wide exception handling.
+        ref TGasPolicy gas = ref vmState.Gas;
 
         // If a previous call result exists, push its bytes onto the stack.
         if (previousCallResult is not null)
@@ -1117,7 +1129,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        var opcodeArray = _opcodeMethods;
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
             int opCodeCount = 0;
@@ -1155,7 +1167,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 else
                 {
                     // Retrieve the opcode function pointer corresponding to the current instruction.
-                    var opcodeMethod = opcodeMethods[(int)instruction];
+                    delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType> opcodeMethod = opcodeMethods[(int)instruction];
                     // Invoke the opcode method, which may modify the stack, gas, and program counter.
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
@@ -1183,6 +1195,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 if (ReturnData is not null)
                     break;
             }
+
             OpCodeCount += opCodeCount;
         }
 
@@ -1332,10 +1345,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void EndInstructionTrace(long gasAvailable)
-    {
-        _txTracer.ReportOperationRemainingGas(gasAvailable);
-    }
+    internal void EndInstructionTrace(long gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
@@ -1368,7 +1378,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AddTransferLog<TEip7708>(Address from, Address to, in UInt256 value)
+    public void AddTransferLog<TEip7708>(Address from, Address to, in UInt256 value)
         where TEip7708 : struct, IFlag
     {
         if (TEip7708.IsActive && !value.IsZero && from != to)

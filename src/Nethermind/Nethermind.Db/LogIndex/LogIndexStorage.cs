@@ -130,7 +130,7 @@ namespace Nethermind.Db.LogIndex
 
                 Meta = _batch.GetColumnBatch(LogIndexColumns.Meta);
                 Address = _batch.GetColumnBatch(LogIndexColumns.Addresses);
-                for (var topicIndex = 0; topicIndex < MaxTopics; topicIndex++)
+                for (int topicIndex = 0; topicIndex < MaxTopics; topicIndex++)
                     Topics[topicIndex] = _batch.GetColumnBatch(GetColumn(topicIndex));
             }
 
@@ -367,11 +367,9 @@ namespace Nethermind.Db.LogIndex
             return usedAlgo;
         }
 
-        private static void ForceMerge(IDb db)
-        {
+        private static void ForceMerge(IDb db) =>
             // Fetching RocksDB key values forces it to merge corresponding parts
             db.GetAllValues().ForEach(static _ => { });
-        }
 
         public Task StopAsync() => StopAsync(acquireLock: true);
 
@@ -642,8 +640,8 @@ namespace Nethermind.Db.LogIndex
                     ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyBuffer, isBackwardSync: false);
                     batches.Address.Merge(addressKey, dbValue);
 
-                    var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
-                    for (var topicIndex = 0; topicIndex < topicsLength; topicIndex++)
+                    int topicsLength = Math.Min(log.Topics.Length, MaxTopics);
+                    for (int topicIndex = 0; topicIndex < topicsLength; topicIndex++)
                     {
                         Hash256 topic = log.Topics[topicIndex];
                         ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyBuffer, isBackwardSync: false);
@@ -672,12 +670,12 @@ namespace Nethermind.Db.LogIndex
             if (_logger.IsInfo)
                 _logger.Info($"Log index forced compaction started, DB size: {GetDbSize()}");
 
-            var timestamp = Stopwatch.GetTimestamp();
+            long timestamp = Stopwatch.GetTimestamp();
 
             if (flush)
                 DBColumns.ForEach(static db => db.Flush());
 
-            for (var i = 0; i < mergeIterations; i++)
+            for (int i = 0; i < mergeIterations; i++)
             {
                 Task[] tasks = DBColumns
                     .Select(static db => Task.Run(() => ForceMerge(db)))
@@ -729,7 +727,7 @@ namespace Nethermind.Db.LogIndex
                     }
 
                     // Add topics
-                    for (var topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
+                    for (int topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
                     {
                         Dictionary<Hash256, List<int>> topics = aggregate.Topic[topicIndex];
 
@@ -881,7 +879,7 @@ namespace Nethermind.Db.LogIndex
             }
             else
             {
-                for (var i = 0; i < source.Length; i += BlockNumberSize)
+                for (int i = 0; i < source.Length; i += BlockNumberSize)
                     buffer[i / BlockNumberSize] = ReadBlockNumber(source[i..]);
             }
         }

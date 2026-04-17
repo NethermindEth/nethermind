@@ -16,28 +16,19 @@ namespace Nethermind.Xdc;
 /// however, these are not loaded during fast sync because previous headers are not processed normally.
 /// This class calculates the required gap block numbers and stores their snapshots.
 /// </summary>
-public class XdcStateSyncSnapshotManager
-{
-    private readonly ISpecProvider _specProvider;
-    private readonly IEpochSwitchManager _epochSwitchManager;
-    private readonly IBlockTree _blockTree;
-    private readonly ISnapshotManager _snapshotManager;
-    private readonly IMasternodeVotingContract _masternodeVotingContract;
-
-    public XdcStateSyncSnapshotManager(
-        ISpecProvider specProvider,
-        IEpochSwitchManager epochSwitchManager,
-        IBlockTree blockTree,
-        ISnapshotManager snapshotManager,
-        IMasternodeVotingContract masternodeVotingContract
+public class XdcStateSyncSnapshotManager(
+    ISpecProvider specProvider,
+    IEpochSwitchManager epochSwitchManager,
+    IBlockTree blockTree,
+    ISnapshotManager snapshotManager,
+    IMasternodeVotingContract masternodeVotingContract
     )
-    {
-        _specProvider = specProvider;
-        _epochSwitchManager = epochSwitchManager;
-        _blockTree = blockTree;
-        _snapshotManager = snapshotManager;
-        _masternodeVotingContract = masternodeVotingContract;
-    }
+{
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISnapshotManager _snapshotManager = snapshotManager;
+    private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
 
     public XdcBlockHeader[] GetGapBlocks(XdcBlockHeader pivotHeader)
     {

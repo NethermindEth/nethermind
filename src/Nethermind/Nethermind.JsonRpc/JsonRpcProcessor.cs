@@ -36,7 +36,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager, IProcessExitSource? processExitSource = null)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<JsonRpcProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
         ArgumentNullException.ThrowIfNull(fileSystem);
 
         _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
@@ -89,7 +89,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     id = idNumber;
                 }
-                else if (idElement.TryGetDecimal(out var value))
+                else if (idElement.TryGetDecimal(out decimal value))
                 {
                     id = value;
                 }
@@ -462,7 +462,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return result;
     }
 
-    private static readonly StreamPipeReaderOptions _pipeReaderOptions = new StreamPipeReaderOptions(leaveOpen: false);
+    private static readonly StreamPipeReaderOptions _pipeReaderOptions = new(leaveOpen: false);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private async ValueTask<PipeReader> RecordRequest(PipeReader reader)

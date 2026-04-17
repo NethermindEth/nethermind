@@ -119,6 +119,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Xdc-testnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c xdc-testnet --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Xdc-archive": {
       "commandName": "Project",
       "commandLineArgs": "-c xdc-archive --data-dir .data",

@@ -46,9 +46,7 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     }
 
     // IConsensusPlugin
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-    {
-        return new XdcHotStuff(
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new XdcHotStuff(
             _nethermindApi.Context.Resolve<IBlockTree>(),
             _nethermindApi.Context.Resolve<IXdcConsensusContext>(),
             _nethermindApi.Context.Resolve<ISpecProvider>(),
@@ -63,7 +61,6 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _nethermindApi.Context.Resolve<ISignTransactionManager>(),
             _nethermindApi.Context.Resolve<ILogManager>()
             );
-    }
     public IBlockProducer InitBlockProducer()
     {
         StartXdcBlockProducer start = _nethermindApi.Context.Resolve<StartXdcBlockProducer>();

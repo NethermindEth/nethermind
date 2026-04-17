@@ -10,7 +10,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 
@@ -45,7 +44,7 @@ public class ImportFlatDb(
         BlockHeader? head = blockTree.Head?.Header;
         if (head is null) return;
 
-        using (var reader = persistence.CreateReader())
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
             if (_logger.IsWarn) _logger.Warn($"Current state is {reader.CurrentState}");
             if (reader.CurrentState.BlockNumber > 0)

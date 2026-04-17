@@ -3,9 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -85,6 +83,24 @@ public class Eip8037Tests
         EthereumGasPolicy.RefundStateGas(ref gas, 200, stateGasFloor: 40);
 
         Assert.That((gas.StateReservoir, gas.StateGasUsed), Is.EqualTo((200L, 0L)));
+    }
+
+    [Test]
+    public void Code_insert_state_refund_is_available_to_later_state_gas()
+    {
+        const long intrinsicAuthState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+        EthereumGasPolicy gas = new()
+        {
+            StateGasUsed = intrinsicAuthState,
+        };
+
+        long regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, intrinsicAuthState);
+        EthereumGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState);
+        EthereumGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState);
+
+        Assert.That(regularRefund, Is.Zero);
+        Assert.That((gas.StateReservoir, gas.StateGasUsed),
+            Is.EqualTo((GasCostOf.NewAccountState - 2 * GasCostOf.SSetState, GasCostOf.PerAuthBaseState + 2 * GasCostOf.SSetState)));
     }
 
     [Test]

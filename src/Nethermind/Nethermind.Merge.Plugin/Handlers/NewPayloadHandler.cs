@@ -86,7 +86,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
         if (mergeConfig.NewPayloadCacheSize > 0)
@@ -95,15 +95,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
-    private string GetGasChange(long blockGasLimit)
+    private string GetGasChange(long blockGasLimit) => (blockGasLimit - _lastBlockGasLimit) switch
     {
-        return (blockGasLimit - _lastBlockGasLimit) switch
-        {
-            > 0 => "👆",
-            < 0 => "👇",
-            _ => "  "
-        };
-    }
+        > 0 => "👆",
+        < 0 => "👇",
+        _ => "  "
+    };
 
     /// <summary>
     /// Processes the execution payload and returns the <see cref="PayloadStatusV1"/>

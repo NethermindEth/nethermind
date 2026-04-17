@@ -29,7 +29,7 @@ public sealed class TxValidator : ITxValidator
             GasLimitCapTxValidator.Instance
         ]));
 
-        var expectedChainIdTxValidator = new ExpectedChainIdTxValidator(chainId);
+        ExpectedChainIdTxValidator expectedChainIdTxValidator = new(chainId);
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
             NonceCapTxValidator.Instance,

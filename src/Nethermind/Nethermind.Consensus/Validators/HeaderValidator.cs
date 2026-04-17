@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Validators
         protected readonly ISealValidator _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
         protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly long? _daoBlockNumber = specProvider.DaoBlockNumber;
-        protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        protected readonly ILogger _logger = logManager?.GetClassLogger<HeaderValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
@@ -268,7 +268,7 @@ namespace Nethermind.Consensus.Validators
             // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
             // In hive we have tests that using long.MaxValue in the genesis block
             // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than long.MaxValue
-            var gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
+            bool gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
 
             if (!gasLimitNotTooHigh)
             {

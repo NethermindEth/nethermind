@@ -23,7 +23,7 @@ public class TestBlockValidator(bool suggestedValidationResult = true) : IBlockV
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) => Validate(out error);
     private bool Validate(out string? error)
     {
-        var result = _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+        bool result = _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         error = result ? null : "";
         return result;
     }

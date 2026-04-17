@@ -28,8 +28,5 @@ internal class TestChainHeadInfoProvider : IChainHeadInfoProvider
     public bool IsProcessingBlock { get; set; }
     public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
-    public void RaiseHeadChanged(BlockReplacementEventArgs args)
-    {
-        HeadChanged?.Invoke(this, args);
-    }
+    public void RaiseHeadChanged(BlockReplacementEventArgs args) => HeadChanged?.Invoke(this, args);
 }

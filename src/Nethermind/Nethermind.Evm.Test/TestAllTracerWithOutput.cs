@@ -11,10 +11,7 @@ namespace Nethermind.Evm.Test
 {
     public class TestAllTracerWithOutput : TxTracer
     {
-        public TestAllTracerWithOutput()
-        {
-            IsTracingAccess = true;
-        }
+        public TestAllTracerWithOutput() => IsTracingAccess = true;
 
         public override bool IsTracingReceipt => true;
         public override bool IsTracingActions => true;
@@ -38,33 +35,35 @@ namespace Nethermind.Evm.Test
 
         public byte StatusCode { get; private set; }
 
+        public GasConsumed GasConsumedResult { get; private set; }
+        public long CumulativeRegularGasUsed { get; private set; }
+
         public long Refund { get; private set; }
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = new();
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
+            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
             GasSpent = gasSpent.SpentGas;
+            GasConsumedResult = gasSpent;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
+            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
             GasSpent = gasSpent.SpentGas;
+            GasConsumedResult = gasSpent;
             Error = error;
             ReturnValue = output ?? [];
             StatusCode = Evm.StatusCode.Failure;
         }
 
-        public override void ReportActionError(EvmExceptionType exceptionType)
-        {
-            ReportedActionErrors.Add(exceptionType);
-        }
+        public override void ReportActionError(EvmExceptionType exceptionType) => ReportedActionErrors.Add(exceptionType);
 
-        public override void ReportRefund(long refund)
-        {
-            Refund += refund;
-        }
+        public override void ReportRefund(long refund) => Refund += refund;
+
     }
 }

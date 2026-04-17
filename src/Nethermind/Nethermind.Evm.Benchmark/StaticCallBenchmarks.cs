@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Benchmark
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
-        private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
+        private BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private VmState<EthereumGasPolicy> _evmState;
         private IWorldState _stateProvider;
@@ -125,9 +125,6 @@ namespace Nethermind.Evm.Benchmark
         }
 
         [Benchmark]
-        public void No_machine_running()
-        {
-            _stateProvider.Reset();
-        }
+        public void No_machine_running() => _stateProvider.Reset();
     }
 }

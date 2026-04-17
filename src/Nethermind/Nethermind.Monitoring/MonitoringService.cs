@@ -56,7 +56,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
         _logger = logManager is null
             ? throw new ArgumentNullException(nameof(logManager))
-            : logManager.GetClassLogger();
+            : logManager.GetClassLogger<MonitoringService>();
         _options = GetOptions(metricsConfig);
     }
 
@@ -107,10 +107,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    public void AddMetricsUpdateAction(Action callback)
-    {
-        _metricsController.AddMetricsUpdateAction(callback);
-    }
+    public void AddMetricsUpdateAction(Action callback) => _metricsController.AddMetricsUpdateAction(callback);
 
     public string Description => "Monitoring service";
 

@@ -15,7 +15,7 @@ namespace Nethermind.Benchmarks.Rlp
 {
     public class RlpEncodeBlockBenchmark
     {
-        private static BlockDecoder _blockDecoder = new BlockDecoder();
+        private static BlockDecoder _blockDecoder = new();
 
         private static Block _block;
 
@@ -23,7 +23,7 @@ namespace Nethermind.Benchmarks.Rlp
 
         public RlpEncodeBlockBenchmark()
         {
-            var transactions = new Transaction[100];
+            Transaction[] transactions = new Transaction[100];
             for (int i = 0; i < 100; i++)
             {
                 transactions[i] = Build.A.Transaction.WithData(new byte[] { (byte)i }).WithNonce((UInt256)i).WithValue((UInt256)i).Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
@@ -59,30 +59,21 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public byte[] Improved()
-        {
-            throw new NotImplementedException();
-        }
+        public byte[] Improved() => throw new NotImplementedException();
 
         [Benchmark]
-        public byte[] Improved2()
-        {
-            return _blockDecoder.Encode(_block).Bytes;
-        }
+        public byte[] Improved2() => _blockDecoder.Encode(_block).Bytes;
 
         [Benchmark]
         public byte[] Improved3()
         {
             int length = _blockDecoder.GetLength(_block, RlpBehaviors.None);
-            RlpStream stream = new RlpStream(length);
+            RlpStream stream = new(length);
             _blockDecoder.Encode(stream, _block);
             return Bytes.Empty;
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Serialization.Rlp.Rlp.Encode(_block).Bytes;
-        }
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_block).Bytes;
     }
 }

@@ -170,10 +170,8 @@ public class TransactionComparisonTests
 
         public IComparer<Transaction> DefaultComparer => _transactionComparerProvider.GetDefaultComparer();
 
-        public IComparer<Transaction> GetProducerComparer(BlockPreparationContext blockPreparationContext)
-        {
-            return _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
-        }
+        public IComparer<Transaction> GetProducerComparer(BlockPreparationContext blockPreparationContext) =>
+            _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         public TestingContext WithHeadBlockNumber(long headBlockNumber)
         {

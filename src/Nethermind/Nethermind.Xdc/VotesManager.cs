@@ -15,6 +15,7 @@ using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -63,7 +64,7 @@ internal class VotesManager(
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        var vote = new Vote(blockInfo, (ulong)gapNumber, isMyVote: true);
+        Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
         Sign(vote);
 
@@ -122,7 +123,7 @@ internal class VotesManager(
 
             // At this point, the QC should be processed for this *round*.
             // Ensure this runs only once per round:
-            var round = vote.ProposedBlockInfo.Round;
+            ulong round = vote.ProposedBlockInfo.Round;
             if (!_qcBuildStartedByRound.TryAdd(round, 0))
                 return Task.CompletedTask;
             OnVotePoolThresholdReached(validSignatures, vote);
@@ -134,46 +135,59 @@ internal class VotesManager(
     {
         _votePool.EndRound(round);
 
-        foreach (var key in _qcBuildStartedByRound.Keys)
+        foreach (ulong key in _qcBuildStartedByRound.Keys)
             if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
     }
 
-    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc) => VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc);
-    public bool VerifyVotingRules(XdcBlockHeader header) => VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert);
-    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc)
+    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>
+        VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc, out error);
+
+    public bool VerifyVotingRules(XdcBlockHeader header, [NotNullWhen(false)] out string? error) =>
+        VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert, out error);
+
+    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc, out string? error)
     {
         if ((long)_ctx.CurrentRound <= _highestVotedRound)
         {
+            error = $"Already voted at round {_highestVotedRound}, current round {_ctx.CurrentRound}";
             return false;
         }
 
         if (roundNumber != _ctx.CurrentRound)
         {
+            error = $"Vote round {roundNumber} does not match current round {_ctx.CurrentRound}";
             return false;
         }
 
         if (_ctx.LockQC is null)
         {
+            error = null;
             return true;
         }
 
         if (qc.ProposedBlockInfo.Round > _ctx.LockQC.ProposedBlockInfo.Round)
         {
+            error = null;
             return true;
         }
 
-        if (!IsExtendingFromAncestor(blockHash, blockNumber, _ctx.LockQC.ProposedBlockInfo))
+        BlockRoundInfo locked = _ctx.LockQC.ProposedBlockInfo;
+        if (!IsExtendingFromAncestor(blockHash, blockNumber, locked))
         {
+            error =
+                $"Block {blockHash} (number {blockNumber}, round {roundNumber}) does not extend from locked QC block " +
+                $"{locked.Hash}(number {locked.BlockNumber}, round {locked.Round})";
             return false;
         }
 
+        error = null;
         return true;
     }
 
     public Task OnReceiveVote(Vote vote)
     {
-        var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
-        var currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+        long voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
+        long currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
         if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
@@ -234,9 +248,9 @@ internal class VotesManager(
 
     private Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        var masternodeSet = new HashSet<Address>(masternodes);
-        var signatures = new List<Signature>();
-        foreach (var vote in votes)
+        HashSet<Address> masternodeSet = new(masternodes);
+        List<Signature> signatures = new();
+        foreach (Vote vote in votes)
         {
             if (vote.Signer is null)
             {
@@ -259,8 +273,5 @@ internal class VotesManager(
         vote.Signer = _signer.Address;
     }
 
-    public long GetVotesCount(Vote vote)
-    {
-        return _votePool.GetCount(vote);
-    }
+    public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
 }

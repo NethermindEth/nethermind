@@ -168,10 +168,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithParent(Block block)
-        {
-            return WithParent(block.Header);
-        }
+        public BlockBuilder WithParent(Block block) => WithParent(block.Header);
 
         public BlockBuilder WithPostMergeRules()
         {
@@ -270,9 +267,9 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithWithdrawals(int count)
         {
-            var withdrawals = new Withdrawal[count];
+            Withdrawal[] withdrawals = new Withdrawal[count];
 
-            for (var i = 0; i < count; i++)
+            for (int i = 0; i < count; i++)
                 withdrawals[i] = new();
 
             return WithWithdrawals(withdrawals);

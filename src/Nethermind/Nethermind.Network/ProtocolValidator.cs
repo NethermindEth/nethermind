@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -11,7 +12,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using System;
 using System.Text.RegularExpressions;
 
 namespace Nethermind.Network
@@ -49,15 +49,12 @@ namespace Nethermind.Network
             _peerManager = peerManager;
         }
 
-        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs)
+        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs) => protocol switch
         {
-            return protocol switch
-            {
-                Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
-                Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
-                _ => true,
-            };
-        }
+            Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
+            Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
+            _ => true,
+        };
 
         private bool ValidateP2PProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
         {

@@ -35,10 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         }
 
         [Test]
-        public void Roundtrip_with_null_top_level()
-        {
-            Test(null);
-        }
+        public void Roundtrip_with_null_top_level() => Test(null);
 
         [Test]
         public void Roundtrip_with_nulls()
