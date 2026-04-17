@@ -61,9 +61,12 @@ internal sealed class StateCompositionVisitor(
 
     public void VisitMissingNode(in StateCompositionContext ctx, in ValueHash256 nodeHash)
     {
+        // Counter increments every miss; log is latched to the first so a pruning
+        // window eviction mid-scan cannot flood the log.
+        bool wasFirst = !_missingNodesObserved;
         _missingNodesObserved = true;
         Metrics.IncrementScanMissingNodes();
-        if (_logger.IsWarn)
+        if (wasFirst && _logger.IsWarn)
             _logger.Warn($"StateComposition: missing node at depth {ctx.Level}, storage={ctx.IsStorage}");
     }
 

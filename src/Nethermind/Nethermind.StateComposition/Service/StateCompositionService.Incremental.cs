@@ -48,16 +48,14 @@ internal sealed partial class StateCompositionService
             IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
 
             TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, resolver);
-            // Feed the code-hash tracker: it looks up bytecode size exactly once
-            // per newly-observed hash, so the cost is bounded by the number of
-            // distinct code hashes introduced in this diff.
+            // Size-lookup lambda is invoked once per newly-observed code hash,
+            // not per reference, so cost stays bounded by distinct new hashes.
             CumulativeTrieStats updated = _stateHolder.ApplyIncrementalDiffAndUpdate(
                 diff, head.Number, head.Header.StateRoot,
                 hash => _stateReader.GetCode(hash)?.Length ?? 0);
 
             Metrics.UpdateFromCumulativeStats(updated);
-            // Skip the labeled-gauge republish when the depth distribution did not change.
-            // Gauges retain their last published value, which is correct — nothing changed.
+            // Skip the labeled-gauge republish when nothing changed; gauges retain their last value.
             if (_config.TrackDepthIncrementally && !diff.DepthDelta.IsEmpty())
                 Metrics.UpdateDepthDistribution(_stateHolder.CurrentDepthStats);
             Metrics.StateCompIncrementalBlock = head.Number;
