@@ -75,10 +75,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     }
 
     public byte[] GetOriginal(in StorageCell storageCell)
-    {
-        _generatingBlockAccessList.AddStorageRead(storageCell);
-        return _innerWorldState.GetOriginal(storageCell);
-    }
+        => _innerWorldState.GetOriginal(storageCell);
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
