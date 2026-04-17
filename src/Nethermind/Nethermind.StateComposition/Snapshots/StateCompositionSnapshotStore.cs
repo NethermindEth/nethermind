@@ -27,11 +27,8 @@ internal sealed class StateCompositionSnapshotStore(
 
     private static readonly StateCompositionSnapshotDecoder Decoder = StateCompositionSnapshotDecoder.Instance;
 
-    // Sentinel key holding the latest committed block number for O(1) lookup.
-    // 0xFF...FF (8 bytes) is the big-endian encoding of long.MaxValue, which is a
-    // theoretical collision with a real block-number key. At 12-second block times
-    // that collision lands ~3.5 trillion years in the future, well past any
-    // practical chain lifetime; keeping the sentinel here avoids a schema migration.
+    // long.MaxValue big-endian: theoretical collision with a real block-number key
+    // lands ~3.5 trillion years out at 12s blocks, so no schema migration needed.
     private static readonly byte[] LatestKey = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
     private readonly ILogger _logger = logManager.GetClassLogger<StateCompositionSnapshotStore>();
 
