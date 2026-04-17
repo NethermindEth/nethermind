@@ -62,7 +62,7 @@ internal sealed class StateCompositionVisitor(
     public void VisitMissingNode(in StateCompositionContext ctx, in ValueHash256 nodeHash)
     {
         _missingNodesObserved = true;
-        Metrics.StateCompScanMissingNodes++;
+        Metrics.IncrementScanMissingNodes();
         if (_logger.IsWarn)
             _logger.Warn($"StateComposition: missing node at depth {ctx.Level}, storage={ctx.IsStorage}");
     }

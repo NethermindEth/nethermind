@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Threading;
 using Nethermind.Core.Attributes;
 
 using Nethermind.StateComposition.Data;
@@ -88,9 +89,13 @@ public static class Metrics
     [Description("Times the incremental baseline was detected as stale (prevRoot missing from DB) and auto-rescan was scheduled")]
     public static long StateCompBaselineInvalidations { get; set; }
 
+    private static long _stateCompScanMissingNodes;
+
     [CounterMetric]
     [Description("Times a full or contract scan encountered a missing trie node (pruned/corrupt DB); the resulting stats are incomplete")]
-    public static long StateCompScanMissingNodes { get; set; }
+    public static long StateCompScanMissingNodes => _stateCompScanMissingNodes;
+
+    internal static void IncrementScanMissingNodes() => Interlocked.Increment(ref _stateCompScanMissingNodes);
 
     [GaugeMetric]
     [Description("Contracts with non-empty storage")]

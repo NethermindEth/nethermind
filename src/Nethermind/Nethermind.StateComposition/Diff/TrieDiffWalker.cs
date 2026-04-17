@@ -13,6 +13,8 @@ namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker(bool trackDepth = false)
 {
+    private static readonly ValueHash256 s_emptyCodeHash = Keccak.OfAnEmptyString.ValueHash256;
+
     private readonly CumulativeDepthStats _depthDelta = new();
     private readonly List<SlotCountChange> _slotCountChanges = [];
     private readonly List<CodeHashChange> _codeHashChanges = [];
@@ -102,9 +104,8 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
 
     private void RecordCodeHashChange(in ValueHash256 addressHash, in ValueHash256 oldCodeHash, in ValueHash256 newCodeHash)
     {
-        ValueHash256 emptyCode = Keccak.OfAnEmptyString.ValueHash256;
-        ValueHash256 oldNormalized = oldCodeHash == emptyCode ? CodeHashChange.NoCode : oldCodeHash;
-        ValueHash256 newNormalized = newCodeHash == emptyCode ? CodeHashChange.NoCode : newCodeHash;
+        ValueHash256 oldNormalized = oldCodeHash == s_emptyCodeHash ? CodeHashChange.NoCode : oldCodeHash;
+        ValueHash256 newNormalized = newCodeHash == s_emptyCodeHash ? CodeHashChange.NoCode : newCodeHash;
 
         if (oldNormalized == newNormalized) return;
 

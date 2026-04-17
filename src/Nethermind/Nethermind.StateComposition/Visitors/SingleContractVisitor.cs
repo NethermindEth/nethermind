@@ -44,7 +44,7 @@ internal sealed class SingleContractVisitor(
 
     public void VisitMissingNode(in StateCompositionContext ctx, in ValueHash256 nodeHash)
     {
-        Metrics.StateCompScanMissingNodes++;
+        Metrics.IncrementScanMissingNodes();
         if (_logger.IsWarn)
             _logger.Warn($"InspectContract: missing node at depth {ctx.Level}");
     }
