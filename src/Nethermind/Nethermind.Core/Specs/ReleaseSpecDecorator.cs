@@ -111,7 +111,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
-    public virtual bool IsEip7907Enabled => spec.IsEip7907Enabled;
     public virtual bool IsEip7928Enabled => spec.IsEip7928Enabled;
     public virtual bool IsEip8037Enabled => spec.IsEip8037Enabled;
     public virtual bool IsEip7708Enabled => spec.IsEip7708Enabled;

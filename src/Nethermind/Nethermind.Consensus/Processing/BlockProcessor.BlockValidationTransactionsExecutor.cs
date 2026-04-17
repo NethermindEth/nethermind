@@ -12,70 +12,63 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Metrics = Nethermind.Evm.Metrics;
 
-namespace Nethermind.Consensus.Processing
+namespace Nethermind.Consensus.Processing;
+
+public partial class BlockProcessor
 {
-    public partial class BlockProcessor
+    public class BlockValidationTransactionsExecutor(
+        ITransactionProcessorAdapter transactionProcessor,
+        IWorldState stateProvider,
+        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+        : IBlockProcessor.IBlockTransactionsExecutor
     {
-        public class BlockValidationTransactionsExecutor(
-            ITransactionProcessorAdapter transactionProcessor,
-            IWorldState stateProvider,
-            BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
-            : IBlockProcessor.IBlockTransactionsExecutor
+        protected IWorldState _stateProvider = stateProvider;
+        protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
+
+        public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+
+        public virtual void SetBlockAccessListManager(in IBlockAccessListManager balManager) { }
+
+        public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            protected IWorldState _stateProvider = stateProvider;
-            protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
+            Metrics.ResetBlockStats();
 
-            public
-#if !ZK_EVM
-            virtual
-#endif
-            void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
 
-            public
-#if !ZK_EVM
-            virtual
-#endif
-            void SetBlockAccessListManager(in IBlockAccessListManager balManager)
-            { }
-
-            public
-#if !ZK_EVM
-            virtual
-#endif
-            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                Metrics.ResetBlockStats();
+                Transaction currentTx = block.Transactions[i];
+                ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 
-                for (int i = 0; i < block.Transactions.Length; i++)
+                if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
-                    Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                    ThrowInvalidBlockForGasLimit(block);
                 }
-
-                return [.. receiptsTracer.TxReceipts];
             }
 
-            protected
-#if !ZK_EVM
-            virtual
-#endif
-            void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-            {
-                TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
-                if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
-                _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
-            }
+            return [.. receiptsTracer.TxReceipts];
 
-            [DoesNotReturn, StackTraceHidden]
-            protected static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
+            [DebuggerHidden]
+            [DoesNotReturn]
+            static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
+        }
 
-            /// <summary>
-            /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>
-            /// </summary>
-            public interface ITransactionProcessedEventHandler
-            {
-                void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
-            }
+        protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+        {
+            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
+            if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+            _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        protected static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
+
+        /// <summary>
+        /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>
+        /// </summary>
+        public interface ITransactionProcessedEventHandler
+        {
+            void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
         }
     }
 }

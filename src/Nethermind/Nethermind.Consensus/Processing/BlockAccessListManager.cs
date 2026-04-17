@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -87,8 +87,11 @@ public class BlockAccessListManager(
 
     public void Setup(Block block)
     {
-        _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager : _sequentialTxProcessorWithWorldStateManager;
-        _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
+        if (Enabled)
+        {
+            _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager : _sequentialTxProcessorWithWorldStateManager;
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
+        }
     }
 
     public void SpendGas(long gas)
@@ -241,6 +244,7 @@ public class BlockAccessListManager(
         }
     }
 
+    // todo: optimize early validation
     public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true)
     {
         if (block.BlockAccessList is null)
@@ -299,7 +303,8 @@ public class BlockAccessListManager(
             {
                 if (generatedHead.Value.BalanceChange != suggestedHead.Value.BalanceChange ||
                     generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
-                    generatedHead.Value.CodeChange != suggestedHead.Value.CodeChange ||
+                    generatedHead.Value.CodeChange.HasValue != suggestedHead.Value.CodeChange.HasValue ||
+                    generatedHead.Value.CodeChange is not null && !generatedHead.Value.CodeChange.Value.Equals(suggestedHead.Value.CodeChange.Value) ||
                     !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
                 {
                     throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
@@ -328,7 +333,8 @@ public class BlockAccessListManager(
             AdvanceSuggested();
         }
 
-        if (validateStorageReads && _gasRemaining < (suggestedReads - generatedReads) * Eip7928Constants.ItemCost)
+        int surplusSuggestedReads = suggestedReads - generatedReads;
+        if (validateStorageReads && surplusSuggestedReads > 0 && _gasRemaining < surplusSuggestedReads * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
@@ -380,10 +386,10 @@ public class BlockAccessListManager(
                 slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
             }
 
-            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            foreach (UInt256 storageRead in accountChanges.StorageReads)
             {
-                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
-                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
+                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead);
+                StorageCell storageCell = new(accountChanges.Address, storageRead);
                 slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
             }
         }
@@ -393,7 +399,7 @@ public class BlockAccessListManager(
         => c.BalanceChange is null &&
             c.NonceChange is null &&
             c.CodeChange is null &&
-            !c.SlotChanges.Any();
+            !c.HasSlotChanges;
 
     private interface ITxProcessorWithWorldStateManager
     {

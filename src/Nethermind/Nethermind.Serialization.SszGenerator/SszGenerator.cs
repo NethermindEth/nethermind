@@ -64,11 +64,9 @@ public class SszGenerator : IIncrementalGenerator
     private static string NamespaceLine(SszType decl) =>
         string.IsNullOrEmpty(decl.Namespace) ? string.Empty : $"namespace {decl.Namespace};";
 
-    private static bool IsClassWithAttribute(SyntaxNode syntaxNode)
-    {
-        return syntaxNode is TypeDeclarationSyntax classDeclaration &&
-               classDeclaration.AttributeLists.Any(x => x.Attributes.Any());
-    }
+    private static bool IsClassWithAttribute(SyntaxNode syntaxNode) =>
+        syntaxNode is TypeDeclarationSyntax classDeclaration &&
+        classDeclaration.AttributeLists.Any(x => x.Attributes.Any());
 
     private static (SszType Type, List<SszType> FoundTypes, Location? Location, bool IsNested)? GetClassWithAttribute(GeneratorSyntaxContext context)
     {
@@ -504,7 +502,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -673,7 +671,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -877,7 +875,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}

@@ -184,6 +184,14 @@ public class BlockValidator(
             error ??= BlockErrorMessages.InvalidReceiptsRoot(suggestedBlock.Header.ReceiptsRoot, processedBlock.Header.ReceiptsRoot);
         }
 
+        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
+            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
+            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+        }
+
         if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
         {
             if (_logger.IsWarn) _logger.Warn($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
@@ -212,14 +220,6 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
-        }
-
-        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
-        {
-            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
-            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
-            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
-            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
         }
 
         if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)

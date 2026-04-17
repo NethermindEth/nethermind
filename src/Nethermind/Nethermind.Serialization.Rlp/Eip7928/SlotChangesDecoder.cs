@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Comparers;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -26,7 +26,8 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
         int? lastIndex = null;
-        SortedList<int, StorageChange> changesList = new(changes.ToDictionary(s =>
+        SortedList<int, StorageChange> changesList = new(changes.Length, IntComparer.Instance);
+        foreach (StorageChange s in changes)
         {
             int index = s.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
@@ -34,8 +35,8 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
                 throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
             }
             lastIndex = index;
-            return index;
-        }, s => s));
+            changesList.Add(index, s);
+        }
         SlotChanges slotChanges = new(slot, changesList);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))

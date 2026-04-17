@@ -6,10 +6,10 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.ExecutionRequests;
@@ -221,7 +221,8 @@ namespace Nethermind.AuRa.Test
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 blockhashProvider,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new BlocksConfig());
 
             return (branchProcessor, stateProvider, blockTree);
         }

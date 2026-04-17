@@ -3,14 +3,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 public readonly struct StorageChange(int blockAccessIndex, UInt256 newValue) : IEquatable<StorageChange>, IIndexedChange
 {
+    [JsonPropertyName("index")]
     public int BlockAccessIndex { get; init; } = blockAccessIndex;
 
+    [JsonPropertyName("value")]
     public UInt256 NewValue { get; init; } = newValue;
 
     public readonly bool Equals(StorageChange other) =>

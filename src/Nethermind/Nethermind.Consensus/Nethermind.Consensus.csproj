@@ -4,11 +4,6 @@
     <Nullable>annotations</Nullable>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
-    <Compile Remove="Processing\BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs" />
-    <Compile Remove="Processing\BlockAccessListManager.cs" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>

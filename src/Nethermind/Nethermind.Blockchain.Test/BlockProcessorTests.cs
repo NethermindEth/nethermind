@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
@@ -35,7 +36,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
-using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -70,6 +70,7 @@ public class BlockProcessorTests
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
+            new BlocksConfig(),
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);

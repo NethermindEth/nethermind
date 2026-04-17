@@ -188,7 +188,7 @@ internal class XdcTransactionProcessor(
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))
             || !(result = IncrementNonce(tx, header, spec, tracer, opts))
-            || !(result = ValidateStatic(tx, header, spec, opts, intrinsicGas)))
+            || !(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas)))
         {
             if (restore)
             {

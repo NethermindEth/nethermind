@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -122,8 +123,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public ValueHash256 GetCodeHash(Address address)
     {
         AddAccountRead(address);
-        byte[]? currentCode = GetCodeCurrent(address);
-        return currentCode is null ? _innerWorldState.GetCodeHash(address) : ValueKeccak.Compute(currentCode);
+        return GetCodeHashInternal(address);
     }
 
     public byte[]? GetCode(Address address)
@@ -298,25 +298,37 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     }
 
     private byte[]? GetCodeCurrent(Address address)
+        => TryGetCodeChangeCurrent(address, out CodeChange? codeChange) ? codeChange.Value.NewCode : null;
+
+    private bool GetCodeHashCurrent(Address address, [NotNullWhen(true)] out ValueHash256? hash)
+    {
+        hash = null;
+        bool res = TryGetCodeChangeCurrent(address, out CodeChange? codeChange);
+        if (res)
+        {
+            hash = codeChange.Value.NewCodeHash;
+        }
+        return res;
+    }
+
+    private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
         {
-            return accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1].NewCode;
+            codeChange = accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1];
+            return true;
         }
 
-        return null;
+        codeChange = null;
+        return false;
     }
 
     private byte[]? GetCodeInternal(Address address)
         => GetCodeCurrent(address) ?? _innerWorldState.GetCode(address);
 
     private ValueHash256 GetCodeHashInternal(Address address)
-    {
-        // todo: store code hash?
-        byte[]? code = GetCodeCurrent(address);
-        return code is null ? _innerWorldState.GetCodeHash(address) : ValueKeccak.Compute(code);
-    }
+        => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : _innerWorldState.GetCodeHash(address);
 
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
     {

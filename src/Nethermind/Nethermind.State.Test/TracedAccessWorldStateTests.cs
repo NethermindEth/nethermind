@@ -170,7 +170,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
             Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
-            Assert.That(ac.StorageReads.First().Key, Is.EqualTo((UInt256)2));
+            Assert.That(ac.StorageReads.First(), Is.EqualTo((UInt256)2));
         }
     }
 
