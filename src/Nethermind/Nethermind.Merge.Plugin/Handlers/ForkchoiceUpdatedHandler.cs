@@ -362,6 +362,8 @@ public class ForkchoiceUpdatedHandler(
             return !_blockTree.IsMainChain(candidateHeader);
         }
 
+        // Walk depth is bounded by (newHeadBlock.Number - candidateHeader.Number)
+        // The Number > Number early-return above prevents an unbounded walk.
         BlockHeader? cursor = newHeadBlock.Header;
         while (cursor is not null && cursor.Number > candidateHeader.Number)
         {
