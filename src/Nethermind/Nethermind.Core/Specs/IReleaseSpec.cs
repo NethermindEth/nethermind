@@ -438,11 +438,6 @@ namespace Nethermind.Core.Specs
         public bool IsEip7939Enabled { get; }
 
         /// <summary>
-        /// EIP-7907: Meter Contract Code Size And Increase Limit
-        /// </summary>
-        public bool IsEip7907Enabled { get; }
-
-        /// <summary>
         /// EIP-7928: Block-Level Access Lists
         /// </summary>
         public bool IsEip7928Enabled { get; }

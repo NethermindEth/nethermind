@@ -68,6 +68,20 @@ public class Eip8024Tests : VirtualMachineTestsBase
         new UInt256(result.ReturnValue, true).Should().Be((UInt256)expectedReturn);
     }
 
+    private static IEnumerable<TestCaseData> MissingImmediateSuccessTestCases()
+    {
+        yield return new TestCaseData(PushNValues(145).Op(Instruction.DUPN).Done).SetName("DupN_MissingImmediate_DecodesAsZero");
+        yield return new TestCaseData(PushNValues(146).Op(Instruction.SWAPN).Done).SetName("SwapN_MissingImmediate_DecodesAsZero");
+        yield return new TestCaseData(PushNValues(17).Op(Instruction.EXCHANGE).Done).SetName("Exchange_MissingImmediate_DecodesAsZero");
+    }
+
+    [TestCaseSource(nameof(MissingImmediateSuccessTestCases))]
+    public void MissingImmediate_AtEndOfCode_DecodesAsZero(byte[] code)
+    {
+        TestAllTracerWithOutput result = Execute(code);
+        result.StatusCode.Should().Be(StatusCode.Success);
+    }
+
     private static IEnumerable<TestCaseData> FailureTestCases()
     {
         // Disallowed immediates (91-127 for DUPN/SWAPN, 82-127 for EXCHANGE)
@@ -80,8 +94,13 @@ public class Eip8024Tests : VirtualMachineTestsBase
         yield return new TestCaseData(PushNValues(10).Op(Instruction.SWAPN).Data(0x80).Done).SetName("SwapN_StackUnderflow");
         yield return new TestCaseData(PushNValues(2).Op(Instruction.EXCHANGE).Data(0x9d).Done).SetName("Exchange_StackUnderflow");
 
-        // Missing immediate at end of code is now a graceful STOP (EIP-8024 spec)
-        // Moved to EndOfCode_ActsAsStop test below
+        // Missing immediate at end of code decodes as 0, then fails if the stack is too shallow.
+        yield return new TestCaseData(new byte[] { 0xe6 }).SetName("DupN_MissingImmediate");
+        yield return new TestCaseData(new byte[] { 0xe7 }).SetName("SwapN_MissingImmediate");
+        yield return new TestCaseData(new byte[] { 0xe8 }).SetName("Exchange_MissingImmediate");
+
+        // Regression: PUSH1 0x42, DUPN with no immediate must underflow, not gracefully STOP.
+        yield return new TestCaseData(new byte[] { 0x60, 0x42, 0xe6 }).SetName("DupN_TruncatedAfterPush");
 
         // Max depth: immediate 0x5a -> depth=235, only 234 items
         yield return new TestCaseData(PushZeros(234).Op(Instruction.DUPN).Data(0x5a).Done).SetName("DupN_MaxDepth_235");
@@ -119,17 +138,6 @@ public class Eip8024Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(Activation, 100000, code);
         result.StatusCode.Should().Be(StatusCode.Success);
         AssertGas(result, expectedGas);
-    }
-
-    [TestCase(new byte[] { 0xe6 }, TestName = "DupN_MissingImmediate")]
-    [TestCase(new byte[] { 0xe7 }, TestName = "SwapN_MissingImmediate")]
-    [TestCase(new byte[] { 0xe8 }, TestName = "Exchange_MissingImmediate")]
-    public void EndOfCode_ActsAsStop(byte[] code)
-    {
-        // When DUPN/SWAPN/EXCHANGE appears at end of code with no immediate byte,
-        // it acts as a graceful STOP per EIP-8024 spec.
-        TestAllTracerWithOutput result = Execute(code);
-        result.StatusCode.Should().Be(StatusCode.Success);
     }
 
     [Test]
