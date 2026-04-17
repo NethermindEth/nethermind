@@ -107,4 +107,4 @@ dotnet_diagnostic.CA1507.severity = warning
 dotnet_diagnostic.CA1510.severity = warning
 dotnet_diagnostic.CA2208.severity = suggestion
 dotnet_diagnostic.NETH002.severity = error
-
+dotnet_diagnostic.IDE0320.severity = warning
