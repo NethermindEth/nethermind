@@ -59,9 +59,11 @@ public abstract class JsonRpc
             public string? Id { get => _id.Value; }
 
             public Batch(JsonNode node) : base(node) => _id = new(() =>
-                Items().FirstOrDefault()?.Id is { } first && Items().LastOrDefault()?.Id is { } last
-                    ? $"{first}:{last}"
-                    : null);
+                _node.AsArray() is { Count: > 0 } arr
+                    && arr[0]?["id"] is { } firstId
+                    && arr[^1]?["id"] is { } lastId
+                        ? $"{(Int64)firstId}:{(Int64)lastId}"
+                        : null);
 
             public IEnumerable<Single?> Items()
             {

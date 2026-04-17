@@ -482,18 +482,18 @@ public class ForkChoiceUpdatedHandler : IDisposable
     {
         Id = newId,
         Result = response.Result is not null
-                ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Result))
-                : null,
+            ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Result))
+            : null,
         Error = response.Error is not null
-                ? new JsonRpcError
-                {
-                    Code = response.Error.Code,
-                    Message = response.Error.Message,
-                    Data = response.Error.Data is not null
-                        ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Error.Data))
-                        : null
-                }
-                : null
+            ? new JsonRpcError
+            {
+                Code = response.Error.Code,
+                Message = response.Error.Message,
+                Data = response.Error.Data is not null
+                    ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Error.Data))
+                    : null
+            }
+            : null
     };
 
     private static string ExtractHeadBlockHash(JsonRpcRequest request)
