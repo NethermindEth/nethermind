@@ -124,7 +124,7 @@ public class AccountChanges : IEquatable<AccountChanges>
                 _storageChanges.Add(kv.Key, kv.Value);
                 // When a new change is merged for a slot that previously only had a read,
                 // remove the now-redundant read. A change entry supersedes a read.
-                _storageReads.Remove(kv.Key);
+                RemoveStorageRead(kv.Key);
             }
         }
 
