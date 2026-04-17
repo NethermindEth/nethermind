@@ -64,11 +64,6 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
-    // Lower bound for the Casper FFG monotonicity check on finalized block. L1-derived finality
-    // models (e.g. Taiko) follow L1 reorgs and need to permit finalized-regression; they override
-    // this to disable the check.
-    protected virtual long PreviousFinalizedBlockLevel => _manualBlockFinalizationManager.LastFinalizedBlockLevel;
-
     protected virtual bool IsOnMainChainBehindHead(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
@@ -81,6 +76,23 @@ public class ForkchoiceUpdatedHandler(
 
         errorResult = null;
         return true;
+    }
+
+    // Rejects a finalized/safe entry that fails the numeric spec-ordering bounds (Casper FFG
+    // monotonicity for finalized, safe >= finalized for safe) or the ancestry check against
+    // newHead. L1-derived finality models override this to relax the bounds check while keeping
+    // ancestry validation.
+    protected virtual ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(
+        BlockHeader? header, long lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
+    {
+        if ((header is not null && (header.Number < lowerBound || header.Number > newHeadHeader.Number))
+            || IsInconsistent(header, newHeadHeader))
+        {
+            string errorMsg = $"Inconsistent ForkChoiceState - {label} block hash. Request: {requestStr}";
+            if (_logger.IsWarn) _logger.Warn(errorMsg);
+            return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+        }
+        return null;
     }
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>?> ApplyForkchoiceUpdate(BlockHeader? newHeadHeader, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
@@ -239,23 +251,11 @@ public class ForkchoiceUpdatedHandler(
         // Spec ordering: prevFinalized <= finalized <= safe <= head. Ancestry must be re-validated
         // on every FCU - the binding is (head, finalized, safe), so a repeated finalized/safe hash
         // paired with a new head on a sibling branch is still a spec violation.
-        long prevFinalizedLevel = PreviousFinalizedBlockLevel;
+        long prevFinalizedLevel = _manualBlockFinalizationManager.LastFinalizedBlockLevel;
         long finalizedNumber = finalizedHeader?.Number ?? 0;
 
-        ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(BlockHeader? header, long lowerBound, string label)
-        {
-            if ((header is not null && (header.Number < lowerBound || header.Number > newHeadHeader.Number))
-                || IsInconsistent(header, newHeadHeader))
-            {
-                string errorMsg = $"Inconsistent ForkChoiceState - {label} block hash. Request: {requestStr}";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
-                return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
-            }
-            return null;
-        }
-
-        if (RejectIfInconsistent(finalizedHeader, prevFinalizedLevel, "finalized") is { } finalizedError) return finalizedError;
-        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe") is { } safeError) return safeError;
+        if (RejectIfInconsistent(finalizedHeader, prevFinalizedLevel, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
+        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
 
         bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
