@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using RocksDbSharp;
 
@@ -35,6 +36,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     private readonly ReadOptions _options = options;
     private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
     private readonly bool _ownsReadOptions;
+    private int _disposed;
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
@@ -48,7 +50,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     public virtual void Dispose()
     {
-        if (!_ownsReadOptions)
+        if (!_ownsReadOptions || Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
@@ -138,6 +140,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, iterateLowerBound, iterateUpperBound);
+        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
     }
 }
