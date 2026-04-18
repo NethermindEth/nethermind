@@ -169,13 +169,13 @@ public partial class PatriciaTree
 
         int nibMask;
 
-        if ((flags & Flags.WasSorted) != 0)
-        {
-            nibMask = HexarySearchAlreadySorted(entries, path.Length, indexes);
-        }
-        else if (entries.Length <= 3)
+        if (entries.Length <= 3)
         {
             nibMask = SortTiny(entries, path.Length, indexes);
+        }
+        else if ((flags & Flags.WasSorted) != 0)
+        {
+            nibMask = HexarySearchAlreadySorted(entries, path.Length, indexes);
         }
         else if (entries.Length < InPlaceSortThreshold)
         {
