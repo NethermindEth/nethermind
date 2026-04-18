@@ -10,11 +10,14 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
@@ -22,6 +25,7 @@ public class TaikoPayloadPreparationService(
     IBlockchainProcessor processor,
     IWorldState worldState,
     IL1OriginStore l1OriginStore,
+    ISpecProvider specProvider,
     ILogManager logManager,
     IRlpValueDecoder<Transaction> txDecoder) : IPayloadPreparationService
 {
@@ -114,7 +118,7 @@ public class TaikoPayloadPreparationService(
         throw new EmptyBlockProductionException("Setting state for processing block failed");
     }
 
-    private static BlockHeader BuildHeader(BlockHeader parentHeader, TaikoPayloadAttributes payloadAttributes)
+    private BlockHeader BuildHeader(BlockHeader parentHeader, TaikoPayloadAttributes payloadAttributes)
     {
         BlockHeader header = new(
             parentHeader.Hash!,
@@ -132,6 +136,15 @@ public class TaikoPayloadPreparationService(
             Difficulty = UInt256.Zero,
             TotalDifficulty = UInt256.Zero
         };
+
+        var taikoSpec = (ITaikoReleaseSpec)specProvider.GetSpec(header);
+        if (taikoSpec.IsUzenEnabled)
+        {
+            header.BlobGasUsed = 0;
+            header.ExcessBlobGas = 0;
+            header.ParentBeaconBlockRoot = Keccak.Zero;
+            header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+        }
 
         return header;
     }

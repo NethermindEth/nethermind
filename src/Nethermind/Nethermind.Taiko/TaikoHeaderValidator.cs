@@ -245,6 +245,22 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
     {
+        var taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
+
+        if (taikoSpec.IsUzenEnabled)
+        {
+            // Uzen allows non-zero difficulty (stores ZK gas used)
+            // TotalDifficulty must still be zero or null
+            if (header.TotalDifficulty != 0 && header.TotalDifficulty is not null)
+            {
+                error = BlockErrorMessages.InvalidTotalDifficulty;
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - non-zero total difficulty in Uzen");
+                return false;
+            }
+
+            return true;
+        }
+
         if (header.Difficulty != 0 || header.TotalDifficulty != 0 && header.TotalDifficulty != null)
         {
             error = BlockErrorMessages.InvalidTotalDifficulty;
@@ -254,5 +270,47 @@ public class TaikoHeaderValidator(
         return true;
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true; // not validated in taiko-geth
+    protected override bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+    {
+        var taikoSpec = (ITaikoReleaseSpec)spec;
+
+        if (taikoSpec.IsUzenEnabled)
+        {
+            // Uzen pins RequestsHash to EMPTY_REQUESTS_HASH even though Prague system contracts aren't active
+            return true;
+        }
+
+        return base.ValidateRequestsHash(header, spec, ref error);
+    }
+
+    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+    {
+        var taikoSpec = (ITaikoReleaseSpec)spec;
+
+        if (taikoSpec.IsUzenEnabled)
+        {
+            if (header.BlobGasUsed is not null && header.BlobGasUsed != 0)
+            {
+                error = $"Uzen header must have BlobGasUsed=0, got {header.BlobGasUsed}";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                return false;
+            }
+
+            if (header.ExcessBlobGas is not null && header.ExcessBlobGas != 0)
+            {
+                error = $"Uzen header must have ExcessBlobGas=0, got {header.ExcessBlobGas}";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                return false;
+            }
+
+            if (header.ParentBeaconBlockRoot is not null && header.ParentBeaconBlockRoot != Keccak.Zero)
+            {
+                error = $"Uzen header must have ParentBeaconBlockRoot=zero";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

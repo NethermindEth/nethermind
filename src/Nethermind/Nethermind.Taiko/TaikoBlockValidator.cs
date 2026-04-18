@@ -21,6 +21,7 @@ public class TaikoBlockValidator(
     IEthereumEcdsa ecdsa,
     ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
 {
+    private readonly ILogger _logger = logManager.GetClassLogger();
     private static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").Bytes[..4].ToArray();
     private static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").Bytes[..4].ToArray();
     private static readonly byte[] AnchorV3Selector = Keccak.Compute("anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])").Bytes[..4].ToArray();
@@ -53,6 +54,14 @@ public class TaikoBlockValidator(
 
     private bool ValidateAnchorTransaction(Transaction tx, Block block, ITaikoReleaseSpec spec, out string? errorMessage)
     {
+        if (_logger.IsDebug)
+        {
+            _logger.Debug($"ValidateAnchorTransaction: Type={tx.Type}, To={tx.To}, DataLength={tx.Data.Length}, " +
+                $"Data[..min(8,len)]=0x{Convert.ToHexString(tx.Data.Span[..Math.Min(8, tx.Data.Length)])}, " +
+                $"GasLimit={tx.GasLimit}, MaxFeePerGas={tx.MaxFeePerGas}, BaseFee={block.BaseFeePerGas}, " +
+                $"TaikoL2Address={spec.TaikoL2Address}");
+        }
+
         if (tx.Type != TxType.EIP1559)
         {
             errorMessage = "Anchor transaction must be of type EIP-1559";
@@ -109,8 +118,16 @@ public class TaikoBlockValidator(
         return true;
     }
 
-    private static bool IsValidAnchorSelector(ReadOnlySpan<byte> selector, ITaikoReleaseSpec spec)
+    private bool IsValidAnchorSelector(ReadOnlySpan<byte> selector, ITaikoReleaseSpec spec)
     {
+        if (_logger.IsDebug)
+        {
+            _logger.Debug($"Anchor selector: 0x{Convert.ToHexString(selector)}, " +
+                $"IsUzenEnabled={spec.IsUzenEnabled}, IsShastaEnabled={spec.IsShastaEnabled}, " +
+                $"IsPacayaEnabled={spec.IsPacayaEnabled}, IsOntakeEnabled={spec.IsOntakeEnabled}. " +
+                $"Expected: {(spec.IsShastaEnabled ? $"V4=0x{Convert.ToHexString(AnchorV4Selector)} or V4WithSignalSlots=0x{Convert.ToHexString(AnchorV4WithSignalSlotsSelector)}" : spec.IsPacayaEnabled ? $"V3=0x{Convert.ToHexString(AnchorV3Selector)}" : $"V1=0x{Convert.ToHexString(AnchorSelector)} or V2=0x{Convert.ToHexString(AnchorV2Selector)}")}");
+        }
+
         if (spec.IsShastaEnabled)
             return AnchorV4Selector.AsSpan().SequenceEqual(selector)
                 || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(selector);

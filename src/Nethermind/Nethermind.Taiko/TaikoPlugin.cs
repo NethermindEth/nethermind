@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -23,6 +24,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs.ChainSpecStyle;
@@ -170,15 +172,15 @@ public class TaikoModule : Module
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
-            // Blok processing
+            // Block processing
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
             .AddSingleton<IMainProcessingModule, TaikoMainBlockProcessingModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
+            .AddScoped<IExecutionRequestsProcessor, TaikoExecutionRequestsProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
-            .AddSingleton<IRlpStreamEncoder<Transaction>>((_) => Rlp.GetStreamEncoder<Transaction>()!)
             .AddSingleton<IRlpValueDecoder<Transaction>>((_) => Rlp.GetValueDecoder<Transaction>()!)
-            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, IRlpValueDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
+            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, ISpecProvider, IRlpValueDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
             .AddSingleton<IHealthHintService, IBlocksConfig>(blocksConfig =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
 
@@ -217,6 +219,9 @@ public class TaikoModule : Module
                     surgeConfig);
             })
 
+            // Override GetPayloadV2 to skip fork validation and carry headerDifficulty via blockValue
+            .AddSingleton<IAsyncHandler<byte[], GetPayloadV2Result?>, TaikoGetPayloadV2Handler>()
+
             // Rpc
             .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
             .RegisterSingletonJsonRpcModule<ITaikoEngineRpcModule, TaikoEngineRpcModule>()
@@ -236,6 +241,7 @@ public class TaikoModule : Module
     private static IPayloadPreparationService CreatePayloadPreparationService(
         IBlockProducerEnvFactory blockProducerEnvFactory,
         L1OriginStore l1OriginStore,
+        ISpecProvider specProvider,
         IRlpValueDecoder<Transaction> txDecoder,
         ILogManager logManager)
     {
@@ -245,6 +251,7 @@ public class TaikoModule : Module
             blockProducerEnv.ChainProcessor,
             blockProducerEnv.ReadOnlyStateProvider,
             l1OriginStore,
+            specProvider,
             logManager,
             txDecoder);
 

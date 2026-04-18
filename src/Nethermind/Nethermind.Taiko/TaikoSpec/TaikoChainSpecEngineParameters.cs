@@ -14,6 +14,7 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public long? OntakeTransition { get; set; }
     public long? PacayaTransition { get; set; }
     public ulong? ShastaTimestamp { get; set; }
+    public ulong? UzenTimestamp { get; set; }
     public bool? UseSurgeGasPriceOracle { get; set; }
     public ulong? Rip7728TransitionTimestamp { get; set; }
     public ulong? L1StaticCallTransitionTimestamp { get; set; }
@@ -45,6 +46,11 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
         if (L1StaticCallTransitionTimestamp is not null)
         {
             timestamps.Add(L1StaticCallTransitionTimestamp.Value);
+        }
+
+        if (UzenTimestamp is not null)
+        {
+            timestamps.Add(UzenTimestamp.Value);
         }
     }
 }

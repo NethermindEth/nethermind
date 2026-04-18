@@ -4,6 +4,8 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
 
@@ -11,8 +13,18 @@ namespace Nethermind.Taiko;
 
 public class TaikoExecutionPayload : ExecutionPayload
 {
+    /// <summary>
+    /// Taiko always uses V2 payloads regardless of the EVM spec (Cancun/Prague/Osaka).
+    /// The base ValidateFork would reject V2 payloads when EIP-4844 is active.
+    /// </summary>
+    public override bool ValidateFork(ISpecProvider specProvider) => true;
     public Hash256? WithdrawalsHash { get; set; } = null;
     public Hash256? TxHash { get; set; } = null;
+
+    /// <summary>
+    /// Uzen sidecar field: carries the header difficulty (ZK gas used) through the Engine API.
+    /// </summary>
+    public UInt256? HeaderDifficulty { get; set; }
 
     public new byte[][]? Transactions
     {
@@ -39,7 +51,7 @@ public class TaikoExecutionPayload : ExecutionPayload
                 ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,
-                UInt256.Zero,
+                HeaderDifficulty ?? UInt256.Zero,
                 BlockNumber,
                 GasLimit,
                 Timestamp,
@@ -60,8 +72,32 @@ public class TaikoExecutionPayload : ExecutionPayload
                 WithdrawalsRoot = WithdrawalsHash,
             };
 
+            ApplyUzenPinnedFields(header);
             return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
         }
-        return base.TryGetBlock(totalDifficulty);
+
+        BlockDecodingResult result = base.TryGetBlock(totalDifficulty);
+        if (result.Block is not null)
+        {
+            if (HeaderDifficulty is not null)
+            {
+                result.Block.Header.Difficulty = HeaderDifficulty.Value;
+            }
+            ApplyUzenPinnedFields(result.Block.Header);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// V2 payloads don't carry Cancun/Prague header fields. For Uzen blocks these are
+    /// pinned to known values, so we inject them when the payload didn't supply them.
+    /// For pre-Uzen blocks these fields stay null and are not part of the header RLP.
+    /// </summary>
+    private static void ApplyUzenPinnedFields(BlockHeader header)
+    {
+        header.BlobGasUsed ??= 0;
+        header.ExcessBlobGas ??= 0;
+        header.ParentBeaconBlockRoot ??= Keccak.Zero;
+        header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
     }
 }

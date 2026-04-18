@@ -28,4 +28,16 @@ public interface ITaikoExtendedEthRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<string>> taiko_getSyncMode();
+
+    [JsonRpcMethod(
+        Description = "Returns the L1 origin of the last block for the given batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<L1Origin?>> taiko_lastL1OriginByBatchID(UInt256 batchId);
+
+    [JsonRpcMethod(
+        Description = "Returns the ID of the last block for the given batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<UInt256?>> taiko_lastBlockIDByBatchID(UInt256 batchId);
 }

@@ -1,0 +1,48 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Taiko.TaikoSpec;
+
+namespace Nethermind.Taiko.Rpc;
+
+/// <summary>
+/// Taiko-specific GetPayloadV2 handler. Overrides <see cref="GetPayloadV2Handler"/>
+/// to skip fork validation (Taiko always uses V2) and to carry header difficulty
+/// through blockValue for Uzen blocks (matches alethia-reth behavior).
+/// </summary>
+public class TaikoGetPayloadV2Handler(
+    IPayloadPreparationService payloadPreparationService,
+    ISpecProvider specProvider,
+    ILogManager logManager)
+    : GetPayloadHandlerBase<GetPayloadV2Result>(2, payloadPreparationService, specProvider, logManager)
+{
+    private readonly ISpecProvider _taikoSpecProvider = specProvider;
+
+    protected override GetPayloadV2Result GetPayloadResultFromBlock(IBlockProductionContext context)
+    {
+        Block block = context.CurrentBestBlock!;
+        var spec = (ITaikoReleaseSpec)_taikoSpecProvider.GetSpec(block.Header);
+
+        // For Uzen, carry header difficulty through blockValue (matches alethia-reth behavior)
+        UInt256 blockValue = spec.IsUzenEnabled ? block.Difficulty : context.BlockFees;
+
+        return new TaikoGetPayloadV2Result(block, blockValue);
+    }
+}
+
+/// <summary>
+/// Taiko-specific GetPayloadV2 result that always passes fork validation.
+/// Taiko uses V2 payloads regardless of EVM spec (Cancun/Prague/Osaka).
+/// </summary>
+public class TaikoGetPayloadV2Result(Block block, UInt256 blockFees) : GetPayloadV2Result(block, blockFees)
+{
+    public override bool ValidateFork(ISpecProvider specProvider) => true;
+}
