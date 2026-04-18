@@ -459,7 +459,7 @@ namespace Nethermind.Facade
 
     public interface IBlockchainBridgeFactory
     {
-        IBlockchainBridge CreateBlockchainBridge(int poolSize = 1);
+        IBlockchainBridge CreateBlockchainBridge(int poolSize);
     }
 
     public class BlockchainBridgeFactory(
@@ -468,7 +468,7 @@ namespace Nethermind.Facade
         ILifetimeScope rootLifetimeScope
     ) : IBlockchainBridgeFactory
     {
-        public IBlockchainBridge CreateBlockchainBridge(int poolSize = 1)
+        public IBlockchainBridge CreateBlockchainBridge(int poolSize)
         {
             IOverridableEnv<BlockchainBridge.BlockProcessingComponents>[] pooledEnvs =
                 new IOverridableEnv<BlockchainBridge.BlockProcessingComponents>[poolSize];

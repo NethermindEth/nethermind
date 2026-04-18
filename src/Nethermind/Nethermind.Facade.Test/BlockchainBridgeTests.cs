@@ -28,6 +28,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Facade.Test;
 
@@ -700,7 +701,7 @@ public class BlockchainBridgeTests
             .AddSingleton<ISimulateReadOnlyBlocksProcessingEnvFactory>(testFactory)
             .Build();
 
-        IBlockchainBridge blockchainBridge = container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
+        IBlockchainBridge blockchainBridge = container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge(1);
         testFactory.DidNotReceive().Create();
 
         try
@@ -764,5 +765,72 @@ public class BlockchainBridgeTests
 
         simulateRequestState.TotalGasLeft.Should().Be(50_000);
         simulateRequestState.BlockGasLeft.Should().Be(30_000);
+    }
+}
+
+[TestFixture]
+public class OverridableEnvPoolTests
+{
+    [Test]
+    public void RentAsync_WithAvailableSlot_CompletesSync()
+    {
+        IOverridableEnv<int>[] envs = [Substitute.For<IOverridableEnv<int>>()];
+        using OverridableEnvPool<int> pool = new(envs);
+
+        ValueTask<IOverridableEnv<int>> task = pool.RentAsync();
+
+        task.IsCompleted.Should().BeTrue();
+    }
+
+    [Test]
+    public void RentAsync_WithNoAvailableSlot_DoesNotCompleteSync()
+    {
+        IOverridableEnv<int>[] envs = [Substitute.For<IOverridableEnv<int>>()];
+        using OverridableEnvPool<int> pool = new(envs);
+
+        ValueTask<IOverridableEnv<int>> first = pool.RentAsync();
+        first.IsCompleted.Should().BeTrue();
+
+        ValueTask<IOverridableEnv<int>> second = pool.RentAsync();
+        second.IsCompleted.Should().BeFalse();
+    }
+
+    [Test]
+    public async Task Return_UnblocksWaitingRenter()
+    {
+        IOverridableEnv<int> env = Substitute.For<IOverridableEnv<int>>();
+        using OverridableEnvPool<int> pool = new([env]);
+
+        IOverridableEnv<int> rented = await pool.RentAsync();
+        ValueTask<IOverridableEnv<int>> waiting = pool.RentAsync();
+        waiting.IsCompleted.Should().BeFalse();
+
+        pool.Return(rented);
+
+        IOverridableEnv<int> rentedAfterReturn = await waiting;
+        rentedAfterReturn.Should().BeSameAs(env);
+    }
+
+    [Test]
+    public void PoolOfThree_AllowsThreeConcurrentRents()
+    {
+        IOverridableEnv<int>[] envs =
+        [
+            Substitute.For<IOverridableEnv<int>>(),
+            Substitute.For<IOverridableEnv<int>>(),
+            Substitute.For<IOverridableEnv<int>>()
+        ];
+        using OverridableEnvPool<int> pool = new(envs);
+
+        ValueTask<IOverridableEnv<int>> r1 = pool.RentAsync();
+        ValueTask<IOverridableEnv<int>> r2 = pool.RentAsync();
+        ValueTask<IOverridableEnv<int>> r3 = pool.RentAsync();
+
+        r1.IsCompleted.Should().BeTrue();
+        r2.IsCompleted.Should().BeTrue();
+        r3.IsCompleted.Should().BeTrue();
+
+        ValueTask<IOverridableEnv<int>> r4 = pool.RentAsync();
+        r4.IsCompleted.Should().BeFalse();
     }
 }

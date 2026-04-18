@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Benchmark
             blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
             blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);
 
-            IBlockchainBridge bridge = _container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
+            IBlockchainBridge bridge = _container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge(1);
 
             ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
             FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
