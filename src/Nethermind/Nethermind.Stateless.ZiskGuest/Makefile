@@ -44,7 +44,6 @@ build: dotnet-build
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		--no-pie \
 		--no-pthread \
-		--no-stacktrace-data \
 		--no-globalization \
 		--nostdlibrefs \
 		$(BFLAT_REFS) \
