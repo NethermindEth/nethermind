@@ -1632,6 +1632,7 @@ public ref struct EvmStack
     /// </remarks>
     /// <param name="result">The returned value.</param>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopUInt256(out UInt256 result)
     {
         Unsafe.SkipInit(out result);
@@ -2111,6 +2112,12 @@ public ref struct EvmStack
         return ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
     }
 
+    /// <summary>
+    /// Pops a 32-byte word from the stack. Unlike the other pop operations on this type,
+    /// this overload throws <see cref="EvmStackUnderflowException"/> on underflow rather than
+    /// signalling via return value. Callers are expected to have already validated stack depth
+    /// with a preceding pop; if they cannot, use <see cref="PopWord256(out Span{byte})"/> instead.
+    /// </summary>
     public Span<byte> PopWord256()
     {
         ref byte bytes = ref PopBytesByRef();

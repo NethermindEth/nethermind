@@ -130,10 +130,8 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst>();
         }
 
-        int adjustedPosition = bytes.Length - 32 + (int)a;
-        return adjustedPosition < 0
-            ? stack.PushZero<TTracingInst>()
-            : stack.PushByte<TTracingInst>(bytes[adjustedPosition]);
+        // PopWord256 always returns 32 bytes and we've just checked a < 32.
+        return stack.PushByte<TTracingInst>(bytes[(int)a]);
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
