@@ -1136,6 +1136,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             ref Instruction code = ref Unsafe.As<byte, Instruction>(ref stack.Code);
             uint codeLength = (uint)stack.CodeLength;
+            // Call depth does not change during dispatch; hoist outside the loop so a no-op
+            // OnBeforeInstructionTrace doesn't force a per-instruction VmState.Env chase.
+            int callDepth = VmState.Env.CallDepth;
             while ((uint)programCounter < codeLength)
             {
 #if DEBUG
@@ -1150,7 +1153,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     ThrowOperationCanceledException();
 
                 // Call gas policy hook before instruction execution.
-                TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, VmState.Env.CallDepth);
+                TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
 
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)

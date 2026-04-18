@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -124,14 +125,18 @@ public static partial class EvmInstructions
             goto StackUnderflow;
         Span<byte> bytes = stack.PopWord256();
 
-        // If the position is out-of-range, push zero.
-        if (a >= BigInt32)
+        // If the position is out-of-range, push zero. Using direct limb access avoids the
+        // full 256-bit vector compare + defensive `in` copy the JIT emits for `a >= BigInt32`,
+        // and skips the overflow-check path of `(int)a`.
+        if ((a.u1 | a.u2 | a.u3) != 0 || a.u0 >= 32)
         {
             return stack.PushZero<TTracingInst>();
         }
 
-        // PopWord256 always returns 32 bytes and we've just checked a < 32.
-        return stack.PushByte<TTracingInst>(bytes[(int)a]);
+        // PopWord256 always returns 32 bytes and we've just checked a.u0 < 32, so bypass the
+        // span bounds check: JIT can't prove 0 <= (int)a.u0 < bytes.Length across the ulong->int cast.
+        return stack.PushByte<TTracingInst>(
+            Unsafe.Add(ref MemoryMarshal.GetReference(bytes), (nint)a.u0));
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
