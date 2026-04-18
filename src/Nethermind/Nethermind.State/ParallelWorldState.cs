@@ -280,7 +280,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         {
             if (suggestedHead is null)
             {
-                if (HasNoChanges(generatedHead.Value))
+                if (HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
                     continue;
@@ -320,7 +320,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             }
             else
             {
-                if (HasNoChanges(generatedHead.Value))
+                if (HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
                     continue;
@@ -367,4 +367,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             c.NonceChange is null &&
             c.CodeChange is null &&
             !c.SlotChanges.GetEnumerator().MoveNext();
+
+    private static bool HasOptionalStorageReads(in ChangeAtIndex c)
+        => HasNoChanges(c) && c.Reads > 0;
 }

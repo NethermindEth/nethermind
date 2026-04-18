@@ -279,6 +279,19 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_validation_rejects_missing_account_only_reads()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), 10_000);
+        stateProvider.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+        stateProvider.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressA);
+
+        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 1, 10_000);
+
+        Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
