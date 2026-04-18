@@ -40,7 +40,7 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		nethermindeth/bflat-riscv64:ce97bb96fb8a5c1b80d1108e5913208a856bad79 \
+		nethermindeth/bflat-riscv64:308933fe808eaab52f965e0c7c6f1b767fe12988 \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		--no-pie \
 		--no-pthread \
