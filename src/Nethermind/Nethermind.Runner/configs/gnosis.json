@@ -51,5 +51,8 @@
       16,
       16
     ]
+  },
+  "Db": {
+    "SkipCheckingSstFileSizesOnDbOpen": true
   }
 }
