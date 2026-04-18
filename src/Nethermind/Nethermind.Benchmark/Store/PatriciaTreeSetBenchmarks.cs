@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -29,13 +30,19 @@ namespace Nethermind.Benchmarks.Store
         [Params(false, true)]
         public bool PreSorted { get; set; }
 
+        [Params(0, 16384)]
+        public int PreloadedCount { get; set; }
+
         private (Hash256, Account)[] _entries;
+        private MemDb _backingMemDb;
+        private Hash256 _preloadedRootHash;
 
         [GlobalSetup]
         public void Setup()
         {
-            _entries = new (Hash256, Account)[_entryCount];
             Random rand = new(0);
+
+            _entries = new (Hash256, Account)[_entryCount];
             for (int i = 0; i < _entryCount; i++)
             {
                 Hash256 address = Keccak.Compute(i.ToBigEndianByteArray());
@@ -44,25 +51,53 @@ namespace Nethermind.Benchmarks.Store
 
             if (PreSorted)
             {
-                Array.Sort(_entries, static (a, b) => a.Item1.CompareTo(b.Item1));
+                for (int i = 0; i < _entryCount; i += BatchSize)
+                {
+                    Array.Sort(_entries, i, BatchSize, Comparer<(Hash256, Account)>.Create(static (a, b) => a.Item1.CompareTo(b.Item1)));
+                }
+            }
+
+            _backingMemDb = new MemDb();
+            _preloadedRootHash = Keccak.EmptyTreeHash;
+
+            if (PreloadedCount > 0)
+            {
+                TrieStore preloadStore = TestTrieStoreFactory.Build(_backingMemDb,
+                    Prune.WhenCacheReaches(1.MiB),
+                    Persist.EveryNBlock(2), NullLogManager.Instance);
+                StateTree preloadTree = new(preloadStore, NullLogManager.Instance);
+                preloadTree.RootHash = Keccak.EmptyTreeHash;
+
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> preloadSet = new(PreloadedCount);
+                for (int i = 0; i < PreloadedCount; i++)
+                {
+                    Hash256 address = Keccak.Compute((i + _entryCount).ToBigEndianByteArray());
+                    Account account = new((UInt256)rand.NextInt64());
+                    Serialization.Rlp.Rlp rlp = account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
+                    preloadSet.Add(new PatriciaTree.BulkSetEntry(address, rlp?.Bytes));
+                }
+                preloadTree.BulkSet(preloadSet);
+
+                using IBlockCommitter _ = preloadStore.BeginBlockCommit(0);
+                preloadTree.Commit();
+                _preloadedRootHash = preloadTree.RootHash;
             }
         }
 
         [Benchmark]
         public void RepeatedSet()
         {
-            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+            TrieStore trieStore = TestTrieStoreFactory.Build(_backingMemDb,
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new(trieStore, NullLogManager.Instance);
-            Hash256 originalRootHash = Keccak.EmptyTreeHash;
-            tempTree.RootHash = Keccak.EmptyTreeHash;
+            tempTree.RootHash = _preloadedRootHash;
 
             for (int i = 0; i < _entryCount; i++)
             {
                 if (i % BatchSize == 0)
                 {
-                    tempTree.RootHash = originalRootHash;
+                    tempTree.RootHash = _preloadedRootHash;
                 }
 
                 (Hash256 address, Account value) = _entries[i];
@@ -80,12 +115,11 @@ namespace Nethermind.Benchmarks.Store
         {
             if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
 
-            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+            TrieStore trieStore = TestTrieStoreFactory.Build(_backingMemDb,
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new(trieStore, NullLogManager.Instance);
-            Hash256 originalRootHash = Keccak.EmptyTreeHash;
-            tempTree.RootHash = Keccak.EmptyTreeHash;
+            tempTree.RootHash = _preloadedRootHash;
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(BatchSize);
             for (int i = 0; i < _entryCount; i++)
@@ -94,7 +128,7 @@ namespace Nethermind.Benchmarks.Store
                 {
                     tempTree.BulkSet(bulkSet, flags);
                     bulkSet.Clear();
-                    tempTree.RootHash = originalRootHash;
+                    tempTree.RootHash = _preloadedRootHash;
                 }
 
                 (Hash256 address, Account account) = _entries[i];
