@@ -204,7 +204,7 @@ public unsafe class EvmOpcodesBenchmark
             _env,
             new StackAccessTracker(),
             Snapshot.Empty);
-        _vmState.InitializeStacks();
+        _vmState.InitializeStacks(bytecode, out _);
         InitializeKeccakMemoryLocations();
 
         _vm.SetVmState(_vmState);
@@ -244,7 +244,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), default);
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
         while (remaining > 0)
@@ -268,7 +268,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), default);
         EvmExceptionType result = EvmExceptionType.None;
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
         {
@@ -286,7 +286,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), default);
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
         while (remaining > 0)
@@ -623,7 +623,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private long ExecuteOpcodeOnceForGas()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), default);
         if (RequiresPerRunLocationSetup(Opcode))
         {
             stack.Head = _stackDepth;

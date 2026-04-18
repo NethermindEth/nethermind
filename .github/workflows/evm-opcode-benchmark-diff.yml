@@ -183,7 +183,9 @@ jobs:
           filter_args=()
           for opcode in "${opcodes[@]}"; do
             [[ -z "${opcode}" ]] && continue
-            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode=${opcode}*")
+            # BDN renders params as "(Opcode: ADD)" (colon space); the trailing ")" anchors the
+            # glob so "ADD" does not also match "ADDMOD".
+            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode: ${opcode})*")
           done
           if [[ "${#filter_args[@]}" -eq 0 ]]; then
             exit 0
@@ -206,7 +208,9 @@ jobs:
           filter_args=()
           for opcode in "${opcodes[@]}"; do
             [[ -z "${opcode}" ]] && continue
-            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode=${opcode}*")
+            # BDN renders params as "(Opcode: ADD)" (colon space); the trailing ")" anchors the
+            # glob so "ADD" does not also match "ADDMOD".
+            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode: ${opcode})*")
           done
           if [[ "${#filter_args[@]}" -eq 0 ]]; then
             exit 0

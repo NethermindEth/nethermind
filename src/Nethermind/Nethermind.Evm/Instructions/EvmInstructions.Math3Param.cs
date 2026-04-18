@@ -25,7 +25,7 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)) goto StackUnderflow;
 
         if (c.IsZero)
         {

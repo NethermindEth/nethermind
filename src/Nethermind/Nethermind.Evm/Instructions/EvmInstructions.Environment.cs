@@ -282,6 +282,20 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionCodeSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+
+        uint result = (uint)stack.CodeLength;
+
+        stack.PushUInt32<TTracingInst>(result);
+
+        return EvmExceptionType.None;
+    }
+
     /// <summary>
     /// Executes an environment introspection opcode that returns a UInt64 value.
     /// </summary>
@@ -365,16 +379,6 @@ public static partial class EvmInstructions
     {
         public static uint Operation(VmState<TGasPolicy> vmState)
             => (uint)vmState.Env.InputData.Length;
-    }
-
-    /// <summary>
-    /// Returns the size of the executing code.
-    /// </summary>
-    public struct OpCodeSize<TGasPolicy> : IOpEnvUInt32<TGasPolicy>
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        public static uint Operation(VmState<TGasPolicy> vmState)
-            => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
     }
 
     /// <summary>
