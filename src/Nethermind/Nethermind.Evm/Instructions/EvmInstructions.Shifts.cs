@@ -66,18 +66,14 @@ public static partial class EvmInstructions
         {
             // Pop the second operand without using its value.
             if (!stack.PopLimbo()) goto StackUnderflow;
-            stack.PushZero<TTracingInst>();
-        }
-        else
-        {
-            // Otherwise, pop the value to be shifted.
-            if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
-            // Perform the shift operation using the specific implementation.
-            TOpShift.Operation(in a, in b, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            return stack.PushZero<TTracingInst>();
         }
 
-        return EvmExceptionType.None;
+        // Otherwise, pop the value to be shifted.
+        if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        // Perform the shift operation using the specific implementation.
+        TOpShift.Operation(in a, in b, out UInt256 result);
+        return stack.PushUInt256<TTracingInst>(in result);
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
@@ -112,26 +108,17 @@ public static partial class EvmInstructions
         if (a >= 256)
         {
             // Convert the unsigned value to a signed integer to determine its sign.
-            if (As<UInt256, Int256>(ref b).Sign >= 0)
-            {
+            return As<UInt256, Int256>(ref b).Sign >= 0
                 // Non-negative value: result is zero.
-                stack.PushZero<TTracingInst>();
-            }
-            else
-            {
+                ? stack.PushZero<TTracingInst>()
                 // Negative value: result is -1 (all bits set).
-                stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
-            }
-        }
-        else
-        {
-            // For a valid shift amount (<256), perform an arithmetic right shift.
-            As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
-            // Convert the signed result back to unsigned representation.
-            stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+                : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
         }
 
-        return EvmExceptionType.None;
+        // For a valid shift amount (<256), perform an arithmetic right shift.
+        As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
+        // Convert the signed result back to unsigned representation.
+        return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

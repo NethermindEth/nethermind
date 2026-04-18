@@ -52,7 +52,7 @@ public static partial class EvmInstructions
         ReadOnlySpan<byte> value = vm.WorldState.GetTransientState(in storageCell);
 
         // Push the retrieved value onto the stack.
-        stack.PushBytes<TTracingInst>(value);
+        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
 
         // If storage tracing is enabled, record the operation.
         if (vm.TxTracer.IsTracingStorage)
@@ -61,7 +61,7 @@ public static partial class EvmInstructions
             vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
         }
 
-        return EvmExceptionType.None;
+        return pushResult;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -258,9 +258,7 @@ public static partial class EvmInstructions
             vm.TxTracer.ReportMemoryChange(result, bytes);
 
         // Push the loaded bytes onto the stack.
-        stack.PushBytes<TTracingInst>(bytes);
-
-        return EvmExceptionType.None;
+        return stack.PushBytes<TTracingInst>(bytes);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -635,7 +633,7 @@ public static partial class EvmInstructions
 
         // Retrieve the persistent storage value and push it onto the stack.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
-        stack.PushBytes<TTracingInst>(value);
+        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
         if (vm.TxTracer.IsTracingStorage)
@@ -643,7 +641,7 @@ public static partial class EvmInstructions
             vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }
 
-        return EvmExceptionType.None;
+        return pushResult;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -667,9 +665,7 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result))
             goto StackUnderflow;
         // Load 32 bytes from input data, applying zero padding as needed.
-        stack.PushBytes<TTracingInst>(vm.VmState.Env.InputData.SliceWithZeroPadding(result, 32));
-
-        return EvmExceptionType.None;
+        return stack.PushBytes<TTracingInst>(vm.VmState.Env.InputData.SliceWithZeroPadding(result, 32));
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

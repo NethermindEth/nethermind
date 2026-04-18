@@ -52,25 +52,24 @@ public ref struct EvmStack
     public int Head;
     internal readonly int CodeLength;
 
+    /// <summary>
+    /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
+    /// callers must check with <see cref="Unsafe.IsNullRef{T}"/> before writing.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PushBytesRef()
     {
         // Workhorse method
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref byte headRef = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
         if (newOffset >= MaxStackSize)
         {
-            ThrowEvmStackOverflowException();
+            return ref Unsafe.NullRef<byte>();
         }
 
         Head = (int)newOffset;
-        return ref headRef;
+        return ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ref Word PushedHead()
-        => ref Unsafe.As<byte, Word>(ref PushBytesRef());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Word CreateWordFromUInt64(ulong value)
@@ -93,13 +92,14 @@ public ref struct EvmStack
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushBytes<TTracingInst>(scoped ReadOnlySpan<byte> value)
+    public EvmExceptionType PushBytes<TTracingInst>(scoped ReadOnlySpan<byte> value)
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(value);
 
         ref byte dst = ref PushBytesRef();
+        if (Unsafe.IsNullRef(ref dst)) return EvmExceptionType.StackOverflow;
         ref byte src = ref MemoryMarshal.GetReference(value);
 
         if (value.Length == WordSize)
@@ -118,6 +118,8 @@ public ref struct EvmStack
         {
             PushBytesPartial(ref dst, ref src, (uint)value.Length);
         }
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
@@ -184,24 +186,28 @@ public ref struct EvmStack
             ((ulong)Unsafe.Add(ref src, 6) << 56),
     };
 
-    public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
+    public EvmExceptionType PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(value);
 
+        ref byte bytes = ref PushBytesRef();
+        if (Unsafe.IsNullRef(ref bytes)) return EvmExceptionType.StackOverflow;
+
         ReadOnlySpan<byte> valueSpan = value.Span;
         if (valueSpan.Length >= WordSize)
         {
             Debug.Assert(value.Length == WordSize, "Trying to push more than 32 bytes to the stack.");
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
+            Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
         }
         else
         {
-            ref byte bytes = ref PushBytesRef();
             Unsafe.As<byte, Word>(ref bytes) = default; // Not full entry, clear first
             valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
         }
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
@@ -2292,11 +2298,4 @@ public ref struct EvmStack
         throw new EvmStackUnderflowException();
     }
 
-    [StackTraceHidden]
-    [DoesNotReturn]
-    internal static void ThrowEvmStackOverflowException()
-    {
-        Metrics.EvmExceptions++;
-        throw new EvmStackOverflowException();
-    }
 }

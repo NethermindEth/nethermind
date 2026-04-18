@@ -317,15 +317,9 @@ public static partial class EvmInstructions
                 }
 
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
-                if (!isCodeLengthNotZero)
-                {
-                    stack.PushOne<TTracingInst>();
-                }
-                else
-                {
-                    stack.PushZero<TTracingInst>();
-                }
-                return EvmExceptionType.None;
+                return !isCodeLengthNotZero
+                    ? stack.PushOne<TTracingInst>()
+                    : stack.PushZero<TTracingInst>();
             }
         }
 
@@ -333,8 +327,7 @@ public static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
-        return EvmExceptionType.None;
+        return stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

@@ -64,9 +64,7 @@ public static partial class EvmInstructions
         TOpMath.Operation(in a, in b, out UInt256 result);
 
         // Push the computed result onto the stack.
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
@@ -277,31 +275,25 @@ public static partial class EvmInstructions
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            stack.PushOne<TTracingInst>();
+            return stack.PushOne<TTracingInst>();
         }
-        else
+
+        int expSize = 32 - leadingZeros;
+        // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
+        TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
+
+        if (a.IsZero)
         {
-            int expSize = 32 - leadingZeros;
-            // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-            TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
-
-            if (a.IsZero)
-            {
-                stack.PushZero<TTracingInst>();
-            }
-            else if (a.IsOne)
-            {
-                stack.PushOne<TTracingInst>();
-            }
-            else
-            {
-                // Perform exponentiation and push the 256-bit result onto the stack.
-                UInt256.Exp(in a, in exponent, out UInt256 result);
-                stack.PushUInt256<TTracingInst>(in result);
-            }
+            return stack.PushZero<TTracingInst>();
+        }
+        if (a.IsOne)
+        {
+            return stack.PushOne<TTracingInst>();
         }
 
-        return EvmExceptionType.None;
+        // Perform exponentiation and push the 256-bit result onto the stack.
+        UInt256.Exp(in a, in exponent, out UInt256 expResult);
+        return stack.PushUInt256<TTracingInst>(in expResult);
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

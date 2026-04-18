@@ -1032,7 +1032,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // If a previous call result exists, push its bytes onto the stack.
         if (previousCallResult is not null)
         {
-            stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
+            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
+            if (pushResult != EvmExceptionType.None) return new(pushResult);
 
             // Report the remaining gas if tracing instructions are enabled.
             if (TTracingInst.IsActive)

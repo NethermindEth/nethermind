@@ -251,10 +251,15 @@ public class VmState<TGasPolicy> : IDisposable
     public Memory<byte> MemoryStacks(int count)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        return AsAlignedMemory(DataStack, alignment: EvmStack.WordSize, size: count * EvmStack.WordSize);
+        byte[] dataStack = DataStack;
+        if (dataStack is null)
+        {
+            DataStack = dataStack = AllocateStacks();
+        }
+        return AsAligned32Memory(dataStack, size: count * EvmStack.WordSize);
     }
 
-    private static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    private static Memory<byte> AsAligned32Memory(byte[] array, int size)
     {
         nuint offset = GetAlignmentOffset32(array);
         return array.AsMemory((int)(uint)offset, size);

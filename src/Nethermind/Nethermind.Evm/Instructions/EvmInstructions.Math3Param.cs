@@ -29,15 +29,11 @@ public static partial class EvmInstructions
 
         if (c.IsZero)
         {
-            stack.PushZero<TTracingInst>();
-        }
-        else
-        {
-            TOpMath.Operation(in a, in b, in c, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            return stack.PushZero<TTracingInst>();
         }
 
-        return EvmExceptionType.None;
+        TOpMath.Operation(in a, in b, in c, out UInt256 result);
+        return stack.PushUInt256<TTracingInst>(in result);
     StackUnderflow:
         // Jump forward to be unpredicted by the branch predictor
         return EvmExceptionType.StackUnderflow;
