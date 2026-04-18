@@ -34,5 +34,8 @@
   },
   "Merge": {
     "FinalTotalDifficulty": "8626000110427538733349499292577475819600160930"
+  },
+  "Db": {
+    "SkipCheckingSstFileSizesOnDbOpen": true
   }
 }
