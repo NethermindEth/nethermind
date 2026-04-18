@@ -152,6 +152,9 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
+            ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
+
+        public TransactionResult EstimateAndRestore(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore | ExecutionOptions.IsEstimate);
 
         public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer)
@@ -598,6 +601,9 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
+            UInt256 gasPriceToReserve = effectiveGasPrice;
+            UInt256 gasLimitToReserve = (UInt256)tx.GasLimit;
+
             bool validate = ShouldValidateGas(tx, opts);
 
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
@@ -615,7 +621,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             bool overflows;
-            if (spec.IsEip1559Enabled && !tx.IsFree() && !opts.HasFlag(ExecutionOptions.IsEstimate))
+            if (spec.IsEip1559Enabled && !tx.IsFree())
             {
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
                 if (overflows || balanceLeft < maxGasFee)
@@ -635,22 +641,23 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
+            overflows = UInt256.MultiplyOverflow(gasLimitToReserve, gasPriceToReserve, out senderReservedGasPayment);
             if (!overflows && tx.SupportsBlobs)
             {
                 overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
                 if (!overflows)
                     overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
             }
-            if (!opts.HasFlag(ExecutionOptions.IsEstimate)) {
+            
+            
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
                 return TransactionResult.InsufficientSenderBalance;
             }
-            }
-
-            if (!opts.HasFlag(ExecutionOptions.IsEstimate) &&!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+            
+            if (!senderReservedGasPayment.IsZero)
+                WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
             return TransactionResult.Ok;
         }
 

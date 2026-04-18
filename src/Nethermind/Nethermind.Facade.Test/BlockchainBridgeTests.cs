@@ -528,6 +528,8 @@ public class BlockchainBridgeTests
         Transaction tx = new() { GasLimit = 1 };
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
             .Returns(TransactionResult.BlockGasLimitExceeded);
+        _transactionProcessor.EstimateAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.BlockGasLimitExceeded);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
@@ -612,6 +614,8 @@ public class BlockchainBridgeTests
             .TestObject;
         Transaction tx = new();
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.GasLimitBelowIntrinsicGas);
+        _transactionProcessor.EstimateAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
             .Returns(TransactionResult.GasLimitBelowIntrinsicGas);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);

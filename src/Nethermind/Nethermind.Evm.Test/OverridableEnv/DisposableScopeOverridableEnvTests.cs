@@ -125,6 +125,9 @@ public class DisposableScopeOverridableEnvTests
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
             throw new NotImplementedException();
 
+        public TransactionResult EstimateAndRestore(Transaction transaction, ITxTracer txTracer) =>
+            throw new NotImplementedException();
+
         public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer) =>
             throw new NotImplementedException();
 

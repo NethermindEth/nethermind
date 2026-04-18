@@ -34,7 +34,7 @@ public class GasEstimator(
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
     private const string TransactionExecutionFails = "Transaction execution fails";
-    private const string InsufficientBalance = "insufficient balance";
+    private const string InsufficientBalance = "insufficient sender balance";
     private const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
 
@@ -181,8 +181,7 @@ public class GasEstimator(
         txClone.GasLimit = gasLimit;
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, specProvider.GetSpec(header)));
-        // Ensure IsEstimate is set for gas estimation
-        TransactionResult callResult = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
+        TransactionResult callResult = transactionProcessor.EstimateAndRestore(txClone, gasTracer.WithCancellation(token));
 
         if (IsGasRelatedFailure(callResult))
         {
@@ -210,7 +209,7 @@ public class GasEstimator(
         {
             { TopLevelRevert: true } => GetRevertError(gasTracer),
             { OutOfGas: true } => GasEstimationOutOfGas,
-            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? TransactionExecutionFails,
+            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? defaultError,
             _ => defaultError
         };
 

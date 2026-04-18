@@ -180,9 +180,21 @@ namespace Nethermind.Facade
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
 
+            // Cap tx.GasLimit to the sender's affordable allowance before the initial probe,
+            // mirroring Geth's hi = min(hi, (balance - value) / gasFeeCap). This ensures BuyGas
+            // never sees a gas limit that makes gasLimit * feeCap exceed the sender's balance.
+            UInt256 senderBalance = components.WorldState.GetBalance(tx.SenderAddress ?? Address.Zero);
+            UInt256 feeCap = tx.MaxFeePerGas > UInt256.Zero ? tx.MaxFeePerGas : tx.GasPrice;
+            if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 availableForGas))
+            {
+                long allowance = (long)UInt256.Min(availableForGas / feeCap, (UInt256)long.MaxValue);
+                if (tx.GasLimit > allowance)
+                    tx.GasLimit = allowance;
+            }
+
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
-                estimateGasTracer.WithCancellation(cancellationToken));
+                estimateGasTracer.WithCancellation(cancellationToken), isEstimate: true);
 
             GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
 
@@ -191,8 +203,7 @@ namespace Nethermind.Facade
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             // Allowance errors take precedence over any earlier revert: the revert was an artifact
             // of the gas cap, so surfacing it instead of the affordability error would be misleading.
-            if (err is not null && (error is null || err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal)))
-                error = err;
+            error = err is not null ? err : error;
 
             return new CallOutput
             {
@@ -235,11 +246,12 @@ namespace Nethermind.Facade
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer)
+            ITxTracer tracer,
+            bool isEstimate = false)
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components);
+                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components, isEstimate);
             }
             catch (InsufficientBalanceException)
             {
@@ -252,7 +264,8 @@ namespace Nethermind.Facade
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
-            BlockProcessingComponents components)
+            BlockProcessingComponents components,
+            bool isEstimate = false)
         {
             transaction.SenderAddress ??= Address.Zero;
 
@@ -294,7 +307,9 @@ namespace Nethermind.Facade
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
             BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
-            return components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+            return isEstimate
+                ? components.TransactionProcessor.EstimateAndRestore(transaction, in blockExecutionContext, tracer)
+                : components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 
         public ulong GetChainId() => blockTree.ChainId;

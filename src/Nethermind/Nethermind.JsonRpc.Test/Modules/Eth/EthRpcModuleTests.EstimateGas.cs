@@ -489,7 +489,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_estimateGas_succeeds_when_gas_price_set_but_balance_below_block_gas_limit_times_gas_price()
     {
         // Regression for: balance < blockGasLimit × gasPrice but balance is enough for actual gas cost.
-        // Before fix: TransactionProcessor rejected with "insufficient MaxFeePerGas for sender balance"
+        // Before fix: TransactionProcesor rejected with "insufficient MaxFeePerGas for sender balance"
         // because the EIP-1559 pre-check used tx.GasLimit (= blockGasLimit) instead of the actual estimated gas.
         // blockGasLimit(4M) × gasPrice(50Gwei) = 0.2 ETH > balance(0.1 ETH).
         // Actual gas needed ≈ 0x53b8 ≈ 21432 → cost = 21432 × 50Gwei ≪ 0.1 ETH.
