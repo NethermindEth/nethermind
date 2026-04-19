@@ -194,7 +194,7 @@ namespace Nethermind.Facade
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
-                estimateGasTracer.WithCancellation(cancellationToken), isEstimate: true);
+                estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
 
@@ -203,7 +203,8 @@ namespace Nethermind.Facade
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             // Allowance errors take precedence over any earlier revert: the revert was an artifact
             // of the gas cap, so surfacing it instead of the affordability error would be misleading.
-            error = err is not null ? err : error;
+            if (err is not null && (error is null || err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal)))
+                error = err;
 
             return new CallOutput
             {
@@ -246,12 +247,11 @@ namespace Nethermind.Facade
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer,
-            bool isEstimate = false)
+            ITxTracer tracer)
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components, isEstimate);
+                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components);
             }
             catch (InsufficientBalanceException)
             {
@@ -264,8 +264,7 @@ namespace Nethermind.Facade
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
-            BlockProcessingComponents components,
-            bool isEstimate = false)
+            BlockProcessingComponents components)
         {
             transaction.SenderAddress ??= Address.Zero;
 
@@ -307,9 +306,7 @@ namespace Nethermind.Facade
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
             BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
-            return isEstimate
-                ? components.TransactionProcessor.EstimateAndRestore(transaction, in blockExecutionContext, tracer)
-                : components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+            return components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 
         public ulong GetChainId() => blockTree.ChainId;

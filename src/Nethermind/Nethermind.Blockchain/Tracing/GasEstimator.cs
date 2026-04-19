@@ -181,7 +181,7 @@ public class GasEstimator(
         txClone.GasLimit = gasLimit;
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, specProvider.GetSpec(header)));
-        TransactionResult callResult = transactionProcessor.EstimateAndRestore(txClone, gasTracer.WithCancellation(token));
+        TransactionResult callResult = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
         if (IsGasRelatedFailure(callResult))
         {

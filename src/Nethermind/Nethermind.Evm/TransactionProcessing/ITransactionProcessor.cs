@@ -20,11 +20,6 @@ public interface ITransactionProcessor
     TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer);
 
     /// <summary>
-    /// Execute transaction for gas estimation, rollback state. Skips balance/overflow checks that would fail when gas limit is an upper bound.
-    /// </summary>
-    TransactionResult EstimateAndRestore(Transaction transaction, ITxTracer txTracer);
-
-    /// <summary>
     /// Execute transaction, keep the state uncommitted
     /// </summary>
     TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer);
@@ -76,18 +71,6 @@ public static class ITransactionProcessorExtensions
     {
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
         return transactionProcessor.CallAndRestore(transaction, txTracer);
-    }
-
-    public static TransactionResult EstimateAndRestore(this ITransactionProcessor transactionProcessor, Transaction transaction, BlockHeader header, ITxTracer txTracer)
-    {
-        transactionProcessor.SetBlockExecutionContext(header);
-        return transactionProcessor.EstimateAndRestore(transaction, txTracer);
-    }
-
-    public static TransactionResult EstimateAndRestore(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
-    {
-        transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
-        return transactionProcessor.EstimateAndRestore(transaction, txTracer);
     }
 
     public static TransactionResult BuildUp(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
