@@ -194,6 +194,98 @@ public class EvmStackTests
         stack.Head.Should().Be(0);
     }
 
+    // Direct-encoder coverage for the new PushN fast paths (PUSH1..PUSH32 normal path).
+    // A single wrong lane or shift in Push{N}Bytes changes the constant observed by contracts
+    // and breaks consensus. Verifies: low-end contains the N immediate bytes in the supplied
+    // order; high-end (32-N bytes) is zero. Values 0xA0..0xA0+N-1 chosen so that byte-swap or
+    // lane-swap regressions are immediately visible in the failure message.
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    [TestCase(5)]
+    [TestCase(6)]
+    [TestCase(7)]
+    [TestCase(8)]
+    [TestCase(9)]
+    [TestCase(10)]
+    [TestCase(11)]
+    [TestCase(12)]
+    [TestCase(13)]
+    [TestCase(14)]
+    [TestCase(15)]
+    [TestCase(16)]
+    [TestCase(17)]
+    [TestCase(18)]
+    [TestCase(19)]
+    [TestCase(20)]
+    [TestCase(21)]
+    [TestCase(22)]
+    [TestCase(23)]
+    [TestCase(24)]
+    [TestCase(25)]
+    [TestCase(26)]
+    [TestCase(27)]
+    [TestCase(28)]
+    [TestCase(29)]
+    [TestCase(30)]
+    [TestCase(31)]
+    [TestCase(32)]
+    public void PushNBytes_encodes_big_endian_low_padded_high_zero(int n)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        vmState.InitializeStacks(default, out EvmStack stack);
+        byte[] immediate = new byte[n];
+        for (int i = 0; i < n; i++) immediate[i] = (byte)(0xA0 + i);
+
+        EvmExceptionType result = InvokePushNBytes(n, ref stack, ref MemoryMarshal.GetArrayDataReference(immediate));
+
+        result.Should().Be(EvmExceptionType.None);
+        stack.PopWord256(out Span<byte> word).Should().BeTrue();
+
+        for (int i = 0; i < 32 - n; i++)
+            word[i].Should().Be(0, $"high-end byte {i} must be zero for PUSH{n}");
+        for (int i = 0; i < n; i++)
+            word[32 - n + i].Should().Be((byte)(0xA0 + i), $"immediate byte {i} of PUSH{n}");
+    }
+
+    private static EvmExceptionType InvokePushNBytes(int n, ref EvmStack stack, ref byte imm) => n switch
+    {
+        1 => stack.PushByte<OffFlag>(imm),
+        2 => stack.Push2Bytes<OffFlag>(ref imm),
+        3 => stack.Push3Bytes<OffFlag>(ref imm),
+        4 => stack.Push4Bytes<OffFlag>(ref imm),
+        5 => stack.Push5Bytes<OffFlag>(ref imm),
+        6 => stack.Push6Bytes<OffFlag>(ref imm),
+        7 => stack.Push7Bytes<OffFlag>(ref imm),
+        8 => stack.Push8Bytes<OffFlag>(ref imm),
+        9 => stack.Push9Bytes<OffFlag>(ref imm),
+        10 => stack.Push10Bytes<OffFlag>(ref imm),
+        11 => stack.Push11Bytes<OffFlag>(ref imm),
+        12 => stack.Push12Bytes<OffFlag>(ref imm),
+        13 => stack.Push13Bytes<OffFlag>(ref imm),
+        14 => stack.Push14Bytes<OffFlag>(ref imm),
+        15 => stack.Push15Bytes<OffFlag>(ref imm),
+        16 => stack.Push16Bytes<OffFlag>(ref imm),
+        17 => stack.Push17Bytes<OffFlag>(ref imm),
+        18 => stack.Push18Bytes<OffFlag>(ref imm),
+        19 => stack.Push19Bytes<OffFlag>(ref imm),
+        20 => stack.Push20Bytes<OffFlag>(ref imm),
+        21 => stack.Push21Bytes<OffFlag>(ref imm),
+        22 => stack.Push22Bytes<OffFlag>(ref imm),
+        23 => stack.Push23Bytes<OffFlag>(ref imm),
+        24 => stack.Push24Bytes<OffFlag>(ref imm),
+        25 => stack.Push25Bytes<OffFlag>(ref imm),
+        26 => stack.Push26Bytes<OffFlag>(ref imm),
+        27 => stack.Push27Bytes<OffFlag>(ref imm),
+        28 => stack.Push28Bytes<OffFlag>(ref imm),
+        29 => stack.Push29Bytes<OffFlag>(ref imm),
+        30 => stack.Push30Bytes<OffFlag>(ref imm),
+        31 => stack.Push31Bytes<OffFlag>(ref imm),
+        32 => stack.Push32Bytes<OffFlag>(ref imm),
+        _ => throw new System.ArgumentOutOfRangeException(nameof(n), n, null),
+    };
+
     private static EvmExceptionType InvokePush(string op, ref EvmStack stack) => op switch
     {
         PushByte => stack.PushByte<OffFlag>(42),

@@ -2146,8 +2146,7 @@ public ref struct EvmStack
     /// <summary>
     /// Pops a 32-byte word from the stack. Unlike the other pop operations on this type,
     /// this overload throws <see cref="EvmStackUnderflowException"/> on underflow rather than
-    /// signalling via return value. Callers are expected to have already validated stack depth
-    /// with a preceding pop; if they cannot, use <see cref="PopWord256(out Span{byte})"/> instead.
+    /// signalling via return value.
     /// </summary>
     public Span<byte> PopWord256()
     {
