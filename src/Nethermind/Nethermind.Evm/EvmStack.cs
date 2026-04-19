@@ -1354,6 +1354,12 @@ public ref struct EvmStack
 
         ref byte dst = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
 
+        // Truncated PUSH32 is just a right-padded partial write, so reuse the tighter helper.
+        if (pushSize == WordSize)
+        {
+            return PushBytesPartialZeroPadded(ref dst, ref start, (uint)used);
+        }
+
         // Zeros on both sides.
         if (Vector256.IsHardwareAccelerated)
         {

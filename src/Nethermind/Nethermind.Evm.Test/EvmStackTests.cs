@@ -132,6 +132,7 @@ public class EvmStackTests
         stack.Head.Should().Be(0);
     }
 
+    [TestCase(0)]
     [TestCase(1)]
     [TestCase(5)]
     [TestCase(16)]
