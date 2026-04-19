@@ -3,6 +3,8 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Core;
+using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 
 namespace Nethermind.Runner.Ethereum.Modules;
@@ -39,6 +41,8 @@ public class BuiltInStepsModule : Module
 
     protected override void Load(ContainerBuilder builder)
     {
+        builder.AddModule(new DatabaseMigrationsModule());
+
         foreach (StepInfo builtInStep in BuiltInSteps)
         {
             builder.AddStep(builtInStep);
