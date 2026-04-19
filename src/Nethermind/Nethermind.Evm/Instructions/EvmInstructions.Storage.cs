@@ -146,11 +146,8 @@ public static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        // Pop the memory offset; if not available, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-
-        // Retrieve the 32-byte word to be stored.
-        Span<byte> bytes = stack.PopWord256();
+        // Single bounds check covering both the offset and the word.
+        if (!stack.PopUInt256AndWord256(out UInt256 result, out Span<byte> bytes)) goto StackUnderflow;
 
         VmState<TGasPolicy> vmState = vm.VmState;
 

@@ -2247,6 +2247,31 @@ public ref struct EvmStack
         return MemoryMarshal.CreateSpan(ref bytes, WordSize);
     }
 
+    /// <summary>
+    /// Atomic pop of a UInt256 offset + a raw 32-byte word with a single bounds check.
+    /// Callers such as MSTORE pop both in sequence; amortising avoids a redundant
+    /// underflow check and resolves the mismatched throw/try-pattern on the two reads.
+    /// </summary>
+    /// <param name="a">The top-of-stack value decoded as a big-endian UInt256 (offset for MSTORE).</param>
+    /// <param name="word">A span over the second slot, 32 bytes of raw stack-native (big-endian) data.</param>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PopUInt256AndWord256(out UInt256 a, out Span<byte> word)
+    {
+        Unsafe.SkipInit(out a);
+        int newHead = Head - 2;
+        if (newHead < 0)
+        {
+            word = default;
+            return false;
+        }
+        Head = newHead;
+        ref byte baseRef = ref _stack;
+        ReadUInt256FromSlot(ref Unsafe.Add(ref baseRef, (nint)((uint)(newHead + 1) * WordSize)), out a);
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref baseRef, (nint)((uint)newHead * WordSize)), WordSize);
+        return true;
+    }
+
     public bool PopWord256(out Span<byte> word)
     {
         int head = Head - 1;

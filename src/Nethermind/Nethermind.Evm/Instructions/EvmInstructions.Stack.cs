@@ -128,6 +128,8 @@ public static partial class EvmInstructions
         ref byte bytes = ref stack.Code;
         int remainingCode = stack.CodeLength - programCounter;
         Instruction nextInstruction;
+        // Head < MaxStackSize - 1 preserves the StackOverflow a non-fused PUSH2 would raise
+        // at head == 1024 (even though the following JUMP/JUMPI would immediately pop it).
         if (!TTracingInst.IsActive &&
             remainingCode > Size &&
             stack.Head < EvmStack.MaxStackSize - 1 &&
