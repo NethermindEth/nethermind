@@ -78,9 +78,7 @@ public class GasEstimator(
         if (leftBound > rightBound)
             return EstimationResult.Failure(CannotEstimateGasExceeded);
 
-        UInt256 feeCap = tx.MaxFeePerGas > UInt256.Zero ? tx.MaxFeePerGas
-                       : tx.GasPrice > UInt256.Zero ? tx.GasPrice
-                       : UInt256.Zero;
+        UInt256 feeCap = tx.CalculateFeeCap();
         // tx.ValueRef <= senderBalance is guaranteed here; subtract so the cap reflects gas budget only.
         EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), senderBalance - tx.ValueRef, feeCap);
 
@@ -209,7 +207,7 @@ public class GasEstimator(
         {
             { TopLevelRevert: true } => GetRevertError(gasTracer),
             { OutOfGas: true } => GasEstimationOutOfGas,
-            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? defaultError,
+            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? TransactionExecutionFails,
             _ => defaultError
         };
 

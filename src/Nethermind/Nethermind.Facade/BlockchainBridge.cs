@@ -184,7 +184,7 @@ namespace Nethermind.Facade
             // mirroring Geth's hi = min(hi, (balance - value) / gasFeeCap). This ensures BuyGas
             // never sees a gas limit that makes gasLimit * feeCap exceed the sender's balance.
             UInt256 senderBalance = components.WorldState.GetBalance(tx.SenderAddress ?? Address.Zero);
-            UInt256 feeCap = tx.MaxFeePerGas > UInt256.Zero ? tx.MaxFeePerGas : tx.GasPrice;
+            UInt256 feeCap = tx.CalculateFeeCap();
             if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 availableForGas))
             {
                 long allowance = (long)UInt256.Min(availableForGas / feeCap, (UInt256)long.MaxValue);
