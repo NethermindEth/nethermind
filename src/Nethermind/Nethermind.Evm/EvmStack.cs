@@ -2142,13 +2142,14 @@ public ref struct EvmStack
 
     public bool PopWord256(out Span<byte> word)
     {
-        if (Head-- == 0)
+        int head = Head - 1;
+        if (head < 0)
         {
             word = default;
             return false;
         }
-
-        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)Head * WordSize)), WordSize);
+        Head = head;
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)), WordSize);
         return true;
     }
 
@@ -2236,12 +2237,12 @@ public ref struct EvmStack
         ref byte to = ref Unsafe.Add(ref bytes, headOffset);
         ref byte from = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
 
-        if (TTracingInst.IsActive) Trace(depth);
-
         if (++head >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
+
+        if (TTracingInst.IsActive) Trace(depth);
 
         Head = head;
         Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
