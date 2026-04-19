@@ -690,8 +690,6 @@ public partial class PatriciaTree
         return usedMask;
     }
 
-    // Note: _threadStaticTraverseStack is declared in PatriciaTree.cs
-
     private static int GetSpanOffset<T>(T[] array, Span<T> span)
     {
         ref T spanRef = ref MemoryMarshal.GetReference(span);
