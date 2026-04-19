@@ -13,7 +13,7 @@ using BenchmarkDotNet.Running;
 using System.Linq;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using BenchmarkDotNet.Columns;
-// using Nethermind.Precompiles.Benchmark;
+using Nethermind.Precompiles.Benchmark;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -37,11 +37,11 @@ namespace Nethermind.Benchmark.Runner
         }
     }
 
-    // public class PrecompileBenchmarkConfig : DashboardConfig
-    // {
-    //     public PrecompileBenchmarkConfig(Job job) : base(job) =>
-    //         AddColumnProvider(new GasColumnProvider());
-    // }
+    public class PrecompileBenchmarkConfig : DashboardConfig
+    {
+        public PrecompileBenchmarkConfig(Job job) : base(job) =>
+            AddColumnProvider(new GasColumnProvider());
+    }
 
     public static class Program
     {
@@ -70,13 +70,13 @@ namespace Nethermind.Benchmark.Runner
             {
                 Assembly[] releaseAssemblies = additionalJobAssemblies
                     .Union(simpleJobAssemblies)
-                    // .Append(typeof(KeccakBenchmark).Assembly)
+                    .Append(typeof(KeccakBenchmark).Assembly)
                     .Distinct()
                     .ToArray();
 
                 BenchmarkSwitcher
                     .FromAssemblies(releaseAssemblies)
-                    .Run(benchmarkArgs, new DashboardConfig(benchmarkJob));
+                    .Run(benchmarkArgs, new PrecompileBenchmarkConfig(benchmarkJob));
             }
         }
     }

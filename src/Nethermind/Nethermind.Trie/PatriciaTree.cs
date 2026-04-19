@@ -37,6 +37,15 @@ namespace Nethermind.Trie
 
         [ThreadStatic]
         private static TraverseStack? _threadStaticTraverseStack;
+
+        private static TraverseStack GetTraverseStack()
+        {
+            TraverseStack stack = _threadStaticTraverseStack ?? new();
+            _threadStaticTraverseStack = null;
+            return stack;
+        }
+
+        private static void ReturnTraverseStack(TraverseStack stack) => _threadStaticTraverseStack = stack;
         public readonly IScopedTrieStore TrieStore;
         public ICappedArrayPool? _bufferPool;
 
@@ -521,13 +530,12 @@ namespace Nethermind.Trie
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
-                TraverseStack traverseStack = _threadStaticTraverseStack ?? new();
-                _threadStaticTraverseStack = null;
+                TraverseStack traverseStack = GetTraverseStack();
 
                 TreePath empty = TreePath.Empty;
                 RootRef = SetNew(traverseStack, nibbles, value, ref empty, RootRef);
 
-                _threadStaticTraverseStack = traverseStack;
+                ReturnTraverseStack(traverseStack);
             }
             finally
             {

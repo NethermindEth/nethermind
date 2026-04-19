@@ -63,11 +63,13 @@ public partial class PatriciaTree
         flags |= Flags.DoNotParallelize;
 #endif
 
-        TraverseStack traverseStack = _threadStaticTraverseStack ?? new();
-        _threadStaticTraverseStack = null;
+        TraverseStack traverseStack = GetTraverseStack();
 
         TreePath path = TreePath.Empty;
 
+        // Small-batch fast path: skip the ArrayPool<BulkSetEntry>.Rent of a sort buffer and
+        // reuse the entries array for both spans, since InPlaceBucketSort16 / SortTiny sort
+        // in place without needing a separate target.
         if (entries.Count < InPlaceSortThreshold)
         {
             Context ctx = new()
@@ -87,7 +89,7 @@ public partial class PatriciaTree
                 flags);
             RootRef = newRoot;
             _writeBeforeCommit += entries.Count;
-            _threadStaticTraverseStack = traverseStack;
+            ReturnTraverseStack(traverseStack);
             return;
         }
 
@@ -111,7 +113,7 @@ public partial class PatriciaTree
         RootRef = newRoot2;
 
         _writeBeforeCommit += entries.Count;
-        _threadStaticTraverseStack = traverseStack;
+        ReturnTraverseStack(traverseStack);
     }
 
     private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
@@ -226,12 +228,7 @@ public partial class PatriciaTree
             }
 
             Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
-                () =>
-                {
-                    TraverseStack s = _threadStaticTraverseStack ?? new();
-                    _threadStaticTraverseStack = null;
-                    return s;
-                },
+                GetTraverseStack,
                 (i, _, workerTraverseStack) =>
                 {
                     (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
@@ -253,7 +250,7 @@ public partial class PatriciaTree
 
                     return workerTraverseStack;
                 },
-                s => _threadStaticTraverseStack = s
+                ReturnTraverseStack
             );
 
             for (int i = 0; i < TrieNode.BranchesCount; i++)
