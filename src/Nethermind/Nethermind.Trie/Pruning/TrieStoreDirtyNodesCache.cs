@@ -405,14 +405,16 @@ internal class TrieStoreDirtyNodesCache
         ConcurrentDictionary<Key, bool> wasPersisted = new();
         int persistedCount = 0;
 
-        void PersistNode(TrieNode n, Hash256? address, TreePath path)
+        Hash256? currentAddress = null;
+
+        void PersistNode(TrieNode n, TreePath path)
         {
             if (n.Keccak is null) return;
             if (n.NodeType == NodeType.Unknown) return;
-            Key key = new(address, path, n.Keccak);
+            Key key = new(currentAddress, path, n.Keccak);
             if (wasPersisted.TryAdd(key, true))
             {
-                nodeStorage.Set(address, path, n.Keccak, n.FullRlp.AsSpan());
+                nodeStorage.Set(currentAddress, path, n.Keccak, n.FullRlp.AsSpan());
                 n.IsPersisted = true;
                 persistedCount++;
             }
@@ -423,8 +425,8 @@ internal class TrieStoreDirtyNodesCache
             if (cancellationToken.IsCancellationRequested) return persistedCount;
             Key key = kv.Key;
             TreePath path = key.Path;
-            Hash256? address = key.Address;
-            kv.Value.Node.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
+            currentAddress = key.Address;
+            kv.Value.Node.CallRecursively(PersistNode, ref path, false, _logger);
         }
 
         return persistedCount;

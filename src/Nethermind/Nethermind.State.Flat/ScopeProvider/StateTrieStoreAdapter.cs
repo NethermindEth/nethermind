@@ -26,12 +26,6 @@ internal sealed class StateTrieStoreAdapter(
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         new Committer(bundle, concurrencyQuota);
 
-    public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
-    {
-        if (address is null) return this;
-        return new StorageTrieStoreAdapter(bundle, concurrencyQuota, address);
-    }
-
     private class Committer(SnapshotBundle bundle, ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
         public override TrieNode CommitNode(ref TreePath path, TrieNode node)
@@ -55,11 +49,6 @@ internal sealed class StateTrieStoreWarmerAdapter(
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStateRlp(path, hash, flags);
 
-    public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
-    {
-        if (address is null) return this;
-        return new StorageTrieStoreWarmerAdapter(bundle, address);
-    }
 }
 
 internal sealed class StorageTrieStoreAdapter(

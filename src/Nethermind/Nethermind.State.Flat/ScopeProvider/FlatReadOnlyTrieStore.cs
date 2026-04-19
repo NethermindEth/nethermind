@@ -62,7 +62,7 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     private ITrieNodeResolver Resolve(Hash256? address)
     {
         ReadOnlyStateTrieStoreAdapter adapter = _adapter ?? throw new InvalidOperationException("BeginScope has not been called");
-        return address is null ? adapter : adapter.GetStorageTrieNodeResolver(address);
+        return address is null ? adapter : adapter.GetStorageTrieStore(address);
     }
 
     private sealed class ScopeCleanup(FlatReadOnlyTrieStore store) : IDisposable

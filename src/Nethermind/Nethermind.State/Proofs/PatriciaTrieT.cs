@@ -50,7 +50,14 @@ public abstract class PatriciaTrie<T> : PatriciaTree
 
         ProofCollector proofCollector = new(Rlp.Encode(index).Bytes);
 
-        Accept(proofCollector, RootHash, new());
+        if (RootRef is not null)
+        {
+            using TrieVisitContext ctx = new();
+            proofCollector.VisitTree(default, RootHash);
+            TreePath emptyPath = TreePath.Empty;
+            new RecursiveTrieVisitor<EmptyContext>(proofCollector, ctx)
+                .Start(RootRef, default, TrieStore, ref emptyPath);
+        }
 
         return proofCollector.BuildResult();
     }

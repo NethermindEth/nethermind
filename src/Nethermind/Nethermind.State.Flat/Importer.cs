@@ -44,10 +44,6 @@ public class Importer(
         }
 
         ITrieStore trieStore = new RawTrieStore(nodeStorage);
-        PatriciaTree tree = new(trieStore, logManager)
-        {
-            RootHash = to.StateRoot.ToHash256()
-        };
 
         Channel<Entry> channel = Channel.CreateBounded<Entry>(2_000_000);
         if (_logger.IsWarn) _logger.Warn("Starting import");
@@ -60,7 +56,7 @@ public class Importer(
             Visitor visitor = new(channel.Writer, progressTracker, cancellationToken);
             try
             {
-                tree.Accept(visitor, to.StateRoot.ToHash256(), new VisitingOptions()
+                visitor.Traverse(to.StateRoot.ToHash256(), trieStore, new VisitingOptions()
                 {
                     MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount), // Tend to be faster with low thread
                 });

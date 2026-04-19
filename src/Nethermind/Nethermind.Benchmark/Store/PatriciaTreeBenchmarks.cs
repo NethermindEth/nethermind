@@ -355,7 +355,7 @@ namespace Nethermind.Benchmarks.Store
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            StateTree tempTree = new(trieStore.GetTrieStore(null), NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
@@ -383,7 +383,7 @@ namespace Nethermind.Benchmarks.Store
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            StateTree tempTree = new(trieStore.GetTrieStore(null), NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
@@ -417,7 +417,7 @@ namespace Nethermind.Benchmarks.Store
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            StateTree tempTree = new(trieStore.GetTrieStore(null), NullLogManager.Instance);
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_largerEntryCount);
@@ -462,7 +462,7 @@ namespace Nethermind.Benchmarks.Store
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            StateTree tempTree = new(trieStore.GetTrieStore(null), NullLogManager.Instance);
             Hash256 originalRootHash = Keccak.EmptyTreeHash;
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -483,7 +483,7 @@ namespace Nethermind.Benchmarks.Store
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            StateTree tempTree = new(trieStore.GetTrieStore(null), NullLogManager.Instance);
             Hash256 originalRootHash = Keccak.EmptyTreeHash;
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -510,7 +510,7 @@ namespace Nethermind.Benchmarks.Store
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            StateTree tempTree = new(trieStore.GetTrieStore(null), NullLogManager.Instance);
             Hash256 originalRootHash = Keccak.EmptyTreeHash;
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -545,7 +545,7 @@ namespace Nethermind.Benchmarks.Store
             TrieStore trieStore = _largeUncommittedFullTree = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = _largeUncommittedStateTree = new StateTree(trieStore, NullLogManager.Instance);
+            StateTree tempTree = _largeUncommittedStateTree = new StateTree(trieStore.GetTrieStore(null), NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
@@ -610,7 +610,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void ReadWithMemoryTrieStore()
         {
-            StateTree tempTree = new(_memoryTrieStore, NullLogManager.Instance);
+            StateTree tempTree = new(_memoryTrieStore.GetTrieStore(null), NullLogManager.Instance);
             tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {
@@ -621,7 +621,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void ReadWithMemoryTrieStoreReadOnly()
         {
-            StateTree tempTree = new(_memoryTrieStore.AsReadOnly(), NullLogManager.Instance);
+            StateTree tempTree = new(_memoryTrieStore.AsReadOnly().GetTrieStore(null), NullLogManager.Instance);
             tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {

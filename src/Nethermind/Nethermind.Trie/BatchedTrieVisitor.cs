@@ -463,9 +463,17 @@ public class BatchedTrieVisitor<TNodeContext>
                             TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
                             trieVisitContext.Level++;
 
-                            if (node.TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
+                            TrieNode? storageRoot = node.StorageRoot;
+                            if (storageRoot is null && account.StorageRoot != Keccak.EmptyTreeHash)
                             {
-                                nextToVisit.Add((storageRoot!, storageContext, trieVisitContext));
+                                // BatchedTrieVisitor is hash-scheme only, so storage address is not needed for resolution
+                                node.StorageRoot = storageRoot = nodeResolver
+                                    .FindCachedOrUnknown(in emptyPath, account.StorageRoot.ToCommitment());
+                            }
+
+                            if (storageRoot is not null)
+                            {
+                                nextToVisit.Add((storageRoot, storageContext, trieVisitContext));
                             }
                             else
                             {

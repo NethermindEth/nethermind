@@ -154,7 +154,7 @@ public class SnapProviderTests
         // Collect proofs
         AccountProofCollector proofCollector = new(accountHash.Bytes,
             new ValueHash256[] { Keccak.Zero, slots[^1].Path });
-        stateTree.Accept(proofCollector, stateTree.RootHash);
+        proofCollector.Traverse(stateTree.RootHash, store);
         AccountProof proof = proofCollector.BuildResult();
 
         using IContainer container = CreateContainer();
@@ -305,7 +305,7 @@ public class SnapProviderTests
     {
         TestMemDb stateDb = new();
         TestRawTrieStore trieStore = new(stateDb);
-        StateTree st = new(trieStore, LimboLogs.Instance);
+        StateTree st = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
         {
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             foreach ((Hash256, Account) entry in entries)

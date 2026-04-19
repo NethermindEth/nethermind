@@ -65,12 +65,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
         if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
         TreeDumper dumper = new();
-        remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
+        dumper.TraverseState(remote.StateTree.RootHash, remote.StateTree.TrieStore);
         string remoteStr = dumper.ToString();
         if (!skipLogs) logger.Info(remoteStr);
         if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
         dumper.Reset();
-        localTree.Accept(dumper, localTree.RootHash);
+        dumper.TraverseState(localTree.RootHash, localTree.TrieStore);
         string localStr = dumper.ToString();
         if (!skipLogs) logger.Info(localStr);
 
@@ -98,8 +98,6 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStateRlp(path, flags);
 
-        public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
-            address is null ? this : new ReadOnlyStorageTrieStore(reader, address);
     }
 
     /// <summary>
@@ -130,8 +128,6 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StateCommitter(writeBatch);
 
-        public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
-            address is null ? this : new WritableStorageTrieStore(reader, writeBatch, address);
 
         private sealed class StateCommitter(IPersistence.IWriteBatch writeBatch) : ICommitter
         {

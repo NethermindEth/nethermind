@@ -77,7 +77,7 @@ public class SnapServer : ISnapServer
         int pathLength = pathSet.Count;
         using DeferredRlpItemList.Builder builder = new(pathLength);
         DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
-        StateTree tree = new(_store, _logManager);
+        StateTree tree = new(_store.GetTrieStore(null), _logManager);
         bool abort = false;
         long responseSize = 0;
 
@@ -280,10 +280,20 @@ public class SnapServer : ISnapServer
         RangeQueryVisitor.ILeafValueCollector valueCollector,
         CancellationToken cancellationToken)
     {
-        PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new();
-        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
+        Hash256? storageAddress = storage?.ToCommitment();
+        ITrieNodeResolver resolver = _store.GetTrieStore(storageAddress);
+        Hash256 effectiveRoot = rootHash.ToCommitment();
+        if (storageAddress is not null)
+        {
+            effectiveRoot = storageRoot!.Value.ToCommitment();
+            visitor.TraverseStorage(effectiveRoot, resolver, opt);
+        }
+        else
+        {
+            visitor.TraverseState(effectiveRoot, resolver, opt);
+        }
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);

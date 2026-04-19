@@ -315,7 +315,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
             PatriciaTree trie = new(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
             TrieCopiedNodeVisitor visitor = new(new NodeStorage(CopyDb));
-            trie.Accept(visitor, BlockTree.Head!.StateRoot!);
+            visitor.TraverseState(BlockTree.Head!.StateRoot!, trie.TrieStore);
         }
 
         public void ShouldCopyAllValues()

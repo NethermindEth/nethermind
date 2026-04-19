@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -25,36 +26,40 @@ namespace Nethermind.Store.Test.Proofs
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class AccountProofCollectorTests
     {
-        private static AccountProof CollectProof(StateTree tree, Address address, UInt256[] storageKeys = null)
+        private static AccountProof CollectProof(StateTree tree, ITrieStore trieStore, Address address, UInt256[] storageKeys = null)
         {
             AccountProofCollector collector = storageKeys is not null
                 ? new(address, storageKeys)
                 : new(address);
-            tree.Accept(collector, tree.RootHash);
+            if (storageKeys is not null)
+                collector.Traverse(tree.RootHash, trieStore);
+            else
+                collector.TraverseState(tree.RootHash, tree.TrieStore);
             return collector.BuildResult();
         }
 
-        private static AccountProof CollectProof(StateTree tree, Address address, byte[][] storageKeys)
+        private static AccountProof CollectProof(StateTree tree, ITrieStore trieStore, Address address, byte[][] storageKeys)
         {
             AccountProofCollector collector = new(address, storageKeys);
-            tree.Accept(collector, tree.RootHash);
+            collector.Traverse(tree.RootHash, trieStore);
             return collector.BuildResult();
         }
 
-        private static AccountProof CollectProof(StateTree tree, byte[] addressBytes, ValueHash256[] storageKeys)
+        private static AccountProof CollectProof(StateTree tree, ITrieStore trieStore, byte[] addressBytes, ValueHash256[] storageKeys)
         {
             AccountProofCollector collector = new(addressBytes, storageKeys);
-            tree.Accept(collector, tree.RootHash);
+            collector.Traverse(tree.RootHash, trieStore);
             return collector.BuildResult();
         }
 
-        private static StateTree CreateTwoAccountTree(Account account1, Account account2)
+        private static (StateTree tree, TestRawTrieStore trieStore) CreateTwoAccountTree(Account account1, Account account2)
         {
-            StateTree tree = new();
+            TestRawTrieStore trieStore = new(new MemDb());
+            StateTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
             tree.Commit();
-            return tree;
+            return (tree, trieStore);
         }
 
         private static readonly string[] StorageValueHexes =
@@ -69,12 +74,12 @@ namespace Nethermind.Store.Test.Proofs
         /// <summary>
         /// Creates a state tree with a storage tree containing hashed key-value pairs for AddressA.
         /// </summary>
-        private static (StateTree tree, IDb memDb) CreateTreeWithHashedStorage(byte[][] keys, int valueCount)
+        private static (StateTree tree, IDb memDb, ITrieStore trieStore) CreateTreeWithHashedStorage(byte[][] keys, int valueCount)
         {
             IDb memDb = new MemDb();
-            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
-            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new(memDb);
+            StateTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int i = 0; i < valueCount; i++)
             {
                 storageTree.Set(Keccak.Compute(keys[i]).Bytes, Rlp.Encode(Bytes.FromHexString(StorageValueHexes[i])));
@@ -85,7 +90,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
             tree.Commit();
-            return (tree, memDb);
+            return (tree, memDb, trieStore);
         }
 
         [Test]
@@ -93,7 +98,7 @@ namespace Nethermind.Store.Test.Proofs
         {
             StateTree tree = new();
             AccountProofCollector accountProofCollector = new(TestItem.AddressA, new UInt256[] { 1, 2, 3 });
-            tree.Accept(accountProofCollector, tree.RootHash);
+            accountProofCollector.TraverseState(tree.RootHash, tree.TrieStore);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
             Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
@@ -118,7 +123,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressC, new UInt256[] { 1, 2, 3 });
-            tree.Accept(accountProofCollector, tree.RootHash);
+            accountProofCollector.TraverseState(tree.RootHash, tree.TrieStore);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
@@ -140,7 +145,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressC, new UInt256[] { 1, 2, 3 });
-            tree.Accept(accountProofCollector, tree.RootHash);
+            accountProofCollector.TraverseState(tree.RootHash, tree.TrieStore);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
@@ -173,7 +178,7 @@ namespace Nethermind.Store.Test.Proofs
             // now wer are looking for a trying to trick the code to think that the extension of c and d is a good match
             // if everything is ok the proof length of 1 is enough since the extension from the root is not matched
             AccountProofCollector accountProofCollector = new(a);
-            tree.Accept(accountProofCollector, tree.RootHash);
+            accountProofCollector.TraverseState(tree.RootHash, tree.TrieStore);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
 
@@ -186,12 +191,12 @@ namespace Nethermind.Store.Test.Proofs
         {
             Account account1 = Build.An.Account.WithBalance(1).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
-            StateTree tree = CreateTwoAccountTree(account1, account2);
+            (StateTree tree, TestRawTrieStore trieStore) = CreateTwoAccountTree(account1, account2);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA);
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
 
-            AccountProof proof2 = CollectProof(tree, TestItem.AddressB);
+            AccountProof proof2 = CollectProof(tree, trieStore, TestItem.AddressB);
             Assert.That(proof2.Address, Is.EqualTo(TestItem.AddressB));
         }
 
@@ -200,12 +205,12 @@ namespace Nethermind.Store.Test.Proofs
         {
             Account account1 = Build.An.Account.WithBalance(1).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
-            StateTree tree = CreateTwoAccountTree(account1, account2);
+            (StateTree tree, TestRawTrieStore trieStore) = CreateTwoAccountTree(account1, account2);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA);
             Assert.That(proof.Balance, Is.EqualTo(UInt256.One));
 
-            AccountProof proof2 = CollectProof(tree, TestItem.AddressB);
+            AccountProof proof2 = CollectProof(tree, trieStore, TestItem.AddressB);
             Assert.That(proof2.Balance, Is.EqualTo(UInt256.One + 1));
         }
 
@@ -215,12 +220,12 @@ namespace Nethermind.Store.Test.Proofs
             byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithCode(code).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
-            StateTree tree = CreateTwoAccountTree(account1, account2);
+            (StateTree tree, TestRawTrieStore trieStore) = CreateTwoAccountTree(account1, account2);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA);
             Assert.That(proof.CodeHash, Is.EqualTo(account1.CodeHash));
 
-            AccountProof proof2 = CollectProof(tree, TestItem.AddressB);
+            AccountProof proof2 = CollectProof(tree, trieStore, TestItem.AddressB);
             Assert.That(proof2.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
         }
 
@@ -229,12 +234,12 @@ namespace Nethermind.Store.Test.Proofs
         {
             Account account1 = Build.An.Account.WithBalance(1).WithNonce(UInt256.One).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
-            StateTree tree = CreateTwoAccountTree(account1, account2);
+            (StateTree tree, TestRawTrieStore trieStore) = CreateTwoAccountTree(account1, account2);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA);
             Assert.That(proof.Nonce, Is.EqualTo(account1.Nonce));
 
-            AccountProof proof2 = CollectProof(tree, TestItem.AddressB);
+            AccountProof proof2 = CollectProof(tree, trieStore, TestItem.AddressB);
             Assert.That(proof2.Nonce, Is.EqualTo(UInt256.Zero));
         }
 
@@ -243,12 +248,12 @@ namespace Nethermind.Store.Test.Proofs
         {
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
-            StateTree tree = CreateTwoAccountTree(account1, account2);
+            (StateTree tree, TestRawTrieStore trieStore) = CreateTwoAccountTree(account1, account2);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA);
             Assert.That(proof.StorageRoot, Is.EqualTo(TestItem.KeccakA));
 
-            AccountProof proof2 = CollectProof(tree, TestItem.AddressB);
+            AccountProof proof2 = CollectProof(tree, trieStore, TestItem.AddressB);
             Assert.That(proof2.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
         }
 
@@ -257,9 +262,9 @@ namespace Nethermind.Store.Test.Proofs
         {
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
-            StateTree tree = CreateTwoAccountTree(account1, account2);
+            (StateTree tree, TestRawTrieStore trieStore) = CreateTwoAccountTree(account1, account2);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA);
             Assert.That(proof.Proof.Length, Is.EqualTo(3));
         }
 
@@ -268,19 +273,19 @@ namespace Nethermind.Store.Test.Proofs
         {
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
-            StateTree tree = CreateTwoAccountTree(account1, account2);
+            (StateTree tree, TestRawTrieStore trieStore) = CreateTwoAccountTree(account1, account2);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA,
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA,
                 new[] { Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001") });
             Assert.That(proof.StorageProofs.Length, Is.EqualTo(2));
         }
 
-        private static (StateTree tree, IDb memDb) CreateTreeWithUInt256Storage()
+        private static (StateTree tree, IDb memDb, ITrieStore trieStore) CreateTreeWithUInt256Storage()
         {
             IDb memDb = new MemDb();
-            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
-            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new(memDb);
+            StateTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString(StorageValueHexes[0]));
             storageTree.Set(UInt256.One, Bytes.FromHexString(StorageValueHexes[1]));
             storageTree.Commit();
@@ -289,7 +294,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
             tree.Commit();
-            return (tree, memDb);
+            return (tree, memDb, trieStore);
         }
 
         private static readonly byte[][] StorageKeyZeroAndOne =
@@ -301,8 +306,8 @@ namespace Nethermind.Store.Test.Proofs
         [Test]
         public void Storage_proofs_have_values_set()
         {
-            (StateTree tree, _) = CreateTreeWithUInt256Storage();
-            AccountProof proof = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
+            (StateTree tree, _, ITrieStore trieStore) = CreateTreeWithUInt256Storage();
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA, StorageKeyZeroAndOne);
             Assert.That(proof.StorageProofs?[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
             Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[1]));
         }
@@ -310,8 +315,8 @@ namespace Nethermind.Store.Test.Proofs
         [Test]
         public void Storage_proofs_have_keys_set()
         {
-            (StateTree tree, _) = CreateTreeWithUInt256Storage();
-            AccountProof proof = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
+            (StateTree tree, _, ITrieStore trieStore) = CreateTreeWithUInt256Storage();
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA, StorageKeyZeroAndOne);
             Assert.That(proof.StorageProofs![0].Key!, Is.EqualTo("0x0"));
             Assert.That(proof.StorageProofs![1].Key!, Is.EqualTo("0x1"));
         }
@@ -324,9 +329,9 @@ namespace Nethermind.Store.Test.Proofs
         {
             byte[] c = Bytes.FromHexString("0x0000000000cccccccccccccccccccccccccccccccccccccccccccccccccccccc");
             byte[][] keys = [StorageKeyA, StorageKeyB, c];
-            (StateTree tree, _) = CreateTreeWithHashedStorage(keys, 3);
+            (StateTree tree, _, ITrieStore trieStore) = CreateTreeWithHashedStorage(keys, 3);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA, keys);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA, keys);
             for (int i = 0; i < 3; i++)
                 Assert.That(proof.StorageProofs?[i].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[i]));
         }
@@ -334,9 +339,9 @@ namespace Nethermind.Store.Test.Proofs
         private void Storage_proofs_have_values_set_complex_5_keys(byte[] c, byte[] d, byte[] e)
         {
             byte[][] keys = [StorageKeyA, StorageKeyB, c, d, e];
-            (StateTree tree, _) = CreateTreeWithHashedStorage(keys, 5);
+            (StateTree tree, _, ITrieStore trieStore) = CreateTreeWithHashedStorage(keys, 5);
 
-            AccountProof proof = CollectProof(tree, TestItem.AddressA, keys);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA, keys);
             for (int i = 0; i < 5; i++)
                 Assert.That(proof.StorageProofs?[i].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[i]));
         }
@@ -365,9 +370,9 @@ namespace Nethermind.Store.Test.Proofs
             int[] storedValueIndices = [0, 2, 4];
 
             IDb memDb = new MemDb();
-            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
-            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new(memDb);
+            StateTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int i = 0; i < storedKeys.Length; i++)
                 storageTree.Set(Keccak.Compute(storedKeys[i]).Bytes, Rlp.Encode(Bytes.FromHexString(StorageValueHexes[storedValueIndices[i]])));
             storageTree.Commit();
@@ -378,7 +383,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit();
 
             byte[][] queryKeys = [StorageKeyA, StorageKeyB, c, d, e];
-            AccountProof proof = CollectProof(tree, TestItem.AddressA, queryKeys);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA, queryKeys);
             Assert.That(proof.StorageProofs?[0].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[0]));
             Assert.That(proof.StorageProofs?[1].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
             Assert.That(proof.StorageProofs?[2].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[2]));
@@ -400,11 +405,11 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit();
 
             TreeDumper dumper = new();
-            tree.Accept(dumper, tree.RootHash);
+            dumper.TraverseState(tree.RootHash, tree.TrieStore);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
-            tree.Accept(accountProofCollector, tree.RootHash);
+            accountProofCollector.TraverseState(tree.RootHash, tree.TrieStore);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Balance, Is.EqualTo((UInt256)0));
             Assert.That(proof.Nonce, Is.EqualTo(UInt256.Zero));
@@ -421,10 +426,10 @@ namespace Nethermind.Store.Test.Proofs
 
             // Store all 5 keys but only query a, c, e
             byte[][] allKeys = [StorageKeyA, StorageKeyB, c, d, e];
-            (StateTree tree, _) = CreateTreeWithHashedStorage(allKeys, 5);
+            (StateTree tree, _, ITrieStore trieStore) = CreateTreeWithHashedStorage(allKeys, 5);
 
             byte[][] queryKeys = [StorageKeyA, c, e];
-            AccountProof proof = CollectProof(tree, TestItem.AddressA, queryKeys);
+            AccountProof proof = CollectProof(tree, trieStore, TestItem.AddressA, queryKeys);
             Assert.That(proof.StorageProofs?[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
             Assert.That(proof.StorageProofs?[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[2]));
             Assert.That(proof.StorageProofs?[2].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[4]));
@@ -435,14 +440,14 @@ namespace Nethermind.Store.Test.Proofs
         public void Storage_proofs_have_values_set_complex_with_inline_nodes()
         {
             IDb memDb = new MemDb();
-            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
-            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new(memDb);
+            StateTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Bytes.FromHexString("1000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("aa"));
             storageTree.Set(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("ab"));
             storageTree.Set(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000010"), Bytes.FromHexString("1111111111111111111111111111111111111111111111111111111111111111"));
             storageTree.Commit();
-            storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), storageTree.RootHash, LimboLogs.Instance);
+            storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath.ToCommitment()), storageTree.RootHash, LimboLogs.Instance);
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
@@ -450,14 +455,14 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit();
 
             TreeDumper dumper = new();
-            tree.Accept(dumper, tree.RootHash);
+            dumper.TraverseState(tree.RootHash, tree.TrieStore);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new(
                 TestItem.AddressA.ToAccountPath.ToCommitment().Bytes,
                 new ValueHash256[] { new(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000")) }
             );
-            tree.Accept(accountProofCollector, tree.RootHash);
+            accountProofCollector.Traverse(tree.RootHash, trieStore);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.StorageProofs[0].Value?.ToHexString().Should().Be("ab");
         }
@@ -525,8 +530,8 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             int storageCount = lines.Length - 2;
 
             IDb memDb = new MemDb();
-            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
-            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new(memDb);
+            StateTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             Address address = new(Bytes.FromHexString(lines[0]));
             int accountIndex = int.Parse(lines[1]);
@@ -540,7 +545,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             addressWithStorage.StorageCells = new StorageCell[storageCount];
             addressWithStorage.Address = address;
 
-            StorageTree storageTree = new(new RawScopedTrieStore(memDb, address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore.GetTrieStore(address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < storageCount; j++)
             {
                 UInt256 index = UInt256.Parse(lines[j + 2].Replace("storage: ", string.Empty));
@@ -561,11 +566,11 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             tree.Commit();
 
             TreeDumper treeDumper = new();
-            tree.Accept(treeDumper, tree.RootHash);
+            treeDumper.TraverseState(tree.RootHash, tree.TrieStore);
             TestContext.Out.WriteLine(treeDumper.ToString());
 
             AccountProofCollector collector = new(address, indexes);
-            tree.Accept(collector, tree.RootHash);
+            collector.Traverse(tree.RootHash, trieStore);
 
             AccountProof accountProof = collector.BuildResult();
             accountProof.Address.Should().Be(address);
@@ -614,13 +619,13 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             }
 
             IDb memDb = new MemDb();
-            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
-            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new(memDb);
+            StateTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             for (int i = 0; i < accountsCount; i++)
             {
                 Account account = Build.An.Account.WithBalance((UInt256)i).TestObject;
-                StorageTree storageTree = new(new RawScopedTrieStore(memDb, addressesWithStorage[i].Address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+                StorageTree storageTree = new(trieStore.GetTrieStore(addressesWithStorage[i].Address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
                 for (int j = 0; j < i; j++)
                 {
                     storageTree.Set(addressesWithStorage[i].StorageCells[j].Index, new byte[1] { 1 });
@@ -639,7 +644,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             for (int i = 0; i < accountsCount; i++)
             {
                 AccountProofCollector collector = new(addressesWithStorage[i].Address, addressesWithStorage[i].StorageCells.Select(static sc => sc.Index).ToArray());
-                tree.Accept(collector, tree.RootHash);
+                collector.Traverse(tree.RootHash, trieStore);
 
                 AccountProof accountProof = collector.BuildResult();
                 accountProof.Address.Should().Be(addressesWithStorage[i].Address);

@@ -29,10 +29,6 @@ namespace Nethermind.State
         public StateTree(IScopedTrieStore? store, ILogManager? logManager)
             : base(store, Keccak.EmptyTreeHash, true, logManager) => TrieType = TrieType.State;
 
-        public StateTree(ITrieStore? store, ILogManager? logManager)
-            : base(store.GetTrieStore(null), logManager)
-        {
-        }
 
         [DebuggerStepThrough]
         public Account? Get(Address address, Hash256? rootHash = null)

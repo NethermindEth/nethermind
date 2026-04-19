@@ -24,7 +24,7 @@ public class OverlayTrieStoreTests
         IDbProvider dbProvider = TestMemDbProvider.Init();
         TestRawTrieStore existingStore = new(dbProvider.StateDb);
 
-        PatriciaTree patriciaTree = new(existingStore, LimboLogs.Instance);
+        PatriciaTree patriciaTree = new(existingStore.GetTrieStore(null), LimboLogs.Instance);
         {
             using IBlockCommitter _ = existingStore.BeginBlockCommit(0);
             patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
@@ -38,7 +38,7 @@ public class OverlayTrieStoreTests
         ITrieStore overlayStore = new OverlayTrieStore(readOnlyDbProvider.GetDb<IDb>(DbNames.State), existingStore.AsReadOnly());
 
         // Modify the overlay tree
-        PatriciaTree overlaidTree = new(overlayStore, LimboLogs.Instance);
+        PatriciaTree overlaidTree = new(overlayStore.GetTrieStore(null), LimboLogs.Instance);
         overlaidTree.RootHash = originalRoot;
         overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
         overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());
@@ -51,7 +51,7 @@ public class OverlayTrieStoreTests
         readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count().Should().NotBe(originalKeyCount);
 
         // It can read the modified db
-        overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
+        overlaidTree = new PatriciaTree(overlayStore.GetTrieStore(null), LimboLogs.Instance);
         overlaidTree.RootHash = newRoot;
         overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
         overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());
@@ -63,7 +63,7 @@ public class OverlayTrieStoreTests
 
         // It should throw because the overlaid keys are now missing.
         readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(originalKeyCount);
-        overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
+        overlaidTree = new PatriciaTree(overlayStore.GetTrieStore(null), LimboLogs.Instance);
         Action act = () =>
         {
             overlaidTree.RootHash = newRoot;

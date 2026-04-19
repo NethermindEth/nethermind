@@ -40,7 +40,8 @@ namespace Nethermind.State
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : _codeDb[codeHash.Bytes];
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? header, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx> => _state.Accept(treeVisitor, header?.StateRoot ?? Keccak.EmptyTreeHash, visitingOptions);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? header, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx> =>
+            treeVisitor.Traverse(header?.StateRoot ?? Keccak.EmptyTreeHash, _trieStore, visitingOptions);
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash, baseBlock?.Number ?? 0);
 

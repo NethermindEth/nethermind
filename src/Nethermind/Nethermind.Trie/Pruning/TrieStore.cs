@@ -18,6 +18,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.Pruning;
 
@@ -1077,16 +1078,35 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         using ArrayPoolList<(TrieNode trieNode, Hash256? address2, TreePath path)> parallelStartNodes = new(_shardedDirtyNodeCount);
 
-        void TopLevelPersist(TrieNode tn, Hash256? address2, TreePath path)
+        Hash256? currentAddress = null;
+
+        void TopLevelPersist(TrieNode tn, TreePath path)
         {
+            // Handle storage first (children before parent)
+            if (currentAddress is null && tn.IsLeaf && ResolveStorageRoot(tn, ref path) is { } storageRoot)
+            {
+                Hash256 storageAddr;
+                using (path.ScopedAppend(tn.Key))
+                {
+                    storageAddr = path.Path.ToCommitment();
+                }
+
+                TreePath emptyPath = TreePath.Empty;
+                currentAddress = storageAddr;
+                storageRoot.CallRecursively(
+                    TopLevelPersist, ref emptyPath, true, _logger,
+                    maxPathLength: parallelBoundaryPathLength);
+                currentAddress = null;
+            }
+
             if (path.Length < parallelBoundaryPathLength)
             {
-                persistedNodeRecorder.Invoke(path, address2, tn);
-                PersistNode(address2, path, tn, commitSet.BlockNumber, topLevelWriteBatch, writeFlags);
+                persistedNodeRecorder.Invoke(path, currentAddress, tn);
+                PersistNode(currentAddress, path, tn, commitSet.BlockNumber, topLevelWriteBatch, writeFlags);
             }
             else
             {
-                parallelStartNodes.Add((tn, address2, path));
+                parallelStartNodes.Add((tn, currentAddress, path));
             }
         }
 
@@ -1096,7 +1116,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         // The first CallRecursive stop at two level, yielding 256 node in parallelStartNodes, which is run concurrently
         TreePath path = TreePath.Empty;
-        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStoreForPruning(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
+        commitSet.Root?.CallRecursively(TopLevelPersist, ref path, true, _logger, maxPathLength: parallelBoundaryPathLength);
 
         // The amount of change in the subtrees are not balanced at all. So their writes areas buffered here
         // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
@@ -1151,11 +1171,28 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         long persistedNodeCount = 0;
         INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+        Hash256? currentAddress = address2;
 
-        async ValueTask DoPersist(TrieNode node, Hash256? address3, TreePath path2)
+        async ValueTask DoPersist(TrieNode node, TreePath path2)
         {
-            persistedNodeRecorder.Invoke(path2, address3, node);
-            PersistNode(address3, path2, node, blockNumber, writeBatch, writeFlags);
+            // Handle storage first (children before parent)
+            if (currentAddress is null && node.IsLeaf && ResolveStorageRoot(node, ref path2) is { } storageRoot)
+            {
+                Hash256 storageAddr;
+                using (path2.ScopedAppend(node.Key))
+                {
+                    storageAddr = path2.Path.ToCommitment();
+                }
+
+                TreePath emptyPath = TreePath.Empty;
+                currentAddress = storageAddr;
+                await storageRoot.CallRecursivelyAsync(
+                    DoPersist, ref emptyPath, _logger);
+                currentAddress = null;
+            }
+
+            persistedNodeRecorder.Invoke(path2, currentAddress, node);
+            PersistNode(currentAddress, path2, node, blockNumber, writeBatch, writeFlags);
 
             persistedNodeCount++;
             if (persistedNodeCount % 512 == 0)
@@ -1165,8 +1202,31 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStoreForPruning(address2), _logger);
+        await tn.CallRecursivelyAsync(DoPersist, ref path, _logger);
         await disposeQueue.Writer.WriteAsync(writeBatch);
+    }
+
+    private TrieNode? ResolveStorageRoot(TrieNode node, ref TreePath path)
+    {
+        TrieNode? storageRoot = node.StorageRoot;
+        if (storageRoot is not null) return storageRoot;
+
+        if (node.Value.Length <= 64) return null; // storage leaf, not an account
+
+        Rlp.ValueDecoderContext valueContext = node.Value.AsSpan().AsRlpValueContext();
+        Hash256 storageRootKey = AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
+        if (storageRootKey == Keccak.EmptyTreeHash) return null;
+
+        Hash256 storagePath;
+        using (path.ScopedAppend(node.Key))
+        {
+            storagePath = path.Path.ToCommitment();
+        }
+
+        TreePath emptyPath = TreePath.Empty;
+        node.StorageRoot = storageRoot = GetTrieStoreForPruning(storagePath)
+            .FindCachedOrUnknown(in emptyPath, storageRootKey);
+        return storageRoot;
     }
 
     private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, long blockNumber, INodeStorage.IWriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)

@@ -300,7 +300,7 @@ public class PatriciaTreeBulkSetterTests
             {
                 TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
-                pTree.Accept(td, pTree.RootHash);
+                td.TraverseState(pTree.RootHash, pTree.TrieStore);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
@@ -386,7 +386,7 @@ public class PatriciaTreeBulkSetterTests
             {
                 TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
-                pTree.Accept(td, pTree.RootHash);
+                td.TraverseState(pTree.RootHash, pTree.TrieStore);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
@@ -442,7 +442,7 @@ public class PatriciaTreeBulkSetterTests
             {
                 TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
-                pTree.Accept(td, pTree.RootHash);
+                td.TraverseState(pTree.RootHash, pTree.TrieStore);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
@@ -488,7 +488,7 @@ public class PatriciaTreeBulkSetterTests
             {
                 pTree.Commit();
                 TreeDumper td = new(expectAccounts: false);
-                pTree.Accept(td, pTree.RootHash);
+                td.TraverseState(pTree.RootHash, pTree.TrieStore);
                 originalDump = td.ToString();
             }
             root = pTree.RootHash;
@@ -750,8 +750,6 @@ public class PatriciaTreeBulkSetterTests
         public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
 
         public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
-
-        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseTrieStore.GetStorageTrieNodeResolver(address);
 
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 

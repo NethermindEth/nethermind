@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
@@ -27,9 +26,6 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         @base.TryLoadRlp(in path, hash, flags);
-
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
-        throw new InvalidOperationException("unsupported");
 
     public INodeStorage.KeyScheme Scheme => @base.Scheme;
 

@@ -127,7 +127,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     private StorageTree CreateStorageTree(Address address, (UInt256 slot, byte[] value)[] slots)
     {
         Hash256 addressHash = Keccak.Compute(address.Bytes);
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(addressHash);
+        IScopedTrieStore storageTrieStore = new RawScopedTrieStore(_trieDb, addressHash);
         StorageTree storageTree = new(storageTrieStore, _logManager);
 
         foreach ((UInt256 slot, byte[] value) in slots)
@@ -145,7 +145,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(0));
         Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
@@ -168,7 +168,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
         Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
@@ -198,7 +198,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
         Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
@@ -224,7 +224,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
         Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(1));
@@ -243,7 +243,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
         Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1));
@@ -265,7 +265,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
         Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
@@ -295,7 +295,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
         Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
@@ -320,7 +320,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
         Assert.That(verifier.Stats.SlotCount, Is.EqualTo(2));
@@ -345,7 +345,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
         Assert.That(verifier.Stats.SlotCount, Is.EqualTo(1));
@@ -408,7 +408,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);
-        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None, addr => new RawScopedTrieStore(_trieDb, addr));
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
         Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(1)); // Account C mismatched

@@ -25,8 +25,6 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
         return value ?? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash);
     }
 
-    public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");
-
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
