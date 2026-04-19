@@ -994,9 +994,7 @@ public static partial class EvmInstructions
 
         return !TryDecodePair(ref stack, ref programCounter, out int n, out int m)
             ? EvmExceptionType.BadInstruction
-            : !stack.Exchange<TTracingInst>(n, m)
-                ? EvmExceptionType.StackUnderflow
-                : EvmExceptionType.None;
+            : stack.Exchange<TTracingInst>(n, m);
     }
 
     // EIP-8024 specifies that a missing immediate beyond end of code evaluates to zero.

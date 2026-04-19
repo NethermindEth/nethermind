@@ -2282,11 +2282,11 @@ public ref struct EvmStack
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly bool Exchange<TTracingInst>(int n, int m)
+    public readonly EvmExceptionType Exchange<TTracingInst>(int n, int m)
         where TTracingInst : struct, IFlag
     {
         int maxDepth = Math.Max(n, m);
-        if (!EnsureDepth(maxDepth)) return false;
+        if (!EnsureDepth(maxDepth)) return EvmExceptionType.StackUnderflow;
 
         ref byte bytes = ref _stack;
 
@@ -2300,7 +2300,7 @@ public ref struct EvmStack
 
         if (TTracingInst.IsActive) Trace(maxDepth);
 
-        return true;
+        return EvmExceptionType.None;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

@@ -27,6 +27,8 @@ public class EvmStackTests
     private const string PushUInt256 = nameof(EvmStack.PushUInt256);
     private const string PushBytes = nameof(EvmStack.PushBytes);
     private const string Dup = nameof(EvmStack.Dup);
+    private const string Swap = nameof(EvmStack.Swap);
+    private const string Exchange = nameof(EvmStack.Exchange);
 
     private const string PopUInt256_1 = "PopUInt256";
     private const string PopUInt256_2 = "PopUInt256_2out";
@@ -76,6 +78,30 @@ public class EvmStackTests
 
         result.Should().BeFalse();
         stack.Head.Should().Be(preFilled);
+    }
+
+    [TestCase(Dup)]
+    [TestCase(Swap)]
+    [TestCase(Exchange)]
+    public void StackReshuffle_with_insufficient_depth_returns_StackUnderflow_and_preserves_head(string op)
+    {
+        // DUPN / SWAPN / EXCHANGE delegate through stack.Dup/Swap/Exchange; all three must
+        // return StackUnderflow (not corrupt Head) when the addressed slot is past the bottom.
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        vmState.InitializeStacks(default, out EvmStack stack);
+        // One element on the stack; ops below ask for a slot we do not have.
+        stack.PushOne<OffFlag>();
+
+        EvmExceptionType result = op switch
+        {
+            Dup => stack.Dup<OffFlag>(2),            // need >= 2 elements
+            Swap => stack.Swap<OffFlag>(2),          // swap top with 2nd, need >= 2
+            Exchange => stack.Exchange<OffFlag>(1, 2), // need depth >= 2
+            _ => throw new System.ArgumentOutOfRangeException(nameof(op), op, null),
+        };
+
+        result.Should().Be(EvmExceptionType.StackUnderflow);
+        stack.Head.Should().Be(1);
     }
 
     [Test]
