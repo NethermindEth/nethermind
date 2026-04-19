@@ -58,19 +58,15 @@ public static partial class EvmInstructions
         // Deduct gas cost specific to the shift operation.
         TGasPolicy.Consume(ref gas, TOpShift.GasCost);
 
-        // Pop the shift amount from the stack.
-        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        // Amortise the bounds check across both operands (mirrors InstructionSar).
+        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 
-        // If the shift amount is 256 or more, per EVM semantics, discard the second operand and push zero.
-        if (a >= 256)
+        // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
+        if ((a.u1 | a.u2 | a.u3) != 0 || a.u0 >= 256)
         {
-            // Pop the second operand without using its value.
-            if (!stack.PopLimbo()) goto StackUnderflow;
             return stack.PushZero<TTracingInst>();
         }
 
-        // Otherwise, pop the value to be shifted.
-        if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
         // Perform the shift operation using the specific implementation.
         TOpShift.Operation(in a, in b, out UInt256 result);
         return stack.PushUInt256<TTracingInst>(in result);
@@ -105,7 +101,8 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
-        if (a >= 256)
+        // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
+        if ((a.u1 | a.u2 | a.u3) != 0 || a.u0 >= 256)
         {
             // Convert the unsigned value to a signed integer to determine its sign.
             return As<UInt256, Int256>(ref b).Sign >= 0
