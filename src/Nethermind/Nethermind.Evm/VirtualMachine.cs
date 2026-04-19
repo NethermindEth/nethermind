@@ -388,9 +388,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
-        bool discardCreateStateCharge = invalidCode || (spec.LimitCodeSize && callResult.Output.Length > spec.MaxCodeSize);
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
-            regularDepositCost, stateDepositCost, invalidCode, discardCreateStateCharge, callResult.Output);
+            regularDepositCost, stateDepositCost, invalidCode, callResult.Output);
     }
 
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult) => new(
@@ -410,7 +409,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long regularDepositCost,
         long stateDepositCost,
         bool invalidCode,
-        bool discardCreateStateCharge,
         ReadOnlyMemory<byte> code)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
@@ -443,11 +441,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
+            // The CREATE opcode's own state charge belongs to the parent frame and remains consumed.
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
-            if (spec.IsEip8037Enabled && discardCreateStateCharge)
-            {
-                TGasPolicy.DiscardStateGas(ref _currentState.Gas, GasCostOf.CreateState, stateGasFloor: 0);
-            }
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {
@@ -1027,8 +1022,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
         EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
 
-        // Cache the available gas from the state for local use.
-        TGasPolicy gas = vmState.Gas;
+        // Operate on the frame gas by reference so exceptional halts keep the latest
+        // gas/state-gas accounting without needing interpreter-wide exception handling.
+        ref TGasPolicy gas = ref vmState.Gas;
 
         // If a previous call result exists, push its bytes onto the stack.
         if (previousCallResult is not null)
@@ -1199,6 +1195,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 if (ReturnData is not null)
                     break;
             }
+
             OpCodeCount += opCodeCount;
         }
 
