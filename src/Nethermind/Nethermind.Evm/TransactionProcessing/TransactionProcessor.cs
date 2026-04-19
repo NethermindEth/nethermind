@@ -103,8 +103,7 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Commit and later restore state also skip validation, use for CallAndRestore
             /// </summary>
-            CommitAndRestore = Commit | Restore | SkipValidation,
-
+            CommitAndRestore = Commit | Restore | SkipValidation
         }
 
         protected TransactionProcessorBase(
@@ -594,7 +593,6 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
-
             bool validate = ShouldValidateGas(tx, opts);
 
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
@@ -637,7 +635,9 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
                 if (!overflows)
+                {
                     overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
+                }
             }
 
             if (overflows || senderReservedGasPayment > balanceLeft)
@@ -646,12 +646,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            if (!senderReservedGasPayment.IsZero)
-                WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+            if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+
             return TransactionResult.Ok;
         }
-
-        protected virtual void DecrementNonce(Transaction tx) => WorldState.DecrementNonce(tx.SenderAddress!);
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -665,8 +663,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
             WorldState.SetNonce(tx.SenderAddress, newNonce);
+
             return TransactionResult.Ok;
         }
+
+        protected virtual void DecrementNonce(Transaction tx) => WorldState.DecrementNonce(tx.SenderAddress!);
 
         [SkipLocalsInit]
         private TransactionResult BuildExecutionEnvironment(
