@@ -26,6 +26,9 @@ public class GasEstimator(
 
     /// <summary>Prefix of the error message emitted when the required gas exceeds what the sender can afford.</summary>
     public const string GasExceedsAllowanceMsgPrefix = "gas required exceeds allowance";
+    
+    /// <summary>Message emitted when the sender has insufficient balance.</summary>
+    public const string InsufficientBalance = "insufficient funds for transfer";
 
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;
@@ -34,7 +37,6 @@ public class GasEstimator(
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
     private const string TransactionExecutionFails = "Transaction execution fails";
-    private const string InsufficientBalance = "insufficient sender balance";
     private const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
 
