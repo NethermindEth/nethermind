@@ -68,12 +68,15 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
+      # EvmOpcodesBenchmarkConfig sets OutlierMode.RemoveAll; the Median / Error / StdDev
+      # columns consumed below already reflect an outlier-trimmed distribution, so the
+      # multipliers here act on cleaner signals than raw BDN would produce.
       # Default threshold; per-opcode thresholds come from the Threshold column in BDN output
       THRESHOLD_PERCENT: "5"
       # Noise guard for unchanged-code stability.
       # Effective threshold = max(opcode threshold, max(baseCV, prCV) * NOISE_MULTIPLIER)
       NOISE_MULTIPLIER: "2.0"
-      # Uncertainty guard from BDN Error column.
+      # Uncertainty guard from BDN Error column (post-outlier-removal half-width).
       # Effective threshold also includes (baseError + prError) / baseMedian * ERROR_MULTIPLIER.
       ERROR_MULTIPLIER: "1.0"
       # Absolute delta floor in ns to avoid flagging tiny changes on ultra-fast opcodes.

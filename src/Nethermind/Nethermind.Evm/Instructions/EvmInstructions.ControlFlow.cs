@@ -359,10 +359,8 @@ public static partial class EvmInstructions
             {
                 unsafe
                 {
-                    // Safety: stack.Code points into the pinned bytecode buffer owned by
-                    // the execution environment for the lifetime of this frame; dest and
-                    // nextLine are bounds-checked against codeLength before each AsPointer,
-                    // so both addresses are in-range within that pinned allocation.
+                    // Best-effort hint: PREFETCHT0 never faults. A GC relocation just
+                    // makes the hint useless, not unsafe.
                     Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, dest)));
                     // Prefetch next cache line too (64 bytes ahead)
                     nuint nextLine = (dest + 64) & ~(nuint)63;

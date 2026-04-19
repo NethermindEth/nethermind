@@ -14,6 +14,7 @@ using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
+using Perfolizer.Mathematics.OutlierDetection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -915,7 +916,7 @@ public unsafe class EvmOpcodesBenchmark
     {
         public EvmOpcodesBenchmarkConfig()
         {
-            // 3 process launches x 15 measurement iterations = 45 data points.
+            // 2 process launches x 15 measurement iterations = 30 data points.
             // GcForce ensures a GC collection between iterations to reduce allocation noise.
             // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
             // because the runner's DashboardConfig.AddJob is commented out.
@@ -926,9 +927,12 @@ public unsafe class EvmOpcodesBenchmark
                 .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithLaunchCount(3)
+                .WithLaunchCount(2)
                 .WithWarmupCount(15)
-                .WithIterationCount(15));
+                .WithIterationCount(15)
+                // Drop both sides of the distribution; stabilises the median/P90 against
+                // CI runner cold-start stalls and background-task interference.
+                .WithOutlierMode(OutlierMode.RemoveAll));
             HideColumns(Column.Method);
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);

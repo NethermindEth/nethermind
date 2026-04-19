@@ -66,9 +66,6 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         // Exact-gas assertion catches the PUSH2+JUMP fusion double-charge regression:
         // without the `programCounter++` past JUMPDEST, the dispatch loop re-executes the
         // JUMPDEST opcode and charges 1 extra gas.
-        // Exact-gas assertion catches the PUSH2+JUMP fusion double-charge regression:
-        // without the `programCounter++` past JUMPDEST, the dispatch loop re-executes the
-        // JUMPDEST opcode and charges 1 extra gas.
         AssertGas(r, 41018);
     }
 
