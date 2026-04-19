@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Runtime.InteropServices;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
@@ -128,6 +130,32 @@ public class EvmStackTests
 
         result.Should().BeNull();
         stack.Head.Should().Be(0);
+    }
+
+    [TestCase(1)]
+    [TestCase(5)]
+    [TestCase(16)]
+    [TestCase(31)]
+    public void Truncated_PUSH32_preserves_leading_bytes_and_zero_pads_tail(int used)
+    {
+        // EVM spec: truncated PUSH{n} (where code ends before n bytes of immediate) must push
+        // <available-bytes, 00...00> in big-endian. Available bytes go to the high end;
+        // the missing tail is zero-filled. Regression guard for PushBothPaddedBytes in
+        // the Op32.Push fallback for a PUSH32 at end of bytecode.
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        vmState.InitializeStacks(default, out EvmStack stack);
+        byte[] immediate = new byte[used];
+        for (int i = 0; i < used; i++) immediate[i] = (byte)(0xA0 + i);
+
+        EvmExceptionType result = stack.PushBothPaddedBytes<OffFlag>(
+            ref MemoryMarshal.GetArrayDataReference(immediate),
+            used,
+            pushSize: 32);
+
+        result.Should().Be(EvmExceptionType.None);
+        stack.PopWord256(out Span<byte> word).Should().BeTrue();
+        for (int i = 0; i < used; i++) word[i].Should().Be((byte)(0xA0 + i), $"byte {i} high-end");
+        for (int i = used; i < 32; i++) word[i].Should().Be(0, $"byte {i} zero-pad tail");
     }
 
     [Test]

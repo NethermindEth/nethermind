@@ -1329,8 +1329,16 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
         => Push32Bytes<TTracingInst>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in hash)));
 
+    /// <summary>
+    /// Fallback writer for truncated PUSH{n} where fewer than <paramref name="pushSize"/> immediate
+    /// bytes remain in code. Zero-fills the 32-byte word, then copies <paramref name="used"/> bytes
+    /// to the leading portion of the n-byte PUSH slot (high end in big-endian layout).
+    /// </summary>
+    /// <param name="start">Reference to the first immediate byte in code.</param>
+    /// <param name="used">Number of immediate bytes available in code (0 <= used <= pushSize).</param>
+    /// <param name="pushSize">The PUSH opcode's declared immediate length (2..32).</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public EvmExceptionType PushBothPaddedBytes<TTracingInst>(ref byte start, int used, int paddingLength)
+    public EvmExceptionType PushBothPaddedBytes<TTracingInst>(ref byte start, int used, int pushSize)
         where TTracingInst : struct, IFlag
     {
         uint headOffset = (uint)Head;
@@ -1357,13 +1365,16 @@ public ref struct EvmStack
             Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = default;
         }
 
-        if (paddingLength == WordSize)
+        // When no immediate bytes are available (truncated PUSH at end of code), the
+        // zero-filled word is already correct.
+        if (used == 0)
         {
-            // All padding, nothing to copy
             return EvmExceptionType.None;
         }
 
-        dst = ref Unsafe.Add(ref dst, WordSize - paddingLength);
+        // Copy `used` bytes to the high end of the `pushSize`-byte tail. Positions
+        // [WordSize - pushSize + used, WordSize) stay zero as the spec requires.
+        dst = ref Unsafe.Add(ref dst, WordSize - pushSize);
         CopyUpTo32(ref dst, ref start, (uint)used);
         return EvmExceptionType.None;
     }
