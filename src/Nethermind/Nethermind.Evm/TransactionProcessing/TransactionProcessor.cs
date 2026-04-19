@@ -1079,7 +1079,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public ErrorType Error { get; }
         public bool TransactionExecuted => Error is ErrorType.None;
         public EvmExceptionType EvmExceptionType { get; }
-        public string? ErrorDescription { get; }
+        public string ErrorDescription { get; }
 
         public static implicit operator TransactionResult(ErrorType error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.TransactionExecuted;
