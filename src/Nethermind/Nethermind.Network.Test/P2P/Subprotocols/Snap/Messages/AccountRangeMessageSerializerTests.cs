@@ -23,7 +23,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoAccountsNoProofs_HasCorrectLength()
         {
-            AccountRangeMessage msg = new()
+            using AccountRangeMessage msg = new()
             {
                 RequestId = 1,
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoAccountsNoProofs()
         {
-            AccountRangeMessage msg = new()
+            AccountRangeMessage? msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
@@ -46,7 +46,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             AccountRangeMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            try
+            {
+                SerializerTester.TestZero(serializer, msg);
+                msg = null;
+            }
+            finally
+            {
+                msg?.Dispose();
+            }
         }
 
         [Test]
@@ -63,7 +71,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 .WithStorageRoot(new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
                 .TestObject;
 
-            AccountRangeMessage msg = new()
+            AccountRangeMessage? msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new(TestItem.KeccakA, acc01), new(TestItem.KeccakB, acc02) },
@@ -72,7 +80,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             AccountRangeMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            try
+            {
+                SerializerTester.TestZero(serializer, msg);
+                msg = null;
+            }
+            finally
+            {
+                msg?.Dispose();
+            }
         }
 
         [Test]
@@ -84,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 .WithStorageRoot(Keccak.EmptyTreeHash)
                 .TestObject;
 
-            AccountRangeMessage msg = new()
+            AccountRangeMessage? msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
@@ -93,7 +109,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             AccountRangeMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            try
+            {
+                SerializerTester.TestZero(serializer, msg);
+                msg = null;
+            }
+            finally
+            {
+                msg?.Dispose();
+            }
         }
 
         [Test]
@@ -105,7 +129,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 .WithStorageRoot(TestItem.KeccakA)
                 .TestObject;
 
-            AccountRangeMessage msg = new()
+            AccountRangeMessage? msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
@@ -114,7 +138,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             AccountRangeMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            try
+            {
+                SerializerTester.TestZero(serializer, msg);
+                msg = null;
+            }
+            finally
+            {
+                msg?.Dispose();
+            }
         }
     }
 }
