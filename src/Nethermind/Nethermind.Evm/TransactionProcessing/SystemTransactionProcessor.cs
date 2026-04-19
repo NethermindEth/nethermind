@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -16,6 +17,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private readonly bool _isAura;
+    private readonly IBlockAccessListBuilder? _balBuilder;
 
     /// <summary>
     /// Hacky flag to execution options, to pass information how original validate should behave.
@@ -30,19 +32,34 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager) => _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
+        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    {
+        _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
+        _balBuilder = worldState as IBlockAccessListBuilder;
+    }
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
-        if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
-        {
-            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
-        }
+        // EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls.
+        bool suppressSystemAccountReads = !_isAura && tx.SenderAddress == Address.SystemUser && _balBuilder is { TracingEnabled: true };
+        IDisposable? systemAccountReadSuppression = suppressSystemAccountReads ? _balBuilder!.BeginSystemAccountReadSuppression() : null;
 
-        ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
-            : opts);
+        try
+        {
+            if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
+            {
+                WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            }
+
+            ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
+            return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+                ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
+                : opts);
+        }
+        finally
+        {
+            systemAccountReadSuppression?.Dispose();
+        }
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,

@@ -292,6 +292,84 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_generation_skips_pre_execution_system_account_read()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest())
+        {
+            TracingEnabled = true
+        };
+
+        using (stateProvider.BeginSystemAccountReadSuppression())
+        {
+            stateProvider.AddAccountRead(Address.SystemUser);
+        }
+
+        Assert.That(stateProvider.GeneratedBlockAccessList.AccountChanges, Is.Empty);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_generation_suppresses_system_account_read_across_multiple_system_call_indexes()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest())
+        {
+            TracingEnabled = true
+        };
+
+        AddSystemCallAccountReads(TestItem.AddressA);
+        AddSystemCallAccountReads(TestItem.AddressB);
+
+        stateProvider.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+        stateProvider.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+
+        AddSystemCallAccountReads(TestItem.AddressC);
+        AddSystemCallAccountReads(TestItem.AddressD);
+
+        Assert.That(stateProvider.GeneratedBlockAccessList.GetAccountChanges(Address.SystemUser), Is.Null);
+        Assert.That(stateProvider.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
+        Assert.That(stateProvider.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
+        Assert.That(stateProvider.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressC), Is.Not.Null);
+        Assert.That(stateProvider.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressD), Is.Not.Null);
+
+        void AddSystemCallAccountReads(Address target)
+        {
+            using (stateProvider.BeginSystemAccountReadSuppression())
+            {
+                stateProvider.AddAccountRead(Address.SystemUser);
+                stateProvider.AddAccountRead(target);
+            }
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_validation_rejects_surplus_pre_execution_system_account_read()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        BlockAccessList suggestedBlockAccessList = new();
+        suggestedBlockAccessList.AddAccountRead(Address.SystemUser);
+        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, 10_000);
+
+        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, 10_000);
+
+        Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_validation_rejects_missing_explicit_system_account_read()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest())
+        {
+            TracingEnabled = true
+        };
+        stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), 10_000);
+        stateProvider.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+        stateProvider.AddAccountRead(Address.SystemUser);
+
+        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 1, 10_000);
+
+        Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
@@ -385,6 +463,13 @@ public class BlockProcessorTests
             => ValidatedGasRemaining.Add(gasRemaining);
 
         public void SetBlockAccessList(Block block, IReleaseSpec spec) { }
+        public IDisposable BeginSystemAccountReadSuppression() => EmptyDisposable.Instance;
+
+        private sealed class EmptyDisposable : IDisposable
+        {
+            public static EmptyDisposable Instance { get; } = new();
+            public void Dispose() { }
+        }
     }
 
     public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()

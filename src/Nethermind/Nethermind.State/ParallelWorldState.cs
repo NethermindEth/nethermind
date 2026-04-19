@@ -25,6 +25,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     private BlockAccessList _suggestedBlockAccessList;
     private long _gasUsed;
+    private int _systemAccountReadSuppressionDepth;
 
     public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed)
     {
@@ -196,9 +197,34 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     public void AddAccountRead(Address address)
     {
-        if (TracingEnabled)
+        if (TracingEnabled && (_systemAccountReadSuppressionDepth == 0 || address != Address.SystemUser))
         {
             GeneratedBlockAccessList.AddAccountRead(address);
+        }
+    }
+
+    public IDisposable BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
+
+    private sealed class SystemAccountReadSuppressionScope : IDisposable
+    {
+        private ParallelWorldState? _stateProvider;
+
+        public SystemAccountReadSuppressionScope(ParallelWorldState stateProvider)
+        {
+            _stateProvider = stateProvider;
+            stateProvider._systemAccountReadSuppressionDepth++;
+        }
+
+        public void Dispose()
+        {
+            ParallelWorldState? stateProvider = _stateProvider;
+            if (stateProvider is null)
+            {
+                return;
+            }
+
+            _stateProvider = null;
+            stateProvider._systemAccountReadSuppressionDepth--;
         }
     }
 
@@ -280,6 +306,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         {
             if (suggestedHead is null)
             {
+                if (IsSystemAccountRead(generatedHead.Value, index))
+                {
+                    AdvanceGenerated();
+                    continue;
+                }
                 if (HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
@@ -289,6 +320,10 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             }
             else if (generatedHead is null)
             {
+                if (IsSystemAccountRead(suggestedHead.Value, index))
+                {
+                    throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                }
                 if (HasNoChanges(suggestedHead.Value))
                 {
                     AdvanceSuggested();
@@ -311,6 +346,10 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             }
             else if (cmp > 0)
             {
+                if (IsSystemAccountRead(suggestedHead.Value, index))
+                {
+                    throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                }
                 if (HasNoChanges(suggestedHead.Value))
                 {
                     AdvanceSuggested();
@@ -320,6 +359,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             }
             else
             {
+                if (IsSystemAccountRead(generatedHead.Value, index))
+                {
+                    AdvanceGenerated();
+                    continue;
+                }
                 if (HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
@@ -370,4 +414,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     private static bool HasOptionalStorageReads(in ChangeAtIndex c)
         => HasNoChanges(c) && c.Reads > 0;
+
+    private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
+        => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
 }
