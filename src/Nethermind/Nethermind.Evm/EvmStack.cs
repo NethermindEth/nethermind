@@ -380,6 +380,52 @@ public ref struct EvmStack
     }
 
     /// <summary>
+    /// Out-parameter form of <see cref="ReadUInt256FromSlot(ref byte)"/>. Writes directly
+    /// into <paramref name="value"/>, bypassing the 32-byte return-value staging buffer
+    /// the JIT otherwise emits for a by-value UInt256 return.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ReadUInt256FromSlot(ref byte slot, out UInt256 value)
+    {
+        Unsafe.SkipInit(out value);
+        if (Avx2.IsSupported)
+        {
+            Word data = Unsafe.ReadUnaligned<Word>(ref slot);
+            Word shuffle = ByteSwap256Mask;
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                Unsafe.As<UInt256, Word>(ref value) = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
+            }
+            else
+            {
+                Word convert = Avx2.Shuffle(data, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref value)
+                    = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
+            }
+        }
+        else
+        {
+            ulong u3, u2, u1, u0;
+            if (BitConverter.IsLittleEndian)
+            {
+                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref slot));
+                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, sizeof(ulong))));
+                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, 2 * sizeof(ulong))));
+                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, 3 * sizeof(ulong))));
+            }
+            else
+            {
+                u3 = Unsafe.ReadUnaligned<ulong>(ref slot);
+                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, sizeof(ulong)));
+                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, 2 * sizeof(ulong)));
+                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, 3 * sizeof(ulong)));
+            }
+            value = new UInt256(u0, u1, u2, u3);
+        }
+    }
+
+    /// <summary>
     /// Writes a UInt256 value to a stack slot with big-endian conversion (no bounds check).
     /// Used when the slot was already validated by a previous pop operation.
     /// </summary>
@@ -2126,21 +2172,66 @@ public ref struct EvmStack
     }
 
     /// <summary>
-    /// Combined pop and peek for binary operations - single bounds check.
-    /// Pops one element and returns ref to new top. The popped element is at top + WordSize.
-    /// Returns null ref if stack underflow.
+    /// Atomic pop-1 + peek-top for binary ops that push exactly one result.
+    /// Single bounds check (needs <c>Head &gt;= 2</c>). On success <c>Head</c> decrements by 1
+    /// and the returned ref addresses the new top slot so the caller can write the result
+    /// in-place without a separate push (which would retest stack overflow).
+    /// Caller checks <paramref name="isValid"/> before using the returned ref.
     /// </summary>
+    /// <param name="a">The popped value (was at the top of the stack).</param>
+    /// <param name="isValid">True on success.</param>
+    /// <returns>Reference to the new top slot (32 bytes). Undefined when <paramref name="isValid"/> is false.</returns>
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref byte PopPeekBytesByRef()
+    [UnscopedRef]
+    public ref byte Pop1Peek32Bytes(out UInt256 a, out bool isValid)
     {
+        Unsafe.SkipInit(out a);
         ref byte baseRef = ref _stack;
         uint head = (uint)Head;
         if (head < 2)
         {
-            return ref Unsafe.NullRef<byte>();
+            isValid = false;
+            return ref baseRef;
         }
         Head = (int)(head - 1);
-        return ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
+        ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
+        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out a);
+        isValid = true;
+        return ref topRef;
+    }
+
+    /// <summary>
+    /// Atomic pop-2 + peek-top for ternary ops that push exactly one result.
+    /// Single bounds check (needs <c>Head &gt;= 3</c>). On success <c>Head</c> decrements by 2
+    /// and the returned ref addresses the new top slot for in-place write.
+    /// Caller checks <paramref name="isValid"/> before using the returned ref.
+    /// </summary>
+    /// <param name="a">The first popped value (was at the top of the stack).</param>
+    /// <param name="b">The second popped value (was below <paramref name="a"/>).</param>
+    /// <param name="isValid">True on success.</param>
+    /// <returns>Reference to the new top slot (32 bytes). Undefined when <paramref name="isValid"/> is false.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    public ref byte Pop2Peek32Bytes(out UInt256 a, out UInt256 b, out bool isValid)
+    {
+        Unsafe.SkipInit(out a);
+        Unsafe.SkipInit(out b);
+        ref byte baseRef = ref _stack;
+        uint head = (uint)Head;
+        if (head < 3)
+        {
+            isValid = false;
+            return ref baseRef;
+        }
+        Head = (int)(head - 2);
+        ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 3) * WordSize));
+        // Both popped slots sit above the peek slot at +WordSize and +2*WordSize.
+        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out b);
+        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, 2 * WordSize), out a);
+        isValid = true;
+        return ref topRef;
     }
 
     /// <summary>
