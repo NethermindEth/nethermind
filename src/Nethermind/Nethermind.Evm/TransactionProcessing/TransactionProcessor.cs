@@ -1101,7 +1101,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult MalformedTransaction = new(ErrorType.MalformedTransaction, errorDescription: "malformed");
         public static readonly TransactionResult MinerPremiumNegative = new(ErrorType.MinerPremiumNegative, errorDescription: "miner premium is negative");
         public static readonly TransactionResult NonceOverflow = new(ErrorType.NonceOverflow, errorDescription: "nonce overflow");
-        public static readonly TransactionResult SenderHasDeployedCode= new(ErrorType.SenderHasDeployedCode, errorDescription: "sender has deployed code");
+        public static readonly TransactionResult SenderHasDeployedCode = new(ErrorType.SenderHasDeployedCode, errorDescription: "sender has deployed code");
         public static readonly TransactionResult SenderNotSpecified = new(ErrorType.SenderNotSpecified, errorDescription: "sender not specified");
         public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = new(ErrorType.TransactionSizeOverMaxInitCodeSize, errorDescription: "EIP-3860 - transaction size over max init code size");
         public static readonly TransactionResult TransactionNonceTooHigh = new(ErrorType.TransactionNonceTooHigh, errorDescription: "transaction nonce is too high");
