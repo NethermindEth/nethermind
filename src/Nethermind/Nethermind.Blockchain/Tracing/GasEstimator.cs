@@ -26,7 +26,7 @@ public class GasEstimator(
 
     /// <summary>Prefix of the error message emitted when the required gas exceeds what the sender can afford.</summary>
     public const string GasExceedsAllowanceMsgPrefix = "gas required exceeds allowance";
-    
+
     /// <summary>Message emitted when the sender has insufficient balance.</summary>
     public const string InsufficientBalance = "insufficient funds for transfer";
 
