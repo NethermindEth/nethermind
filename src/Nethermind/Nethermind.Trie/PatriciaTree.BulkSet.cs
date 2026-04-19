@@ -93,6 +93,9 @@ public partial class PatriciaTree
             return;
         }
 
+        // Large-batch path: BucketSort16 needs a separate sort target. Rent a buffer once here
+        // and flip-flop entries/sortBuffer on each recursion level (see `flipCount` in the
+        // recursive BulkSet).
         using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
 
         Context ctx2 = new()
