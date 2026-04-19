@@ -207,7 +207,7 @@ public class GasEstimator(
         {
             { TopLevelRevert: true } => GetRevertError(gasTracer),
             { OutOfGas: true } => GasEstimationOutOfGas,
-            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? TransactionExecutionFails,
+            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? defaultError,
             _ => defaultError
         };
 
