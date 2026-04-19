@@ -183,14 +183,17 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t opcodes < evm-rerun-opcodes.txt
-          filter_args=()
+          # BDN 0.16+ rejects repeated --filter flags ("Option 'f, filter' is defined multiple times").
+          # The CLI accepts one --filter followed by multiple glob patterns as positional args.
+          filter_args=(--filter)
           for opcode in "${opcodes[@]}"; do
             [[ -z "${opcode}" ]] && continue
             # BDN renders params as "(Opcode: ADD)" (colon space); the trailing ")" anchors the
             # glob so "ADD" does not also match "ADDMOD".
-            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode: ${opcode})*")
+            filter_args+=("*EvmOpcodesBenchmark*Opcode: ${opcode})*")
           done
-          if [[ "${#filter_args[@]}" -eq 0 ]]; then
+          # If no opcodes accumulated, filter_args still contains just "--filter" (length 1).
+          if [[ "${#filter_args[@]}" -le 1 ]]; then
             exit 0
           fi
 
@@ -208,14 +211,17 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t opcodes < evm-rerun-opcodes.txt
-          filter_args=()
+          # BDN 0.16+ rejects repeated --filter flags ("Option 'f, filter' is defined multiple times").
+          # The CLI accepts one --filter followed by multiple glob patterns as positional args.
+          filter_args=(--filter)
           for opcode in "${opcodes[@]}"; do
             [[ -z "${opcode}" ]] && continue
             # BDN renders params as "(Opcode: ADD)" (colon space); the trailing ")" anchors the
             # glob so "ADD" does not also match "ADDMOD".
-            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode: ${opcode})*")
+            filter_args+=("*EvmOpcodesBenchmark*Opcode: ${opcode})*")
           done
-          if [[ "${#filter_args[@]}" -eq 0 ]]; then
+          # If no opcodes accumulated, filter_args still contains just "--filter" (length 1).
+          if [[ "${#filter_args[@]}" -le 1 ]]; then
             exit 0
           fi
 
