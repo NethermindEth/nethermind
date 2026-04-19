@@ -40,7 +40,14 @@ jobs:
     # Gate the job on either:
     #  - a pull_request event that is NOT a WIP PR (label/title filter), OR
     #    an unlabeled event where the removed label was specifically `wip`, OR
-    #  - any `@claude` mention on comments/reviews/issues.
+    #  - an `@claude` mention on comments/reviews/issues from a trusted author.
+    #
+    # The `author_association` guard on mention paths is a security boundary: `issue_comment`
+    # and related events always run in the base-repo context with full secret access, even
+    # for comments on fork PRs, so without this guard an external contributor could trigger
+    # a Claude run (consuming the OAuth token) by commenting `@claude ...` on their own PR.
+    # The `pull_request` auto-trigger path doesn't need this guard because GitHub strips
+    # secrets from fork-PR `pull_request` events, so the action would fail without auth anyway.
     if: |
       (github.event_name == 'pull_request' && (
         (github.event.action == 'unlabeled' && github.event.label.name == 'wip') ||
@@ -52,10 +59,15 @@ jobs:
           !contains(github.event.pull_request.title, '[wip]')
         )
       )) ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.review.author_association)) ||
+      (github.event_name == 'issues' &&
+        (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
     env:
       RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -63,6 +75,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write # Required by anthropics/claude-code-action for OIDC auth
       actions: read # Required for Claude to read CI results on PRs
       statuses: write # Required to post the claude-review/reviewed commit status
     steps:
@@ -173,13 +186,22 @@ jobs:
           CRIT=$(printf '%s' "$STRUCTURED" | jq -r '.critical_count // 0')
           HIGH=$(printf '%s' "$STRUCTURED" | jq -r '.high_count // 0')
           MED=$(printf '%s' "$STRUCTURED" | jq -r '.medium_count // 0')
+          SUMMARY=$(printf '%s' "$STRUCTURED" | jq -r '.summary // ""' | tr '\n' ' ')
           if [[ "$MERGEABLE" == "true" ]]; then
             STATE=success
-            DESC="Claude reviewed: no blockers"
+            PREFIX="Claude reviewed: no blockers"
           else
             STATE=failure
-            DESC="Claude blockers: $CRIT critical, $HIGH high, $MED medium"
+            PREFIX="Claude blockers: $CRIT critical, $HIGH high, $MED medium"
           fi
+          # GitHub truncates commit status descriptions at 140 chars in the UI; build
+          # "<prefix> — <summary>" and clip so the summary surfaces directly in the PR checks.
+          if [[ -n "$SUMMARY" ]]; then
+            DESC="$PREFIX — $SUMMARY"
+          else
+            DESC="$PREFIX"
+          fi
+          DESC="${DESC:0:140}"
           gh api "repos/$REPO/statuses/$SHA" \
             -f state="$STATE" \
             -f context=claude-review/reviewed \
