@@ -1073,7 +1073,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             Error = error;
             EvmExceptionType = evmException;
-            ErrorDescription = errorDescription.Length > 0 ? errorDescription : evmException.GetEvmExceptionDescription();
+            ErrorDescription = errorDescription;
         }
 
         public ErrorType Error { get; }
