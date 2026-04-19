@@ -15,7 +15,7 @@ namespace Nethermind.Trie;
 
 public partial class PatriciaTree
 {
-    public const int MinEntriesToParallelizeThreshold = 256;
+    public const int MinEntriesToParallelizeThreshold = 128;
     private const int InPlaceSortThreshold = 32;
     private const int BSearchThreshold = 128;
     private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
