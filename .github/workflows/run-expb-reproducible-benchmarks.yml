@@ -897,16 +897,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dtp_files < <(find "${EXPB_DATA_DIR}" -name '*.dtp' -newer "${MARKER}" 2>/dev/null)
-          if [[ "${#dtp_files[@]}" -eq 0 ]]; then
-            echo "No .dtp snapshot files found for this run."
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
+            echo "No dottrace output directories found for this run."
             exit 0
           fi
 
-          echo "Found ${#dtp_files[@]} dotTrace snapshot(s) from this run:"
-          printf '  %s\n' "${dtp_files[@]}"
+          echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
+          printf '  %s\n' "${dottrace_dirs[@]}"
 
-          zip -9j "${ARCHIVE}" "${dtp_files[@]}"
+          zip -9j "${ARCHIVE}" "${dottrace_dirs[@]}"/*
 
       - name: Upload dotTrace artifact
         if: always() && needs.resolve.outputs.dottrace == 'true'
@@ -1917,16 +1917,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dtp_files < <(find "${EXPB_DATA_DIR}" -name '*.dtp' -newer "${MARKER}" 2>/dev/null)
-          if [[ "${#dtp_files[@]}" -eq 0 ]]; then
-            echo "No .dtp snapshot files found for this run."
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
+            echo "No dottrace output directories found for this run."
             exit 0
           fi
 
-          echo "Found ${#dtp_files[@]} dotTrace snapshot(s) from this run:"
-          printf '  %s\n' "${dtp_files[@]}"
+          echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
+          printf '  %s\n' "${dottrace_dirs[@]}"
 
-          zip -9j "${ARCHIVE}" "${dtp_files[@]}"
+          zip -9j "${ARCHIVE}" "${dottrace_dirs[@]}"/*
 
       - name: Upload dotTrace artifact
         if: always() && needs.resolve.outputs.dottrace == 'true'
