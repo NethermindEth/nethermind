@@ -361,26 +361,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
-    {
-        foreach (AccountChanges accountChanges in _accountChanges)
-        {
-            bool isPostExecutionSystemContract =
-                accountChanges.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
-                accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
-
-            yield return
-                new(
-                    accountChanges.Address,
-                    accountChanges.BalanceChangeAtIndex(index),
-                    accountChanges.NonceChangeAtIndex(index),
-                    accountChanges.CodeChangeAtIndex(index),
-                    accountChanges.SlotChangesAtIndex(index),
-                    isPostExecutionSystemContract ? 0 : accountChanges.StorageReads.Count
-                );
-        }
-    }
-
     public override string ToString()
     {
         StringBuilder sb = new();
@@ -532,18 +512,25 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     // Sort the unsorted build-time collections into the canonical order required
     // by RLP encoding and BAL validation. Idempotent via _sealed; mutations that
-    // can grow _accountChanges (or any AccountChanges._storageChanges /
-    // _storageReads) clear the flag. Returns true when this call actually sorted
-    // (was unsealed), false when it was already sealed. The return value reflects
-    // only the outer BAL flag; per-account children track their own flags.
+    // grow _accountChanges clear the flag. Returns true when this call sorted
+    // the outer list (was unsealed), false when it was already sealed. The
+    // return value reflects only the outer flag.
+    //
+    // Children are always swept through Parallel.For even when the outer was
+    // already sealed: a child can become unsealed without us noticing (e.g. a
+    // caller reached directly into an AccountChanges and appended storage).
+    // Each child's Seal() is an O(1) flag check when already sealed.
     public bool Seal()
     {
-        if (_sealed) return false;
-        _accountChanges.Sort(static (a, b) => a.Address.CompareTo(b.Address));
+        bool wasUnsealed = !_sealed;
+        if (wasUnsealed)
+        {
+            _accountChanges.Sort(static (a, b) => a.Address.CompareTo(b.Address));
+            _sealed = true;
+        }
         List<AccountChanges> accountChanges = _accountChanges;
         Parallel.For(0, accountChanges.Count, i => accountChanges[i].Seal());
-        _sealed = true;
-        return true;
+        return wasUnsealed;
     }
 
     private enum ChangeType

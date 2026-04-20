@@ -136,17 +136,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         return existing;
     }
 
-    public IEnumerable<SlotChanges> SlotChangesAtIndex(ushort index)
-    {
-        foreach (SlotChanges slotChanges in _storageChanges)
-        {
-            if (slotChanges.TryGetChangeAtIndex(index, out StorageChange storageChange))
-            {
-                yield return new(slotChanges.Slot, [storageChange]);
-            }
-        }
-    }
-
     public void AddStorageRead(UInt256 key)
     {
         if (_storageReadsSet.Add(key))
@@ -198,15 +187,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
-    public BalanceChange? BalanceChangeAtIndex(ushort index)
-    {
-        foreach (BalanceChange bc in _balanceChanges)
-        {
-            if (bc.BlockAccessIndex == index) return bc;
-        }
-        return null;
-    }
-
     public void AddNonceChange(NonceChange nonceChange)
         => _nonceChanges.Add(nonceChange);
 
@@ -221,15 +201,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
-    public NonceChange? NonceChangeAtIndex(ushort index)
-    {
-        foreach (NonceChange nc in _nonceChanges)
-        {
-            if (nc.BlockAccessIndex == index) return nc;
-        }
-        return null;
-    }
-
     public void AddCodeChange(CodeChange codeChange)
         => _codeChanges.Add(codeChange);
 
@@ -242,15 +213,6 @@ public class AccountChanges : IEquatable<AccountChanges>
             return true;
         }
         return false;
-    }
-
-    public CodeChange? CodeChangeAtIndex(ushort index)
-    {
-        foreach (CodeChange cc in _codeChanges)
-        {
-            if (cc.BlockAccessIndex == index) return cc;
-        }
-        return null;
     }
 
     public override string ToString()

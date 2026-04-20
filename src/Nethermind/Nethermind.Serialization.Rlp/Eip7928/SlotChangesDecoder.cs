@@ -22,20 +22,27 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         int check = length + ctx.Position;
 
         UInt256 slot = ctx.DecodeUInt256();
-        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
-        ushort? lastIndex = null;
-        List<StorageChange> changesList = new(changes.Length);
-        foreach (StorageChange change in changes)
+        int innerPositionCheck = ctx.ReadSequenceLength() + ctx.Position;
+        int count = ctx.PeekNumberOfItemsRemaining(innerPositionCheck);
+        ctx.GuardLimit(count, _codeLimit);
+
+        List<StorageChange> changesList = new(count);
+        ushort lastIndex = 0;
+        bool hasLast = false;
+        for (int i = 0; i < count; i++)
         {
+            StorageChange change = StorageChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
             ushort index = change.BlockAccessIndex;
-            if (lastIndex is not null && index <= lastIndex)
+            if (hasLast && index <= lastIndex)
             {
                 throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
             }
             lastIndex = index;
+            hasLast = true;
             changesList.Add(change);
         }
+        ctx.Check(innerPositionCheck);
         SlotChanges slotChanges = new(slot, changesList);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))

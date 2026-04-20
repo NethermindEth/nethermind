@@ -871,6 +871,7 @@ public partial class EngineModuleTests
             List<AccountChanges> orderedAccounts = [.. modifiedAccounts.Values];
             orderedAccounts.Sort((a, b) => a.Address.CompareTo(b.Address));
             BlockAccessList blockAccessList = new(orderedAccounts);
+            blockAccessList.Seal();
             return blockAccessList;
         }
     }

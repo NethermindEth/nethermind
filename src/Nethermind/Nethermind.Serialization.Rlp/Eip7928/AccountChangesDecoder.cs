@@ -25,41 +25,24 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         Address address = ctx.DecodeAddress();
 
-        SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
-        UInt256? lastSlot = null;
-        List<SlotChanges> slotChangesList = new(slotChanges.Length);
-        foreach (SlotChanges slotChange in slotChanges)
-        {
-            UInt256 slot = slotChange.Slot;
-            if (lastSlot is not null && slot <= lastSlot)
+        List<SlotChanges> slotChangesList = DecodeAscendingList(ref ctx, SlotChangesDecoder.Instance, _slotsLimit,
+            static (ref SlotChanges current, ref UInt256 last, bool hasLast) =>
             {
-                throw new RlpException("Storage changes were in incorrect order.");
-            }
-            lastSlot = slot;
-            slotChangesList.Add(slotChange);
-        }
+                UInt256 slot = current.Slot;
+                if (hasLast && slot <= last) throw new RlpException("Storage changes were in incorrect order.");
+                last = slot;
+            });
 
-        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _storageLimit);
-        List<StorageRead> storageReadsList = new(storageReads.Length);
-        StorageRead? lastRead = null;
-        foreach (StorageRead storageRead in storageReads)
-        {
-            if (lastRead is not null && storageRead.CompareTo(lastRead.Value) <= 0)
+        List<StorageRead> storageReadsList = DecodeAscendingList(ref ctx, StorageReadDecoder.Instance, _storageLimit,
+            static (ref StorageRead current, ref StorageRead last, bool hasLast) =>
             {
-                throw new RlpException("Storage reads were in incorrect order.");
-            }
-            storageReadsList.Add(storageRead);
-            lastRead = storageRead;
-        }
+                if (hasLast && current.CompareTo(last) <= 0) throw new RlpException("Storage reads were in incorrect order.");
+                last = current;
+            });
 
-        BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        List<BalanceChange> balanceChangesList = ValidateAscendingByIndex(balanceChanges, "Balance");
-
-        NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        List<NonceChange> nonceChangesList = ValidateAscendingByIndex(nonceChanges, "Nonce");
-
-        CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
-        List<CodeChange> codeChangesList = ValidateAscendingByIndex(codeChanges, "Code");
+        List<BalanceChange> balanceChangesList = DecodeAscendingByIndex(ref ctx, BalanceChangeDecoder.Instance, _txLimit, "Balance");
+        List<NonceChange> nonceChangesList = DecodeAscendingByIndex(ref ctx, NonceChangeDecoder.Instance, _txLimit, "Nonce");
+        List<CodeChange> codeChangesList = DecodeAscendingByIndex(ref ctx, CodeChangeDecoder.Instance, _txLimit, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
@@ -67,6 +50,60 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
 
         return new(address, slotChangesList, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
+    }
+
+    private delegate void AscendingCheck<T, TKey>(ref T current, ref TKey last, bool hasLast);
+
+    private static List<T> DecodeAscendingList<T, TKey>(
+        ref Rlp.ValueDecoderContext ctx,
+        IRlpValueDecoder<T> decoder,
+        RlpLimit limit,
+        AscendingCheck<T, TKey> check)
+    {
+        int positionCheck = ctx.ReadSequenceLength() + ctx.Position;
+        int count = ctx.PeekNumberOfItemsRemaining(positionCheck);
+        ctx.GuardLimit(count, limit);
+        List<T> list = new(count);
+        TKey last = default!;
+        bool hasLast = false;
+        for (int i = 0; i < count; i++)
+        {
+            T item = decoder.Decode(ref ctx, RlpBehaviors.None);
+            check(ref item, ref last, hasLast);
+            hasLast = true;
+            list.Add(item);
+        }
+        ctx.Check(positionCheck);
+        return list;
+    }
+
+    private static List<T> DecodeAscendingByIndex<T>(
+        ref Rlp.ValueDecoderContext ctx,
+        IRlpValueDecoder<T> decoder,
+        RlpLimit limit,
+        string changeName)
+        where T : struct, IIndexedChange
+    {
+        int positionCheck = ctx.ReadSequenceLength() + ctx.Position;
+        int count = ctx.PeekNumberOfItemsRemaining(positionCheck);
+        ctx.GuardLimit(count, limit);
+        List<T> list = new(count);
+        ushort lastIndex = 0;
+        bool hasLast = false;
+        for (int i = 0; i < count; i++)
+        {
+            T item = decoder.Decode(ref ctx, RlpBehaviors.None);
+            ushort index = item.BlockAccessIndex;
+            if (hasLast && index <= lastIndex)
+            {
+                throw new RlpException($"{changeName} changes were in incorrect order.");
+            }
+            lastIndex = index;
+            hasLast = true;
+            list.Add(item);
+        }
+        ctx.Check(positionCheck);
+        return list;
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
@@ -100,21 +137,4 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         return Rlp.LengthOfSequence(length);
     }
 
-    private static List<T> ValidateAscendingByIndex<T>(T[] items, string changeName)
-        where T : struct, IIndexedChange
-    {
-        ushort? lastIndex = null;
-        List<T> list = new(items.Length);
-        foreach (T item in items)
-        {
-            ushort index = item.BlockAccessIndex;
-            if (lastIndex is not null && index <= lastIndex)
-            {
-                throw new RlpException($"{changeName} changes were in incorrect order.");
-            }
-            lastIndex = index;
-            list.Add(item);
-        }
-        return list;
-    }
 }

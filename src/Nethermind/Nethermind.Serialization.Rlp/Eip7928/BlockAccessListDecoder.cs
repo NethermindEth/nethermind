@@ -20,12 +20,15 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
     public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
+        int positionCheck = ctx.ReadSequenceLength() + ctx.Position;
+        int count = ctx.PeekNumberOfItemsRemaining(positionCheck);
+        ctx.GuardLimit(count, _accountsLimit);
 
+        List<AccountChanges> list = new(count);
         Address? lastAddress = null;
-        List<AccountChanges> list = new(accountChanges.Length);
-        foreach (AccountChanges ac in accountChanges)
+        for (int i = 0; i < count; i++)
         {
+            AccountChanges ac = AccountChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
             Address address = ac.Address;
             if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
             {
@@ -34,6 +37,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             lastAddress = address;
             list.Add(ac);
         }
+        ctx.Check(positionCheck);
 
         return new BlockAccessList(list);
     }

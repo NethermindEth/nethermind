@@ -42,17 +42,4 @@ public record SlotChanges(UInt256 Slot, List<StorageChange> Changes)
         return false;
     }
 
-    public bool TryGetChangeAtIndex(ushort index, out StorageChange storageChange)
-    {
-        foreach (StorageChange change in Changes)
-        {
-            if (change.BlockAccessIndex == index)
-            {
-                storageChange = change;
-                return true;
-            }
-        }
-        storageChange = default;
-        return false;
-    }
 }
