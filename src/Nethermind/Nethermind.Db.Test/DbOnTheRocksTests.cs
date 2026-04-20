@@ -389,6 +389,23 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Snapshot_dispose_cleans_up_read_options()
+        {
+            IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
+
+            _db[[1, 2, 3]] = [4, 5, 6];
+
+            IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
+            AssertCanGetViaAllMethod(snapshot, [1, 2, 3], [4, 5, 6]);
+
+            // Dispose should clean up owned ReadOptions without throwing
+            snapshot.Dispose();
+
+            // Double dispose must be safe
+            snapshot.Dispose();
+        }
+
+        [Test]
         public void Smoke_test_large_writes_with_nowal()
         {
             IWriteBatch writeBatch = _db.StartWriteBatch();

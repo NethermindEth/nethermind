@@ -389,7 +389,7 @@ public partial class EthRpcModuleTests
         string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
         long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
-        await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, "out of gas");
+        await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, $"gas required exceeds allowance ({blockGasLimit})");
     }
 
     [Test]
@@ -412,7 +412,7 @@ public partial class EthRpcModuleTests
     public async Task Estimate_gas_uses_specified_gas_limit()
     {
         using Context ctx = await Context.Create();
-        await TestEstimateGasOutOfGas(ctx, 30000000, 30000000, "Block gas limit exceeded");
+        await TestEstimateGasOutOfGas(ctx, 30000000, 30000000, $"gas required exceeds allowance ({30000000})");
     }
 
     [Test]
@@ -420,7 +420,25 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.GasCap = 50000000;
-        await TestEstimateGasOutOfGas(ctx, 300000000, 50000000, "Block gas limit exceeded");
+        await TestEstimateGasOutOfGas(ctx, 300000000, 50000000, $"gas required exceeds allowance ({50000000})");
+    }
+
+    [Test]
+    public async Task Estimate_gas_returns_allowance_error_when_balance_insufficient_for_gas_price()
+    {
+        // Geth parity: when sender balance is too low to cover gas at the given gasPrice,
+        // cap rightBound to allowance = balance / gasPrice, execute at that cap, fail OOG,
+        // and return "gas required exceeds allowance (N)".
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","gasPrice":"0xBA43B7400"}""")!;
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700":{"balance":"0x100000000000"}}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        JToken.Parse(serialized).Should().BeEquivalentTo(
+            """{"jsonrpc":"2.0","error":{"code":-32000,"message":"gas required exceeds allowance (351)"},"id":67}""");
     }
 
     [Test]

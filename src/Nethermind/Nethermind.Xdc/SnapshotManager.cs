@@ -12,7 +12,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-internal class SnapshotManager(
+internal sealed class SnapshotManager(
     IDb snapshotDb,
     IBlockTree blockTree,
     IMasternodeVotingContract votingContract,
@@ -29,6 +29,6 @@ internal class SnapshotManager(
     {
         Address[] candidates = header.IsGenesis ? spec.GenesisMasterNodes : VotingContract.GetCandidatesByStake(header);
 
-        return new Snapshot(header.Number, header.Hash, candidates);
+        return new Snapshot(header.Number, header.Hash!, candidates);
     }
 }
