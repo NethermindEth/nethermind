@@ -285,9 +285,10 @@ public struct EvmPooledMemory
     {
         Debug.Assert(location.IsUint64);
         int offset = (int)(uint)location.u0;
+        Word value = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(word));
         PrepareAccessAfterGas(location.u0 + WordSize);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
-        Unsafe.CopyBlockUnaligned(ref Unsafe.Add(ref memory, offset), ref MemoryMarshal.GetReference(word), (uint)WordSize);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -314,9 +315,9 @@ public struct EvmPooledMemory
     {
         Debug.Assert(location.IsUint64);
         int offset = (int)(uint)location.u0;
-        int length1 = (int)(uint)length;
+        int intLength = (int)(uint)length;
         PrepareAccessAfterGas(location.u0 + length);
-        return length == 0 ? [] : _memory!.AsSpan(offset, length1);
+        return _memory!.AsSpan(offset, intLength);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

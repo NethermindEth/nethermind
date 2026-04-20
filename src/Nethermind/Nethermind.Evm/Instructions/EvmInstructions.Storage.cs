@@ -323,10 +323,11 @@ public static partial class EvmInstructions
 
         if (TTracingInst.IsActive)
         {
-            byte[] bytes = vmState.Memory.LoadSpanAfterGas(in b, length).ToArray();
-            vm.TxTracer.ReportMemoryChange(b, bytes);
+            Span<byte> source = vmState.Memory.LoadSpanAfterGas(in b, length);
+            vm.TxTracer.ReportMemoryChange(b, source);
             vmState.Memory.CopyAfterGas(in a, in b, length);
-            vm.TxTracer.ReportMemoryChange(a, bytes);
+            Span<byte> destination = vmState.Memory.LoadSpanAfterGas(in a, length);
+            vm.TxTracer.ReportMemoryChange(a, destination);
         }
         else
         {
