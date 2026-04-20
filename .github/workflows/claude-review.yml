@@ -130,17 +130,17 @@ jobs:
               "permissions": {
                 "allow": [
                   "Bash(git *)",
-                  "Bash(gh:*)",
+                  "Bash(gh *)",
                   "WebFetch",
                   "Agent",
                   "Skill",
                   "mcp__github_inline_comment__create_inline_comment"
                 ],
                 "deny": [
-                  "Bash(curl:*)",
-                  "Bash(wget:*)",
-                  "Bash(env:*)",
-                  "Bash(printenv:*)"
+                  "Bash(curl *)",
+                  "Bash(wget *)",
+                  "Bash(env *)",
+                  "Bash(printenv *)"
                 ]
               }
             }
@@ -194,17 +194,17 @@ jobs:
               "permissions": {
                 "allow": [
                   "Bash(git *)",
-                  "Bash(gh:*)",
+                  "Bash(gh *)",
                   "WebFetch",
                   "Agent",
                   "Skill",
                   "mcp__github_inline_comment__create_inline_comment"
                 ],
                 "deny": [
-                  "Bash(curl:*)",
-                  "Bash(wget:*)",
-                  "Bash(env:*)",
-                  "Bash(printenv:*)"
+                  "Bash(curl *)",
+                  "Bash(wget *)",
+                  "Bash(env *)",
+                  "Bash(printenv *)"
                 ]
               }
             }
