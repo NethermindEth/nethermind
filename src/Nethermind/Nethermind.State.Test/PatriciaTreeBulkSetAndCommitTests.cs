@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -18,6 +19,31 @@ namespace Nethermind.Store.Test;
 
 public class PatriciaTreeBulkSetAndCommitTests
 {
+    private sealed class CountingCommitter(ICommitter inner) : ICommitter
+    {
+        public int Count;
+        public void Dispose() => inner.Dispose();
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
+        {
+            Interlocked.Increment(ref Count);
+            return inner.CommitNode(ref path, node);
+        }
+    }
+
+    private sealed class CountingStore(IScopedTrieStore inner) : IScopedTrieStore
+    {
+        public CountingCommitter LastCommitter;
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(in path, hash);
+        public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.LoadRlp(in path, hash, flags);
+        public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.TryLoadRlp(in path, hash, flags);
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => inner.GetStorageTrieNodeResolver(address);
+        public INodeStorage.KeyScheme Scheme => inner.Scheme;
+        public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None)
+        {
+            LastCommitter = new CountingCommitter(inner.BeginCommit(root, writeFlags));
+            return LastCommitter;
+        }
+    }
     private static ArrayPoolListRef<PatriciaTree.BulkSetEntry> BuildEntries(
         List<(Hash256 key, byte[] value)> items, bool sorted = false)
     {
@@ -90,6 +116,39 @@ public class PatriciaTreeBulkSetAndCommitTests
             (Hash256 expectedRoot, TestMemDb expectedDb) = flags == PatriciaTree.Flags.None ? (refRoot, refDb) : RunReference(existingItems, items, flags);
             candidateRoot.Should().Be(expectedRoot, $"flags={flags}");
             AssertDbEqual(expectedDb, candidateDb);
+        }
+    }
+
+    [TestCaseSource(typeof(PatriciaTreeBulkSetterTests), nameof(PatriciaTreeBulkSetterTests.BulkSetTestGen))]
+    public void BulkSetAndCommit_CommitNodeCount_MatchesBulkSetPlusCommit(
+        List<(Hash256 key, byte[] value)> existingItems,
+        List<(Hash256 key, byte[] value)> items)
+    {
+        foreach (PatriciaTree.Flags flags in new[] { PatriciaTree.Flags.None, PatriciaTree.Flags.DoNotParallelize, PatriciaTree.Flags.WasSorted })
+        {
+            // Reference: BulkSet + Commit
+            TestMemDb refDb = new();
+            CountingStore refStore = new(new PatriciaTreeBulkSetterTests.StrictRawScopedTrieStore(new RawScopedTrieStore(refDb)));
+            PatriciaTree refTree = new(refStore, LimboLogs.Instance);
+            foreach ((Hash256 key, byte[] value) in existingItems) refTree.Set(key.Bytes, value);
+            refTree.Commit();
+            bool needSort = flags.HasFlag(PatriciaTree.Flags.WasSorted);
+            using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = BuildEntries(items, needSort))
+                refTree.BulkSet(entries, flags);
+            refTree.Commit();
+            int refCount = refStore.LastCommitter?.Count ?? 0;
+
+            // Candidate: BulkSetAndCommit
+            TestMemDb candDb = new();
+            CountingStore candStore = new(new PatriciaTreeBulkSetterTests.StrictRawScopedTrieStore(new RawScopedTrieStore(candDb)));
+            PatriciaTree candTree = new(candStore, LimboLogs.Instance);
+            foreach ((Hash256 key, byte[] value) in existingItems) candTree.Set(key.Bytes, value);
+            candTree.Commit();
+            using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = BuildEntries(items, needSort))
+                candTree.BulkSetAndCommit(entries, flags);
+            int candCount = candStore.LastCommitter?.Count ?? 0;
+
+            candCount.Should().Be(refCount, $"CommitNode call count mismatch for flags={flags}");
         }
     }
 
