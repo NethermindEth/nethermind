@@ -10,9 +10,9 @@ public static class BlockTreeExtensions
 {
     public const int AncestorReorgDepthLimit = 32;
 
-    public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, Block block) =>
-        block.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
+    public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, BlockHeader header) =>
+        header.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(header);
 
-    public static bool IsAncestorOnMainChainBeyondReorgDepthLimit(this IBlockTree blockTree, Block block) =>
-        (blockTree.Head?.Number ?? 0) - block.Number > AncestorReorgDepthLimit && blockTree.IsMainChain(block.Header);
+    public static bool IsOnMainChainBehindHead(this IBlockTree blockTree, BlockHeader header) =>
+        (blockTree.Head?.Number ?? 0) - header.Number > AncestorReorgDepthLimit && blockTree.IsMainChain(header);
 }
