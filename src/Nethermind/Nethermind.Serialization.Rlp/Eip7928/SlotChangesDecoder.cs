@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -26,16 +25,17 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
         ushort? lastIndex = null;
-        SortedList<ushort, StorageChange> changesList = new(changes.ToDictionary(s =>
+        List<StorageChange> changesList = new(changes.Length);
+        foreach (StorageChange change in changes)
         {
-            ushort index = s.BlockAccessIndex;
+            ushort index = change.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
             }
             lastIndex = index;
-            return index;
-        }, s => s));
+            changesList.Add(change);
+        }
         SlotChanges slotChanges = new(slot, changesList);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
@@ -53,14 +53,14 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Slot);
-        stream.EncodeArray([.. item.Changes.Values], rlpBehaviors);
+        stream.EncodeArray([.. item.Changes], rlpBehaviors);
     }
 
     public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
     {
         int storageChangesLen = 0;
 
-        foreach (StorageChange slotChange in item.Changes.Values)
+        foreach (StorageChange slotChange in item.Changes)
         {
             storageChangesLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
         }

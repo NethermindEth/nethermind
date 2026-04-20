@@ -27,7 +27,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         UInt256? lastSlot = null;
-        SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length);
+        List<SlotChanges> slotChangesList = new(slotChanges.Length);
         foreach (SlotChanges slotChange in slotChanges)
         {
             UInt256 slot = slotChange.Slot;
@@ -36,11 +36,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
                 throw new RlpException("Storage changes were in incorrect order.");
             }
             lastSlot = slot;
-            slotChangesList.Add(slot, slotChange);
+            slotChangesList.Add(slotChange);
         }
 
         StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _storageLimit);
-        SortedSet<StorageRead> storageReadsList = [];
+        List<StorageRead> storageReadsList = new(storageReads.Length);
         StorageRead? lastRead = null;
         foreach (StorageRead storageRead in storageReads)
         {
@@ -53,13 +53,13 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<ushort, BalanceChange> balanceChangesList = ToSortedByIndex(balanceChanges, "Balance");
+        List<BalanceChange> balanceChangesList = ValidateAscendingByIndex(balanceChanges, "Balance");
 
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<ushort, NonceChange> nonceChangesList = ToSortedByIndex(nonceChanges, "Nonce");
+        List<NonceChange> nonceChangesList = ValidateAscendingByIndex(nonceChanges, "Nonce");
 
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<ushort, CodeChange> codeChangesList = ToSortedByIndex(codeChanges, "Code");
+        List<CodeChange> codeChangesList = ValidateAscendingByIndex(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
@@ -100,11 +100,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         return Rlp.LengthOfSequence(length);
     }
 
-    private static SortedList<ushort, T> ToSortedByIndex<T>(T[] items, string changeName)
+    private static List<T> ValidateAscendingByIndex<T>(T[] items, string changeName)
         where T : struct, IIndexedChange
     {
         ushort? lastIndex = null;
-        SortedList<ushort, T> sorted = new(items.Length);
+        List<T> list = new(items.Length);
         foreach (T item in items)
         {
             ushort index = item.BlockAccessIndex;
@@ -113,8 +113,8 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
                 throw new RlpException($"{changeName} changes were in incorrect order.");
             }
             lastIndex = index;
-            sorted.Add(index, item);
+            list.Add(item);
         }
-        return sorted;
+        return list;
     }
 }

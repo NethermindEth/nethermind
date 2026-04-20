@@ -13,20 +13,30 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
     [JsonIgnore]
     public ushort Index = 0;
-    public IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
+    public IReadOnlyList<AccountChanges> AccountChanges => _accountChanges;
 
-    private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
+    private readonly List<AccountChanges> _accountChanges;
+    private readonly Dictionary<Address, AccountChanges> _byAddress;
     private readonly Stack<Change> _changes;
+
+    private static readonly Comparer<AccountChanges> s_addressComparer =
+        Comparer<AccountChanges>.Create((a, b) => a.Address.CompareTo(b.Address));
 
     public BlockAccessList()
     {
         _accountChanges = [];
+        _byAddress = [];
         _changes = new();
     }
 
-    public BlockAccessList(SortedDictionary<Address, AccountChanges> accountChanges)
+    public BlockAccessList(List<AccountChanges> accountChanges)
     {
         _accountChanges = accountChanges;
+        _byAddress = new(accountChanges.Count);
+        foreach (AccountChanges ac in accountChanges)
+        {
+            _byAddress[ac.Address] = ac;
+        }
         _changes = new();
     }
 
@@ -38,12 +48,12 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         if (_accountChanges.Count != other._accountChanges.Count)
             return false;
 
-        foreach (KeyValuePair<Address, AccountChanges> pair in _accountChanges)
+        foreach (AccountChanges ac in _accountChanges)
         {
-            if (!other._accountChanges.TryGetValue(pair.Key, out AccountChanges? otherValue))
+            if (!other._byAddress.TryGetValue(ac.Address, out AccountChanges? otherValue))
                 return false;
 
-            if (pair.Value != otherValue)
+            if (ac != otherValue)
                 return false;
         }
 
@@ -62,12 +72,12 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public static bool operator !=(BlockAccessList left, BlockAccessList right) =>
         !(left == right);
 
-    public AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
+    public AccountChanges? GetAccountChanges(Address address) => _byAddress.TryGetValue(address, out AccountChanges? value) ? value : null;
 
     public int ItemCount()
     {
         int count = _accountChanges.Count;
-        foreach (AccountChanges accountChanges in _accountChanges.Values)
+        foreach (AccountChanges accountChanges in _accountChanges)
             count += accountChanges.StorageChanges.Count + accountChanges.StorageReads.Count;
         return count;
     }
@@ -88,6 +98,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public void Clear()
     {
         _accountChanges.Clear();
+        _byAddress.Clear();
         _changes.Clear();
         Index = 0;
     }
@@ -173,9 +184,11 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public void AddAccountRead(Address address)
     {
-        if (!_accountChanges.ContainsKey(address))
+        if (!_byAddress.ContainsKey(address))
         {
-            _accountChanges.Add(address, new(address));
+            AccountChanges ac = new(address);
+            _byAddress[address] = ac;
+            InsertSortedAccount(ac);
         }
     }
 
@@ -210,25 +223,25 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
         // Push revertible changes for each storage change that will be cleared.
-        // Push ALL changes per slot in reverse order so they restore in correct order (LIFO).
+        // Push ALL changes per slot in reverse order so they restore in original ascending order (LIFO).
         foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
         {
-            // Push changes in reverse order so they restore in original order
-            foreach (KeyValuePair<ushort, StorageChange> change in slotChanges.Changes)
+            IReadOnlyList<StorageChange> changes = slotChanges.Changes;
+            for (int i = changes.Count - 1; i >= 0; i--)
             {
                 _changes.Push(new()
                 {
                     Address = address,
                     Type = ChangeType.StorageChange,
                     Slot = slotChanges.Slot,
-                    PreviousValue = change.Value,
+                    PreviousValue = changes[i],
                     BlockAccessIndex = Index
                 });
             }
         }
 
         // Push revertible changes for nonce changes (reverse order for correct restore)
-        IList<NonceChange> nonceChanges = accountChanges.NonceChanges;
+        IReadOnlyList<NonceChange> nonceChanges = accountChanges.NonceChanges;
         int nonceCount = nonceChanges.Count;
         for (int i = nonceCount - 1; i >= 0; i--)
         {
@@ -242,7 +255,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
 
         // Push revertible changes for code changes (reverse order for correct restore)
-        IList<CodeChange> codeChanges = accountChanges.CodeChanges;
+        IReadOnlyList<CodeChange> codeChanges = accountChanges.CodeChanges;
         int codeCount = codeChanges.Count;
         for (int i = codeCount - 1; i >= 0; i--)
         {
@@ -278,7 +291,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (changedDuringTx)
         {
-            slotChanges.Changes.Add(Index, new(Index, after));
+            slotChanges.Changes.Add(new(Index, after));
             accountChanges.RemoveStorageRead(key);
         }
         else
@@ -296,7 +309,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         while (_changes.Count > snapshot)
         {
             Change change = _changes.Pop();
-            AccountChanges accountChanges = _accountChanges[change.Address];
+            AccountChanges accountChanges = _byAddress[change.Address];
             switch (change.Type)
             {
                 case ChangeType.BalanceChange:
@@ -335,7 +348,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     slotChanges.TryPopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
-                        slotChanges.Changes.Add(previousStorage.Value.BlockAccessIndex, previousStorage.Value);
+                        slotChanges.Changes.Add(previousStorage.Value);
                         accountChanges.RemoveStorageRead(change.Slot.Value);
                     }
 
@@ -347,7 +360,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
     {
-        foreach (AccountChanges accountChanges in AccountChanges)
+        foreach (AccountChanges accountChanges in _accountChanges)
         {
             bool isPostExecutionSystemContract =
                 accountChanges.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
@@ -369,7 +382,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         StringBuilder sb = new();
         sb.AppendLine($"BlockAccessList (Index={Index}, Accounts={_accountChanges.Count})");
-        foreach (AccountChanges ac in _accountChanges.Values)
+        foreach (AccountChanges ac in _accountChanges)
         {
             sb.AppendLine($"  {ac}");
         }
@@ -381,14 +394,15 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         foreach (AccountChanges change in accountChanges)
         {
-            _accountChanges.Add(change.Address, change);
+            _byAddress[change.Address] = change;
+            InsertSortedAccount(change);
         }
     }
 
     private bool HasBalanceChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {
-        AccountChanges accountChanges = _accountChanges[address];
-        IList<BalanceChange> balanceChanges = accountChanges.BalanceChanges;
+        AccountChanges accountChanges = _byAddress[address];
+        IReadOnlyList<BalanceChange> balanceChanges = accountChanges.BalanceChanges;
         int count = balanceChanges.Count;
 
         if (count == 0)
@@ -424,7 +438,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     private bool HasStorageChangedDuringTx(Address address, UInt256 key, in UInt256 beforeInstr, in UInt256 afterInstr)
     {
-        AccountChanges accountChanges = _accountChanges[address];
+        AccountChanges accountChanges = _byAddress[address];
 
         if (!accountChanges.TryGetSlotChanges(key, out SlotChanges? slotChanges) || slotChanges.Changes.Count == 0)
         {
@@ -433,7 +447,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             return beforeInstr != afterInstr;
         }
 
-        IList<StorageChange> values = slotChanges.Changes.Values;
+        IReadOnlyList<StorageChange> values = slotChanges.Changes;
         for (int i = values.Count - 1; i >= 0; i--)
         {
             StorageChange storageChange = values[i];
@@ -464,8 +478,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     private bool HasCodeChangedDuringTx(Address address, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
     {
-        AccountChanges accountChanges = _accountChanges[address];
-        IList<CodeChange> codeChanges = accountChanges.CodeChanges;
+        AccountChanges accountChanges = _byAddress[address];
+        IReadOnlyList<CodeChange> codeChanges = accountChanges.CodeChanges;
         int count = codeChanges.Count;
 
         if (count == 0)
@@ -501,13 +515,21 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     private AccountChanges GetOrAddAccountChanges(Address address)
     {
-        if (!_accountChanges.TryGetValue(address, out AccountChanges? existing))
+        if (!_byAddress.TryGetValue(address, out AccountChanges? existing))
         {
             AccountChanges accountChanges = new(address);
-            _accountChanges.Add(address, accountChanges);
+            _byAddress[address] = accountChanges;
+            InsertSortedAccount(accountChanges);
             return accountChanges;
         }
         return existing;
+    }
+
+    private void InsertSortedAccount(AccountChanges ac)
+    {
+        int idx = _accountChanges.BinarySearch(ac, s_addressComparer);
+        if (idx < 0) idx = ~idx;
+        _accountChanges.Insert(idx, ac);
     }
 
     private enum ChangeType

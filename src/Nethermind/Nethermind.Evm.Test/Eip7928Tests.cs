@@ -91,7 +91,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             Assert.That(res.TransactionExecuted);
             Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
             Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.AccountChanges.Count(), Is.EqualTo(expected.Count() + 2));
+            Assert.That(bal.AccountChanges.Count, Is.EqualTo(expected.Count() + 2));
         }
 
         foreach (AccountChanges expectedAccountChanges in expected)
@@ -145,7 +145,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             Assert.That(res.EvmExceptionType, Is.EqualTo(expectedException));
             Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
             Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.AccountChanges.Count(), Is.EqualTo(expected.Count() + 2));
+            Assert.That(bal.AccountChanges.Count, Is.EqualTo(expected.Count() + 2));
         }
 
         foreach (AccountChanges expectedAccountChanges in expected)

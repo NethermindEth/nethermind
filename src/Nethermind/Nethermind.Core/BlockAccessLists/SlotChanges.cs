@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Changes)
+public record SlotChanges(UInt256 Slot, List<StorageChange> Changes)
 {
     public SlotChanges(UInt256 slot) : this(slot, []) { }
 
@@ -21,7 +21,7 @@ public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Change
     public override int GetHashCode() =>
         HashCode.Combine(Slot, Changes);
 
-    public override string ToString() => $"{Slot}:[{string.Join(", ", Changes.Values)}]";
+    public override string ToString() => $"{Slot}:[{string.Join(", ", Changes)}]";
 
     public bool TryPopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
@@ -30,7 +30,7 @@ public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Change
         if (Changes.Count == 0)
             return false;
 
-        StorageChange lastChange = Changes.Values.Last();
+        StorageChange lastChange = Changes[^1];
 
         if (lastChange.BlockAccessIndex == index)
         {
@@ -39,6 +39,20 @@ public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Change
             return true;
         }
 
+        return false;
+    }
+
+    public bool TryGetChangeAtIndex(ushort index, out StorageChange storageChange)
+    {
+        foreach (StorageChange change in Changes)
+        {
+            if (change.BlockAccessIndex == index)
+            {
+                storageChange = change;
+                return true;
+            }
+        }
+        storageChange = default;
         return false;
     }
 }

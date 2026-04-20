@@ -825,7 +825,7 @@ public partial class EngineModuleTests
         Block block = blockResult.Block!;
         BlockAccessList validBal = block.BlockAccessList!;
 
-        SortedDictionary<Address, AccountChanges> modifiedAccounts = new();
+        Dictionary<Address, AccountChanges> modifiedAccounts = new();
         Address senderAddress = TestItem.AddressA;
 
         BlockAccessList modifiedBal = CreateBlockAccessList();
@@ -856,9 +856,9 @@ public partial class EngineModuleTests
 
             if (errorKind is BalErrorKind.SurplusChange)
             {
-                SortedList<ushort, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
+                List<NonceChange> fakeNonce = [new NonceChange(1, 5)];
                 modifiedAccounts[TestItem.AddressF] = new AccountChanges(
-                    TestItem.AddressF, new(), new SortedSet<StorageRead>(), new(), fakeNonce, new());
+                    TestItem.AddressF, [], [], [], fakeNonce, []);
             }
 
             if (errorKind is BalErrorKind.SurplusReads)
@@ -868,39 +868,33 @@ public partial class EngineModuleTests
                     entry.AddStorageRead(new UInt256(i));
             }
 
-            BlockAccessList blockAccessList = new(modifiedAccounts);
+            List<AccountChanges> orderedAccounts = [.. modifiedAccounts.Values];
+            orderedAccounts.Sort((a, b) => a.Address.CompareTo(b.Address));
+            BlockAccessList blockAccessList = new(orderedAccounts);
             return blockAccessList;
         }
     }
 
     private static AccountChanges CloneAccountChanges(AccountChanges ac, Func<BalanceChange, BalanceChange>? balanceModifier = null)
     {
-        SortedList<UInt256, SlotChanges> storageChanges = new();
+        List<SlotChanges> storageChanges = new(ac.StorageChanges.Count);
         foreach (SlotChanges sc in ac.StorageChanges)
         {
-            SortedList<ushort, StorageChange> changes = new();
-            foreach (KeyValuePair<ushort, StorageChange> kvp in sc.Changes)
-                changes.Add(kvp.Key, kvp.Value);
-
-            storageChanges.Add(sc.Slot, sc with { Changes = changes });
+            List<StorageChange> changes = [.. sc.Changes];
+            storageChanges.Add(sc with { Changes = changes });
         }
 
-        SortedSet<StorageRead> storageReads = new(ac.StorageReads);
+        List<StorageRead> storageReads = [.. ac.StorageReads];
 
-        SortedList<ushort, BalanceChange> balanceChanges = new();
+        List<BalanceChange> balanceChanges = new(ac.BalanceChanges.Count);
         foreach (BalanceChange bc in ac.BalanceChanges)
         {
             BalanceChange modified = balanceModifier?.Invoke(bc) ?? bc;
-            balanceChanges.Add(modified.BlockAccessIndex, modified);
+            balanceChanges.Add(modified);
         }
 
-        SortedList<ushort, NonceChange> nonceChanges = new();
-        foreach (NonceChange nc in ac.NonceChanges)
-            nonceChanges.Add(nc.BlockAccessIndex, nc);
-
-        SortedList<ushort, CodeChange> codeChanges = new();
-        foreach (CodeChange cc in ac.CodeChanges)
-            codeChanges.Add(cc.BlockAccessIndex, cc);
+        List<NonceChange> nonceChanges = [.. ac.NonceChanges];
+        List<CodeChange> codeChanges = [.. ac.CodeChanges];
 
         return new AccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }

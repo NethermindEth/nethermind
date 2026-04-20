@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
@@ -24,19 +23,19 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
 
         Address? lastAddress = null;
-        SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a =>
+        List<AccountChanges> list = new(accountChanges.Length);
+        foreach (AccountChanges ac in accountChanges)
         {
-            Address address = a.Address;
+            Address address = ac.Address;
             if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
             {
                 throw new RlpException("Account changes were in incorrect order.");
             }
             lastAddress = address;
-            return address;
-        }, a => a));
-        BlockAccessList blockAccessList = new(accountChangesMap);
+            list.Add(ac);
+        }
 
-        return blockAccessList;
+        return new BlockAccessList(list);
     }
 
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
