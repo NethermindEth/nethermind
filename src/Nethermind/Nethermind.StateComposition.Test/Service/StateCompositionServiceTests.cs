@@ -21,6 +21,7 @@ using Nethermind.State;
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
+using Nethermind.StateComposition.Test.Helpers;
 using Nethermind.StateComposition.Visitors;
 using NSubstitute;
 using NUnit.Framework;
@@ -30,16 +31,7 @@ namespace Nethermind.StateComposition.Test.Service;
 [TestFixture]
 public class StateCompositionServiceTests
 {
-    private static IStateCompositionConfig CreateValidConfig()
-    {
-        IStateCompositionConfig config = Substitute.For<IStateCompositionConfig>();
-        config.ScanParallelism.Returns(4);
-        config.ScanMemoryBudgetBytes.Returns(1_000_000_000L);
-        config.ScanQueueTimeoutSeconds.Returns(5);
-        config.TopNContracts.Returns(20);
-        config.ExcludeStorage.Returns(false);
-        return config;
-    }
+    private static IStateCompositionConfig CreateValidConfig() => TestDataBuilders.CreateTestConfig();
 
     // Build a realistic DI container using the canonical PseudoNethermindModule +
     // TestEnvironmentModule pair (see .agents/rules/test-infrastructure.md) so

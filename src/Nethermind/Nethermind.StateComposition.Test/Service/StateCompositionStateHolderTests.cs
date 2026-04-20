@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Diff;
 using Nethermind.StateComposition.Service;
+using Nethermind.StateComposition.Test.Helpers;
 using Nethermind.StateComposition.Visitors;
 using NUnit.Framework;
 
@@ -30,25 +31,7 @@ public class StateCompositionStateHolderTests
     private static readonly Hash256 AnyRoot = Keccak.Compute("root");
 
     private static CumulativeTrieStats EmptyBaseline(long codeBytes = 0, long[]? histogram = null) =>
-        new(
-            AccountsTotal: 0,
-            ContractsTotal: 0,
-            StorageSlotsTotal: 0,
-            AccountTrieBranches: 0,
-            AccountTrieExtensions: 0,
-            AccountTrieLeaves: 0,
-            AccountTrieBytes: 0,
-            StorageTrieBranches: 0,
-            StorageTrieExtensions: 0,
-            StorageTrieLeaves: 0,
-            StorageTrieBytes: 0,
-            ContractsWithStorage: 0,
-            EmptyAccounts: 0)
-        {
-            CodeBytesTotal = codeBytes,
-            SlotCountHistogram = ImmutableArray.Create(
-                histogram ?? new long[CumulativeTrieStats.SlotHistogramLength]),
-        };
+        TestDataBuilders.EmptyBaseline(codeBytes, histogram);
 
     private static TrieDiff DiffWithPayloads(
         IReadOnlyList<SlotCountChange>? slotCountChanges = null,

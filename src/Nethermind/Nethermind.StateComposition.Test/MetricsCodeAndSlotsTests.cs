@@ -3,6 +3,7 @@
 
 using System.Collections.Immutable;
 using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Test.Helpers;
 using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test;
@@ -21,32 +22,10 @@ public class MetricsCodeAndSlotsTests
     [SetUp]
     public void ClearHistogram() => Metrics.StateCompSlotCountHistogram.Clear();
 
-    private static ImmutableArray<long> ZeroHistogram() => [.. new long[16]];
-
-    private static CumulativeTrieStats BuildStats(long codeBytes, ImmutableArray<long> hist) =>
-        new(
-            AccountsTotal: 0,
-            ContractsTotal: 0,
-            StorageSlotsTotal: 0,
-            AccountTrieBranches: 0,
-            AccountTrieExtensions: 0,
-            AccountTrieLeaves: 0,
-            AccountTrieBytes: 0,
-            StorageTrieBranches: 0,
-            StorageTrieExtensions: 0,
-            StorageTrieLeaves: 0,
-            StorageTrieBytes: 0,
-            ContractsWithStorage: 0,
-            EmptyAccounts: 0)
-        {
-            CodeBytesTotal = codeBytes,
-            SlotCountHistogram = hist,
-        };
-
     [Test]
     public void UpdateFromCumulativeStats_PublishesCodeBytesTotal()
     {
-        Metrics.UpdateFromCumulativeStats(BuildStats(codeBytes: 42_000_000, hist: ZeroHistogram()));
+        Metrics.UpdateFromCumulativeStats(TestDataBuilders.BuildStats(codeBytes: 42_000_000));
 
         Assert.That(Metrics.StateCompCodeBytesTotal, Is.EqualTo(42_000_000));
     }
@@ -57,7 +36,7 @@ public class MetricsCodeAndSlotsTests
         // Each bucket gets a distinct value so we detect index swaps.
         long[] vals = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
 
-        Metrics.UpdateFromCumulativeStats(BuildStats(codeBytes: 0, hist: [.. vals]));
+        Metrics.UpdateFromCumulativeStats(TestDataBuilders.BuildStats(hist: [.. vals]));
 
         using (Assert.EnterMultipleScope())
         {
