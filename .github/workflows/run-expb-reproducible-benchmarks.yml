@@ -2139,7 +2139,19 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Install dotTrace Reporter
-        run: dotnet tool install --global JetBrains.dotTrace.GlobalTools
+        shell: pwsh
+        run: |
+          $url = 'https://www.nuget.org/api/v2/package/JetBrains.dotTrace.CommandLineTools.windows-x64'
+          Write-Host "Downloading dotTrace CommandLineTools from NuGet..."
+          Invoke-WebRequest -Uri $url -OutFile dottrace-clt.zip
+          Expand-Archive -Path dottrace-clt.zip -DestinationPath dottrace-clt
+          $reporter = Get-ChildItem -Path dottrace-clt -Recurse -Filter 'Reporter.exe' | Select-Object -First 1
+          if (-not $reporter) {
+            Write-Error "Reporter.exe not found in package"
+            exit 1
+          }
+          Write-Host "Found Reporter.exe at $($reporter.FullName)"
+          echo "REPORTER=$($reporter.FullName)" >> $env:GITHUB_ENV
 
       - name: Generate XML reports
         shell: pwsh
@@ -2147,7 +2159,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
 
           # Pattern file: match all methods, include full call stacks
-          $patternFile = 'pattern.xml'
+          $patternFile = (Resolve-Path 'pattern.xml' -ErrorAction SilentlyContinue) ?? 'pattern.xml'
           @'
           <Patterns>
             <Pattern PrintCallstacks="Full">.*</Pattern>
@@ -2174,7 +2186,7 @@ jobs:
             $outFile = "reports/${name}-report.xml"
             Write-Host "::group::Generating report for $name"
             Write-Host "  $($dtp.FullName) -> $outFile"
-            & Reporter.exe report $dtp.FullName --pattern=$patternFile --save-to=$outFile
+            & $env:REPORTER report $dtp.FullName --pattern=$patternFile --save-to=$outFile
             if ($LASTEXITCODE -ne 0) {
               Write-Warning "Reporter failed for $name with exit code $LASTEXITCODE"
             }
