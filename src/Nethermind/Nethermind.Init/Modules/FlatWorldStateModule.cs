@@ -37,20 +37,16 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         builder
 
             // Implementation of nethermind interfaces
+            .AddSingleton<FlatStateReader>()
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
             .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
             {
                 new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
             })
-            .AddSingleton<IStateReader, FlatStateReader>()
             .AddSingleton<ISnapServer, IWorldStateManager>(wsm => wsm.SnapServer)
 
-            // Disable some pruning trie store specific  components
+            // Stub out the pruning trie store admin RPC with a disabled response.
             .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
-            .AddSingleton<MainPruningTrieStoreFactory>(_ => throw new NotSupportedException($"{nameof(MainPruningTrieStoreFactory)} disabled."))
-            .AddSingleton<PruningTrieStateFactory>(_ => throw new NotSupportedException($"{nameof(PruningTrieStateFactory)} disabled."))
-            .AddSingleton<CompositePruningTrigger>(_ => throw new NotSupportedException($"{nameof(CompositePruningTrigger)} disabled."))
-            .AddSingleton<IFullPrunerFactory>(_ => throw new NotSupportedException($"{nameof(IFullPrunerFactory)} disabled."))
 
             // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
@@ -124,9 +120,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         }
     }
 
-    /// <summary>
-    /// Need to stub out, or it will register trie store specific module
-    /// </summary>
     private class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
