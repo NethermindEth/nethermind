@@ -684,16 +684,8 @@ public class Eth70ProtocolHandlerTests
         public override void Dispose() { IsDisposed = true; base.Dispose(); }
     }
 
-    private static void AssertReceiptsEqual(TxReceipt[] actual, TxReceipt[] expected)
-    {
-        Assert.That(actual.Length, Is.EqualTo(expected.Length));
-
-        for (int i = 0; i < expected.Length; i++)
-        {
-            Assert.That(actual[i].GasUsedTotal, Is.EqualTo(expected[i].GasUsedTotal));
-            Assert.That(actual[i].Logs, Is.EqualTo(expected[i].Logs));
-        }
-    }
+    private static void AssertReceiptsEqual(TxReceipt[] actual, TxReceipt[] expected) =>
+        Assert.That(actual, Is.EqualTo(expected).UsingPropertiesComparer());
 
     public enum EmptyReceiptsPayloadScenario
     {

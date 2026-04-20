@@ -96,7 +96,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             });
         }
 
-        protected override void BeforeHandleMessage(ZeroPacket message) => ThrowIfStatusWasNotReceived(message.PacketType);
+        protected sealed override void BeforeHandleMessage(ZeroPacket message) => ThrowIfStatusWasNotReceived(message.PacketType);
 
         protected override void HandleMessageCore(ZeroPacket message)
         {
