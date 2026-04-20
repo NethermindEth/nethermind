@@ -265,6 +265,20 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_read_budget_ignores_reads_already_in_generated_bal()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        BlockAccessList suggestedBlockAccessList = new();
+        suggestedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
+        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, -1);
+        stateProvider.GeneratedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
+
+        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, -1);
+
+        Assert.That(act, Throws.Nothing);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
