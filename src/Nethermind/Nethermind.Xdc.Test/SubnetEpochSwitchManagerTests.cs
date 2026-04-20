@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -9,7 +10,6 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
-using System;
 
 namespace Nethermind.Xdc.Test;
 
@@ -126,7 +126,7 @@ internal class SubnetEpochSwitchManagerTests
         Snapshot baseSnapshot = new(header.Number, header.Hash!, masterNodes);
         _snapshotManager.GetSnapshotByBlockNumber(header.Number, Arg.Any<IXdcReleaseSpec>()).Returns(baseSnapshot);
 
-        Assert.Throws<ArgumentException>(() => _epochSwitchManager.GetEpochSwitchInfo(header));
+        Assert.That(() => _epochSwitchManager.GetEpochSwitchInfo(header), Throws.InstanceOf<ArgumentException>());
     }
 
 }
