@@ -555,16 +555,9 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
         ]);
 
-        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList()));
-        ReceiptsMessage70? response = null;
-        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
-            .Do(call => response = (ReceiptsMessage70)call[0]);
+        ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
 
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
-
-        Assert.That(response, Is.Not.Null);
-        Assert.That(response!.EthMessage.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That(response.EthMessage.TxReceipts, Has.Count.EqualTo(1));
         Assert.That(response.EthMessage.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
         Assert.That(response.EthMessage.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
         Assert.That(response.LastBlockIncomplete, Is.False);
@@ -579,16 +572,9 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
         ]);
 
-        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
-        ReceiptsMessage70? response = null;
-        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
-            .Do(call => response = (ReceiptsMessage70)call[0]);
+        ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
-
-        Assert.That(response, Is.Not.Null);
-        Assert.That(response!.EthMessage.TxReceipts, Is.Empty);
+        Assert.That(response.EthMessage.TxReceipts, Is.Empty);
         Assert.That(response.LastBlockIncomplete, Is.False);
     }
 
@@ -773,5 +759,19 @@ public class Eth70ProtocolHandlerTests
         using DisposableByteBuffer packet = _svc!.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
         _handler!.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+    }
+
+    private ReceiptsMessage70 RequestReceipts(params Hash256[] hashes)
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, new(hashes.ToPooledList()));
+        ReceiptsMessage70? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
+            .Do(call => response = (ReceiptsMessage70)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        return response!;
     }
 }

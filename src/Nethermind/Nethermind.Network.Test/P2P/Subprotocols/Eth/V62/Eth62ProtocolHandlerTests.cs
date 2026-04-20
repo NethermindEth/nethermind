@@ -373,17 +373,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Find(Keccak.Zero).Returns((Block?)null);
             _syncManager.Find(TestItem.KeccakA).Returns(block);
 
-            using GetBlockBodiesMessage msg = new(new[] { Keccak.Zero, TestItem.KeccakA });
-            BlockBodiesMessage? response = null;
-            _session.When(session => session.DeliverMessage(Arg.Any<BlockBodiesMessage>()))
-                .Do(call => response = (BlockBodiesMessage)call[0]);
+            BlockBody?[] bodies = RequestBlockBodies(Keccak.Zero, TestItem.KeccakA);
 
-            HandleIncomingStatusMessage();
-            HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
-
-            Assert.That(response, Is.Not.Null);
-            Assert.That(response!.Bodies!.Bodies, Has.Length.EqualTo(1));
-            Assert.That(response.Bodies.Bodies[0], Is.SameAs(block.Body));
+            Assert.That(bodies, Has.Length.EqualTo(1));
+            Assert.That(bodies[0], Is.SameAs(block.Body));
         }
 
         [Test]
@@ -395,18 +388,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Find(TestItem.KeccakB).Returns((Block?)null);
             _syncManager.Find(TestItem.KeccakC).Returns(thirdBlock);
 
-            using GetBlockBodiesMessage msg = new(new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC });
-            BlockBodiesMessage? response = null;
-            _session.When(session => session.DeliverMessage(Arg.Any<BlockBodiesMessage>()))
-                .Do(call => response = (BlockBodiesMessage)call[0]);
+            BlockBody?[] bodies = RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
 
-            HandleIncomingStatusMessage();
-            HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
-
-            Assert.That(response, Is.Not.Null);
-            Assert.That(response!.Bodies!.Bodies, Has.Length.EqualTo(2));
-            Assert.That(response.Bodies.Bodies[0], Is.SameAs(firstBlock.Body));
-            Assert.That(response.Bodies.Bodies[1], Is.SameAs(thirdBlock.Body));
+            Assert.That(bodies, Has.Length.EqualTo(2));
+            Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
+            Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
         }
 
         [TestCase(5, 5)]
@@ -684,6 +670,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+        }
+
+        private BlockBody?[] RequestBlockBodies(params Hash256[] hashes)
+        {
+            using GetBlockBodiesMessage msg = new(hashes);
+            BlockBodiesMessage? response = null;
+            _session.When(session => session.DeliverMessage(Arg.Any<BlockBodiesMessage>()))
+                .Do(call => response = (BlockBodiesMessage)call[0]);
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
+
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.Bodies, Is.Not.Null);
+            Assert.That(response.Bodies!.Bodies, Is.Not.Null);
+            return response.Bodies.Bodies!;
         }
 
         [Test]

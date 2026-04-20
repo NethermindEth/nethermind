@@ -198,17 +198,10 @@ public class Eth69ProtocolHandlerTests
             Build.A.Receipt.WithAllFieldsFilled.TestObject
         ]);
 
-        using GetReceiptsMessage66 msg66 = new(1111, new(new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList()));
-        ReceiptsMessage69? response = null;
-        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
-            .Do(call => response = (ReceiptsMessage69)call[0]);
+        IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
 
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
-
-        Assert.That(response, Is.Not.Null);
-        Assert.That(response!.EthMessage.TxReceipts, Has.Count.EqualTo(1));
-        Assert.That(response.EthMessage.TxReceipts[0], Is.SameAs(blockReceipts));
+        Assert.That(response, Has.Count.EqualTo(1));
+        Assert.That(response[0], Is.SameAs(blockReceipts));
     }
 
     [Test]
@@ -220,16 +213,9 @@ public class Eth69ProtocolHandlerTests
             Build.A.Receipt.WithAllFieldsFilled.TestObject
         ]);
 
-        using GetReceiptsMessage66 msg66 = new(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
-        ReceiptsMessage69? response = null;
-        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
-            .Do(call => response = (ReceiptsMessage69)call[0]);
+        IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
-
-        Assert.That(response, Is.Not.Null);
-        Assert.That(response!.EthMessage.TxReceipts, Is.Empty);
+        Assert.That(response, Is.Empty);
     }
 
     [Test]
@@ -339,5 +325,19 @@ public class Eth69ProtocolHandlerTests
         using DisposableByteBuffer uOpsPacket = _svc!.ZeroSerialize(msg).AsDisposable();
         uOpsPacket.ReadByte();
         _handler!.HandleMessage(new ZeroPacket(uOpsPacket) { PacketType = (byte)messageCode });
+    }
+
+    private IOwnedReadOnlyList<TxReceipt[]?> RequestReceipts(params Hash256[] hashes)
+    {
+        using GetReceiptsMessage66 msg66 = new(1111, new(hashes.ToPooledList()));
+        ReceiptsMessage69? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call => response = (ReceiptsMessage69)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        return response!.EthMessage.TxReceipts;
     }
 }
