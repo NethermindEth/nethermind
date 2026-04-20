@@ -1179,8 +1179,8 @@ namespace Nethermind.Trie.Test
 
             ctx
                 .AssertThatDirtyNodeCountIs(9)
-                .AssertThatTotalMemoryUsedIsNoLessThan(retentionFloor)
-                .AssertThatCachedNodeCountLessThan(951);
+                .AssertThatCachedNodeCountLessThan(951)
+                .AssertThatTotalMemoryUsedIsNoLessThan(retentionFloor);
         }
 
         [Test]
