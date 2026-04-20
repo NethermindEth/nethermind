@@ -18,7 +18,6 @@ using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
