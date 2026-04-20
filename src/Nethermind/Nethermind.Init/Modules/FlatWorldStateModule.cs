@@ -19,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.State.Flat;
-using Nethermind.State.SnapServer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
@@ -39,7 +38,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
-            .AddSingleton<ISnapServer, IWorldStateManager>(wsm => wsm.SnapServer)
 
             // Stub out the pruning trie store admin RPC with a disabled response.
             .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
