@@ -780,7 +780,30 @@ jobs:
             fi
           fi
 
-          # Source the metrics file to populate GITHUB_OUTPUT
+          # Print human-readable summary
+          echo ""
+          echo "========================================="
+          if [[ -s "${client_ms}" ]]; then
+            echo "  Client Processing (SSE) Metrics"
+          else
+            echo "  Processing Metrics (K6 TTFB)"
+          fi
+          echo "========================================="
+          while IFS='=' read -r key val; do
+            printf "  %-10s %s ms\n" "${key}" "${val}"
+          done < "${metrics_file}"
+          if [[ -s "${client_ms}" ]] && grep -q "^TTFB_AVG=" "${metrics_file}" 2>/dev/null; then
+            echo "-----------------------------------------"
+            echo "  K6 TTFB (secondary)"
+            echo "-----------------------------------------"
+            grep "^TTFB_" "${metrics_file}" | while IFS='=' read -r key val; do
+              printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
+            done
+          fi
+          echo "========================================="
+          echo ""
+
+          # Populate GITHUB_OUTPUT
           {
             echo "exception_found=${exception_found}"
             echo "exception_lines_file=${exception_lines}"
@@ -1088,6 +1111,201 @@ jobs:
                 body,
               });
             }
+
+  # ---------------------------------------------------------------------------
+  # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
+  # ---------------------------------------------------------------------------
+
+  single-summary:
+    needs: [resolve, benchmark]
+    if: always() && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all metrics artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/all-metrics
+          pattern: expb-single-metrics-*
+
+      - name: Build summary
+        shell: bash
+        env:
+          METRICS_DIR: ${{ runner.temp }}/all-metrics
+          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          summary_file="${RUNNER_TEMP}/single-summary.md"
+          run_count="${RUN_COUNT:-1}"
+
+          load_metric() {
+            local file="$1"
+            local key="$2"
+            if [[ -f "${file}" ]]; then
+              grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2- || true
+            fi
+          }
+
+          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+
+          {
+            echo "## EXPB Benchmark Results"
+            echo ""
+            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Delay: \`${DELAY_SECONDS}s\` | Runs: \`${run_count}\`"
+            echo ""
+            echo "Run: [View workflow run](${RUN_URL})"
+          } > "${summary_file}"
+
+          for ps in "${payload_sets[@]}"; do
+            scenario_name="nethermind-${STATE_LAYOUT}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+
+            {
+              echo ""
+              echo "### ${ps}"
+              echo ""
+              echo "Scenario: \`${scenario_name}\`"
+              echo ""
+            } >> "${summary_file}"
+
+            # Detect metrics source from first available run
+            source_label=""
+            for (( r=1; r<=run_count; r++ )); do
+              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              if [[ -f "${mf}" ]]; then
+                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
+                if [[ -n "${ttfb_check}" ]]; then
+                  source_label="SSE"
+                else
+                  source_label="TTFB"
+                fi
+                break
+              fi
+            done
+
+            if [[ "${run_count}" -gt 1 ]]; then
+              # Per-run table
+              {
+                echo "| Run | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) |"
+                echo "|---:|--------|----------|-------------|----------|----------|----------|----------|----------|"
+              } >> "${summary_file}"
+
+              avg_values=""
+              median_values=""
+              p90_values=""
+              p95_values=""
+              p99_values=""
+              min_values=""
+              max_values=""
+              valid_runs=0
+
+              for (( r=1; r<=run_count; r++ )); do
+                mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+                if [[ ! -f "${mf}" ]]; then
+                  echo "| ${r} | - | - | - | - | - | - | - | - |" >> "${summary_file}"
+                  continue
+                fi
+
+                src=""
+                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
+                if [[ -n "${ttfb_check}" ]]; then src="SSE"; else src="TTFB"; fi
+
+                avg=$(load_metric "${mf}" "AVG")
+                median=$(load_metric "${mf}" "MEDIAN")
+                p90=$(load_metric "${mf}" "P90")
+                p95=$(load_metric "${mf}" "P95")
+                p99=$(load_metric "${mf}" "P99")
+                min_val=$(load_metric "${mf}" "MIN")
+                max_val=$(load_metric "${mf}" "MAX")
+
+                echo "| ${r} | ${src} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} |" >> "${summary_file}"
+
+                if [[ -n "${avg}" ]]; then
+                  valid_runs=$(( valid_runs + 1 ))
+                  avg_values="${avg_values} ${avg}"
+                  median_values="${median_values} ${median}"
+                  p90_values="${p90_values} ${p90}"
+                  p95_values="${p95_values} ${p95}"
+                  p99_values="${p99_values} ${p99}"
+                  min_values="${min_values} ${min_val}"
+                  max_values="${max_values} ${max_val}"
+                fi
+              done
+
+              # Cross-run aggregate
+              if [[ "${valid_runs}" -gt 1 ]]; then
+                compute_mean() {
+                  echo "$@" | tr ' ' '\n' | awk 'NF {sum += $1; n++} END {if (n>0) printf "%.2f", sum/n; else print "n/a"}'
+                }
+                compute_min_of() {
+                  echo "$@" | tr ' ' '\n' | awk 'NF {if (min=="" || $1+0 < min+0) min=$1} END {print (min != "" ? min : "n/a")}'
+                }
+                compute_max_of() {
+                  echo "$@" | tr ' ' '\n' | awk 'NF {if (max=="" || $1+0 > max+0) max=$1} END {print (max != "" ? max : "n/a")}'
+                }
+
+                {
+                  echo ""
+                  echo "**Aggregate across ${valid_runs} runs:**"
+                  echo ""
+                  echo "| Stat | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) |"
+                  echo "|------|----------|-------------|----------|----------|----------|----------|----------|"
+                  echo "| Mean | $(compute_mean ${avg_values}) | $(compute_mean ${median_values}) | $(compute_mean ${p90_values}) | $(compute_mean ${p95_values}) | $(compute_mean ${p99_values}) | $(compute_mean ${min_values}) | $(compute_mean ${max_values}) |"
+                  echo "| Best | $(compute_min_of ${avg_values}) | $(compute_min_of ${median_values}) | $(compute_min_of ${p90_values}) | $(compute_min_of ${p95_values}) | $(compute_min_of ${p99_values}) | $(compute_min_of ${min_values}) | $(compute_min_of ${min_values}) |"
+                  echo "| Worst | $(compute_max_of ${avg_values}) | $(compute_max_of ${median_values}) | $(compute_max_of ${p90_values}) | $(compute_max_of ${p95_values}) | $(compute_max_of ${p99_values}) | $(compute_max_of ${max_values}) | $(compute_max_of ${max_values}) |"
+                } >> "${summary_file}"
+              fi
+            else
+              # Single run — simple table
+              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+              if [[ ! -f "${mf}" ]]; then
+                echo "No metrics were produced." >> "${summary_file}"
+              else
+                src=""
+                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
+                if [[ -n "${ttfb_check}" ]]; then src=" (SSE)"; fi
+
+                {
+                  echo "| Metric | Value${src} |"
+                  echo "|---|---:|"
+                  echo "| AVG (ms) | $(load_metric "${mf}" "AVG") |"
+                  echo "| Median (ms) | $(load_metric "${mf}" "MEDIAN") |"
+                  echo "| P90 (ms) | $(load_metric "${mf}" "P90") |"
+                  echo "| P95 (ms) | $(load_metric "${mf}" "P95") |"
+                  echo "| P99 (ms) | $(load_metric "${mf}" "P99") |"
+                  echo "| Min (ms) | $(load_metric "${mf}" "MIN") |"
+                  echo "| Max (ms) | $(load_metric "${mf}" "MAX") |"
+                } >> "${summary_file}"
+
+                if [[ -n "${ttfb_check}" ]]; then
+                  {
+                    echo ""
+                    echo "<details><summary>K6 TTFB</summary>"
+                    echo ""
+                    echo "| Metric | Value |"
+                    echo "|---|---:|"
+                    echo "| AVG (ms) | $(load_metric "${mf}" "TTFB_AVG") |"
+                    echo "| Median (ms) | $(load_metric "${mf}" "TTFB_MEDIAN") |"
+                    echo "| P90 (ms) | $(load_metric "${mf}" "TTFB_P90") |"
+                    echo "| P95 (ms) | $(load_metric "${mf}" "TTFB_P95") |"
+                    echo "| P99 (ms) | $(load_metric "${mf}" "TTFB_P99") |"
+                    echo "| Min (ms) | $(load_metric "${mf}" "TTFB_MIN") |"
+                    echo "| Max (ms) | $(load_metric "${mf}" "TTFB_MAX") |"
+                    echo ""
+                    echo "</details>"
+                  } >> "${summary_file}"
+                fi
+              fi
+            fi
+          done
+
+          echo "--- Single Benchmark Summary ---"
+          cat "${summary_file}"
+          cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
 
   # ---------------------------------------------------------------------------
   # Multi-image path: retrospective or explicit docker_images
@@ -1583,8 +1801,28 @@ jobs:
             fi
           fi
 
-          echo "Metrics for ${TAG} run ${RUN}:"
-          cat "${metrics_dir}/metrics.env"
+          echo ""
+          echo "========================================="
+          echo "  Metrics for ${TAG} run ${RUN}"
+          if [[ -s "${client_ms}" ]]; then
+            echo "  Source: Client Processing (SSE)"
+          else
+            echo "  Source: K6 TTFB"
+          fi
+          echo "========================================="
+          grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+            printf "  %-10s %s ms\n" "${key}" "${val}"
+          done
+          if grep -q "^TTFB_AVG=" "${metrics_dir}/metrics.env" 2>/dev/null; then
+            echo "-----------------------------------------"
+            echo "  K6 TTFB (secondary)"
+            echo "-----------------------------------------"
+            grep "^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+              printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
+            done
+          fi
+          echo "========================================="
+          echo ""
 
       - name: Upload metrics artifact
         if: always()
