@@ -404,7 +404,7 @@ public class BlockAccessListManager(
 
     private static bool HasOptionalStorageReads(in ChangeAtIndex c)
         => HasNoChanges(c) && c.Reads > 0;
-    
+
     private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
         => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
 
