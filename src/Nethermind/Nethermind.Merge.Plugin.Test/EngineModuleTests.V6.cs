@@ -866,6 +866,7 @@ public partial class EngineModuleTests
                 AccountChanges entry = modifiedAccounts[senderAddress];
                 for (ulong i = 1_000_000; i < 1_000_100; i++)
                     entry.AddStorageRead(new UInt256(i));
+                entry.Seal();
             }
 
             List<AccountChanges> orderedAccounts = [.. modifiedAccounts.Values];
