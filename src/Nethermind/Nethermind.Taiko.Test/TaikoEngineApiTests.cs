@@ -8,7 +8,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Handlers;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
