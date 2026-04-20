@@ -1520,10 +1520,19 @@ public partial class EngineModuleTests
 
         IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
 
+        ForkchoiceStateV1 higherFinalized = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[2].BlockHash, safeBlockHash: blocks[2].BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpc.engine_forkchoiceUpdatedV1(higherFinalized);
+        higherFinalizedResult.ErrorCode.Should().Be(0);
+        higherFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockFinalizationManager.LastFinalizedHash.Should().Be(blocks[2].BlockHash);
+        chain.BlockFinalizationManager.LastFinalizedBlockLevel.Should().Be(blocks[2].BlockNumber);
+
         ForkchoiceStateV1 lowerFinalized = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[1].BlockHash, safeBlockHash: blocks[2].BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> lowerFinalizedResult = await rpc.engine_forkchoiceUpdatedV1(lowerFinalized);
         lowerFinalizedResult.ErrorCode.Should().Be(0);
         lowerFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockFinalizationManager.LastFinalizedHash.Should().Be(blocks[1].BlockHash);
+        chain.BlockFinalizationManager.LastFinalizedBlockLevel.Should().Be(blocks[1].BlockNumber);
 
         // Request-local spec ordering: safe must be at or after finalized.
         ForkchoiceStateV1 ordering = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[2].BlockHash, safeBlockHash: blocks[1].BlockHash);
@@ -1545,6 +1554,11 @@ public partial class EngineModuleTests
             PrevRandao = TestItem.KeccakB,
             SuggestedFeeRecipient = TestItem.AddressC,
         };
+
+        ForkchoiceStateV1 higherFinalized = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[2].BlockHash, safeBlockHash: blocks[2].BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpc.engine_forkchoiceUpdatedV1(higherFinalized);
+        higherFinalizedResult.ErrorCode.Should().Be(0);
+        higherFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         ForkchoiceStateV1 repeatedHead = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[1].BlockHash, safeBlockHash: blocks[2].BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeatedHead, payloadAttributes);

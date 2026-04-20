@@ -8,7 +8,7 @@ namespace Nethermind.Blockchain
     public interface IBlockFinalizationManager : IDisposable
     {
         /// <summary>
-        /// Last level that was finalize while processing blocks. This level will not be reorganised.
+        /// Current finalized level tracked by the active finalization manager.
         /// </summary>
         long LastFinalizedBlockLevel { get; }
         event EventHandler<FinalizeEventArgs> BlocksFinalized;
