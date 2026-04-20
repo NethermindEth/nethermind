@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -100,8 +99,8 @@ internal class SubnetEpochSwitchManagerTests
 
         Assert.That(result, Is.Not.Null);
         // Penalties must come from SubnetSnapshot, NOT from header
-        result!.Penalties.Should().BeEquivalentTo(snapshotPenalties);
-        result.Penalties.Should().NotBeEquivalentTo(headerPenalties);
+        Assert.That(result!.Penalties, Is.EquivalentTo(snapshotPenalties));
+        Assert.That(result.Penalties, Is.Not.EquivalentTo(headerPenalties));
     }
 
     [Test]
