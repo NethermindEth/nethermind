@@ -666,11 +666,11 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
         Hash256 b1Hash = branch[0].BlockHash;
         Hash256 b2Hash = branch[1].BlockHash;
 
-        // First FCU: finalize b1
+        // First FCU: set head to b2 and finalize b1
         ForkchoiceStateV1 fcuWithFinalized = new(b2Hash, b1Hash, b1Hash);
         await rpc.engine_forkchoiceUpdatedV1(fcuWithFinalized);
         chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "precondition: b1 is finalized after first FCU");
@@ -691,11 +691,11 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
         Hash256 b1Hash = branch[0].BlockHash;
         Hash256 b2Hash = branch[1].BlockHash;
 
-        // First FCU: finalize b1
+        // First FCU: set head to b2 and finalize b1
         ForkchoiceStateV1 fcuWithFinalized = new(b2Hash, b1Hash, b1Hash);
         await rpc.engine_forkchoiceUpdatedV1(fcuWithFinalized);
         chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "precondition: b1 is finalized after first FCU");
