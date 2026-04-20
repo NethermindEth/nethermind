@@ -320,10 +320,6 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             }
             else if (generatedHead is null)
             {
-                if (IsSystemAccountRead(suggestedHead.Value, index))
-                {
-                    throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
-                }
                 if (HasNoChanges(suggestedHead.Value))
                 {
                     AdvanceSuggested();
@@ -346,10 +342,6 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             }
             else if (cmp > 0)
             {
-                if (IsSystemAccountRead(suggestedHead.Value, index))
-                {
-                    throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
-                }
                 if (HasNoChanges(suggestedHead.Value))
                 {
                     AdvanceSuggested();
@@ -396,6 +388,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         }
         else
         {
+            ValidateSuggestedSystemAccountRead(block.Header);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
@@ -417,4 +410,23 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
         => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
+
+    private void ValidateSuggestedSystemAccountRead(BlockHeader block)
+    {
+        if (_suggestedBlockAccessList?.GetAccountChanges(Address.SystemUser) is not { } suggestedSystemAccount ||
+            GeneratedBlockAccessList.GetAccountChanges(Address.SystemUser) is not null ||
+            !HasOnlyAccountRead(suggestedSystemAccount))
+        {
+            return;
+        }
+
+        throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {Address.SystemUser} at index 0.");
+    }
+
+    private static bool HasOnlyAccountRead(AccountChanges accountChanges)
+        => accountChanges.StorageChanges.Count == 0 &&
+           accountChanges.StorageReads.Count == 0 &&
+           accountChanges.BalanceChanges.Count == 0 &&
+           accountChanges.NonceChanges.Count == 0 &&
+           accountChanges.CodeChanges.Count == 0;
 }

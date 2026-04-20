@@ -347,10 +347,30 @@ public class BlockProcessorTests
         BlockAccessList suggestedBlockAccessList = new();
         suggestedBlockAccessList.AddAccountRead(Address.SystemUser);
         stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, 10_000);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
 
-        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, 10_000);
+        Assert.That(() => stateProvider.ValidateBlockAccessList(block.Header, 0, 10_000), Throws.Nothing);
 
+        TestDelegate act = () => stateProvider.SetBlockAccessList(block, Amsterdam.Instance);
         Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_validation_allows_system_account_changed_after_pre_execution()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        BlockAccessList suggestedBlockAccessList = new();
+        suggestedBlockAccessList.IncrementBlockAccessIndex();
+        suggestedBlockAccessList.AddBalanceChange(Address.SystemUser, 0, 1);
+        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, 10_000);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+
+        Assert.That(() => stateProvider.ValidateBlockAccessList(header, 0, 10_000), Throws.Nothing);
+
+        stateProvider.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+        stateProvider.GeneratedBlockAccessList.AddBalanceChange(Address.SystemUser, 0, 1);
+
+        Assert.That(() => stateProvider.ValidateBlockAccessList(header, 1, 10_000), Throws.Nothing);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
