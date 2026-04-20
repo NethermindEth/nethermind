@@ -12,6 +12,8 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockAccessListBuilder() => TestObjectInternal = new BlockAccessList();
 
+        protected override void BeforeReturn() => TestObjectInternal.Seal();
+
         public BlockAccessListBuilder WithAccountChanges(params AccountChanges[] accountChanges)
         {
             TestObjectInternal.AddAccountChanges(accountChanges);

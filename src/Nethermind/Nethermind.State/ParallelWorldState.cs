@@ -252,6 +252,10 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             return;
         }
 
+        // Sorted-merge walk below requires address-sorted iteration on both sides.
+        // The generated BAL accumulates unsorted during build, so seal before reading.
+        GeneratedBlockAccessList.Seal();
+
         IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
         IEnumerator<ChangeAtIndex> suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
 
@@ -352,6 +356,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         }
         else
         {
+            GeneratedBlockAccessList.Seal();
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);

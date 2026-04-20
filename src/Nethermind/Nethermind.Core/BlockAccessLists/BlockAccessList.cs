@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -185,7 +186,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             AccountChanges ac = new(address);
             _byAddress[address] = ac;
-            InsertSortedAccount(ac);
+            _accountChanges.Add(ac);
         }
     }
 
@@ -392,7 +393,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         foreach (AccountChanges change in accountChanges)
         {
             _byAddress[change.Address] = change;
-            InsertSortedAccount(change);
+            _accountChanges.Add(change);
         }
     }
 
@@ -516,23 +517,21 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             AccountChanges accountChanges = new(address);
             _byAddress[address] = accountChanges;
-            InsertSortedAccount(accountChanges);
+            _accountChanges.Add(accountChanges);
             return accountChanges;
         }
         return existing;
     }
 
-    private void InsertSortedAccount(AccountChanges ac)
+    // Sort the unsorted build-time collections into the canonical order required
+    // by RLP encoding and BAL validation. Must be called once the BAL is complete
+    // (e.g. in ParallelWorldState.SetBlockAccessList before encoding, and before
+    // ValidateBlockAccessList's sorted-merge walk).
+    public void Seal()
     {
-        int lo = 0, hi = _accountChanges.Count - 1;
-        while (lo <= hi)
-        {
-            int mid = lo + ((hi - lo) >> 1);
-            int cmp = _accountChanges[mid].Address.CompareTo(ac.Address);
-            if (cmp < 0) lo = mid + 1;
-            else hi = mid - 1;
-        }
-        _accountChanges.Insert(lo, ac);
+        _accountChanges.Sort(static (a, b) => a.Address.CompareTo(b.Address));
+        List<AccountChanges> accountChanges = _accountChanges;
+        Parallel.For(0, accountChanges.Count, i => accountChanges[i].Seal());
     }
 
     private enum ChangeType

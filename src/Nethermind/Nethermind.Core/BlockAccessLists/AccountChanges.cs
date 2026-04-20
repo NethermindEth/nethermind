@@ -41,9 +41,6 @@ public class AccountChanges : IEquatable<AccountChanges>
     private readonly List<NonceChange> _nonceChanges;
     private readonly List<CodeChange> _codeChanges;
 
-    private static readonly Comparer<SlotChanges> s_slotComparer =
-        Comparer<SlotChanges>.Create((a, b) => a.Slot.CompareTo(b.Slot));
-
     public AccountChanges() : this(Address.Zero) { }
 
     public AccountChanges(Address address)
@@ -118,7 +115,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         if (_storageChangesByKey.TryGetValue(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
         {
             _storageChangesByKey.Remove(key);
-            RemoveSortedSlot(key);
+            _storageChanges.Remove(slotChanges);
             AddStorageRead(key);
         }
     }
@@ -129,7 +126,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         {
             SlotChanges slotChanges = new(key);
             _storageChangesByKey[key] = slotChanges;
-            InsertSortedSlot(slotChanges);
+            _storageChanges.Add(slotChanges);
             return slotChanges;
         }
         return existing;
@@ -150,7 +147,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     {
         if (_storageReadsSet.Add(key))
         {
-            InsertSortedRead(new(key));
+            _storageReads.Add(new(key));
         }
     }
 
@@ -158,7 +155,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     {
         if (_storageReadsSet.Remove(key))
         {
-            RemoveSortedRead(key);
+            _storageReads.Remove(new(key));
         }
     }
 
@@ -268,59 +265,16 @@ public class AccountChanges : IEquatable<AccountChanges>
         return sb.ToString();
     }
 
-    private void InsertSortedSlot(SlotChanges slotChanges)
+    // Sorts the unsorted build-time collections into the canonical order required
+    // by RLP encoding and BAL validation. Idempotent — a no-op on already-sorted
+    // collections. Balance / nonce / code / slot-storage changes are appended in
+    // monotonically increasing BlockAccessIndex order during normal execution and
+    // DeleteAccount's Restore path, so only storage changes (by slot) and storage
+    // reads (by key) need sorting.
+    public void Seal()
     {
-        int idx = _storageChanges.BinarySearch(slotChanges, s_slotComparer);
-        if (idx < 0) idx = ~idx;
-        _storageChanges.Insert(idx, slotChanges);
-    }
-
-    private void RemoveSortedSlot(UInt256 key)
-    {
-        // _storageChanges is kept sorted by Slot — binary search on Slot.
-        int lo = 0, hi = _storageChanges.Count - 1;
-        while (lo <= hi)
-        {
-            int mid = lo + ((hi - lo) >> 1);
-            int cmp = _storageChanges[mid].Slot.CompareTo(key);
-            if (cmp == 0)
-            {
-                _storageChanges.RemoveAt(mid);
-                return;
-            }
-            if (cmp < 0) lo = mid + 1;
-            else hi = mid - 1;
-        }
-    }
-
-    private void InsertSortedRead(StorageRead storageRead)
-    {
-        int lo = 0, hi = _storageReads.Count - 1;
-        while (lo <= hi)
-        {
-            int mid = lo + ((hi - lo) >> 1);
-            int cmp = _storageReads[mid].CompareTo(storageRead);
-            if (cmp < 0) lo = mid + 1;
-            else hi = mid - 1;
-        }
-        _storageReads.Insert(lo, storageRead);
-    }
-
-    private void RemoveSortedRead(UInt256 key)
-    {
-        int lo = 0, hi = _storageReads.Count - 1;
-        while (lo <= hi)
-        {
-            int mid = lo + ((hi - lo) >> 1);
-            int cmp = _storageReads[mid].Key.CompareTo(key);
-            if (cmp == 0)
-            {
-                _storageReads.RemoveAt(mid);
-                return;
-            }
-            if (cmp < 0) lo = mid + 1;
-            else hi = mid - 1;
-        }
+        _storageChanges.Sort(static (a, b) => a.Slot.CompareTo(b.Slot));
+        _storageReads.Sort();
     }
 
     private static bool PopChange<T>(List<T> changes, ushort index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
