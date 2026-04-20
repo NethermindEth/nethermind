@@ -180,6 +180,18 @@ namespace Nethermind.Facade
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
 
+            // Cap tx.GasLimit to the sender's affordable allowance before the initial probe,
+            // mirroring Geth's hi = min(hi, (balance - value) / gasFeeCap). This ensures BuyGas
+            // never sees a gas limit that makes gasLimit * feeCap exceed the sender's balance.
+            UInt256 senderBalance = components.WorldState.GetBalance(tx.SenderAddress ?? Address.Zero);
+            UInt256 feeCap = tx.CalculateFeeCap();
+            if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 availableForGas))
+            {
+                long allowance = (long)UInt256.Min(availableForGas / feeCap, (UInt256)long.MaxValue);
+                if (tx.GasLimit > allowance)
+                    tx.GasLimit = allowance;
+            }
+
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
                 estimateGasTracer.WithCancellation(cancellationToken));
@@ -191,7 +203,7 @@ namespace Nethermind.Facade
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             // Allowance errors take precedence over any earlier revert: the revert was an artifact
             // of the gas cap, so surfacing it instead of the affordability error would be misleading.
-            if (err is not null && (error is null || err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal)))
+            if (err is not null && (error is null || err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) || err == GasEstimator.InsufficientBalance))
                 error = err;
 
             return new CallOutput
