@@ -290,7 +290,7 @@ public class BlockAccessListManager(
             }
             else if (generatedHead is null)
             {
-                if (!IsSystemAccountRead(suggestedHead.Value, index) && HasNoChanges(suggestedHead.Value))
+                if (HasNoChanges(suggestedHead.Value))
                 {
                     AdvanceSuggested();
                     continue;
@@ -313,7 +313,7 @@ public class BlockAccessListManager(
             }
             else if (cmp > 0)
             {
-                if (!IsSystemAccountRead(suggestedHead.Value, index) && HasNoChanges(suggestedHead.Value))
+                if (HasNoChanges(suggestedHead.Value))
                 {
                     AdvanceSuggested();
                     continue;
