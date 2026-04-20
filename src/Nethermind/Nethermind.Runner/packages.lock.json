@@ -631,7 +631,8 @@
       "nethermind.balrecorder": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Blockchain": "[1.37.0-unstable, )"
+          "Nethermind.Blockchain": "[1.37.0-unstable, )",
+          "Nethermind.Config": "[1.37.0-unstable, )"
         }
       },
       "nethermind.balrecorder.plugin": {
