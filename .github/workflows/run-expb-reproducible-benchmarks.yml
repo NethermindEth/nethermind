@@ -2128,6 +2128,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
 
+          # Pattern file: match all methods, include full call stacks
+          $patternFile = 'pattern.xml'
+          @'
+          <Patterns>
+            <Pattern PrintCallstacks="Full">.*</Pattern>
+          </Patterns>
+          '@ | Set-Content -Path $patternFile
+
           # Extract all snapshot zips
           Get-ChildItem -Path snapshots -Filter '*.zip' | ForEach-Object {
             $dest = Join-Path extracted $_.BaseName
@@ -2145,17 +2153,13 @@ jobs:
 
           foreach ($dtp in $snapshots) {
             $name = $dtp.BaseName
-            Write-Host "::group::Generating reports for $name"
-
-            foreach ($type in @('HotSpots', 'CallTree')) {
-              $outFile = "reports/${name}-report-$($type.ToLower()).xml"
-              Write-Host "  $type -> $outFile"
-              & Reporter.exe report $dtp.FullName --report-type=$type --save-to=$outFile
-              if ($LASTEXITCODE -ne 0) {
-                Write-Warning "Reporter failed for $name ($type) with exit code $LASTEXITCODE"
-              }
+            $outFile = "reports/${name}-report.xml"
+            Write-Host "::group::Generating report for $name"
+            Write-Host "  $($dtp.FullName) -> $outFile"
+            & Reporter.exe report $dtp.FullName --pattern=$patternFile --save-to=$outFile
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Reporter failed for $name with exit code $LASTEXITCODE"
             }
-
             Write-Host "::endgroup::"
           }
 
