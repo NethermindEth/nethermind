@@ -219,6 +219,8 @@ public class BlockValidator(
             error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
             if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
             suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+            Console.WriteLine("generated:\n" + processedBlock.GeneratedBlockAccessList);
+            Console.WriteLine("suggested:\n" + processedBlock.BlockAccessList);
         }
 
         if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)
