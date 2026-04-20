@@ -25,7 +25,6 @@ public struct EvmPooledMemory
     private ulong _lastZeroedSize;
 
     private byte[]? _memory;
-    public ulong Length { get; private set; }
     public ulong Size { get; private set; }
 
     public bool TrySaveWord(in UInt256 location, Span<byte> word)
@@ -138,13 +137,11 @@ public struct EvmPooledMemory
 
         ulong length = (ulong)value.Length;
         CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
-        isViolation |= location.u0 > int.MaxValue;
-
         if (isViolation) return false;
 
         UpdateSize(newLength);
 
-        int intLocation = (int)location.u0;
+        int intLocation = (int)(uint)location.u0;
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
         if (value.PaddingLength > 0)
         {
@@ -379,8 +376,6 @@ public struct EvmPooledMemory
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
-        Length = length;
-
         // CheckMemoryAccessViolation has already proven length <= MaxMemorySize, so
         // (length + 31) cannot overflow. Branchless align-up replaces the original
         // "modulo + conditional" pair: one AND and one ADD, no jumps.
@@ -406,7 +401,6 @@ public struct EvmPooledMemory
     private void PrepareAccessAfterGas(ulong newLength)
     {
         Debug.Assert(newLength <= Size);
-        Length = newLength;
         EnsureRented();
     }
 
