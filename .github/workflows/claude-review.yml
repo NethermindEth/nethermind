@@ -134,7 +134,8 @@ jobs:
                   "WebFetch",
                   "Agent",
                   "Skill",
-                  "mcp__github_inline_comment__create_inline_comment"
+                  "mcp__github_inline_comment__create_inline_comment",
+                  "mcp__github_comment__update_claude_comment"
                 ],
                 "deny": [
                   "Bash(curl *)",
@@ -198,7 +199,8 @@ jobs:
                   "WebFetch",
                   "Agent",
                   "Skill",
-                  "mcp__github_inline_comment__create_inline_comment"
+                  "mcp__github_inline_comment__create_inline_comment",
+                  "mcp__github_comment__update_claude_comment"
                 ],
                 "deny": [
                   "Bash(curl *)",
