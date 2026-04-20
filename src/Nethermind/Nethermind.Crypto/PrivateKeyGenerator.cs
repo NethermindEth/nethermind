@@ -17,10 +17,7 @@ public sealed class PrivateKeyGenerator : IPrivateKeyGenerator, IDisposable
         _disposeRandom = true;
     }
 
-    public PrivateKeyGenerator(ICryptoRandom cryptoRandom)
-    {
-        _cryptoRandom = cryptoRandom;
-    }
+    public PrivateKeyGenerator(ICryptoRandom cryptoRandom) => _cryptoRandom = cryptoRandom;
 
     public PrivateKey Generate()
     {

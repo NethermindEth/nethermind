@@ -13,7 +13,7 @@ namespace Nethermind.Evm;
 using Int256;
 using Nethermind.Evm.State;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Provides a mechanism to retrieve a code segment for code copy operations.
@@ -220,13 +220,6 @@ internal static partial class EvmInstructions
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
-            // If contract is large, charge for access
-            if (spec.IsEip7907Enabled)
-            {
-                uint excessContractSize = (uint)Math.Max(0, externalCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
-                if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, address, in vm.VmState.AccessTracker, ref gas))
-                    goto OutOfGas;
-            }
 
             // Slice the external code starting at the source offset with appropriate zero-padding.
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);

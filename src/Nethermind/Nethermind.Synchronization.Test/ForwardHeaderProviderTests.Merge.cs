@@ -136,15 +136,13 @@ public partial class ForwardHeaderProviderTests
         }, configProvider);
     }
 
-    private IContainer CreateMergeNode(BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder treeBuilder, params IConfig[] configs)
-    {
-        return CreateMergeNode((builder) =>
+    private IContainer CreateMergeNode(BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder treeBuilder, params IConfig[] configs) =>
+        CreateMergeNode((builder) =>
         {
             builder
                 .AddSingleton<IBlockTree>(treeBuilder.NotSyncedTree)
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb);
         }, configs);
-    }
 
     private record PostMergeContext(
         IBeaconPivot BeaconPivot,

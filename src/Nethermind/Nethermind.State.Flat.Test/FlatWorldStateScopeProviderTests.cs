@@ -29,13 +29,13 @@ public class FlatWorldStateScopeProviderTests
     private class TestContext : IDisposable
     {
         private readonly ContainerBuilder _containerBuilder;
-        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
 
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
-        public SnapshotPooledList ReadOnlySnapshots = new SnapshotPooledList(0);
+        public SnapshotPooledList ReadOnlySnapshots = new(0);
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
@@ -98,13 +98,10 @@ public class FlatWorldStateScopeProviderTests
             ;
         }
 
-        private void ConfigureFlatWorldStateScope()
-        {
-            _containerBuilder.RegisterType<FlatWorldStateScope>()
+        private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
                 ;
-        }
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
 
@@ -146,7 +143,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestAccountAndSlotShadowingInSnapshots()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
 
         Address testAddress = TestItem.AddressA;
         UInt256 slotIndex = 1;
@@ -186,7 +183,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestAccountAndSlotFromPersistence()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
 
         Address testAddress = TestItem.AddressA;
         UInt256 slotIndex = 1;
@@ -213,7 +210,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestAccountAndSlotFromWrittenBatch()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -248,7 +245,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestAccountAndSlotAfterCommit()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -285,7 +282,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestSelfDestructBlocksEarlierAccountAndSlot()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -315,7 +312,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestSelfDestructIdxIsPassedCorrectly()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -349,7 +346,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestStorageRootAfterSingleSlotSet()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -371,9 +368,9 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         // Compute expected storage root using standalone StorageTree
-        TestMemDb testDb = new TestMemDb();
-        RawScopedTrieStore trieStore = new RawScopedTrieStore(testDb);
-        StorageTree expectedTree = new StorageTree(trieStore, LimboLogs.Instance);
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slotIndex, slotValue);
         expectedTree.UpdateRootHash();
         Hash256 expectedRoot = expectedTree.RootHash;
@@ -387,7 +384,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestStorageRootAfterMultipleSlotsSingleCommit()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -414,9 +411,9 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         // Compute expected storage root
-        TestMemDb testDb = new TestMemDb();
-        RawScopedTrieStore trieStore = new RawScopedTrieStore(testDb);
-        StorageTree expectedTree = new StorageTree(trieStore, LimboLogs.Instance);
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slot1, value1);
         expectedTree.Set(slot2, value2);
         expectedTree.Set(slot3, value3);
@@ -431,7 +428,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestStorageRootAfterMultipleCommits()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -462,9 +459,9 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(2);
 
         // Compute expected storage root with both slots
-        TestMemDb testDb = new TestMemDb();
-        RawScopedTrieStore trieStore = new RawScopedTrieStore(testDb);
-        StorageTree expectedTree = new StorageTree(trieStore, LimboLogs.Instance);
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slot1, value1);
         expectedTree.Set(slot2, value2);
         expectedTree.UpdateRootHash();
@@ -478,7 +475,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestStorageRootAfterSelfDestructAndNewSlots()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -518,9 +515,9 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(3);
 
         // Expected: only slot2 should exist (storage was cleared)
-        TestMemDb testDb = new TestMemDb();
-        RawScopedTrieStore trieStore = new RawScopedTrieStore(testDb);
-        StorageTree expectedTree = new StorageTree(trieStore, LimboLogs.Instance);
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slot2, value2);
         expectedTree.UpdateRootHash();
         Hash256 expectedRoot = expectedTree.RootHash;
@@ -533,12 +530,12 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestEmptyStorageRootWhenNoSlots()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
 
-        Account initialAccount = new Account(0, 0);
+        Account initialAccount = new(0, 0);
         ctx.PersistenceReader.GetAccount(testAddress).Returns(initialAccount);
 
         // Don't set any slots, just get the account
@@ -556,13 +553,13 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestMultipleAccountsAndSlotsCommittedInSnapshot()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address addr1 = TestItem.AddressA;
         Address addr2 = TestItem.AddressB;
-        Account acc1 = new Account(100, 1000);
-        Account acc2 = new Account(200, 2000);
+        Account acc1 = new(100, 1000);
+        Account acc2 = new(200, 2000);
         UInt256 slot1 = 1;
         byte[] val1 = { 0x01 };
 
@@ -593,13 +590,13 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestMultipleCommitsAccumulateData()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address addr1 = TestItem.AddressA;
         Address addr2 = TestItem.AddressB;
-        Account acc1 = new Account(100, 1000);
-        Account acc2 = new Account(200, 2000);
+        Account acc1 = new(100, 1000);
+        Account acc2 = new(200, 2000);
 
         // Commit 1
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
@@ -627,7 +624,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestSelfDestructBlocksPersistenceAndAllSnapshotLayers()
     {
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address addr = TestItem.AddressA;
@@ -659,7 +656,7 @@ public class FlatWorldStateScopeProviderTests
         // don't contain the storage node. Before the fix, the condition `i >= currentBundleSelfDestructIdx`
         // was always true when selfDestructStateIdx == -1, causing early exit.
 
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address addr1 = TestItem.AddressA;
@@ -677,7 +674,7 @@ public class FlatWorldStateScopeProviderTests
             content.Storages[(addr1, slot1)] = SlotValue.FromSpanWithoutLeadingZero(value1);
 
             // Also add a storage trie node for addr1 at root path
-            TrieNode storageNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            TrieNode storageNode = new(NodeType.Leaf, Keccak.Zero);
             content.StorageNodes[(addr1Hash, TreePath.Empty)] = storageNode;
         });
 
@@ -705,7 +702,7 @@ public class FlatWorldStateScopeProviderTests
         // 2. Finds storage added AT the same commit as self-destruct
         // 3. Returns null for storage that existed BEFORE self-destruct (blocked by self-destruct)
 
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address addr = TestItem.AddressA;
@@ -765,7 +762,7 @@ public class FlatWorldStateScopeProviderTests
         // currentBundleSelfDestructIdx becomes negative, which previously caused the entire
         // _snapshots loop to be skipped, making storage written after self-destruct invisible.
 
-        using TestContext ctx = new TestContext();
+        using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
         Address addr = TestItem.AddressA;

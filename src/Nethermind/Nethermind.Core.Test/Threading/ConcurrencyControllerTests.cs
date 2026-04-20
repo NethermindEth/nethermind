@@ -13,7 +13,7 @@ public class ConcurrencyControllerTests
     public void ThreadLimiterWillLimit()
     {
         ConcurrencyController.Slot returner;
-        ConcurrencyController limiter = new ConcurrencyController(3);
+        ConcurrencyController limiter = new(3);
 
         limiter.TryTakeSlot(out _).Should().Be(true);
         limiter.TryTakeSlot(out _).Should().Be(true);
@@ -28,7 +28,7 @@ public class ConcurrencyControllerTests
     [Test]
     public void ThreadLimiterWillLimitWithManualRequest()
     {
-        ConcurrencyController limiter = new ConcurrencyController(3);
+        ConcurrencyController limiter = new(3);
 
         limiter.TryRequestConcurrencyQuota().Should().Be(true);
         limiter.TryRequestConcurrencyQuota().Should().Be(true);

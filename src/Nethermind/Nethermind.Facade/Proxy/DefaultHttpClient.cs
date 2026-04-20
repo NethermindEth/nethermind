@@ -12,27 +12,18 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Proxy
 {
-    public class DefaultHttpClient : IHttpClient, IDisposable
+    public class DefaultHttpClient(
+        HttpClient client,
+        IJsonSerializer jsonSerializer,
+        ILogManager logManager,
+        int retries = 3,
+        int retryDelayMilliseconds = 100) : IHttpClient, IDisposable
     {
-        private readonly HttpClient _client;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly ILogger _logger;
-        private readonly int _retries;
-        private readonly int _retryDelayMilliseconds;
-
-        public DefaultHttpClient(
-            HttpClient client,
-            IJsonSerializer jsonSerializer,
-            ILogManager logManager,
-            int retries = 3,
-            int retryDelayMilliseconds = 100)
-        {
-            _client = client ?? throw new ArgumentNullException(nameof(client));
-            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-            _logger = logManager?.GetClassLogger<DefaultHttpClient>() ?? throw new ArgumentNullException(nameof(logManager));
-            _retries = retries;
-            _retryDelayMilliseconds = retryDelayMilliseconds;
-        }
+        private readonly HttpClient _client = client ?? throw new ArgumentNullException(nameof(client));
+        private readonly IJsonSerializer _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+        private readonly ILogger _logger = logManager?.GetClassLogger<DefaultHttpClient>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly int _retries = retries;
+        private readonly int _retryDelayMilliseconds = retryDelayMilliseconds;
 
         public Task<T> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default)
             => ExecuteAsync<T>(Method.Get, endpoint, cancellationToken: cancellationToken);
@@ -117,9 +108,6 @@ namespace Nethermind.Facade.Proxy
             Post
         }
 
-        public void Dispose()
-        {
-            _client?.Dispose();
-        }
+        public void Dispose() => _client?.Dispose();
     }
 }

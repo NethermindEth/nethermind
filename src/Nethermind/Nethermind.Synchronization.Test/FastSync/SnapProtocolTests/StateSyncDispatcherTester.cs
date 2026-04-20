@@ -11,19 +11,14 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 {
-    public class StateSyncDispatcherTester : SyncDispatcher<StateSyncBatch>
+    public class StateSyncDispatcherTester(
+        ISyncFeed<StateSyncBatch> syncFeed,
+        ISyncDownloader<StateSyncBatch> downloader,
+        ISyncPeerPool syncPeerPool,
+        IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
+        ILogManager logManager) : SyncDispatcher<StateSyncBatch>(new SyncConfig() { SyncDispatcherEmptyRequestDelayMs = 1, SyncDispatcherAllocateTimeoutMs = 1 }, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
     {
-        private readonly ISyncDownloader<StateSyncBatch> _downloader;
-
-        public StateSyncDispatcherTester(
-            ISyncFeed<StateSyncBatch> syncFeed,
-            ISyncDownloader<StateSyncBatch> downloader,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
-            ILogManager logManager) : base(new SyncConfig() { SyncDispatcherEmptyRequestDelayMs = 1, SyncDispatcherAllocateTimeoutMs = 1 }, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
-        {
-            _downloader = downloader;
-        }
+        private readonly ISyncDownloader<StateSyncBatch> _downloader = downloader;
 
         public async Task ExecuteDispatch(StateSyncBatch batch, int times)
         {

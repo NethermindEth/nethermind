@@ -7,10 +7,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain;
 
-public class InvalidTransactionException : InvalidBlockException
+public class InvalidTransactionException(BlockHeader header, string message, TransactionResult result, Exception? innerException = null) : InvalidBlockException(header, message, innerException)
 {
-    public InvalidTransactionException(BlockHeader header, string message, TransactionResult result, Exception? innerException = null)
-        : base(header, message, innerException) => Reason = result;
-
-    public TransactionResult Reason;
+    public TransactionResult Reason = result;
 }

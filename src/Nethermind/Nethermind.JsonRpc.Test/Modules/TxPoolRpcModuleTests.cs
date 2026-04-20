@@ -23,17 +23,17 @@ public class TxPoolRpcModuleTests
     public void Pool_content_produces_transactions_with_ChainId()
     {
         const ulong SomeChainId = 123ul;
-        var txA = Build.A.Transaction
+        Transaction txA = Build.A.Transaction
             .WithType(TxType.Legacy)
             .WithChainId(null)
             .TestObject;
-        var txB = Build.A.Transaction
+        Transaction txB = Build.A.Transaction
             .WithType(TxType.AccessList)
             .WithAccessList(AccessList.Empty)
             .WithChainId(null)
             .TestObject;
 
-        var txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
+        ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
         txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
             pending: new()
             {
@@ -55,15 +55,15 @@ public class TxPoolRpcModuleTests
             }
         ));
 
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(SomeChainId);
 
-        var txPoolRpcModule = new TxPoolRpcModule(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
 
-        var txpoolContent = txPoolRpcModule.txpool_content().Data;
+        TxPoolContent txpoolContent = txPoolRpcModule.txpool_content().Data;
 
-        var rpcTxA = txpoolContent.Pending[new AddressAsKey(TestItem.AddressA)][1] as LegacyTransactionForRpc;
-        var rpcTxB = txpoolContent.Queued[new AddressAsKey(TestItem.AddressB)][2] as AccessListTransactionForRpc;
+        LegacyTransactionForRpc? rpcTxA = txpoolContent.Pending[new AddressAsKey(TestItem.AddressA)][1] as LegacyTransactionForRpc;
+        AccessListTransactionForRpc? rpcTxB = txpoolContent.Queued[new AddressAsKey(TestItem.AddressB)][2] as AccessListTransactionForRpc;
 
         rpcTxA!.ChainId.Should().BeNull();
         rpcTxB!.ChainId.Should().Be(SomeChainId);

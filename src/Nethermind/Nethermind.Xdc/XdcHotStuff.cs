@@ -19,25 +19,38 @@ namespace Nethermind.Xdc
     /// This runner orchestrates the consensus loop: leader block proposal, voting, QC aggregation,
     /// timeout handling, and 3-chain finalization
     /// </summary>
-    internal class XdcHotStuff : IBlockProducerRunner
+    internal class XdcHotStuff(
+        IBlockTree blockTree,
+        IXdcConsensusContext xdcContext,
+        ISpecProvider specProvider,
+        IBlockProducer blockBuilder,
+        IEpochSwitchManager epochSwitchManager,
+        IMasternodesCalculator masternodesCalculator,
+        IQuorumCertificateManager quorumCertificateManager,
+        IVotesManager votesManager,
+        ISigner signer,
+        ITimeoutTimer timeoutTimer,
+        IProcessExitSource processExit,
+        ISignTransactionManager signTransactionManager,
+        ILogManager logManager) : IBlockProducerRunner
     {
-        private readonly IBlockTree _blockTree;
-        private readonly IXdcConsensusContext _xdcContext;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockProducer _blockBuilder;
-        private readonly IEpochSwitchManager _epochSwitchManager;
-        private readonly IMasternodesCalculator _masternodesCalculator;
-        private readonly IQuorumCertificateManager _quorumCertificateManager;
-        private readonly IVotesManager _votesManager;
-        private readonly ISigner _signer;
-        private readonly ITimeoutTimer _timeoutTimer;
-        private readonly IProcessExitSource _processExit;
-        private readonly ILogger _logger;
-        private readonly ISignTransactionManager _signTransactionManager;
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly IXdcConsensusContext _xdcContext = xdcContext;
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly IBlockProducer _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
+        private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
+        private readonly IMasternodesCalculator _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
+        private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
+        private readonly IVotesManager _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
+        private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+        private readonly ITimeoutTimer _timeoutTimer = timeoutTimer;
+        private readonly IProcessExitSource _processExit = processExit;
+        private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ISignTransactionManager _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;
-        private DateTime _lastActivityTime;
+        private DateTime _lastActivityTime = DateTime.UtcNow;
         private readonly object _lockObject = new();
 
         public event EventHandler<BlockEventArgs>? BlockProduced;
@@ -46,39 +59,6 @@ namespace Nethermind.Xdc
         private ulong _highestVotedRound;
         private bool _writeRoundInfo = true;
         private long _highestSignTxNumber = 0;
-
-
-        public XdcHotStuff(
-            IBlockTree blockTree,
-            IXdcConsensusContext xdcContext,
-            ISpecProvider specProvider,
-            IBlockProducer blockBuilder,
-            IEpochSwitchManager epochSwitchManager,
-            IMasternodesCalculator masternodesCalculator,
-            IQuorumCertificateManager quorumCertificateManager,
-            IVotesManager votesManager,
-            ISigner signer,
-            ITimeoutTimer timeoutTimer,
-            IProcessExitSource processExit,
-            ISignTransactionManager signTransactionManager,
-            ILogManager logManager)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _xdcContext = xdcContext;
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
-            _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
-            _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
-            _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
-            _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-            _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
-            _timeoutTimer = timeoutTimer;
-            _processExit = processExit;
-            _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
-
-            _lastActivityTime = DateTime.UtcNow;
-        }
 
         /// <summary>
         /// Starts the consensus runner.
@@ -265,10 +245,7 @@ namespace Nethermind.Xdc
             _writeRoundInfo = false;
         }
 
-        private XdcBlockHeader GetParentForRound()
-        {
-            return _blockTree.Head.Header as XdcBlockHeader;
-        }
+        private XdcBlockHeader GetParentForRound() => _blockTree.Head.Header as XdcBlockHeader;
 
         /// <summary>
         /// Build block with parentQC.
@@ -287,7 +264,7 @@ namespace Nethermind.Xdc
 
                 _logger.Debug($"Round {currentRound}: Building proposal block");
 
-                XdcPayloadAttributes payloadAttributes = new XdcPayloadAttributes();
+                XdcPayloadAttributes payloadAttributes = new();
                 payloadAttributes.Round = currentRound;
                 payloadAttributes.QuorumCertificate = highestQC;
 
@@ -338,7 +315,7 @@ namespace Nethermind.Xdc
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
 
-            var votingRound = head.ExtraConsensusData.BlockRound;
+            ulong votingRound = head.ExtraConsensusData.BlockRound;
             if (_highestVotedRound >= votingRound)
                 return;
 
@@ -367,7 +344,7 @@ namespace Nethermind.Xdc
 
             try
             {
-                BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
+                BlockRoundInfo voteInfo = new(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
                 SetHighestVotedRound(votingRound);
                 await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;
@@ -415,14 +392,14 @@ namespace Nethermind.Xdc
                 return false;
             }
 
-            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if ((long)parent.Timestamp + spec.MinePeriod > now)
             {
                 //Not enough time has passed since last block
                 return false;
             }
 
-            var fallbackPeriod = spec.TimeoutPeriod / 2;
+            int fallbackPeriod = spec.TimeoutPeriod / 2;
             if ((long)parent.Timestamp + fallbackPeriod < now)
             {
                 // If we are too far into the mining period, we will not wait for QC voting to finish and proceed with whatever is highest
@@ -462,7 +439,7 @@ namespace Nethermind.Xdc
             }
             else
             {
-                var epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
                 currentMasternodes = epochSwitchInfo.Masternodes;
             }
 

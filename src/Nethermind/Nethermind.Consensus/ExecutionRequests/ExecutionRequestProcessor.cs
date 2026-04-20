@@ -101,7 +101,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             LogEntry[]? logEntries = receipts[i].Logs;
             if (logEntries is not null)
             {
-                for (var j = 0; j < logEntries.Length; j++)
+                for (int j = 0; j < logEntries.Length; j++)
                 {
                     LogEntry log = logEntries[j];
                     if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
@@ -133,7 +133,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         int offset = 0;
 
-        foreach (var item in result)
+        foreach (object item in result)
         {
             if (item is byte[] byteArray)
             {

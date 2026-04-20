@@ -7,26 +7,18 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Core;
 
-public class LatencyBasedRequestSizer
-{
-    private readonly TimeSpan _upperWatermark;
-    private readonly TimeSpan _lowerWatermark;
-    private readonly AdaptiveRequestSizer _requestSizer;
-    public int RequestSize => _requestSizer.RequestSize;
-
-    public LatencyBasedRequestSizer(
-        int minRequestLimit,
-        int maxRequestLimit,
-        TimeSpan lowerWatermark,
-        TimeSpan upperWatermark,
-        double adjustmentFactor = 1.5
+public class LatencyBasedRequestSizer(
+    int minRequestLimit,
+    int maxRequestLimit,
+    TimeSpan lowerWatermark,
+    TimeSpan upperWatermark,
+    double adjustmentFactor = 1.5
     )
-    {
-        _upperWatermark = upperWatermark;
-        _lowerWatermark = lowerWatermark;
-
-        _requestSizer = new AdaptiveRequestSizer(minRequestLimit, maxRequestLimit, adjustmentFactor: adjustmentFactor);
-    }
+{
+    private readonly TimeSpan _upperWatermark = upperWatermark;
+    private readonly TimeSpan _lowerWatermark = lowerWatermark;
+    private readonly AdaptiveRequestSizer _requestSizer = new(minRequestLimit, maxRequestLimit, adjustmentFactor: adjustmentFactor);
+    public int RequestSize => _requestSizer.RequestSize;
 
     /// <summary>
     /// Adjust the RequestSize depending on the latency of the request
@@ -34,24 +26,21 @@ public class LatencyBasedRequestSizer
     /// <param name="func"></param>
     /// <typeparam name="TResponse"></typeparam>
     /// <returns></returns>
-    public Task<TResponse> MeasureLatency<TResponse>(Func<int, Task<TResponse>> func)
+    public Task<TResponse> MeasureLatency<TResponse>(Func<int, Task<TResponse>> func) => _requestSizer.Run(async (requestSize) =>
     {
-        return _requestSizer.Run(async (requestSize) =>
+        long startTime = Stopwatch.GetTimestamp();
+        TResponse result = await func(requestSize);
+        TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
+        if (duration < _lowerWatermark)
         {
-            long startTime = Stopwatch.GetTimestamp();
-            TResponse result = await func(requestSize);
-            TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
-            if (duration < _lowerWatermark)
-            {
-                return (result, AdaptiveRequestSizer.Direction.Increase);
-            }
+            return (result, AdaptiveRequestSizer.Direction.Increase);
+        }
 
-            if (duration > _upperWatermark)
-            {
-                return (result, AdaptiveRequestSizer.Direction.Decrease);
-            }
+        if (duration > _upperWatermark)
+        {
+            return (result, AdaptiveRequestSizer.Direction.Decrease);
+        }
 
-            return (result, AdaptiveRequestSizer.Direction.Stay);
-        });
-    }
+        return (result, AdaptiveRequestSizer.Direction.Stay);
+    });
 }

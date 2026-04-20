@@ -14,29 +14,19 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.CL.P2P;
 
-public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV3?>
+public class PayloadByNumberProtocol(
+    ulong chainId,
+    IPayloadDecoder payloadDecoder,
+    ILogManager logManager) : ISessionProtocol<ulong, ExecutionPayloadV3?>
 {
     private const int MaxResponseSizeBytes = 10000000;
-    private readonly ulong _chainId;
-    private readonly IPayloadDecoder _payloadDecoder;
-    private readonly ILogger _logger;
+    private readonly ulong _chainId = chainId;
+    private readonly IPayloadDecoder _payloadDecoder = payloadDecoder;
+    private readonly ILogger _logger = logManager.GetClassLogger<PayloadByNumberProtocol>();
 
     public string Id => $"/opstack/req/payload_by_number/{_chainId}/0";
 
-    public PayloadByNumberProtocol(
-        ulong chainId,
-        IPayloadDecoder payloadDecoder,
-        ILogManager logManager)
-    {
-        _chainId = chainId;
-        _payloadDecoder = payloadDecoder;
-        _logger = logManager.GetClassLogger<PayloadByNumberProtocol>();
-    }
-
-    public async Task ListenAsync(IChannel downChannel, ISessionContext context)
-    {
-        await downChannel.WriteAsync(new ReadOnlySequence<byte>([Result.Unavailable]));
-    }
+    public async Task ListenAsync(IChannel downChannel, ISessionContext context) => await downChannel.WriteAsync(new ReadOnlySequence<byte>([Result.Unavailable]));
 
     private static class Result
     {
@@ -56,7 +46,7 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
         byte[] requestBytes = new byte[8];
         BinaryPrimitives.WriteUInt64LittleEndian(requestBytes, request);
         await downChannel.WriteAsync(new ReadOnlySequence<byte>(requestBytes));
-        var res = (await downChannel.ReadAsync(1)).Data.FirstSpan[0];
+        byte res = (await downChannel.ReadAsync(1)).Data.FirstSpan[0];
         switch (res)
         {
             case Result.Success:
@@ -71,7 +61,7 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
                 if (_logger.IsWarn) _logger.Warn($"{nameof(PayloadByNumberProtocol)}: Got unknown error code({res}). Payload number: {request}");
                 return null;
         }
-        var version = BinaryPrimitives.ReadUInt32LittleEndian((await downChannel.ReadAsync(4)).Data.ToArray());
+        uint version = BinaryPrimitives.ReadUInt32LittleEndian((await downChannel.ReadAsync(4)).Data.ToArray());
 
         if (version != Version.Ecotone)
         {
@@ -79,17 +69,17 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
             return null;
         }
 
-        var decompressor = await ReadPayloadData(downChannel);
+        using Stream? decompressor = await ReadPayloadData(downChannel);
 
         if (decompressor is null)
         {
             return null;
         }
 
-        var buffer = ArrayPool<byte>.Shared.Rent(MaxResponseSizeBytes);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxResponseSizeBytes);
         try
         {
-            var bytesRead = decompressor.Read(buffer, 0, buffer.Length);
+            int bytesRead = decompressor.Read(buffer, 0, buffer.Length);
             int totalRead = bytesRead;
             while (bytesRead > 0)
             {
@@ -119,7 +109,7 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
     {
         List<ReadOnlySequenceStream> streams = new();
         long bytesRead = 0;
-        var readResult = await reader.ReadAsync(MaxResponseSizeBytes, ReadBlockingMode.WaitAny);
+        ReadResult readResult = await reader.ReadAsync(MaxResponseSizeBytes, ReadBlockingMode.WaitAny);
         while (readResult.Result == IOResult.Ok)
         {
             bytesRead += readResult.Data.Length;
@@ -194,12 +184,12 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
 
         public override int Read(byte[] buffer, int offset, int count)
         {
-            var reader = new SequenceReader<byte>(sequence.Slice(_position));
+            SequenceReader<byte> reader = new(sequence.Slice(_position));
 
             int totalRead = 0;
             while (totalRead < count && reader.Remaining > 0)
             {
-                var readableSpan = reader.CurrentSpan.Slice(reader.CurrentSpanIndex);
+                ReadOnlySpan<byte> readableSpan = reader.CurrentSpan.Slice(reader.CurrentSpanIndex);
                 int toCopy = Math.Min(count - totalRead, readableSpan.Length);
                 readableSpan.Slice(0, toCopy).CopyTo(buffer.AsSpan(offset + totalRead));
                 totalRead += toCopy;

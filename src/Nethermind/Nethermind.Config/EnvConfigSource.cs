@@ -7,17 +7,12 @@ using System.Collections.Generic;
 
 namespace Nethermind.Config
 {
-    public class EnvConfigSource : IConfigSource
+    public class EnvConfigSource(IEnvironment environmentWrapper) : IConfigSource
     {
-        private readonly IEnvironment _environmentWrapper;
+        private readonly IEnvironment _environmentWrapper = environmentWrapper;
 
         public EnvConfigSource() : this(new EnvironmentWrapper())
         {
-        }
-
-        public EnvConfigSource(IEnvironment environmentWrapper)
-        {
-            _environmentWrapper = environmentWrapper;
         }
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
@@ -33,37 +28,34 @@ namespace Nethermind.Config
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)
         {
-            var variableName = string.IsNullOrEmpty(category) ? $"NETHERMIND_{name.ToUpperInvariant()}" : $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
-            var variableValueString = _environmentWrapper.GetEnvironmentVariable(variableName);
+            string variableName = string.IsNullOrEmpty(category) ? $"NETHERMIND_{name.ToUpperInvariant()}" : $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
+            string variableValueString = _environmentWrapper.GetEnvironmentVariable(variableName);
             return (variableValueString is not null, variableValueString);
         }
 
-        public IEnumerable<(string Category, string Name)> GetConfigKeys()
+        public IEnumerable<(string Category, string Name)> GetConfigKeys() => _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(static k => k.StartsWith("NETHERMIND_")).Select(static v => v.Split('_')).Select(static a =>
         {
-            return _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(static k => k.StartsWith("NETHERMIND_")).Select(static v => v.Split('_')).Select(static a =>
+            // actually only possible value is "NETHERMIND_"
+            if (a.Length <= 1)
             {
-                // actually only possible value is "NETHERMIND_"
-                if (a.Length <= 1)
-                {
-                    return (null, null);
-                }
+                return (null, null);
+            }
 
-                // variables like "NETHERMIND_CONFIG"
-                if (a.Length == 2)
-                {
-                    return (null, a[1]);
-                }
+            // variables like "NETHERMIND_CONFIG"
+            if (a.Length == 2)
+            {
+                return (null, a[1]);
+            }
 
-                // VARIABLES like "NETHERMIND_CLI_SWITCH_LOCAL"
-                if (a.Length > 2 && !a[1].EndsWith("config", StringComparison.OrdinalIgnoreCase))
-                {
-                    return (null, string.Join(null, a[1..]));
-                }
+            // VARIABLES like "NETHERMIND_CLI_SWITCH_LOCAL"
+            if (a.Length > 2 && !a[1].EndsWith("config", StringComparison.OrdinalIgnoreCase))
+            {
+                return (null, string.Join(null, a[1..]));
+            }
 
-                // Variables like "NETHERMIND_JSONRPCCONFIG_ENABLED"
-                return (a[1], a[2]);
-            });
-        }
+            // Variables like "NETHERMIND_JSONRPCCONFIG_ENABLED"
+            return (a[1], a[2]);
+        });
     }
 
     public interface IEnvironment
@@ -74,14 +66,8 @@ namespace Nethermind.Config
 
     public class EnvironmentWrapper : IEnvironment
     {
-        public string GetEnvironmentVariable(string variableName)
-        {
-            return Environment.GetEnvironmentVariable(variableName);
-        }
+        public string GetEnvironmentVariable(string variableName) => Environment.GetEnvironmentVariable(variableName);
 
-        public System.Collections.IDictionary GetEnvironmentVariables()
-        {
-            return Environment.GetEnvironmentVariables();
-        }
+        public System.Collections.IDictionary GetEnvironmentVariables() => Environment.GetEnvironmentVariables();
     }
 }

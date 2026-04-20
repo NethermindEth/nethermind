@@ -101,10 +101,7 @@ public class ShutterTxSource(
         }
     }
 
-    public bool HaveTransactionsArrived(ulong slot)
-    {
-        return _txCache.Contains(slot);
-    }
+    public bool HaveTransactionsArrived(ulong slot) => _txCache.Contains(slot);
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeys keys)
     {

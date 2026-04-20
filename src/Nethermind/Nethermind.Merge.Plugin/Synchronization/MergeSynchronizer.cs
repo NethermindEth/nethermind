@@ -44,25 +44,19 @@ public class MergeSynchronizer(
         return ValueTask.CompletedTask;
     }
 
-    private void StartBeaconHeadersComponents()
+    private void StartBeaconHeadersComponents() => beaconHeaderComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
     {
-        beaconHeaderComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
+        if (t.IsFaulted)
         {
-            if (t.IsFaulted)
-            {
-                if (_logger.IsError) _logger.Error("Beacon headers downloader failed", t.Exception);
-            }
-            else
-            {
-                if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
-            }
-        });
-    }
+            if (_logger.IsError) _logger.Error("Beacon headers downloader failed", t.Exception);
+        }
+        else
+        {
+            if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
+        }
+    });
 
-    private void WireMultiSyncModeSelector()
-    {
-        baseSynchronizer.WireFeedWithModeSelector(beaconHeaderComponent.Feed);
-    }
+    private void WireMultiSyncModeSelector() => baseSynchronizer.WireFeedWithModeSelector(beaconHeaderComponent.Feed);
 
     // May crash `dotnet format` if declared before any other use of `baseSynchronizer`.
     // Seems like a bug in dotnet formatter or analyzer somewhere
@@ -75,20 +69,14 @@ public class MergeSynchronizer(
 
 public class MergeSynchronizerModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
+    protected override void Load(ContainerBuilder builder) => builder
             .AddSingleton<ISynchronizer, MergeSynchronizer>()
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
             .AddSingleton<BlockDownloader, MergeBlockDownloader>()
             .AddSingleton<IForwardHeaderProvider, PosForwardHeaderProvider>()
 
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed), ConfigureBeaconHeader);
-    }
 
-    private void ConfigureBeaconHeader(ContainerBuilder scopeConfig)
-    {
-        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch?>, BeaconHeadersSyncFeed>()
+    private void ConfigureBeaconHeader(ContainerBuilder scopeConfig) => scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch?>, BeaconHeadersSyncFeed>()
             .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>();
-    }
 }

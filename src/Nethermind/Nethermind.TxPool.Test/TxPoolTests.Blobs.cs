@@ -62,7 +62,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            var txPoolConfig = new TxPoolConfig() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) - (sizeExceeded ? 1 : 0) };
+            TxPoolConfig txPoolConfig = new() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) - (sizeExceeded ? 1 : 0) };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -80,7 +80,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            var txPoolConfig = new TxPoolConfig() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) };
+            TxPoolConfig txPoolConfig = new() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
@@ -335,16 +335,13 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_not_allow_to_have_pending_transactions_of_both_blob_type_and_other([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
         {
-            Transaction GetTx(bool isBlob, UInt256 nonce)
-            {
-                return Build.A.Transaction
+            Transaction GetTx(bool isBlob, UInt256 nonce) => Build.A.Transaction
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
                     .WithMaxPriorityFeePerGas(1.GWei)
                     .WithNonce(nonce)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            }
 
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -512,7 +509,7 @@ namespace Nethermind.TxPool.Test
         public void should_allow_to_replace_blob_tx_by_the_one_with_network_wrapper_in_higher_version()
         {
             // start with Cancun
-            OverridableReleaseSpec releaseSpec = new OverridableReleaseSpec(Cancun.Instance);
+            OverridableReleaseSpec releaseSpec = new(Cancun.Instance);
             IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
             specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
 
@@ -585,16 +582,13 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task should_allow_to_have_pending_transaction_of_other_type_if_conflicting_one_was_included([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
         {
-            Transaction GetTx(bool isBlob, UInt256 nonce)
-            {
-                return Build.A.Transaction
+            Transaction GetTx(bool isBlob, UInt256 nonce) => Build.A.Transaction
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
                     .WithMaxPriorityFeePerGas(1.GWei)
                     .WithNonce(nonce)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            }
 
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -785,7 +779,7 @@ namespace Nethermind.TxPool.Test
                     byte[] blobs = new byte[Ckzg.BytesPerBlob];
                     blobs[0] = (byte)(i % 256);
 
-                    var networkWrapper = blobProofsBuilder.AllocateWrapper(blobs);
+                    ShardBlobNetworkWrapper networkWrapper = blobProofsBuilder.AllocateWrapper(blobs);
                     blobProofsBuilder.ComputeProofsAndCommitments(networkWrapper);
                     byte[][] hashes = blobProofsBuilder.ComputeHashes(networkWrapper);
 
@@ -1058,19 +1052,16 @@ namespace Nethermind.TxPool.Test
         {
             BlockHeader bh = new(_blockTree.Head.Hash, Keccak.EmptyTreeHash, TestItem.AddressA, 0, _blockTree.Head.Number + 1, _blockTree.Head.GasLimit, _blockTree.Head.Timestamp + 1, []);
             _blockTree.BestSuggestedHeader = bh;
-            Block block = new Block(bh, new BlockBody([], []));
+            Block block = new(bh, new BlockBody([], []));
             await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
         }
 
-        private Transaction CreateBlobTx(PrivateKey sender, UInt256 nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default)
-        {
-            return Build.A.Transaction
+        private Transaction CreateBlobTx(PrivateKey sender, UInt256 nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default) => Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(blobCount: blobCount, spec: releaseSpec)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(nonce)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
-        }
 
         [Test]
         public async Task should_evict_txs_with_too_many_blobs_per_tx_after_fork()

@@ -70,10 +70,7 @@ public class BlockchainBridgeTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _container.Dispose();
-    }
+    public void TearDown() => _container.Dispose();
 
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
@@ -524,7 +521,7 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void EstimateGas_tx_returns_BlockGasLimitExceededError()
+    public void EstimateGas_tx_block_gas_limit_exceeded_returns_allowance_error()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
@@ -534,7 +531,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("Block gas limit exceeded"));
+        Assert.That(callOutput.Error, Is.EqualTo("gas required exceeds allowance (4000000)"));
     }
 
 
@@ -609,7 +606,7 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void EstimateGas_tx_returns_GasLimitBelowIntrinsicGasError()
+    public void EstimateGas_tx_gas_limit_below_intrinsic_gas_returns_allowance_error()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
@@ -619,7 +616,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
+        Assert.That(callOutput.Error, Is.EqualTo("gas required exceeds allowance (4000000)"));
     }
 
     [Test]
@@ -644,20 +641,6 @@ public class BlockchainBridgeTests
             .Returns(TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
-
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
-    }
-
-    [Test]
-    public void EstimateGas_tx_returns_InsufficientMaxFeePerGasForSenderBalanceError()
-    {
-        BlockHeader header = Build.A.BlockHeader
-            .TestObject;
-        Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
-
-        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
         Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
     }

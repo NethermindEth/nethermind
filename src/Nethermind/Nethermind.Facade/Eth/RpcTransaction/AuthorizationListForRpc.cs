@@ -19,15 +19,9 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
 {
     private readonly IEnumerable<RpcAuthTuple> _tuples;
 
-    public AuthorizationListForRpc()
-    {
-        _tuples = Array.Empty<RpcAuthTuple>();
-    }
+    public AuthorizationListForRpc() => _tuples = Array.Empty<RpcAuthTuple>();
 
-    private AuthorizationListForRpc(IEnumerable<RpcAuthTuple> tuples)
-    {
-        _tuples = tuples;
-    }
+    private AuthorizationListForRpc(IEnumerable<RpcAuthTuple> tuples) => _tuples = tuples;
 
     public class RpcAuthTuple
     {
@@ -70,15 +64,9 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
             new Signature(tuple.R, tuple.S, (ulong)tuple.YParity + Signature.VOffset))
         ).ToArray();
 
-    public IEnumerator<RpcAuthTuple> GetEnumerator()
-    {
-        return _tuples.GetEnumerator();
-    }
+    public IEnumerator<RpcAuthTuple> GetEnumerator() => _tuples.GetEnumerator();
 
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public class JsonConverter : JsonConverter<AuthorizationListForRpc>
     {
@@ -88,9 +76,6 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
             return list is null ? null : new AuthorizationListForRpc(list);
         }
 
-        public override void Write(Utf8JsonWriter writer, AuthorizationListForRpc value, JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, value._tuples, options);
-        }
+        public override void Write(Utf8JsonWriter writer, AuthorizationListForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value._tuples, options);
     }
 }

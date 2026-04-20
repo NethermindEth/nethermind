@@ -54,17 +54,11 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
 
     public bool CheckClAlive()
     {
-        var now = timestamper.UtcNow;
+        DateTime now = timestamper.UtcNow;
         return !IsRequestTooOld(now, _latestForkchoiceUpdated) || !IsRequestTooOld(now, _latestNewPayload);
     }
 
-    public void OnForkchoiceUpdatedCalled()
-    {
-        _latestForkchoiceUpdated = timestamper.UtcNow;
-    }
+    public void OnForkchoiceUpdatedCalled() => _latestForkchoiceUpdated = timestamper.UtcNow;
 
-    public void OnNewPayloadCalled()
-    {
-        _latestNewPayload = timestamper.UtcNow;
-    }
+    public void OnNewPayloadCalled() => _latestNewPayload = timestamper.UtcNow;
 }

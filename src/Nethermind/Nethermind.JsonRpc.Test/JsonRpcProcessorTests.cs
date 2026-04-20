@@ -176,7 +176,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchedResponses.Should().NotBeNull();
-        var resultList = await result[0].BatchedResponses!.ToListAsync();
+        List<JsonRpcResult.Entry> resultList = await result[0].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
         Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
@@ -462,12 +462,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    public void Cannot_accept_null_file_system()
-    {
-        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
-            Substitute.For<IJsonRpcConfig>(),
-            null!, LimboLogs.Instance));
-    }
+    public void Cannot_accept_null_file_system() => Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
+                                                             Substitute.For<IJsonRpcConfig>(),
+                                                             null!, LimboLogs.Instance));
 
     [Test]
     public async Task Can_process_multiple_large_requests_arriving_in_chunks()

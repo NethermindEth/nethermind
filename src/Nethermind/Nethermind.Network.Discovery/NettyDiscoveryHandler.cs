@@ -17,41 +17,28 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery;
 
-public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
+public class NettyDiscoveryHandler(
+    IDiscoveryMsgListener? discoveryManager,
+    IChannel? channel,
+    IMessageSerializationService? msgSerializationService,
+    ITimestamper? timestamper,
+    ILogManager? logManager,
+    NodeFilter? inboundMessageFilter = null) : NettyDiscoveryBaseHandler(logManager), IMsgSender
 {
     private static readonly TimeSpan MaxFutureExpirationOffset = TimeSpan.FromHours(1);
     private static readonly TimeSpan DefaultInboundMessageWindow = TimeSpan.FromMilliseconds(100);
     private const int DefaultInboundMessageBurstPerIp = 4;
     private const int DefaultInboundMessageFilterSize = 8_192;
-    private readonly ILogger _logger;
-    private readonly IDiscoveryMsgListener _discoveryMsgListener;
-    private readonly IChannel _channel;
-    private readonly IMessageSerializationService _msgSerializationService;
-    private readonly ITimestamper _timestamper;
-    private readonly NodeFilter[] _inboundMessageFilters;
-
-    public NettyDiscoveryHandler(
-        IDiscoveryMsgListener? discoveryManager,
-        IChannel? channel,
-        IMessageSerializationService? msgSerializationService,
-        ITimestamper? timestamper,
-        ILogManager? logManager,
-        NodeFilter? inboundMessageFilter = null) : base(logManager)
-    {
-        _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-        _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-        _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        _inboundMessageFilters = inboundMessageFilter is null
+    private readonly ILogger _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly IDiscoveryMsgListener _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+    private readonly IChannel _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+    private readonly IMessageSerializationService _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
+    private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+    private readonly NodeFilter[] _inboundMessageFilters = inboundMessageFilter is null
             ? CreateDefaultInboundMessageFilters()
             : [inboundMessageFilter];
-    }
 
-    public override void ChannelActive(IChannelHandlerContext context)
-    {
-        OnChannelActivated?.Invoke(this, EventArgs.Empty);
-    }
+    public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
@@ -68,10 +55,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         _ = LogDisconnectFailureAsync(context.DisconnectAsync());
     }
 
-    public override void ChannelReadComplete(IChannelHandlerContext context)
-    {
-        context.Flush();
-    }
+    public override void ChannelReadComplete(IChannelHandlerContext context) => context.Flush();
 
     public async Task SendMsg(DiscoveryMsg discoveryMsg)
     {
@@ -125,7 +109,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         EndPoint address = packet.Sender;
 
         int size = content.ReadableBytes;
-        using var handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
+        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
 
         content.ReadBytes(msgBytes, 0, size);
 
@@ -210,33 +194,27 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         }
     }
 
-    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg)
+    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg) => type switch
     {
-        return type switch
-        {
-            MsgType.Ping => _msgSerializationService.Deserialize<PingMsg>(msg),
-            MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
-            MsgType.FindNode => _msgSerializationService.Deserialize<FindNodeMsg>(msg),
-            MsgType.Neighbors => _msgSerializationService.Deserialize<NeighborsMsg>(msg),
-            MsgType.EnrRequest => _msgSerializationService.Deserialize<EnrRequestMsg>(msg),
-            MsgType.EnrResponse => _msgSerializationService.Deserialize<EnrResponseMsg>(msg),
-            _ => throw new Exception($"Unsupported messageType: {type}")
-        };
-    }
+        MsgType.Ping => _msgSerializationService.Deserialize<PingMsg>(msg),
+        MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
+        MsgType.FindNode => _msgSerializationService.Deserialize<FindNodeMsg>(msg),
+        MsgType.Neighbors => _msgSerializationService.Deserialize<NeighborsMsg>(msg),
+        MsgType.EnrRequest => _msgSerializationService.Deserialize<EnrRequestMsg>(msg),
+        MsgType.EnrResponse => _msgSerializationService.Deserialize<EnrResponseMsg>(msg),
+        _ => throw new Exception($"Unsupported messageType: {type}")
+    };
 
-    private IByteBuffer Serialize(DiscoveryMsg msg, IByteBufferAllocator? allocator)
+    private IByteBuffer Serialize(DiscoveryMsg msg, IByteBufferAllocator? allocator) => msg.MsgType switch
     {
-        return msg.MsgType switch
-        {
-            MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg, allocator),
-            MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg, allocator),
-            MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, allocator),
-            MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, allocator),
-            MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, allocator),
-            MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, allocator),
-            _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
-        };
-    }
+        MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg, allocator),
+        MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg, allocator),
+        MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, allocator),
+        MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, allocator),
+        MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, allocator),
+        MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, allocator),
+        _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
+    };
 
     private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet, int size)
     {

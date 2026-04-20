@@ -5,7 +5,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
@@ -39,7 +38,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
             long newCapacity = (long)BitOperations.RoundUpToPowerOf2((ulong)PrewarmedAddresses.Count);
             double bitsPerKey = PrewarmedAddresses.BitsPerKey;
             // Create new filter before disposing old one to avoid null ref race condition
-            BloomFilter newFilter = new BloomFilter(newCapacity, bitsPerKey);
+            BloomFilter newFilter = new(newCapacity, bitsPerKey);
             BloomFilter oldFilter = Interlocked.Exchange(ref PrewarmedAddresses, newFilter);
             oldFilter.Dispose();
         }

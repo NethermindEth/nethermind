@@ -15,33 +15,25 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
-    public class GasPriceOracle : IGasPriceOracle
+    public class GasPriceOracle(
+        IBlockFinder blockFinder,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        UInt256? minGasPrice = null) : IGasPriceOracle
     {
         private static readonly IComparer<UInt256> UInt256Comparer = Comparer<UInt256>.Default;
 
-        protected readonly IBlockFinder _blockFinder;
-        protected readonly ILogger _logger;
-        protected readonly UInt256 _minGasPrice;
+        protected readonly IBlockFinder _blockFinder = blockFinder;
+        protected readonly ILogger _logger = logManager.GetClassLogger<GasPriceOracle>();
+        protected readonly UInt256 _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
         protected internal PriceCache _gasPriceEstimation;
         protected internal PriceCache _maxPriorityFeePerGasEstimation;
         private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
-        protected ISpecProvider SpecProvider { get; }
+        protected ISpecProvider SpecProvider { get; } = specProvider;
         internal UInt256 IgnoreUnder { get; init; } = EthGasPriceConstants.DefaultIgnoreUnder;
         internal int BlockLimit { get; init; } = EthGasPriceConstants.DefaultBlocksLimit;
         private int SoftTxThreshold => BlockLimit * 2;
         private readonly UInt256 _defaultMinGasPriceMultiplier = 110;
-
-        public GasPriceOracle(
-            IBlockFinder blockFinder,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            UInt256? minGasPrice = null)
-        {
-            _blockFinder = blockFinder;
-            _logger = logManager.GetClassLogger<GasPriceOracle>();
-            _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
-            SpecProvider = specProvider;
-        }
 
         public virtual ValueTask<UInt256> GetGasPriceEstimate()
         {

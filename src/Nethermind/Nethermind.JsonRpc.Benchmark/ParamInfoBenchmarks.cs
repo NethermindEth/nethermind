@@ -17,8 +17,8 @@ namespace Nethermind.JsonRpc.Benchmark
 
         // ReSharper disable once MemberCanBePrivate.Global
         public MethodInfo[] Scenarios { get; } = new MethodInfo[2];
-        private Dictionary<MethodInfo, ParameterInfo[]> _paramsCache = new Dictionary<MethodInfo, ParameterInfo[]>();
-        private ConcurrentDictionary<MethodInfo, ParameterInfo[]> _concurrentParamsCache = new ConcurrentDictionary<MethodInfo, ParameterInfo[]>();
+        private Dictionary<MethodInfo, ParameterInfo[]> _paramsCache = new();
+        private ConcurrentDictionary<MethodInfo, ParameterInfo[]> _concurrentParamsCache = new();
 
         public ParamInfoBenchmarks()
         {
@@ -27,10 +27,7 @@ namespace Nethermind.JsonRpc.Benchmark
         }
 
         [Benchmark(Baseline = true)]
-        public ParameterInfo[] Current()
-        {
-            return MethodInfo.GetParameters();
-        }
+        public ParameterInfo[] Current() => MethodInfo.GetParameters();
 
         [Benchmark]
         public ParameterInfo[] Cached()
@@ -50,10 +47,8 @@ namespace Nethermind.JsonRpc.Benchmark
         }
 
         [Benchmark]
-        public ParameterInfo[] Cached_concurrent()
-        {
+        public ParameterInfo[] Cached_concurrent() =>
             // ReSharper disable once InconsistentlySynchronizedField
-            return _concurrentParamsCache.GetOrAdd(MethodInfo, mi => mi.GetParameters());
-        }
+            _concurrentParamsCache.GetOrAdd(MethodInfo, mi => mi.GetParameters());
     }
 }

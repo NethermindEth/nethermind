@@ -29,10 +29,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         }
 
         [TearDown]
-        public void TearDown()
-        {
-            _strategy.Dispose();
-        }
+        public void TearDown() => _strategy.Dispose();
 
         [Test]
         public void DeleteObsoleteKeys_should_return_false_when_in_pruning()
@@ -54,7 +51,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         [Test]
         public void ShouldPruneDirtyNode_should_return_true_when_in_pruning_and_difference_greater_than_32()
         {
-            var state = new TrieStoreState(100, 200, 300, 250); // LatestCommittedBlock - LastPersistedBlock = 50 > 32
+            TrieStoreState state = new(100, 200, 300, 250); // LatestCommittedBlock - LastPersistedBlock = 50 > 32
             _basePruningStrategy.ShouldPruneDirtyNode(state).Returns(false);
             _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
             _strategy.ShouldPruneDirtyNode(state).Should().BeTrue();

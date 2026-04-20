@@ -16,7 +16,7 @@ public sealed class SnapshotPooledList : IDisposable, IEnumerable<Snapshot>
     public Snapshot this[Index index] => _list[index];
     public void Add(Snapshot snapshot) => _list.Add(snapshot);
     public void Reverse() => _list.Reverse();
-    public static SnapshotPooledList Empty() => new SnapshotPooledList(ArrayPoolList<Snapshot>.Empty());
+    public static SnapshotPooledList Empty() => new(ArrayPoolList<Snapshot>.Empty());
     public IEnumerator<Snapshot> GetEnumerator() => _list.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     public void Dispose() => _list.DisposeRecursive();

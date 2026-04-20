@@ -76,10 +76,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         LifetimeScope = innerScope;
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await LifetimeScope.DisposeAsync();
-    }
+    public async ValueTask DisposeAsync() => await LifetimeScope.DisposeAsync();
 
     private readonly Components _components;
     public ILifetimeScope LifetimeScope { get; init; }
@@ -91,10 +88,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public ITransactionProcessor TransactionProcessor => _components.TransactionProcessor;
     public IGenesisLoader GenesisLoader => _components.GenesisLoader;
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
-    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs)
-    {
-        TransactionProcessed?.Invoke(this, txProcessedEventArgs);
-    }
+    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs) => TransactionProcessed?.Invoke(this, txProcessedEventArgs);
 
     private record Components(
         ITransactionProcessor TransactionProcessor,

@@ -26,21 +26,12 @@ namespace Nethermind.Benchmarks.Core
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _a = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _a = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public bool Improved()
-        {
-            return _a.IsZero();
-        }
+        public bool Improved() => _a.IsZero();
 
         [Benchmark]
-        public bool Current()
-        {
-            return _a.IsZero();
-        }
+        public bool Current() => _a.IsZero();
     }
 }

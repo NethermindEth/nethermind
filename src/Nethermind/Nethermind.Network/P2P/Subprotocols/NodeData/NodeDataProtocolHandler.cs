@@ -46,20 +46,12 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer, I
         _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
         _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(Send);
     }
-    public override void Init()
-    {
-        ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
-    }
+    public override void Init() => ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
 
-    public override void Dispose()
-    {
+    public override void Dispose() =>
         // Clear Events if set
         ProtocolInitialized = null;
-    }
-    public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
-    {
-        Dispose();
-    }
+    public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) => Dispose();
 
     public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
     public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested
@@ -107,10 +99,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer, I
         return new NodeDataMessage(nodeData);
     }
 
-    private void Handle(NodeDataMessage msg, int size)
-    {
-        _nodeDataRequests.Handle(msg.Data, size);
-    }
+    private void Handle(NodeDataMessage msg, int size) => _nodeDataRequests.Handle(msg.Data, size);
 
     public async Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
     {

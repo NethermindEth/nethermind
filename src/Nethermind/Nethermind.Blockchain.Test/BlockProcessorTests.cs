@@ -127,7 +127,7 @@ public class BlockProcessorTests
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
         await testRpc.AddFunds(address, 1.Ether);
         await testRpc.AddBlock();
-        SemaphoreSlim suggestedBlockResetEvent = new SemaphoreSlim(0);
+        SemaphoreSlim suggestedBlockResetEvent = new(0);
         testRpc.BlockTree.NewHeadBlock += (_, _) =>
         {
             suggestedBlockResetEvent.Release(1);
@@ -265,6 +265,20 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_read_budget_ignores_reads_already_in_generated_bal()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        BlockAccessList suggestedBlockAccessList = new();
+        suggestedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
+        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, -1);
+        stateProvider.GeneratedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
+
+        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, -1);
+
+        Assert.That(act, Throws.Nothing);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
@@ -307,7 +321,7 @@ public class BlockProcessorTests
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
         IWorldState stateProvider = new WorldStateStab();
 
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;

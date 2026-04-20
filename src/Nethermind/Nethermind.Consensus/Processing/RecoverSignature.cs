@@ -10,24 +10,17 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing
 {
-    public class RecoverSignatures : IBlockPreprocessorStep
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="ecdsa">Needed to recover an address from a signature.</param>
+    /// <param name="specProvider">Spec Provider</param>
+    /// <param name="logManager">Logging</param>
+    public class RecoverSignatures(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, ILogManager? logManager) : IBlockPreprocessorStep
     {
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly ISpecProvider _specProvider;
-        private readonly ILogger _logger;
-
-        /// <summary>
-        ///
-        /// </summary>
-        /// <param name="ecdsa">Needed to recover an address from a signature.</param>
-        /// <param name="specProvider">Spec Provider</param>
-        /// <param name="logManager">Logging</param>
-        public RecoverSignatures(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, ILogManager? logManager)
-        {
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logger = logManager?.GetClassLogger<RecoverSignatures>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly ILogger _logger = logManager?.GetClassLogger<RecoverSignatures>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public void RecoverData(Block block)
         {

@@ -154,10 +154,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     string IStoppableService.Description => "discv4";
 
-    public void AddNodeToDiscovery(Node node)
-    {
-        _discoveryManager.GetNodeLifecycleManager(node);
-    }
+    public void AddNodeToDiscovery(Node node) => _discoveryManager.GetNodeLifecycleManager(node);
 
     private void Initialize()
     {
@@ -446,10 +443,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
-    private void OnNodeDiscovered(object? sender, NodeEventArgs e)
-    {
-        NodeAdded?.Invoke(this, e);
-    }
+    private void OnNodeDiscovered(object? sender, NodeEventArgs e) => NodeAdded?.Invoke(this, e);
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
 

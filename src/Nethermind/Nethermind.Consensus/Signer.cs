@@ -44,10 +44,7 @@ namespace Nethermind.Consensus
             return new Signature(rs, v);
         }
 
-        public Signature Sign(BlockHeader header)
-        {
-            return Sign(header.Hash);
-        }
+        public Signature Sign(BlockHeader header) => Sign(header.Hash);
 
         public ValueTask Sign(Transaction tx)
         {

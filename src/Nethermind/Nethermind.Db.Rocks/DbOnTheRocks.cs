@@ -331,15 +331,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem.File.Delete(corruptMarker);
     }
 
-    protected internal void UpdateReadMetrics()
-    {
-        Interlocked.Increment(ref _totalReads);
-    }
+    protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads);
 
-    protected internal void UpdateWriteMetrics()
-    {
-        Interlocked.Increment(ref _totalWrites);
-    }
+    protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites);
 
     protected virtual long FetchTotalPropertyValue(string propertyName) =>
         long.TryParse(_db.GetProperty(propertyName), out long parsedValue)
@@ -1039,10 +1033,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
 
         [DoesNotReturn, StackTraceHidden]
-        static unsafe void ThrowRocksDbException(nint errPtr)
-        {
-            throw new RocksDbException(errPtr);
-        }
+        static unsafe void ThrowRocksDbException(nint errPtr) => throw new RocksDbException(errPtr);
     }
 
     public void DangerousReleaseHandle(IntPtr handle)
@@ -1381,10 +1372,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         InnerFlush(familyHandle);
     }
 
-    public virtual void Compact()
-    {
-        _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
-    }
+    public virtual void Compact() => _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
 
     private void InnerFlush(bool onlyWal)
     {
@@ -1492,6 +1480,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             dbMetricsUpdater.Dispose();
         }
+
+        _reader.Dispose();
 
         if (_perTableDbConfig.FlushOnExit) InnerFlush(false);
         ReleaseUnmanagedResources();
@@ -1701,8 +1691,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
 
-    private static IDictionary<string, string> GetBlobFilesOptions()
-    {
+    private static IDictionary<string, string> GetBlobFilesOptions() =>
         // Enable blob files, see: https://rocksdb.org/blog/2021/05/26/integrated-blob-db.html
         // This is very useful for blocks, as it almost eliminates 95% of the compaction as the main db no longer
         // store the actual data, but only points to blob files. This config reduces total blocks db writes from about
@@ -1717,7 +1706,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // get a lot of compaction. So can't turn this on all the time. Turning this back off will just put back
         // new data to SST files.
 
-        return new Dictionary<string, string>()
+        new Dictionary<string, string>()
         {
             { "enable_blob_files", "true" },
             { "blob_compression_type", "kSnappyCompression" },
@@ -1731,7 +1720,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             { "max_bytes_for_level_base", 4.MiB.ToString() },
             { "target_file_size_base", 1.MiB.ToString() },
         };
-    }
 
     /// <summary>
     /// Iterators should not be kept for long as it will pin some memory block and sst file. This would show up as
@@ -1859,10 +1847,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             public Iterator? Iterator = null;
             public int Usage = 0;
 
-            public void Dispose()
-            {
-                Interlocked.Exchange(ref Iterator, null)?.Dispose();
-            }
+            public void Dispose() => Interlocked.Exchange(ref Iterator, null)?.Dispose();
         }
     }
 
@@ -1907,7 +1892,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
 
         Iterator iterator = CreateIterator(readOptions, cf);
-        return new RocksdbSortedView(iterator, iterateLowerBound, iterateUpperBound);
+        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
     }
 
     public IKeyValueStoreSnapshot CreateSnapshot()
@@ -1921,13 +1906,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }, null, snapshot);
     }
 
-    public class RocksDbSnapshot(
+    public sealed class RocksDbSnapshot(
         DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         ColumnFamilyHandle? columnFamily,
         Snapshot snapshot
     ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot
     {
-        public void Dispose() => snapshot.Dispose();
+        private int _disposed;
+
+        public override void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            base.Dispose();
+            snapshot.Dispose();
+        }
     }
 }

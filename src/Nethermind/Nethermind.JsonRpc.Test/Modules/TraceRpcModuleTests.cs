@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -616,7 +617,7 @@ public class TraceRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyC)
             .WithIsServiceTransaction(true).TestObject;
         await blockchain.AddBlockMayMissTx(serviceTransaction);
-        BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
+        BlockParameter blockParameter = new(BlockParameterType.Latest);
         string[] traceTypes = { "trace" };
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);
         traces.Data.First().Action!.Result!.GasUsed.Should().Be(0);
@@ -717,7 +718,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
-            [new() { Transaction = TransactionForRpc.FromTransaction(transaction), TraceTypes = traceTypes }],
+            new(new(1) { new() { Transaction = TransactionForRpc.FromTransaction(transaction), TraceTypes = traceTypes } }),
             new(lastBlockHash)
         );
 
@@ -817,9 +818,7 @@ public class TraceRpcModuleTests
         tr2.Transaction = txForRpc2;
         tr2.TraceTypes = traceTypes2;
 
-        TransactionForRpcWithTraceTypes[] a = { tr1, tr2 };
-
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(a, numberOrTag);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(new(new(2) { tr1, tr2 }), numberOrTag);
         tr.Data.Should().HaveCount(2);
     }
 
@@ -922,7 +921,7 @@ public class TraceRpcModuleTests
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
         traces.Data.Should().HaveCount(1);
-        var state = traces.Data.ElementAt(0).StateChanges!;
+        Dictionary<Address, ParityAccountStateChange> state = traces.Data.ElementAt(0).StateChanges!;
 
         state.Count.Should().Be(3);
         state[TestItem.AddressA].Nonce!.Before.Should().Be(accountA.Nonce);
@@ -973,8 +972,8 @@ public class TraceRpcModuleTests
     )]
     public async Task Trace_call_with_state_override(string name, string transactionJson, string traceType, string stateOverrideJson, string expectedResult)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
@@ -997,21 +996,21 @@ public class TraceRpcModuleTests
     )]
     public async Task Trace_call_with_state_override_does_not_affect_other_calls(string transactionJson, string traceType, string stateOverrideJson)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         Context context = new();
         await context.Build();
 
-        var traceTypes = new[] { traceType };
+        string[] traceTypes = new[] { traceType };
 
-        var resultOverrideBefore = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
+        string resultOverrideBefore = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
             transaction, traceTypes, null, stateOverride);
 
-        var resultNoOverride = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
+        string resultNoOverride = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
             transaction, traceTypes, null);
 
-        var resultOverrideAfter = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
+        string resultOverrideAfter = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
             transaction, traceTypes, null, stateOverride);
 
         using (new AssertionScope())
@@ -1051,23 +1050,47 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        TransactionForRpcWithTraceTypes[] calls =
-        [
-            new()
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
+            new(new(1)
             {
-                Transaction = new LegacyTransactionForRpc
+                new()
                 {
-                    From = TestItem.AddressA,
-                    To = TestItem.AddressC,
-                    Gas = 100_000
-                },
-                TraceTypes = ["trace"]
-            }
-        ];
-
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(calls);
+                    Transaction = new LegacyTransactionForRpc
+                    {
+                        From = TestItem.AddressA,
+                        To = TestItem.AddressC,
+                        Gas = 100_000
+                    },
+                    TraceTypes = ["trace"]
+                }
+            }));
 
         traces.Data.Single().Action!.Gas.Should().BeLessThan(gasCap);
+    }
+
+    [TestCase(0, 0, false)]
+    [TestCase(2, 2, false)]
+    [TestCase(3, 3, false)]
+    [TestCase(1024, 1024, false)]
+    [TestCase(1025, 0, true)]
+    public void TraceCallManyRequest_enforces_hard_limit(int callCount, int expectedCount, bool shouldThrow)
+    {
+        string call = """[{"from":"0x0000000000000000000000000000000000000001","to":"0x0000000000000000000000000000000000000002"},["trace"]]""";
+        string json = "[" + string.Join(",", Enumerable.Repeat(call, callCount)) + "]";
+
+        using JsonDocument doc = JsonDocument.Parse(json);
+        using TraceCallManyRequest request = new();
+
+        if (shouldThrow)
+        {
+            Action act = () => request.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+            act.Should().Throw<JsonException>().WithMessage("*Too many calls*");
+        }
+        else
+        {
+            request.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+            request.Calls.Should().HaveCount(expectedCount);
+        }
     }
 
     [Test]
@@ -1156,6 +1179,7 @@ public class TraceRpcModuleTests
             blockFinder,
             new JsonRpcConfig(),
             Substitute.For<IBlockchainBridge>(),
+            Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>());
     }
 }

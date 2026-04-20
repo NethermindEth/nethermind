@@ -5,7 +5,6 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -29,6 +28,7 @@ public readonly ref struct TransactionSubstate
 
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
+
 
     private static readonly FrozenDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
@@ -100,17 +100,21 @@ public readonly ref struct TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
+        if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
 
-    public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
-        Utf8.IsValid(span) ? Encoding.UTF8.GetString(span) : span.ToHexString(true);
+    public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.IndexOfAnyExceptInRange((byte)32, (byte)126) >= 0)
+            return span.ToHexString(true);
+
+        return Encoding.ASCII.GetString(span);
+    }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
     {
         if (span.Length < RevertPrefix) return null;
         ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
-        UInt256 start, length;
 
         if (prefix.SequenceEqual(PanicFunctionSelector))
         {
@@ -125,28 +129,23 @@ public readonly ref struct TransactionSubstate
             return panicReason;
         }
 
-        if (span.Length < WordSize * 2) return null;
-
         if (prefix.SequenceEqual(ErrorFunctionSelector))
         {
-            start = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (span.Length < WordSize * 2) return null;
+
+            UInt256 start = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (start != WordSize) return null;
 
-            length = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            UInt256 length = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (length > span.Length) return null;
 
             ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
             return EncodeErrorMessage(binaryMessage);
         }
 
-        start = new UInt256(span[..WordSize], isBigEndian: true);
-        if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) return null;
-
-        length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);
-        if (UInt256.AddOverflow(lengthOffset, length, out UInt256 endOffset) || endOffset != span.Length) return null;
-
-        span = span.Slice((int)lengthOffset, (int)length);
-        return EncodeErrorMessage(span);
+        // Unknown selector — not Error(string) or Panic(uint256). Return null so the caller
+        // falls back to the Revert sentinel, matching Geth's UnpackRevert default behaviour.
+        return null;
     }
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)

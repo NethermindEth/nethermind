@@ -19,7 +19,7 @@ public class NodeStorageFactoryTests
     {
         IDb memDb = PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme.Hash);
 
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
+        NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(INodeStorage.KeyScheme.Hash);
     }
@@ -30,7 +30,7 @@ public class NodeStorageFactoryTests
     {
         IDb memDb = PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme.HalfPath);
 
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
+        NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(INodeStorage.KeyScheme.HalfPath);
     }
@@ -46,7 +46,7 @@ public class NodeStorageFactoryTests
             memDb[hash.Bytes] = hash.Bytes.ToArray();
         }
 
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
+        NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(preferredKeyScheme);
     }
@@ -60,7 +60,7 @@ public class NodeStorageFactoryTests
     {
         IDb memDb = PrepareMemDbWithKeyScheme(currentKeyScheme);
 
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
+        NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         INodeStorage nodeStorage = nodeStorageFactory.WrapKeyValueStore(memDb, forceUsePreferredKeyScheme: true);
         nodeStorage.Scheme.Should().Be(expectedScheme);
@@ -69,7 +69,7 @@ public class NodeStorageFactoryTests
 
     private MemDb PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme? scheme)
     {
-        MemDb memDb = new MemDb();
+        MemDb memDb = new();
         if (scheme == INodeStorage.KeyScheme.Hash)
         {
             for (int i = 0; i < 20; i++)

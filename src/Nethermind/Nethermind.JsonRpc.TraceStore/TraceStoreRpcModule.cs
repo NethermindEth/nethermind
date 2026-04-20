@@ -20,15 +20,21 @@ namespace Nethermind.JsonRpc.TraceStore;
 /// <summary>
 /// Module for tracing using database
 /// </summary>
-public class TraceStoreRpcModule : ITraceRpcModule
+public class TraceStoreRpcModule(ITraceRpcModule traceModule,
+    IDb traceStore,
+    IBlockFinder blockFinder,
+    IReceiptFinder receiptFinder,
+    ITraceSerializer<ParityLikeTxTrace> traceSerializer,
+    ILogManager logManager,
+    int parallelization = 0) : ITraceRpcModule
 {
-    private readonly IDb _traceStore;
-    private readonly ITraceRpcModule _traceModule;
-    private readonly IBlockFinder _blockFinder;
-    private readonly IReceiptFinder _receiptFinder;
-    private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer;
-    private readonly int _parallelization;
-    private readonly ILogger _logger;
+    private readonly IDb _traceStore = traceStore;
+    private readonly ITraceRpcModule _traceModule = traceModule;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IReceiptFinder _receiptFinder = receiptFinder;
+    private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer = traceSerializer;
+    private readonly int _parallelization = parallelization;
+    private readonly ILogger _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
 
     private static readonly IDictionary<ParityTraceTypes, Action<ParityLikeTxTrace>> _filters = new Dictionary<ParityTraceTypes, Action<ParityLikeTxTrace>>
     {
@@ -37,23 +43,6 @@ public class TraceStoreRpcModule : ITraceRpcModule
         { ParityTraceTypes.VmTrace | ParityTraceTypes.Trace, FilterStateVmTrace }
     };
 
-    public TraceStoreRpcModule(ITraceRpcModule traceModule,
-        IDb traceStore,
-        IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
-        ITraceSerializer<ParityLikeTxTrace> traceSerializer,
-        ILogManager logManager,
-        int parallelization = 0)
-    {
-        _traceStore = traceStore;
-        _traceModule = traceModule;
-        _blockFinder = blockFinder;
-        _receiptFinder = receiptFinder;
-        _traceSerializer = traceSerializer;
-        _parallelization = parallelization;
-        _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
-    }
-
     public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null,
         Dictionary<Address, AccountOverride>? stateOverride = null) =>
         _traceModule.trace_call(call, traceTypes, blockParameter, stateOverride);
@@ -61,7 +50,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) => _traceModule.trace_simulateV1(payload, blockParameter, traceTypes);
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TraceCallManyRequest calls, BlockParameter? blockParameter = null) =>
         _traceModule.trace_callMany(calls, blockParameter);
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
@@ -282,10 +271,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
 
 
     // VmTrace uses flags IsTracingCode, IsTracingInstructions
-    private static void FilterStateVmTrace(ParityLikeTxTrace trace)
-    {
-        trace.VmTrace = null;
-    }
+    private static void FilterStateVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
 
     // StateDiff uses flags IsTracingState, IsTracingStorage
     private static void FilterStateDiff(ParityLikeTxTrace trace)
@@ -301,11 +287,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     }
 
     // Trace uses flags IsTracingActions, IsTracingReceipt
-    private static void FilterTrace(ParityLikeTxTrace trace)
-    {
-        trace.Output = null;
-        // trace action?
-    }
+    private static void FilterTrace(ParityLikeTxTrace trace) => trace.Output = null;// trace action?
 
     private static void FilterRewards(List<ParityLikeTxTrace> traces)
     {

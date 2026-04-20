@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -36,7 +35,17 @@ namespace Nethermind.Trie
 
         public TrieType TrieType { get; init; }
 
-        private Stack<TraverseStack>? _traverseStack;
+        [ThreadStatic]
+        private static TraverseStack? _threadStaticTraverseStack;
+
+        private static TraverseStack GetTraverseStack()
+        {
+            TraverseStack stack = _threadStaticTraverseStack ?? new();
+            _threadStaticTraverseStack = null;
+            return stack;
+        }
+
+        private static void ReturnTraverseStack(TraverseStack stack) => _threadStaticTraverseStack = stack;
         public readonly IScopedTrieStore TrieStore;
         public ICappedArrayPool? _bufferPool;
 
@@ -290,16 +299,10 @@ namespace Nethermind.Trie
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceExtensionSkip(TrieNode extensionChild)
-            {
-                _logger.Trace($"Skipping commit of {extensionChild}");
-            }
+            void TraceExtensionSkip(TrieNode extensionChild) => _logger.Trace($"Skipping commit of {extensionChild}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceSkipInlineNode(TrieNode node)
-            {
-                _logger.Trace($"Skipping commit of an inlined {node}");
-            }
+            void TraceSkipInlineNode(TrieNode node) => _logger.Trace($"Skipping commit of an inlined {node}");
         }
 
         private async Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx)
@@ -501,10 +504,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value)
-        {
-            Set(rawKey, new CappedArray<byte>(value));
-        }
+        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value) => Set(rawKey, new CappedArray<byte>(value));
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
@@ -530,12 +530,12 @@ namespace Nethermind.Trie
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
-                if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
-                else if (_traverseStack.Count > 0) _traverseStack.Clear();
+                TraverseStack traverseStack = GetTraverseStack();
 
                 TreePath empty = TreePath.Empty;
-                RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
+                RootRef = SetNew(traverseStack, nibbles, value, ref empty, RootRef);
 
+                ReturnTraverseStack(traverseStack);
             }
             finally
             {
@@ -543,16 +543,10 @@ namespace Nethermind.Trie
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
 
-            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
-            {
-                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
-            }
+            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowNonConcurrentWrites()
-            {
-                throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
-            }
+            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
         }
 
         [DebuggerStepThrough]
@@ -569,7 +563,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, CappedArray<byte> value, ref TreePath path, TrieNode? node)
+        private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> remainingKey, CappedArray<byte> value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;
             int originalPathLength = path.Length;
@@ -597,7 +591,7 @@ namespace Nethermind.Trie
                             path.AppendMut(node.Key);
                             TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
 
-                            traverseStack.Push(new TraverseStack()
+                            traverseStack.Push(new TraverseStackFrame()
                             {
                                 Node = node,
                                 OriginalChild = extensionChild,
@@ -682,7 +676,7 @@ namespace Nethermind.Trie
                 path.AppendMut(nib);
                 TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
 
-                traverseStack.Push(new TraverseStack()
+                traverseStack.Push(new TraverseStackFrame()
                 {
                     Node = node,
                     OriginalChild = child,
@@ -694,7 +688,7 @@ namespace Nethermind.Trie
                 remainingKey = remainingKey[1..];
             }
 
-            while (traverseStack.TryPop(out TraverseStack cStack))
+            while (traverseStack.TryPop(out TraverseStackFrame cStack))
             {
                 TrieNode? child = node;
                 node = cStack.Node;
@@ -774,7 +768,7 @@ namespace Nethermind.Trie
             int onlyChildIdx = -1;
             TrieNode? onlyChildNode = null;
             path.AppendMut(0);
-            var iterator = node.CreateChildIterator();
+            TrieNode.ChildIterator iterator = node.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 path.SetLast(i);
@@ -873,11 +867,43 @@ namespace Nethermind.Trie
             return tn;
         }
 
-        private record struct TraverseStack
+        private record struct TraverseStackFrame
         {
             public TrieNode Node;
             public int ChildIdx;
             public TrieNode? OriginalChild;
+        }
+
+        private class TraverseStack
+        {
+            [InlineArray(64)]
+            private struct Inline64
+            {
+                public TraverseStackFrame Item;
+            }
+
+            private Inline64 _entries;
+            private int _count;
+
+            public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
+
+            public bool TryPop(out TraverseStackFrame frame)
+            {
+                if (_count == 0) { frame = default; return false; }
+                frame = _entries[--_count];
+                _entries[_count] = default; // release references
+                return true;
+            }
+
+            public void Clear()
+            {
+                if (_count != 0)
+                {
+                    _entries[.._count].Clear();
+                    _count = 0;
+                }
+            }
+            public int Count => _count;
         }
 
         private CappedArray<byte> GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
