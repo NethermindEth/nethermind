@@ -31,7 +31,7 @@ public class XdcProtocolHandlerTests
 {
     private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll()
+        CreateAll(bool syncing = false)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
@@ -48,7 +48,8 @@ public class XdcProtocolHandlerTests
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
         Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
         blockTree.Head.Returns(headBlock);
-        blockTree.FindBestSuggestedHeader().Returns(headHeader);
+        BlockHeader bestSuggested = syncing ? Build.A.BlockHeader.WithNumber(1000).TestObject : headHeader;
+        blockTree.FindBestSuggestedHeader().Returns(bestSuggested);
 
         XdcProtocolHandler handler = new(
             timeoutManager,
@@ -300,52 +301,21 @@ public class XdcProtocolHandlerTests
     [Test]
     public void HandleMessage_XdcMessageWhileSyncing_IsIgnoredWithoutDisconnect()
     {
-        IVotesManager votesManager = Substitute.For<IVotesManager>();
-        ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
-        ISyncInfoManager syncInfoManager = Substitute.For<ISyncInfoManager>();
-        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
-        ISession session = Substitute.For<ISession>();
-        session.RemoteNodeId.Returns(TestItem.PublicKeyA);
-        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
+            = CreateAll(syncing: true);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
 
-        INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
-        nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
+            handler.HandleMessage(CreatePacket(XdcMessageCode.VoteMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.TimeoutMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.SyncInfoMsg));
 
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        // Force IsSyncing() == true: best suggested header is far ahead of head
-        Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(10).TestObject).TestObject;
-        blockTree.Head.Returns(head);
-        blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
-
-        using XdcProtocolHandler handler = new(
-            timeoutManager,
-            votesManager,
-            syncInfoManager,
-            blockTree,
-            session,
-            serializer,
-            nodeStatsManager,
-            Substitute.For<ISyncServer>(),
-            Substitute.For<IBackgroundTaskScheduler>(),
-            Substitute.For<ITxPool>(),
-            Substitute.For<IGossipPolicy>(),
-            Substitute.For<IForkInfo>(),
-            LimboLogs.Instance,
-            Substitute.For<ITxGossipPolicy>());
-
-        HandleIncomingStatus(handler, serializer);
-
-        ZeroPacket voteMsg = CreatePacket(XdcMessageCode.VoteMsg);
-        ZeroPacket timeoutMsg = CreatePacket(XdcMessageCode.TimeoutMsg);
-        ZeroPacket syncInfoMsg = CreatePacket(XdcMessageCode.SyncInfoMsg);
-
-        handler.HandleMessage(voteMsg);
-        handler.HandleMessage(timeoutMsg);
-        handler.HandleMessage(syncInfoMsg);
-
-        votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
-        timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
-        syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());
-        session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+            votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
+            timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
+            syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());
+            session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        }
     }
 }

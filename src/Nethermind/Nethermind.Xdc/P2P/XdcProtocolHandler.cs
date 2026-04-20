@@ -57,10 +57,9 @@ internal class XdcProtocolHandler(
         int size = message.Content.ReadableBytes;
 
         int packetType = message.PacketType;
-        bool isXdcMessage = packetType is XdcMessageCode.VoteMsg or XdcMessageCode.TimeoutMsg or XdcMessageCode.SyncInfoMsg;
 
         (bool isSyncing, _, _) = _blockTree.IsSyncing();
-        if (isSyncing && isXdcMessage)
+        if (isSyncing && XdcMessageCode.IsXdcMessage(packetType))
         {
             // accept but ignore XDC-specific messages while syncing
             return true;
