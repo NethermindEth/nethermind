@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
@@ -21,6 +22,11 @@ public class WorldStateModule : Module
                 $"No world state backend registered. Load {nameof(PruningTrieStoreModule)} or {nameof(FlatWorldStateModule)}."))
 
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
+
+            .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
+            {
+                new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
+            })
 
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
