@@ -141,7 +141,15 @@ jobs:
                   "Bash(curl *)",
                   "Bash(wget *)",
                   "Bash(env *)",
-                  "Bash(printenv *)"
+                  "Bash(printenv *)",
+                  "Bash(gh auth*)",
+                  "Bash(gh secret*)",
+                  "Bash(gh workflow run*)",
+                  "Bash(gh repo delete*)",
+                  "Bash(git push*)",
+                  "Bash(git remote*)",
+                  "Bash(git config*)",
+                  "Bash(git clone*)"
                 ]
               }
             }
@@ -206,7 +214,15 @@ jobs:
                   "Bash(curl *)",
                   "Bash(wget *)",
                   "Bash(env *)",
-                  "Bash(printenv *)"
+                  "Bash(printenv *)",
+                  "Bash(gh auth*)",
+                  "Bash(gh secret*)",
+                  "Bash(gh workflow run*)",
+                  "Bash(gh repo delete*)",
+                  "Bash(git push*)",
+                  "Bash(git remote*)",
+                  "Bash(git config*)",
+                  "Bash(git clone*)"
                 ]
               }
             }
