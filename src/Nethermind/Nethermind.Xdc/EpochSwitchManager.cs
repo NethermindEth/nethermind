@@ -93,6 +93,9 @@ internal class EpochSwitchManager(
         return parentRound < epochStartRound;
     }
 
+    protected override ulong GetCurrentEpochNumber(EpochSwitchInfo epochSwitchInfo, IXdcReleaseSpec xdcSpec) =>
+        (ulong)xdcSpec.SwitchEpoch + epochSwitchInfo.EpochSwitchBlockInfo.Round / (ulong)xdcSpec.EpochLength;
+
     protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec) =>
         header.PenaltiesAddress is null
             ? throw new InvalidOperationException($"PenaltiesAddress is null on epoch-switch block {header.Number}")

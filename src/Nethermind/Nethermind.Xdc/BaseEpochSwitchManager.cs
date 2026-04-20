@@ -111,6 +111,8 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
         return GetEpochSwitchInfo(h);
     }
 
+    protected abstract ulong GetCurrentEpochNumber(EpochSwitchInfo epochSwitchInfo, IXdcReleaseSpec xdcSpec);
+
     public EpochSwitchInfo? GetEpochSwitchInfo(ulong round)
     {
         XdcBlockHeader? headOfChainHeader = (XdcBlockHeader?)Tree.Head?.Header;
@@ -125,7 +127,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
         IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(headOfChainHeader);
 
         ulong epochRound = epochSwitchInfo.EpochSwitchBlockInfo.Round;
-        ulong tempTCEpoch = (ulong)xdcSpec.SwitchEpoch + epochRound / (ulong)xdcSpec.EpochLength;
+        ulong tempTCEpoch = GetCurrentEpochNumber(epochSwitchInfo, xdcSpec);
 
         BlockRoundInfo epochBlockInfo = new(epochSwitchInfo.EpochSwitchBlockInfo.Hash, epochRound, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber);
 

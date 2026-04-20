@@ -29,6 +29,9 @@ internal class SubnetEpochSwitchManager(
         return (parent.Number + 1) % xdcSpec.EpochLength == 0;
     }
 
+    protected override ulong GetCurrentEpochNumber(EpochSwitchInfo epochSwitchInfo, IXdcReleaseSpec xdcSpec) =>
+        (ulong)(epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber / xdcSpec.EpochLength);
+
     protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec)
     {
         if (snapshot is not SubnetSnapshot subnetSnapshot)
