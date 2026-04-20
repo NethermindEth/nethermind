@@ -128,7 +128,7 @@ public static partial class EvmInstructions
         // If the position is out-of-range, push zero. Using direct limb access avoids the
         // full 256-bit vector compare + defensive `in` copy the JIT emits for `a >= BigInt32`,
         // and skips the overflow-check path of `(int)a`.
-        if ((a.u1 | a.u2 | a.u3) != 0 || a.u0 >= 32)
+        if (!a.IsUint64 || a.u0 >= 32)
         {
             return stack.PushZero<TTracingInst>();
         }

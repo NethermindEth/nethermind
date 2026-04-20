@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -661,8 +662,21 @@ public static partial class EvmInstructions
         // Pop the offset from which to load call data.
         if (!stack.PopUInt256(out UInt256 result))
             goto StackUnderflow;
-        // Load 32 bytes from input data, applying zero padding as needed.
-        return stack.PushBytes<TTracingInst>(vm.VmState.Env.InputData.SliceWithZeroPadding(result, 32));
+
+        ReadOnlySpan<byte> inputData = vm.VmState.Env.InputData.Span;
+
+        ulong offset = result.u0;
+        if (!result.IsUint64 || offset >= (uint)inputData.Length)
+        {
+            return stack.PushZero<TTracingInst>();
+        }
+
+        uint available = (uint)inputData.Length - (uint)offset;
+        uint copiedLength = available >= 32 ? 32u : available;
+        return stack.PushRightPaddedBytes<TTracingInst>(
+            ref Unsafe.Add(ref MemoryMarshal.GetReference(inputData), (nint)offset),
+            copiedLength);
+
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

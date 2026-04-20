@@ -62,7 +62,7 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
-        if ((a.u1 | a.u2 | a.u3) != 0 || a.u0 >= 256)
+        if (!a.IsUint64 || a.u0 >= 256)
         {
             return stack.PushZero<TTracingInst>();
         }
@@ -102,7 +102,7 @@ public static partial class EvmInstructions
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
-        if ((a.u1 | a.u2 | a.u3) != 0 || a.u0 >= 256)
+        if (!a.IsUint64 || a.u0 >= 256)
         {
             // Convert the unsigned value to a signed integer to determine its sign.
             return As<UInt256, Int256>(ref b).Sign >= 0
