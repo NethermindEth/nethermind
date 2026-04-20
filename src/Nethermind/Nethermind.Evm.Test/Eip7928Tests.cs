@@ -56,17 +56,27 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
     /// <summary>
     /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
-    /// and a matching <see cref="EthereumTransactionProcessor"/> wired to it.
+    /// and a matching <see cref="TransactionProcessor{EthereumGasPolicy}"/> wired to it.
     /// </summary>
-    private (TracedAccessWorldState tracedState, EthereumTransactionProcessor processor) CreateTracedProcessor()
+    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessor(bool? parallelOverride = null)
     {
-        TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+        bool useParallel = parallelOverride ?? parallel;
+        TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
         ILogManager logManager = LimboLogs.Instance;
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
         EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager);
+        TransactionProcessor<EthereumGasPolicy> processor = new(
+            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: useParallel);
         return (tracedState, processor);
+    }
+
+    private static void AssertPureAccountRead(AccountChanges? accountChanges)
+    {
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.BalanceChanges, Is.Empty);
+        Assert.That(accountChanges.NonceChanges, Is.Empty);
+        Assert.That(accountChanges.CodeChanges, Is.Empty);
     }
 
     [TestCaseSource(nameof(CodeTestSource))]
@@ -78,7 +88,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         InitWorldState(TestState, extraCode);
 
-        (TracedAccessWorldState tracedState, EthereumTransactionProcessor processor) = CreateTracedProcessor();
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
 
         UInt256 value = _testAccountBalance;
 
@@ -138,7 +148,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         InitWorldState(TestState, extraCode);
 
-        (TracedAccessWorldState tracedState, EthereumTransactionProcessor processor) = CreateTracedProcessor();
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
 
         Transaction templateTx = Build.A.Transaction
             .WithCode(code)
@@ -974,28 +984,17 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         repo.GetCachedCodeInfo(new(address), false, Amsterdam.Instance, out Address? delegationAddress);
 
-        AccountChanges? accountChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(new(address));
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.Null);
-            Assert.That(accountChanges, Is.Not.Null);
-            Assert.That(accountChanges.BalanceChanges, Is.Empty);
-            Assert.That(accountChanges.NonceChanges, Is.Empty);
-            Assert.That(accountChanges.CodeChanges, Is.Empty);
+            AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(new(address)));
         }
     }
 
     [Test]
     public void Tx_exceeding_block_gas_limit_rejected_in_parallel_mode()
     {
-        TracedAccessWorldState tracedState = new(TestState, parallel: true);
-        ILogManager logManager = LimboLogs.Instance;
-        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
-        EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
-        TransactionProcessor<EthereumGasPolicy> processor = new(
-            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: true);
+        (_, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor(parallelOverride: true);
 
         TestState.CreateAccount(TestItem.AddressA, 10.Ether);
         TestState.Commit(SpecProvider.GenesisSpec);
@@ -1070,17 +1069,12 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);
 
-        AccountChanges? accountChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressB);
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
             Assert.That(delegationAddress, Is.Null);
             // GetCachedCodeInfo records a pure account read even through the cache layer
-            Assert.That(accountChanges, Is.Not.Null);
-            Assert.That(accountChanges!.BalanceChanges, Is.Empty);
-            Assert.That(accountChanges.NonceChanges, Is.Empty);
-            Assert.That(accountChanges.CodeChanges, Is.Empty);
+            AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressB));
         }
     }
 

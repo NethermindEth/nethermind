@@ -35,6 +35,12 @@ public class BlockAccessListBasedWorldStateTests
     /// with a suggested <see cref="BlockAccessList"/> populated via <paramref name="balSetup"/>.
     /// The inner state is initialized via <paramref name="genesisSetup"/>.
     /// </summary>
+    private static AccountChanges AddAccountRead(BlockAccessList bal, Address address)
+    {
+        bal.AddAccountRead(address);
+        return bal.GetAccountChanges(address)!;
+    }
+
     private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
         int blockAccessIndex,
         Action<BlockAccessList> balSetup,
@@ -67,11 +73,8 @@ public class BlockAccessListBasedWorldStateTests
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 0,
             balSetup: bal =>
-            {
-                bal.AddAccountRead(TestItem.AddressA);
-                bal.GetAccountChanges(TestItem.AddressA)!
-                    .AddBalanceChange(new BalanceChange(-1, 100));
-            },
+                AddAccountRead(bal, TestItem.AddressA)
+                    .AddBalanceChange(new BalanceChange(-1, 100)),
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
         using (scope)
         {
@@ -86,11 +89,9 @@ public class BlockAccessListBasedWorldStateTests
             blockAccessIndex: 1,
             balSetup: bal =>
             {
-                bal.AddAccountRead(TestItem.AddressA);
-                bal.GetAccountChanges(TestItem.AddressA)!
-                    .AddBalanceChange(new BalanceChange(-1, 100));
-                bal.GetAccountChanges(TestItem.AddressA)!
-                    .AddBalanceChange(new BalanceChange(0, 200));
+                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
+                ac.AddBalanceChange(new BalanceChange(-1, 100));
+                ac.AddBalanceChange(new BalanceChange(0, 200));
             },
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
         using (scope)
@@ -106,11 +107,9 @@ public class BlockAccessListBasedWorldStateTests
             blockAccessIndex: 1,
             balSetup: bal =>
             {
-                bal.AddAccountRead(TestItem.AddressA);
-                bal.GetAccountChanges(TestItem.AddressA)!
-                    .AddNonceChange(new NonceChange(-1, 0));
-                bal.GetAccountChanges(TestItem.AddressA)!
-                    .AddNonceChange(new NonceChange(0, 3));
+                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
+                ac.AddNonceChange(new NonceChange(-1, 0));
+                ac.AddNonceChange(new NonceChange(0, 3));
             },
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
@@ -126,11 +125,8 @@ public class BlockAccessListBasedWorldStateTests
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 1,
             balSetup: bal =>
-            {
-                bal.AddAccountRead(TestItem.AddressA);
-                bal.GetAccountChanges(TestItem.AddressA)!
-                    .AddCodeChange(new CodeChange(0, priorTxCode));
-            },
+                AddAccountRead(bal, TestItem.AddressA)
+                    .AddCodeChange(new CodeChange(0, priorTxCode)),
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
@@ -146,11 +142,10 @@ public class BlockAccessListBasedWorldStateTests
             blockAccessIndex: 1,
             balSetup: bal =>
             {
-                bal.AddAccountRead(TestItem.AddressA);
+                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
                 bal.AddStorageRead(cell);
-                SlotChanges sc = bal.GetAccountChanges(TestItem.AddressA)!
-                    .GetOrAddSlotChanges(cell.Index);
-                sc.AddStorageChange(new StorageChange(0, 99u));
+                ac.GetOrAddSlotChanges(cell.Index)
+                    .AddStorageChange(new StorageChange(0, 99u));
             },
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
@@ -167,9 +162,8 @@ public class BlockAccessListBasedWorldStateTests
             blockAccessIndex: 0,
             balSetup: bal =>
             {
-                bal.AddAccountRead(TestItem.AddressA);
                 // The account exists if we can resolve it in the BAL
-                AccountChanges ac = bal.GetAccountChanges(TestItem.AddressA)!;
+                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
                 ac.AddNonceChange(new NonceChange(-1, 0));
                 ac.AddBalanceChange(new BalanceChange(-1, 1));
                 ac.ExistedBeforeBlock = true;

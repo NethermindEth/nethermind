@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -174,139 +175,90 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
-    [Test]
-    public void GetBalance_RecordsAccountRead()
+    private static IEnumerable<TestCaseData> ReadRecordsAccountReadCases()
     {
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-            ws.CreateAccount(TestItem.AddressA, 42));
-        using (scope)
-        {
-            UInt256 balance = tws.GetBalance(TestItem.AddressA);
+        byte[] codeForCodeOp = [0x60, 0x01];
+        byte[] codeForHashOp = [0x60, 0x02];
+        byte[] codeForIsContractOp = [0x60, 0x03];
 
-            using (Assert.EnterMultipleScope())
+        yield return new TestCaseData(
+            (Action<IWorldState>)(ws => ws.CreateAccount(TestItem.AddressA, 42)),
+            (Action<TracedAccessWorldState>)(tws =>
+                Assert.That(tws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)42))))
+            .SetName("GetBalance_RecordsAccountRead");
+
+        yield return new TestCaseData(
+            (Action<IWorldState>)(ws =>
             {
-                Assert.That(balance, Is.EqualTo((UInt256)42));
-                Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
-            }
-        }
-    }
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.IncrementNonce(TestItem.AddressA, 1, out _);
+            }),
+            (Action<TracedAccessWorldState>)(tws =>
+                Assert.That(tws.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1))))
+            .SetName("GetNonce_RecordsAccountRead");
 
-    [Test]
-    public void GetNonce_RecordsAccountRead()
-    {
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-        {
-            ws.CreateAccount(TestItem.AddressA, 0);
-            ws.IncrementNonce(TestItem.AddressA, 1, out _);
-        });
-        using (scope)
-        {
-            UInt256 nonce = tws.GetNonce(TestItem.AddressA);
-
-            using (Assert.EnterMultipleScope())
+        yield return new TestCaseData(
+            (Action<IWorldState>)(ws =>
             {
-                Assert.That(nonce, Is.EqualTo((UInt256)1));
-                Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
-            }
-        }
-    }
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(codeForCodeOp), codeForCodeOp, Spec);
+            }),
+            (Action<TracedAccessWorldState>)(tws =>
+                Assert.That(tws.GetCode(TestItem.AddressA), Is.EquivalentTo(codeForCodeOp))))
+            .SetName("GetCode_RecordsAccountRead");
 
-    [Test]
-    public void GetCode_RecordsAccountRead()
-    {
-        byte[] code = [0x60, 0x01];
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-        {
-            ws.CreateAccount(TestItem.AddressA, 0);
-            ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, Spec);
-        });
-        using (scope)
-        {
-            byte[]? retrieved = tws.GetCode(TestItem.AddressA);
-
-            using (Assert.EnterMultipleScope())
+        yield return new TestCaseData(
+            (Action<IWorldState>)(ws =>
             {
-                Assert.That(retrieved, Is.EquivalentTo(code));
-                Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
-            }
-        }
-    }
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(codeForHashOp), codeForHashOp, Spec);
+            }),
+            (Action<TracedAccessWorldState>)(tws =>
+                Assert.That(tws.GetCodeHash(TestItem.AddressA), Is.EqualTo(ValueKeccak.Compute(codeForHashOp)))))
+            .SetName("GetCodeHash_RecordsAccountRead");
 
-    [Test]
-    public void GetCodeHash_RecordsAccountRead()
-    {
-        byte[] code = [0x60, 0x02];
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-        {
-            ws.CreateAccount(TestItem.AddressA, 0);
-            ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, Spec);
-        });
-        using (scope)
-        {
-            ValueHash256 hash = tws.GetCodeHash(TestItem.AddressA);
-
-            using (Assert.EnterMultipleScope())
+        yield return new TestCaseData(
+            (Action<IWorldState>)(ws =>
             {
-                Assert.That(hash, Is.EqualTo(ValueKeccak.Compute(code)));
-                Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
-            }
-        }
-    }
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(codeForIsContractOp), codeForIsContractOp, Spec);
+            }),
+            (Action<TracedAccessWorldState>)(tws =>
+                Assert.That(tws.IsContract(TestItem.AddressA), Is.True)))
+            .SetName("IsContract_RecordsAccountRead");
 
-    [Test]
-    public void IsContract_RecordsAccountRead()
-    {
-        byte[] code = [0x60, 0x03];
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-        {
-            ws.CreateAccount(TestItem.AddressA, 0);
-            ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, Spec);
-        });
-        using (scope)
-        {
-            bool isContract = tws.IsContract(TestItem.AddressA);
+        yield return new TestCaseData(
+            (Action<IWorldState>)(ws => ws.CreateAccount(TestItem.AddressA, 0)),
+            (Action<TracedAccessWorldState>)(tws =>
+                Assert.That(tws.AccountExists(TestItem.AddressA), Is.True)))
+            .SetName("AccountExists_RecordsAccountRead");
 
-            using (Assert.EnterMultipleScope())
+        yield return new TestCaseData(
+            (Action<IWorldState>)(ws => ws.CreateAccount(TestItem.AddressA, 0)),
+            (Action<TracedAccessWorldState>)(tws =>
+                Assert.That(tws.IsDeadAccount(TestItem.AddressA), Is.True)))
+            .SetName("IsDeadAccount_RecordsAccountRead");
+
+        yield return new TestCaseData(
+            (Action<IWorldState>)(ws => ws.CreateAccount(TestItem.AddressA, 77)),
+            (Action<TracedAccessWorldState>)(tws =>
             {
-                Assert.That(isContract, Is.True);
-                Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
-            }
-        }
-    }
-
-    [TestCase(false, TestName = "AccountExists")]
-    [TestCase(true, TestName = "IsDeadAccount")]
-    public void AccountExistsOrIsDeadAccount_RecordsAccountRead(bool checkDead)
-    {
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-            ws.CreateAccount(TestItem.AddressA, 0));
-        using (scope)
-        {
-            bool result = checkDead
-                ? tws.IsDeadAccount(TestItem.AddressA)
-                : tws.AccountExists(TestItem.AddressA);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result, Is.True);
-                Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
-            }
-        }
-    }
-
-    [Test]
-    public void TryGetAccount_RecordsAccountRead()
-    {
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-            ws.CreateAccount(TestItem.AddressA, 77));
-        using (scope)
-        {
-            bool found = tws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
-
-            using (Assert.EnterMultipleScope())
-            {
+                bool found = tws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
                 Assert.That(found, Is.True);
                 Assert.That(account.Balance, Is.EqualTo((UInt256)77));
+            }))
+            .SetName("TryGetAccount_RecordsAccountRead");
+    }
+
+    [TestCaseSource(nameof(ReadRecordsAccountReadCases))]
+    public void ReadOp_RecordsAccountRead(Action<IWorldState> setup, Action<TracedAccessWorldState> readAndAssert)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(setup);
+        using (scope)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                readAndAssert(tws);
                 Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
             }
         }
