@@ -137,7 +137,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Metrics source: prefers SSE client metrics (`[payload-server] client_metric` lines — Nethermind internal processing times) over K6 TTFB. Falls back to the per-payload pipe table when SSE data is unavailable.
 - On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
-- When `dottrace` input is enabled, passes `--dottrace` to expb. dotTrace snapshots (`.dtp` + chunk files) and auto-generated XML reports (`report-hotspots.xml`, `report-calltree.xml`) are zipped and uploaded as artifacts. The XML reports contain hot-spot and call-tree profiling data that agents can analyze directly.
+- When `dottrace` input is enabled, passes `--dottrace` to expb. dotTrace snapshots (`.dtp` + chunk files) are zipped and uploaded as artifacts. A downstream Windows job (`generate-dottrace-reports`) runs Reporter.exe to produce XML reports (`*-report-hotspots.xml`, `*-report-calltree.xml`) uploaded as the `dottrace-reports` artifact. The XML reports contain hot-spot and call-tree profiling data that agents can analyze directly.
 
 ### What to inspect in run output
 
@@ -191,4 +191,4 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - The benchmark config is rendered to a temporary file and removed afterward; no source config revert is required.
 - For `pull_request` and `push` auto-runs, default mode is currently `halfpath + superblocks`.
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
-- When dotTrace artifacts are available, download and read `report-hotspots.xml` for top methods by own time and `report-calltree.xml` for the full call tree with timing. These are standard JetBrains dotTrace XML reports.
+- When dotTrace artifacts are available, download and read `*-report-hotspots.xml` for top methods by own time and `*-report-calltree.xml` for the full call tree with timing from the `dottrace-reports` artifact. These are standard JetBrains dotTrace XML reports.

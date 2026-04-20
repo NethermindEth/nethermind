@@ -2102,3 +2102,68 @@ jobs:
           cat "${summary_file}"
 
           cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
+
+  # ---------------------------------------------------------------------------
+  # dotTrace XML report generation (Windows-only Reporter.exe)
+  # ---------------------------------------------------------------------------
+
+  generate-dottrace-reports:
+    needs: [resolve, benchmark, benchmark-multi]
+    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.resolve.outputs.should_run == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download snapshot artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dottrace-*
+          path: snapshots/
+          merge-multiple: true
+
+      - name: Install dotTrace Reporter
+        run: dotnet tool install --global JetBrains.dotTrace.CommandLineTools
+
+      - name: Generate XML reports
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
+
+          # Extract all snapshot zips
+          Get-ChildItem -Path snapshots -Filter '*.zip' | ForEach-Object {
+            $dest = Join-Path extracted $_.BaseName
+            Write-Host "Extracting $($_.Name) -> $dest"
+            Expand-Archive -Path $_.FullName -DestinationPath $dest
+          }
+
+          # Find .dtp files (exact extension, not .dtp.0000 chunks)
+          $snapshots = Get-ChildItem -Path extracted -Recurse | Where-Object { $_.Extension -eq '.dtp' }
+
+          if ($snapshots.Count -eq 0) {
+            Write-Host "No .dtp snapshot files found after extraction."
+            exit 0
+          }
+
+          foreach ($dtp in $snapshots) {
+            $name = $dtp.BaseName
+            Write-Host "::group::Generating reports for $name"
+
+            foreach ($type in @('HotSpots', 'CallTree')) {
+              $outFile = "reports/${name}-report-$($type.ToLower()).xml"
+              Write-Host "  $type -> $outFile"
+              & Reporter.exe report $dtp.FullName --report-type=$type --save-to=$outFile
+              if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Reporter failed for $name ($type) with exit code $LASTEXITCODE"
+              }
+            }
+
+            Write-Host "::endgroup::"
+          }
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dottrace-reports
+          path: reports/
+          retention-days: 30
+          if-no-files-found: ignore
