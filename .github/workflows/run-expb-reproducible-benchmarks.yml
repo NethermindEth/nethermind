@@ -651,6 +651,9 @@ jobs:
             dottrace_flag="--dottrace"
           fi
 
+          # Marker for dottrace artifact collection — only files newer than this
+          touch "${RUNNER_TEMP}/.expb-run-marker"
+
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
@@ -890,21 +893,20 @@ jobs:
         shell: bash
         env:
           ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          MARKER: ${{ runner.temp }}/.expb-run-marker
         run: |
           set -euo pipefail
-          shopt -s nullglob globstar
 
-          dtp_files=( "${EXPB_DATA_DIR}"/**/dottrace/*.dtp )
+          mapfile -t dtp_files < <(find "${EXPB_DATA_DIR}" -name '*.dtp' -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dtp_files[@]}" -eq 0 ]]; then
-            echo "No .dtp snapshot files found."
+            echo "No .dtp snapshot files found for this run."
             exit 0
           fi
 
-          echo "Found ${#dtp_files[@]} dotTrace snapshot(s):"
+          echo "Found ${#dtp_files[@]} dotTrace snapshot(s) from this run:"
           printf '  %s\n' "${dtp_files[@]}"
 
           zip -9j "${ARCHIVE}" "${dtp_files[@]}"
-          echo "archive=${ARCHIVE}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload dotTrace artifact
         if: always() && needs.resolve.outputs.dottrace == 'true'
@@ -1686,6 +1688,9 @@ jobs:
             dottrace_flag="--dottrace"
           fi
 
+          # Marker for dottrace artifact collection — only files newer than this
+          touch "${RUNNER_TEMP}/.expb-run-marker"
+
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
@@ -1908,17 +1913,17 @@ jobs:
         shell: bash
         env:
           ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.tag }}-run${{ matrix.run }}.zip
+          MARKER: ${{ runner.temp }}/.expb-run-marker
         run: |
           set -euo pipefail
-          shopt -s nullglob globstar
 
-          dtp_files=( "${EXPB_DATA_DIR}"/**/dottrace/*.dtp )
+          mapfile -t dtp_files < <(find "${EXPB_DATA_DIR}" -name '*.dtp' -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dtp_files[@]}" -eq 0 ]]; then
-            echo "No .dtp snapshot files found."
+            echo "No .dtp snapshot files found for this run."
             exit 0
           fi
 
-          echo "Found ${#dtp_files[@]} dotTrace snapshot(s):"
+          echo "Found ${#dtp_files[@]} dotTrace snapshot(s) from this run:"
           printf '  %s\n' "${dtp_files[@]}"
 
           zip -9j "${ARCHIVE}" "${dtp_files[@]}"
