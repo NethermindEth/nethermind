@@ -525,6 +525,41 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task ForkChoiceUpdatedV3_should_allow_lower_finalized_than_previous_when_building_payload()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadBlockProcessingTimeout = 1000
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ExecutionPayloadV3 block1 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block2 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block3 = await AddNewBlockV3(rpcModule, chain);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = block3.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE
+        };
+
+        ForkchoiceStateV1 higherFinalized = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block2.BlockHash, safeBlockHash: block2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpcModule.engine_forkchoiceUpdatedV3(higherFinalized, null);
+        higherFinalizedResult.ErrorCode.Should().Be(0);
+        higherFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        ForkchoiceStateV1 repeatedHead = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV3(repeatedHead, payloadAttributes);
+
+        result.ErrorCode.Should().Be(0);
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.PayloadId.Should().NotBeNull();
+    }
+
+    [Test]
     public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
