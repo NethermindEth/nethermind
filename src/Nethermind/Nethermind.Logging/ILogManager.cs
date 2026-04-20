@@ -18,9 +18,6 @@ public interface ILogManager
 
 public static class LogManagerExtensions
 {
-    public static ILogger GetClassLogger<T>(this ILogManager logManager)
-        => logManager.GetLogger(ILogManager.GetLoggerName(typeof(T)));
-
     public static ILogger GetClassLogger(this ILogManager logManager, Type type)
         => logManager.GetLogger(ILogManager.GetLoggerName(type));
 }

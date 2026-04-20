@@ -161,10 +161,8 @@ public class NLogManager : ILogManager, IDisposable
 
     public void Dispose() => LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
 
-#if !ZK_EVM
     private static class TypedLogger<T>
     {
         public static ILogger Logger { get; } = BuildLogger(typeof(T));
     }
-#endif
 }
