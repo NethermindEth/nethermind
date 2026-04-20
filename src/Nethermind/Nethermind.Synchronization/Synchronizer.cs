@@ -301,7 +301,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ISyncModeSelector, MultiSyncModeSelector>()
             .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
             .AddSingleton<ISyncReport, SyncReport>()
-            .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
             .AddSingleton<ISyncPointers, SyncPointers>()
@@ -354,12 +353,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                         new SyncPeerPool(blockTree, stats, betterPeerStrategy, networkConfig, logManager))
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
-
-            .AddSingleton<IPathRecovery, ISyncPeerPool, INodeStorage, ILogManager>((peerPool, nodeStorage, logManager) => new PathNodeRecovery(
-                new NodeDataRecovery(peerPool!, nodeStorage, logManager),
-                new SnapRangeRecovery(peerPool!, logManager),
-                logManager
-            ))
 
             .AddSingleton<ISyncServer, SyncServer>();
 
@@ -414,7 +407,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<ProgressTracker>()
-            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<ISnapProvider, SnapProvider>();
 
         ConfigureSingletonSyncFeed<SnapSyncBatch, SnapSyncFeed, SnapSyncDownloader, SnapSyncAllocationStrategyFactory>(serviceCollection);
@@ -453,7 +445,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<IStateSyncPivot, StateSyncPivot>()
-            .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
             .AddSingleton<ITreeSync, TreeSync>();
 
         ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);

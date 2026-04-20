@@ -15,6 +15,12 @@ using Nethermind.Db.FullPruning;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Healing;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.Trie;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -82,6 +88,16 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
 
             // Some admin rpc to trigger verify trie and pruning
             .Map<IPruningTrieStateAdminRpcModule, PruningTrieStateFactoryOutput>((m) => m.AdminRpcModule)
+
+            // Sync components backed by the patricia trie store
+            .AddSingleton<IFullStateFinder, FullStateFinder>()
+            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
+            .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
+            .AddSingleton<IPathRecovery, ISyncPeerPool, INodeStorage, ILogManager>((peerPool, nodeStorage, logManager) => new PathNodeRecovery(
+                new NodeDataRecovery(peerPool!, nodeStorage, logManager),
+                new SnapRangeRecovery(peerPool!, logManager),
+                logManager
+            ))
             ;
 
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
