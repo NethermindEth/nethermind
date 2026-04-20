@@ -34,7 +34,7 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool outOfGas);
         if (outOfGas) return false;
 
-        int offset = (int)(uint)location.u0;
+        int offset = TruncateToInt32(location.u0);
         Word word1 = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
@@ -47,7 +47,7 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, 1, out ulong newLength, out bool isViolation);
         if (isViolation) return false;
 
-        int offset = (int)(uint)location.u0;
+        int offset = TruncateToInt32(location.u0);
         UpdateSize(newLength);
         _memory![offset] = value;
         return true;
@@ -64,7 +64,7 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
-        value.CopyTo(_memory.AsSpan((int)(uint)location.u0, value.Length));
+        value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
         return true;
     }
 
@@ -123,7 +123,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        Array.Copy(value, 0, _memory!, (int)(uint)location.u0, value.Length);
+        Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
         return true;
     }
 
@@ -141,7 +141,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        int intLocation = (int)(uint)location.u0;
+        int intLocation = TruncateToInt32(location.u0);
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
         if (value.PaddingLength > 0)
         {
@@ -164,7 +164,7 @@ public struct EvmPooledMemory
             return false;
         }
 
-        data = LoadSpan(newLength, (int)(uint)location.u0, WordSize);
+        data = LoadSpan(newLength, TruncateToInt32(location.u0), WordSize);
         return true;
     }
 
@@ -183,7 +183,7 @@ public struct EvmPooledMemory
             return false;
         }
 
-        data = LoadSpan(newLength, (int)(uint)location.u0, (int)(uint)length.u0);
+        data = LoadSpan(newLength, TruncateToInt32(location.u0), TruncateToInt32(length.u0));
         return true;
     }
 
@@ -204,7 +204,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        data = _memory.AsMemory((int)(uint)location.u0, (int)(uint)length.u0);
+        data = _memory.AsMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
         return true;
     }
 
@@ -281,7 +281,7 @@ public struct EvmPooledMemory
     internal void StoreWordAfterGas(in UInt256 location, ReadOnlySpan<byte> word)
     {
         Debug.Assert(location.IsUint64);
-        int offset = (int)(uint)location.u0;
+        int offset = TruncateToInt32(location.u0);
         Word value = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(word));
         PrepareAccessAfterGas(location.u0 + WordSize);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
@@ -292,7 +292,7 @@ public struct EvmPooledMemory
     internal void StoreByteAfterGas(in UInt256 location, byte value)
     {
         Debug.Assert(location.IsUint64);
-        int offset = (int)(uint)location.u0;
+        int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + 1);
         _memory![offset] = value;
     }
@@ -301,7 +301,7 @@ public struct EvmPooledMemory
     internal Word LoadWordAfterGas(in UInt256 location)
     {
         Debug.Assert(location.IsUint64);
-        int offset = (int)(uint)location.u0;
+        int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + WordSize);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         return Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref memory, offset));
@@ -311,8 +311,8 @@ public struct EvmPooledMemory
     internal Span<byte> LoadSpanAfterGas(in UInt256 location, ulong length)
     {
         Debug.Assert(location.IsUint64);
-        int offset = (int)(uint)location.u0;
-        int intLength = (int)(uint)length;
+        int offset = TruncateToInt32(location.u0);
+        int intLength = TruncateToInt32(length);
         PrepareAccessAfterGas(location.u0 + length);
         return _memory!.AsSpan(offset, intLength);
     }
@@ -325,9 +325,9 @@ public struct EvmPooledMemory
             return;
         }
 
-        int destinationOffset = (int)(uint)destination.u0;
-        int sourceOffset = (int)(uint)source.u0;
-        int intLength = (int)(uint)length;
+        int destinationOffset = TruncateToInt32(destination.u0);
+        int sourceOffset = TruncateToInt32(source.u0);
+        int intLength = TruncateToInt32(length);
 
         PrepareAccessAfterGas(destination.u0 + length);
         _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
@@ -421,7 +421,7 @@ public struct EvmPooledMemory
         if (_memory is null)
         {
             _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
-            Array.Clear(_memory, 0, (int)(uint)Size);
+            Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
         {
@@ -429,14 +429,14 @@ public struct EvmPooledMemory
             if (Size > (ulong)_memory.LongLength)
             {
                 byte[] beforeResize = _memory;
-                _memory = SafeArrayPool<byte>.Shared.Rent((int)(uint)Size);
+                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
                 Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                Array.Clear(_memory, lastZeroedSize, (int)(uint)(Size - _lastZeroedSize));
+                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
                 SafeArrayPool<byte>.Shared.Return(beforeResize);
             }
             else if (Size > _lastZeroedSize)
             {
-                Array.Clear(_memory, lastZeroedSize, (int)(uint)(Size - _lastZeroedSize));
+                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
             }
             else
             {
@@ -446,6 +446,16 @@ public struct EvmPooledMemory
 
         _lastZeroedSize = Size;
     }
+
+    // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
+    // direct ulong->int narrowing (treats it as a signed truncation and keeps the operation
+    // on 64-bit registers, sometimes with extra moves or a movsxd). Routing through (uint)
+    // lowers to a plain 32-bit register write, which on x64 implicitly zeros the upper 32
+    // bits - the JIT collapses it to a single mov. The subsequent (int) reinterpret is free
+    // (same bit pattern). CheckMemoryAccessViolation caps addressable memory at MaxMemorySize
+    // (< 2^31), so reinterpreting the low word as signed is always safe here.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int TruncateToInt32(ulong value) => (int)(uint)value;
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowArgumentOutOfRangeException()
