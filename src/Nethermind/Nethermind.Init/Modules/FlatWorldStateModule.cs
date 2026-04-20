@@ -94,6 +94,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
             .AddSingleton<PreimageRocksdbPersistence>()
+            .AddSingleton<HybridPreimagePersistence>()
             .AddDatabase(DbNames.Preimage)
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
@@ -103,6 +104,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlat => ctx.Resolve<PreimageRocksdbPersistence>(),
+                    FlatLayout.HybridPreimage => ctx.Resolve<HybridPreimagePersistence>(),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 

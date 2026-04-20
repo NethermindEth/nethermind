@@ -64,6 +64,11 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Enabled = true,
             Layout = FlatLayout.PreimageFlat
         }, "PreimageFlat");
+        yield return new TestConfiguration(new FlatDbConfig()
+        {
+            Enabled = true,
+            Layout = FlatLayout.HybridPreimage
+        }, "HybridPreimage");
     }
 
     [SetUp]
@@ -762,7 +767,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     public void TestStorageIterator_EnumeratesAccountStorage()
     {
         // PreimageFlat uses raw address, others use hashed address paths
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        if (configuration.FlatDbConfig.Layout is FlatLayout.PreimageFlat or FlatLayout.HybridPreimage)
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write account with storage
@@ -798,7 +803,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestStorageIterator_NoStorage_ReturnsEmpty()
     {
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        if (configuration.FlatDbConfig.Layout is FlatLayout.PreimageFlat or FlatLayout.HybridPreimage)
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write account without storage
@@ -828,7 +833,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestStorageIterator_IsolatesAccountStorage()
     {
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        if (configuration.FlatDbConfig.Layout is FlatLayout.PreimageFlat or FlatLayout.HybridPreimage)
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write storage for two accounts

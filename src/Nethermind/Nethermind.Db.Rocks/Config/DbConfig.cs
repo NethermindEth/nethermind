@@ -414,6 +414,20 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
+    public string? FlatPreimageStorageDbRocksDbOptions { get; set; } =
+        // Keep last level bloom filter — critical for null-lookup cost (~40% of reads are null).
+        "optimize_filters_for_hits=false;" +
+
+        // Mirror Storage column tuning; column starts empty and grows as writes accumulate.
+        "target_file_size_base=64000000;" +
+        "block_based_table_factory.block_size=8000;" +
+
+        // Smaller write buffers since the column starts empty.
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+    public string? FlatPreimageStorageDbAdditionalRocksDbOptions { get; set; }
+
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 }

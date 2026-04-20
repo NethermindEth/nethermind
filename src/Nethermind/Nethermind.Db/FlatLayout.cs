@@ -8,4 +8,5 @@ public enum FlatLayout
     Flat,
     FlatInTrie,
     PreimageFlat,
+    HybridPreimage,
 }
