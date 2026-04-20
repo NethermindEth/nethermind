@@ -39,10 +39,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
-            .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
-            {
-                new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
-            })
             .AddSingleton<ISnapServer, IWorldStateManager>(wsm => wsm.SnapServer)
 
             // Stub out the pruning trie store admin RPC with a disabled response.
