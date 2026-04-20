@@ -473,9 +473,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v2-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v2-${{ matrix.payload_set }}-
+            expb-master-metrics-v3-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -688,72 +688,110 @@ jobs:
             head -n 40 "${invalid_block_lines}"
           fi
 
-          awk -F'|' '
-            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
-              value = $4
-              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                print value
+          # Extract client-side processing times from SSE data feed (primary)
+          client_ms="${RUNNER_TEMP}/expb-client-ms.txt"
+          client_ms_sorted="${RUNNER_TEMP}/expb-client-ms-sorted.txt"
+          grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
+
+          # Fall back to K6 TTFB table if no client metrics available
+          if [[ -s "${client_ms}" ]]; then
+            echo "Using SSE client_metric data ($(wc -l < "${client_ms}") samples)."
+            cp "${client_ms}" "${processing_ms}"
+          else
+            echo "No SSE client_metric data found, falling back to K6 TTFB table."
+            awk -F'|' '
+              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                  print value
+                }
               }
-            }
-          ' "${clean_log}" > "${processing_ms}"
+            ' "${clean_log}" > "${processing_ms}"
+          fi
 
           count=$(wc -l < "${processing_ms}")
           count="${count//[[:space:]]/}"
           if [[ "${count}" -eq 0 ]]; then
-            echo "Could not extract per-payload processing_ms rows from benchmark output."
+            echo "Could not extract any processing_ms data from benchmark output."
             exit 1
           fi
 
-          sort -n "${processing_ms}" > "${processing_ms_sorted}"
+          compute_percentiles() {
+            local input_file="$1"
+            local prefix="$2"
+            local sorted_file="${input_file}.sorted"
+            local n
 
-          min=$(head -n 1 "${processing_ms_sorted}")
-          max=$(tail -n 1 "${processing_ms_sorted}")
-          avg=$(awk '{sum += $1} END {printf "%.6f", sum / NR}' "${processing_ms_sorted}")
-          if (( count % 2 == 1 )); then
-            median_index=$(( (count + 1) / 2 ))
-            median=$(sed -n "${median_index}p" "${processing_ms_sorted}")
-          else
-            lower_index=$(( count / 2 ))
-            upper_index=$(( lower_index + 1 ))
-            lower_value=$(sed -n "${lower_index}p" "${processing_ms_sorted}")
-            upper_value=$(sed -n "${upper_index}p" "${processing_ms_sorted}")
-            median=$(awk -v a="${lower_value}" -v b="${upper_value}" 'BEGIN {printf "%.6f", (a + b) / 2}')
+            sort -n "${input_file}" > "${sorted_file}"
+            n=$(wc -l < "${sorted_file}")
+            n="${n//[[:space:]]/}"
+
+            local min max avg median p90 p95 p99
+            min=$(head -n 1 "${sorted_file}")
+            max=$(tail -n 1 "${sorted_file}")
+            avg=$(awk '{sum += $1} END {printf "%.6f", sum / NR}' "${sorted_file}")
+
+            if (( n % 2 == 1 )); then
+              local mi=$(( (n + 1) / 2 ))
+              median=$(sed -n "${mi}p" "${sorted_file}")
+            else
+              local lo=$(( n / 2 ))
+              local hi=$(( lo + 1 ))
+              local lv hv
+              lv=$(sed -n "${lo}p" "${sorted_file}")
+              hv=$(sed -n "${hi}p" "${sorted_file}")
+              median=$(awk -v a="${lv}" -v b="${hv}" 'BEGIN {printf "%.6f", (a + b) / 2}')
+            fi
+
+            local p90i=$(( (90 * n + 99) / 100 ))
+            local p95i=$(( (95 * n + 99) / 100 ))
+            local p99i=$(( (99 * n + 99) / 100 ))
+            p90=$(sed -n "${p90i}p" "${sorted_file}")
+            p95=$(sed -n "${p95i}p" "${sorted_file}")
+            p99=$(sed -n "${p99i}p" "${sorted_file}")
+
+            echo "${prefix}COUNT=${n}"
+            echo "${prefix}AVG=${avg}"
+            echo "${prefix}MEDIAN=${median}"
+            echo "${prefix}P90=${p90}"
+            echo "${prefix}P95=${p95}"
+            echo "${prefix}P99=${p99}"
+            echo "${prefix}MIN=${min}"
+            echo "${prefix}MAX=${max}"
+          }
+
+          compute_percentiles "${processing_ms}" "" > "${metrics_file}"
+
+          # Also compute K6 TTFB metrics when client metrics were primary
+          if [[ -s "${client_ms}" ]]; then
+            ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms.txt"
+            awk -F'|' '
+              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                  print value
+                }
+              }
+            ' "${clean_log}" > "${ttfb_ms}"
+            if [[ -s "${ttfb_ms}" ]]; then
+              compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_file}"
+            fi
           fi
 
-          p90_index=$(( (90 * count + 99) / 100 ))
-          p95_index=$(( (95 * count + 99) / 100 ))
-          p99_index=$(( (99 * count + 99) / 100 ))
-
-          p90=$(sed -n "${p90_index}p" "${processing_ms_sorted}")
-          p95=$(sed -n "${p95_index}p" "${processing_ms_sorted}")
-          p99=$(sed -n "${p99_index}p" "${processing_ms_sorted}")
-
-          {
-            echo "COUNT=${count}"
-            echo "AVG=${avg}"
-            echo "MEDIAN=${median}"
-            echo "P90=${p90}"
-            echo "P95=${p95}"
-            echo "P99=${p99}"
-            echo "MIN=${min}"
-            echo "MAX=${max}"
-          } > "${metrics_file}"
-
+          # Source the metrics file to populate GITHUB_OUTPUT
           {
             echo "exception_found=${exception_found}"
             echo "exception_lines_file=${exception_lines}"
             echo "invalid_block_found=${invalid_block_found}"
             echo "invalid_block_lines_file=${invalid_block_lines}"
             echo "metrics_file=${metrics_file}"
-            echo "count=${count}"
-            echo "avg=${avg}"
-            echo "median=${median}"
-            echo "p90=${p90}"
-            echo "p95=${p95}"
-            echo "p99=${p99}"
-            echo "min=${min}"
-            echo "max=${max}"
+            while IFS= read -r line; do
+              key="${line%%=*}"
+              val="${line#*=}"
+              echo "${key,,}=${val}"
+            done < "${metrics_file}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Upload metrics artifact
@@ -777,7 +815,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v2-${{ matrix.payload_set }}-${{ github.run_id }}
+          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -842,9 +880,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v2-superblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v3-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v2-superblocks-
+            expb-master-metrics-v3-superblocks-
 
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
@@ -852,9 +890,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v2-realblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v3-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v2-realblocks-
+            expb-master-metrics-v3-realblocks-
 
       - name: Build PR comparison comment
         id: pr-comment
@@ -913,6 +951,38 @@ jobs:
             printf '\n' >> "${comment_file}"
           }
 
+          emit_metrics_section() {
+            local label="$1"
+            local current_metrics="$2"
+            local master_metrics="$3"
+            local prefix="$4"
+
+            local metrics=("AVG" "MEDIAN" "P90" "P95" "P99" "MIN" "MAX")
+
+            if [[ ! -f "${master_metrics}" ]] || ! grep -q "^${prefix}AVG=" "${master_metrics}" 2>/dev/null; then
+              append_line "| Metric | PR |"
+              append_line "|---|---:|"
+              for m in "${metrics[@]}"; do
+                local val
+                val="$(load_metric "${current_metrics}" "${prefix}${m}")"
+                if [[ -z "${val}" ]]; then val="$(load_metric_with_fallback "${current_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
+                append_line "| ${m} (ms) | ${val:-n/a} |"
+              done
+              return
+            fi
+
+            append_line "| Metric | PR | Master (cached) | Delta |"
+            append_line "|---|---:|---:|---:|"
+            for m in "${metrics[@]}"; do
+              local cv mv
+              cv="$(load_metric "${current_metrics}" "${prefix}${m}")"
+              if [[ -z "${cv}" ]]; then cv="$(load_metric_with_fallback "${current_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
+              mv="$(load_metric "${master_metrics}" "${prefix}${m}")"
+              if [[ -z "${mv}" ]]; then mv="$(load_metric_with_fallback "${master_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
+              append_line "| ${m} (ms) | ${cv:-n/a} | ${mv:-n/a} | $(percentage_delta "${cv}" "${mv}") |"
+            done
+          }
+
           build_table() {
             local payload_set="$1"
             local current_metrics="$2"
@@ -928,48 +998,29 @@ jobs:
               return
             fi
 
+            append_line "Scenario: \`${scenario_name}\`"
+
             if [[ ! -f "${master_metrics}" ]]; then
               append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
-              append_blank
-              append_line "| Metric | PR |"
-              append_line "|---|---:|"
-              append_line "| AVG (ms) | $(load_metric "${current_metrics}" "AVG") |"
-              append_line "| MEDIAN (ms) | $(load_metric_with_fallback "${current_metrics}" "MEDIAN" "MEAN") |"
-              append_line "| P90 (ms) | $(load_metric "${current_metrics}" "P90") |"
-              append_line "| P95 (ms) | $(load_metric "${current_metrics}" "P95") |"
-              append_line "| P99 (ms) | $(load_metric "${current_metrics}" "P99") |"
-              append_line "| MIN (ms) | $(load_metric "${current_metrics}" "MIN") |"
-              append_line "| MAX (ms) | $(load_metric "${current_metrics}" "MAX") |"
-              return
             fi
 
-            current_avg="$(load_metric "${current_metrics}" "AVG")"
-            current_median="$(load_metric_with_fallback "${current_metrics}" "MEDIAN" "MEAN")"
-            current_p90="$(load_metric "${current_metrics}" "P90")"
-            current_p95="$(load_metric "${current_metrics}" "P95")"
-            current_p99="$(load_metric "${current_metrics}" "P99")"
-            current_min="$(load_metric "${current_metrics}" "MIN")"
-            current_max="$(load_metric "${current_metrics}" "MAX")"
-
-            master_avg="$(load_metric "${master_metrics}" "AVG")"
-            master_median="$(load_metric_with_fallback "${master_metrics}" "MEDIAN" "MEAN")"
-            master_p90="$(load_metric "${master_metrics}" "P90")"
-            master_p95="$(load_metric "${master_metrics}" "P95")"
-            master_p99="$(load_metric "${master_metrics}" "P99")"
-            master_min="$(load_metric "${master_metrics}" "MIN")"
-            master_max="$(load_metric "${master_metrics}" "MAX")"
-
-            append_line "Scenario: \`${scenario_name}\`"
+            # Primary: client-side (SSE) metrics or fallback
             append_blank
-            append_line "| Metric | PR | Master (cached) | Delta PR vs Master |"
-            append_line "|---|---:|---:|---:|"
-            append_line "| AVG (ms) | ${current_avg} | ${master_avg} | $(percentage_delta "${current_avg}" "${master_avg}") |"
-            append_line "| MEDIAN (ms) | ${current_median} | ${master_median} | $(percentage_delta "${current_median}" "${master_median}") |"
-            append_line "| P90 (ms) | ${current_p90} | ${master_p90} | $(percentage_delta "${current_p90}" "${master_p90}") |"
-            append_line "| P95 (ms) | ${current_p95} | ${master_p95} | $(percentage_delta "${current_p95}" "${master_p95}") |"
-            append_line "| P99 (ms) | ${current_p99} | ${master_p99} | $(percentage_delta "${current_p99}" "${master_p99}") |"
-            append_line "| MIN (ms) | ${current_min} | ${master_min} | $(percentage_delta "${current_min}" "${master_min}") |"
-            append_line "| MAX (ms) | ${current_max} | ${master_max} | $(percentage_delta "${current_max}" "${master_max}") |"
+            if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
+              append_line "**Client Processing (SSE)**"
+            fi
+            append_blank
+            emit_metrics_section "Processing" "${current_metrics}" "${master_metrics}" ""
+
+            # Secondary: K6 TTFB metrics (only shown when SSE data was primary)
+            if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
+              append_blank
+              append_line "<details><summary>K6 TTFB</summary>"
+              append_blank
+              emit_metrics_section "TTFB" "${current_metrics}" "${master_metrics}" "TTFB_"
+              append_blank
+              append_line "</details>"
+            fi
           }
 
           append_line "${marker}"
@@ -1427,21 +1478,32 @@ jobs:
             head -n 40 "${invalid_block_lines}"
           fi
 
-          awk -F'|' '
-            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
-              value = $4
-              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                print value
+          # Extract client-side processing times from SSE data feed (primary)
+          client_ms="${RUNNER_TEMP}/expb-client-ms-${key}.txt"
+          grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
+
+          # Fall back to K6 TTFB table if no client metrics available
+          if [[ -s "${client_ms}" ]]; then
+            echo "Using SSE client_metric data ($(wc -l < "${client_ms}") samples)."
+            cp "${client_ms}" "${processing_ms}"
+          else
+            echo "No SSE client_metric data found, falling back to K6 TTFB table."
+            awk -F'|' '
+              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                  print value
+                }
               }
-            }
-          ' "${clean_log}" > "${processing_ms}"
+            ' "${clean_log}" > "${processing_ms}"
+          fi
 
           count=$(wc -l < "${processing_ms}")
           count="${count//[[:space:]]/}"
 
           if [[ "${count}" -eq 0 ]]; then
-            echo "Could not extract per-payload processing_ms rows from benchmark output."
+            echo "Could not extract any processing_ms data from benchmark output."
             {
               echo "TAG=${TAG}"
               echo "RUN=${RUN}"
@@ -1452,44 +1514,74 @@ jobs:
             exit 1
           fi
 
-          sort -n "${processing_ms}" > "${processing_ms_sorted}"
+          compute_percentiles() {
+            local input_file="$1"
+            local prefix="$2"
+            local sorted_file="${input_file}.sorted"
+            local n
 
-          min=$(head -n 1 "${processing_ms_sorted}")
-          max=$(tail -n 1 "${processing_ms_sorted}")
-          avg=$(awk '{sum += $1} END {printf "%.2f", sum / NR}' "${processing_ms_sorted}")
-          if (( count % 2 == 1 )); then
-            median_index=$(( (count + 1) / 2 ))
-            median=$(sed -n "${median_index}p" "${processing_ms_sorted}")
-          else
-            lower_index=$(( count / 2 ))
-            upper_index=$(( lower_index + 1 ))
-            lower_value=$(sed -n "${lower_index}p" "${processing_ms_sorted}")
-            upper_value=$(sed -n "${upper_index}p" "${processing_ms_sorted}")
-            median=$(awk -v a="${lower_value}" -v b="${upper_value}" 'BEGIN {printf "%.2f", (a + b) / 2}')
-          fi
+            sort -n "${input_file}" > "${sorted_file}"
+            n=$(wc -l < "${sorted_file}")
+            n="${n//[[:space:]]/}"
 
-          p90_index=$(( (90 * count + 99) / 100 ))
-          p95_index=$(( (95 * count + 99) / 100 ))
-          p99_index=$(( (99 * count + 99) / 100 ))
+            local min max avg median p90 p95 p99
+            min=$(head -n 1 "${sorted_file}")
+            max=$(tail -n 1 "${sorted_file}")
+            avg=$(awk '{sum += $1} END {printf "%.2f", sum / NR}' "${sorted_file}")
 
-          p90=$(sed -n "${p90_index}p" "${processing_ms_sorted}")
-          p95=$(sed -n "${p95_index}p" "${processing_ms_sorted}")
-          p99=$(sed -n "${p99_index}p" "${processing_ms_sorted}")
+            if (( n % 2 == 1 )); then
+              local mi=$(( (n + 1) / 2 ))
+              median=$(sed -n "${mi}p" "${sorted_file}")
+            else
+              local lo=$(( n / 2 ))
+              local hi=$(( lo + 1 ))
+              local lv hv
+              lv=$(sed -n "${lo}p" "${sorted_file}")
+              hv=$(sed -n "${hi}p" "${sorted_file}")
+              median=$(awk -v a="${lv}" -v b="${hv}" 'BEGIN {printf "%.2f", (a + b) / 2}')
+            fi
+
+            local p90i=$(( (90 * n + 99) / 100 ))
+            local p95i=$(( (95 * n + 99) / 100 ))
+            local p99i=$(( (99 * n + 99) / 100 ))
+            p90=$(sed -n "${p90i}p" "${sorted_file}")
+            p95=$(sed -n "${p95i}p" "${sorted_file}")
+            p99=$(sed -n "${p99i}p" "${sorted_file}")
+
+            echo "${prefix}COUNT=${n}"
+            echo "${prefix}AVG=${avg}"
+            echo "${prefix}MEDIAN=${median}"
+            echo "${prefix}P90=${p90}"
+            echo "${prefix}P95=${p95}"
+            echo "${prefix}P99=${p99}"
+            echo "${prefix}MIN=${min}"
+            echo "${prefix}MAX=${max}"
+          }
 
           {
             echo "TAG=${TAG}"
             echo "RUN=${RUN}"
             echo "EXCEPTION_FOUND=${exception_found}"
             echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
-            echo "COUNT=${count}"
-            echo "AVG=${avg}"
-            echo "MEDIAN=${median}"
-            echo "P90=${p90}"
-            echo "P95=${p95}"
-            echo "P99=${p99}"
-            echo "MIN=${min}"
-            echo "MAX=${max}"
           } > "${metrics_dir}/metrics.env"
+          compute_percentiles "${processing_ms}" "" >> "${metrics_dir}/metrics.env"
+
+          # Also compute K6 TTFB metrics when client metrics were primary
+          if [[ -s "${client_ms}" ]]; then
+            ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms-${key}.txt"
+            awk -F'|' '
+              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                  print value
+                }
+              }
+            ' "${clean_log}" > "${ttfb_ms}"
+            if [[ -s "${ttfb_ms}" ]]; then
+              compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_dir}/metrics.env"
+            fi
+          fi
 
           echo "Metrics for ${TAG} run ${RUN}:"
           cat "${metrics_dir}/metrics.env"
@@ -1579,11 +1671,11 @@ jobs:
 
           # Build header — add Run column if run_count > 1
           if [[ "${run_count}" -gt 1 ]]; then
-            header="| # | Image Tag | Run | Date | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
-            separator="|---|-----------|-----|------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+            header="| # | Image Tag | Run | Date | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
+            separator="|---|-----------|-----|------|--------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
           else
-            header="| # | Image Tag | Date | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
-            separator="|---|-----------|------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+            header="| # | Image Tag | Date | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
+            separator="|---|-----------|------|--------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
           fi
 
           total_runs=$(( ${#tags[@]} * run_count ))
@@ -1615,7 +1707,7 @@ jobs:
               fi
 
               if [[ ! -f "${metrics_file}" ]]; then
-                echo "${prefix} | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
+                echo "${prefix} | - | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
                 continue
               fi
 
@@ -1630,8 +1722,16 @@ jobs:
                 if [[ "${invalid}" == "true" ]]; then
                   status="${status} :warning: invalid blocks"
                 fi
-                echo "${prefix} | - | - | - | - | - | - | - | ${status} |" >> "${summary_file}"
+                echo "${prefix} | - | - | - | - | - | - | - | - | ${status} |" >> "${summary_file}"
                 continue
+              fi
+
+              # Detect metrics source
+              ttfb_avg=$(load_metric "${metrics_file}" "TTFB_AVG")
+              if [[ -n "${ttfb_avg}" ]]; then
+                source="SSE"
+              else
+                source="TTFB"
               fi
 
               avg=$(load_metric "${metrics_file}" "AVG")
@@ -1658,13 +1758,15 @@ jobs:
                 warnings="${warnings} :no_entry:"
               fi
 
-              echo "${prefix} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} | ${delta}${warnings} |" >> "${summary_file}"
+              echo "${prefix} | ${source} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} | ${delta}${warnings} |" >> "${summary_file}"
             done
           done
 
           {
             echo ""
             echo "**Legend:** :warning: = exceptions detected, :no_entry: = invalid blocks detected"
+            echo ""
+            echo "**Source:** SSE = client-side processing time from Nethermind's SSE data feed, TTFB = K6 HTTP time-to-first-byte (fallback)"
             echo ""
             echo "**Delta vs First** shows the percentage change in AVG processing time compared to the first image in the list."
           } >> "${summary_file}"
