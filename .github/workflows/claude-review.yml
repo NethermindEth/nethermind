@@ -18,10 +18,6 @@
 
 name: Claude Code Review
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: true
-
 on:
   issue_comment:
     types: [created]
