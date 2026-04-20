@@ -117,7 +117,7 @@ public class StateCompositionServiceIncrementalRecoveryTests
         // Simulate pruned baseline: opening a read-only store for the diff throws
         // the exact exception TrieNode.ResolveNode raises when the root is gone.
         worldStateManager.CreateReadOnlyTrieStore()
-            .Returns<IReadOnlyTrieStore>(_ => throw new MissingTrieNodeException(
+            .Returns(_ => throw new MissingTrieNodeException(
                 "stale root", null, TreePath.Empty, PrevRoot));
 
         using StateCompositionService service = new(
@@ -172,7 +172,7 @@ public class StateCompositionServiceIncrementalRecoveryTests
         blockTree.Head.Returns(headBlock);
 
         worldStateManager.CreateReadOnlyTrieStore()
-            .Returns<IReadOnlyTrieStore>(_ => throw new InvalidOperationException("boom"));
+            .Returns(_ => throw new InvalidOperationException("boom"));
 
         using StateCompositionService service = new(
             stateReader, worldStateManager, blockTree, stateHolder,

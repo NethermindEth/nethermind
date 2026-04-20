@@ -6,12 +6,17 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Service;
@@ -25,8 +30,6 @@ namespace Nethermind.StateComposition.Test.Service;
 [TestFixture]
 public class StateCompositionServiceTests
 {
-    private static StateCompositionSnapshotStore CreateSnapshotStore() => new(new MemDb(), LimboLogs.Instance);
-
     private static IStateCompositionConfig CreateValidConfig()
     {
         IStateCompositionConfig config = Substitute.For<IStateCompositionConfig>();
@@ -38,25 +41,75 @@ public class StateCompositionServiceTests
         return config;
     }
 
+    // Build a realistic DI container using the canonical PseudoNethermindModule +
+    // TestEnvironmentModule pair (see .agents/rules/test-infrastructure.md) so
+    // IBlockTree and IWorldStateManager come from production wiring rather than
+    // hand-rolled substitutes. IStateReader is overridden with a substitute
+    // because these unit tests must inject behavior into RunTreeVisitor to
+    // exercise the service's semaphore/cancellation semantics.
+    private static IContainer BuildContainer(IStateReader stateReaderOverride)
+    {
+        ChainSpec spec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile("chainspec/foundation.json");
+        spec.Bootnodes = [];
+
+        ConfigProvider configProvider = new();
+
+        return new ContainerBuilder()
+            .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, nameof(StateCompositionServiceTests)))
+            .AddSingleton(stateReaderOverride)
+            .Build();
+    }
+
+    private sealed class Harness(
+        IContainer container,
+        StateCompositionService service,
+        StateCompositionStateHolder stateHolder) : IAsyncDisposable
+    {
+        public StateCompositionService Service { get; } = service;
+        public StateCompositionStateHolder StateHolder { get; } = stateHolder;
+
+        public async ValueTask DisposeAsync()
+        {
+            Service.Dispose();
+            await container.DisposeAsync();
+        }
+    }
+
+    private static Harness CreateHarness(IStateReader stateReader)
+    {
+        IContainer container = BuildContainer(stateReader);
+        StateCompositionStateHolder stateHolder = new();
+        StateCompositionSnapshotStore snapshotStore = new(new MemDb(), LimboLogs.Instance);
+
+        StateCompositionService service = new(
+            container.Resolve<IStateReader>(),
+            container.Resolve<IWorldStateManager>(),
+            container.Resolve<IBlockTree>(),
+            stateHolder,
+            snapshotStore,
+            CreateValidConfig(),
+            LimboLogs.Instance);
+
+        return new Harness(container, service, stateHolder);
+    }
+
     [Test]
     public async Task AnalyzeAsync_ReturnsStats_AndUpdatesStateHolder()
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
-        StateCompositionStateHolder stateHolder = new();
-
-        StateCompositionService service = new(
-            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
-            stateHolder, CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
+        await using Harness harness = CreateHarness(stateReader);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        Result<StateCompositionStats> result = await service.AnalyzeAsync(header, CancellationToken.None);
+        Result<StateCompositionStats> result = await harness.Service.AnalyzeAsync(header, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.IsSuccess, Is.True);
-            Assert.That(stateHolder.HasScanBaseline, Is.True);
-            Assert.That(stateHolder.LastScanMetadata.IsComplete, Is.True);
+            Assert.That(harness.StateHolder.HasScanBaseline, Is.True);
+            Assert.That(harness.StateHolder.LastScanMetadata.IsComplete, Is.True);
         }
     }
 
@@ -76,18 +129,16 @@ public class StateCompositionServiceTests
                 blocker.Task.GetAwaiter().GetResult();
             });
 
-        StateCompositionService service = new(
-            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
-            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
+        await using Harness harness = CreateHarness(stateReader);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         // Start first scan — blocks inside RunTreeVisitor
-        Task<Result<StateCompositionStats>> firstScan = service.AnalyzeAsync(header, CancellationToken.None);
+        Task<Result<StateCompositionStats>> firstScan = harness.Service.AnalyzeAsync(header, CancellationToken.None);
         Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True, "First scan did not enter RunTreeVisitor");
 
         // Second scan should return error immediately (fail-fast semaphore)
-        Result<StateCompositionStats> second = await service.AnalyzeAsync(header, CancellationToken.None);
+        Result<StateCompositionStats> second = await harness.Service.AnalyzeAsync(header, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -124,18 +175,16 @@ public class StateCompositionServiceTests
                 blocker.Task.GetAwaiter().GetResult();
             });
 
-        StateCompositionService service = new(
-            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
-            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
+        await using Harness harness = CreateHarness(stateReader);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Task<Result<TopContractEntry?>> firstInspect =
-            service.InspectContractAsync(Address.Zero, header, CancellationToken.None);
+            harness.Service.InspectContractAsync(Address.Zero, header, CancellationToken.None);
         Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
         Result<TopContractEntry?> second =
-            await service.InspectContractAsync(Address.Zero, header, CancellationToken.None);
+            await harness.Service.InspectContractAsync(Address.Zero, header, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -162,7 +211,6 @@ public class StateCompositionServiceTests
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
         ManualResetEventSlim visitorEntered = new(false);
-        StateCompositionStateHolder stateHolder = new();
         using CancellationTokenSource cts = new();
 
         // cts is captured by reference; cts.Token.WaitHandle is the live handle that
@@ -176,15 +224,13 @@ public class StateCompositionServiceTests
                 cts.Token.ThrowIfCancellationRequested();
             });
 
-        StateCompositionService service = new(
-            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
-            stateHolder, CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
+        await using Harness harness = CreateHarness(stateReader);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        Task<Result<StateCompositionStats>> scanTask = service.AnalyzeAsync(header, cts.Token);
+        Task<Result<StateCompositionStats>> scanTask = harness.Service.AnalyzeAsync(header, cts.Token);
 
-        Assert.That(visitorEntered.Wait(TimeSpan.FromSeconds(3)), Is.True, "Visitor did not enter RunTreeVisitor");
+        Assert.That(visitorEntered.Wait(TimeSpan.FromSeconds(3), testCt), Is.True, "Visitor did not enter RunTreeVisitor");
 
         await cts.CancelAsync();
 
@@ -197,7 +243,7 @@ public class StateCompositionServiceTests
         catch (OperationCanceledException) { }
 
         // Baseline must NOT have been installed — partial scan must not corrupt state
-        Assert.That(stateHolder.HasScanBaseline, Is.False,
+        Assert.That(harness.StateHolder.HasScanBaseline, Is.False,
             "Baseline must not be marked complete after mid-scan cancellation");
     }
 
@@ -226,16 +272,14 @@ public class StateCompositionServiceTests
         stateReader.TryGetAccount(null!, null!, out Arg.Any<AccountStruct>())
             .ReturnsForAnyArgs(false);
 
-        using StateCompositionService service = new(
-            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
-            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
+        await using Harness harness = CreateHarness(stateReader);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        Task<Result<StateCompositionStats>> scanTask = service.AnalyzeAsync(header, testCt);
-        Assert.That(scanEntered.Wait(TimeSpan.FromSeconds(3)), Is.True, "Scan did not enter RunTreeVisitor");
+        Task<Result<StateCompositionStats>> scanTask = harness.Service.AnalyzeAsync(header, testCt);
+        Assert.That(scanEntered.Wait(TimeSpan.FromSeconds(3), testCt), Is.True, "Scan did not enter RunTreeVisitor");
 
-        Result<TopContractEntry?> inspectResult = await service.InspectContractAsync(
+        Result<TopContractEntry?> inspectResult = await harness.Service.InspectContractAsync(
             Address.Zero, header, testCt).WaitAsync(TimeSpan.FromSeconds(3), testCt);
 
         // Account not found → success with null (not a semaphore error)
