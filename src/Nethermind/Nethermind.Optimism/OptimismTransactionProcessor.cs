@@ -88,7 +88,7 @@ public class OptimismTransactionProcessor(
             if (validate && !tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                return TransactionResult.CreateMinerPremiumNegative(tx, header.BaseFeePerGas);
+                return TransactionResult.MinerPremiumNegative;
             }
 
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
