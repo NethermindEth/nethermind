@@ -8,6 +8,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Handlers;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
@@ -142,6 +143,7 @@ public class TaikoEngineApiTests
         blockTree.HeadHash.Returns(headBlock.Hash!);
         blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
         blockTree.IsMainChain(Arg.Any<Hash256>()).Returns(true);
+        blockTree.FindHeader(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor.Header);
 
         TaikoForkchoiceUpdatedHandler handler = new(
             blockTree,
