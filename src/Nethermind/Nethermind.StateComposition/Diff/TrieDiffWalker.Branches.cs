@@ -69,10 +69,8 @@ internal sealed partial class TrieDiffWalker
             return;
         }
 
-        TreePath oldChildPath = path;
-        TrieNode? oldChild = oldBranch.GetChildWithChildPath(resolver, ref oldChildPath, i);
-        TreePath newChildPath = path;
-        TrieNode? newChild = newBranch.GetChildWithChildPath(resolver, ref newChildPath, i);
+        TrieNode? oldChild = oldBranch.GetChildWithChildPath(resolver, ref path, i);
+        TrieNode? newChild = newBranch.GetChildWithChildPath(resolver, ref path, i);
 
         if (oldChild is not null && newChild is not null)
         {
