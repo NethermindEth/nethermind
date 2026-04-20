@@ -94,6 +94,54 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task Can_prune_without_prior_oldest_block_read()
+    {
+        const int blocks = 100;
+        const int cutoff = 36;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 2,
+            PruningInterval = 0
+        };
+
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
+
+        List<Hash256> blockHashes = [];
+        blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
+        for (int i = 0; i < blocks; i++)
+        {
+            await testBlockchain.AddBlock();
+            blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
+        }
+
+        Block head = testBlockchain.BlockTree.Head;
+        Assert.That(head, Is.Not.Null);
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        CheckGenesisPreserved(testBlockchain, blockHashes[0]);
+        for (int i = 1; i <= blocks; i++)
+        {
+            if (i < cutoff)
+            {
+                CheckBlockPruned(testBlockchain, blockHashes, i);
+            }
+            else
+            {
+                CheckBlockPreserved(testBlockchain, blockHashes, i);
+            }
+        }
+
+        CheckHeadPreserved(testBlockchain, blocks);
+        CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
+    }
+
+    [Test]
     public async Task Can_prune_to_ancient_barriers()
     {
         const int blocks = 100;
