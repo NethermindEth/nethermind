@@ -41,15 +41,13 @@ public class GCKeeper : IDisposable
     {
         long size = _defaultSize;
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
-        if (_gcStrategy.CanStartNoGCRegion())
+        GCLatencyMode gcLatencyMode = GCSettings.LatencyMode;
+        if (gcLatencyMode != GCLatencyMode.SustainedLowLatency)
         {
             FailCause failCause = FailCause.None;
             try
             {
-                if (!System.GC.TryStartNoGCRegion(size, disallowFullBlockingGC: true))
-                {
-                    failCause = FailCause.GCFailedToStartNoGCRegion;
-                }
+                GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -63,13 +61,13 @@ public class GCKeeper : IDisposable
             {
                 failCause = FailCause.Exception;
 
-                if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
+                if (_logger.IsError) _logger.Error($"{nameof(GCSettings.LatencyMode)} failed with exception.", e);
             }
 
-            return new NoGCRegion(this, failCause, size, pausedGCScheduler, _logger);
+            return new NoGCRegion(this, failCause, gcLatencyMode, pausedGCScheduler, _logger);
         }
 
-        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, pausedGCScheduler, _logger);
+        return new NoGCRegion(this, FailCause.StrategyDisallowed, gcLatencyMode, pausedGCScheduler, _logger);
     }
 
     private enum FailCause
@@ -86,15 +84,15 @@ public class GCKeeper : IDisposable
     {
         private readonly GCKeeper _gcKeeper;
         private readonly FailCause _failCause;
-        private readonly long? _size;
+        private readonly GCLatencyMode _priorMode;
         private readonly ILogger _logger;
         private readonly bool _pausedGCScheduler;
 
-        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, bool pausedGCScheduler, ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, GCLatencyMode priorMode, bool pausedGCScheduler, ILogger logger)
         {
             _gcKeeper = gcKeeper;
             _failCause = failCause;
-            _size = size;
+            _priorMode = priorMode;
             _pausedGCScheduler = pausedGCScheduler;
             _logger = logger;
         }
@@ -107,25 +105,25 @@ public class GCKeeper : IDisposable
             }
             if (_failCause == FailCause.None)
             {
-                if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
+                if (GCSettings.LatencyMode == GCLatencyMode.SustainedLowLatency)
                 {
                     try
                     {
-                        System.GC.EndNoGCRegion();
+                        GCSettings.LatencyMode = _priorMode;
                         _gcKeeper.ScheduleGC();
                     }
                     catch (InvalidOperationException)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with Exception with {_size} bytes");
+                        if (_logger.IsDebug) _logger.Debug($"Failed to change {nameof(GCSettings.LatencyMode)} with Exception with {_priorMode}");
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsError) _logger.Error($"{nameof(System.GC.EndNoGCRegion)} failed with exception.", e);
+                        if (_logger.IsError) _logger.Error($"{nameof(GCSettings.LatencyMode)} failed with exception.", e);
                     }
                 }
-                else if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with {_size} bytes");
+                else if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with {_priorMode}");
             }
-            else if (_logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
+            else if (_logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_priorMode} with cause {_failCause.FastToString()}");
         }
     }
 
