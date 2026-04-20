@@ -9,10 +9,10 @@ using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.BalRecorder;
 
-public class RecordedBalStore(string directory, bool replayEnabled, bool recordingEnabled) : IRecordedBalStore
+public class RecordedBalStore(string directory, IBalRecorderConfig config) : IRecordedBalStore
 {
-    public bool ReplayEnabled => replayEnabled;
-    public bool RecordingEnabled => recordingEnabled;
+    public bool ReplayEnabled => config.ReplayEnabled;
+    public bool RecordingEnabled => config.RecordingEnabled;
 
     private readonly EraFlatStore _store = new(directory, "bal");
 

@@ -33,13 +33,18 @@ public class BalRecorderModule(bool replayEnabled, bool recordingEnabled, string
     protected override void Load(ContainerBuilder builder)
     {
         builder.Register(ctx =>
-               {
-                   string directory = relativePath.GetApplicationResourcePath(
-                       ctx.Resolve<IInitConfig>().BaseDbPath);
-                   return new RecordedBalStore(directory, replayEnabled, recordingEnabled);
-               })
-               .As<IRecordedBalStore>()
-               .SingleInstance();
+            {
+                string directory = relativePath.GetApplicationResourcePath(
+                    ctx.Resolve<IInitConfig>().BaseDbPath);
+                return new RecordedBalStore(directory, new BalRecorderConfig
+                {
+                    ReplayEnabled = replayEnabled,
+                    RecordingEnabled = recordingEnabled,
+                    Path = relativePath
+                });
+            })
+            .As<IRecordedBalStore>()
+            .SingleInstance();
         builder.RegisterDecorator<BalRecordingBlockProcessor, Nethermind.Consensus.Processing.IBlockProcessor>();
         builder.RegisterDecorator<BalTracingTransactionsExecutor, Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor>();
     }
