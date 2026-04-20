@@ -78,9 +78,12 @@ public class ForkchoiceUpdatedHandler(
         return true;
     }
 
-    // Rejects a finalized/safe entry that fails the numeric spec-ordering bounds (Casper FFG
-    // monotonicity for finalized, safe >= finalized for safe) or the ancestry check against
-    // newHead. L1-derived finality models override this to relax the bounds check while keeping
+    // Rejects a finalized/safe entry that fails the request-local numeric bounds
+    // (finalized/safe cannot be above head, and safe cannot be below finalized)
+    // or the ancestry check against newHead. Cross-request finalized monotonicity is
+    // intentionally not enforced here; CLs may legitimately resend an older finalized
+    // marker on a later FCU as long as that FCU tuple is internally consistent.
+    // L1-derived finality models override this to relax the bounds check while keeping
     // ancestry validation.
     protected virtual ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(
         BlockHeader? header, long lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
@@ -248,13 +251,12 @@ public class ForkchoiceUpdatedHandler(
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
 
-        // Spec ordering: prevFinalized <= finalized <= safe <= head. Ancestry must be re-validated
-        // on every FCU - the binding is (head, finalized, safe), so a repeated finalized/safe hash
-        // paired with a new head on a sibling branch is still a spec violation.
-        long prevFinalizedLevel = _manualBlockFinalizationManager.LastFinalizedBlockLevel;
+        // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
+        // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
+        // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
         long finalizedNumber = finalizedHeader?.Number ?? 0;
 
-        if (RejectIfInconsistent(finalizedHeader, prevFinalizedLevel, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
+        if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
         if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
 
         bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
