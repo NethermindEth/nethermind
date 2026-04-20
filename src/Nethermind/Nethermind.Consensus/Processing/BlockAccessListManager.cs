@@ -281,7 +281,7 @@ public class BlockAccessListManager(
         {
             if (suggestedHead is null)
             {
-                if (HasOptionalStorageReads(generatedHead.Value))
+                if (IsSystemAccountRead(generatedHead.Value, index) || HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
                     continue;
@@ -290,7 +290,7 @@ public class BlockAccessListManager(
             }
             else if (generatedHead is null)
             {
-                if (HasNoChanges(suggestedHead.Value))
+                if (!IsSystemAccountRead(suggestedHead.Value, index) && HasNoChanges(suggestedHead.Value))
                 {
                     AdvanceSuggested();
                     continue;
@@ -313,7 +313,7 @@ public class BlockAccessListManager(
             }
             else if (cmp > 0)
             {
-                if (HasNoChanges(suggestedHead.Value))
+                if (!IsSystemAccountRead(suggestedHead.Value, index) && HasNoChanges(suggestedHead.Value))
                 {
                     AdvanceSuggested();
                     continue;
@@ -322,7 +322,7 @@ public class BlockAccessListManager(
             }
             else
             {
-                if (HasOptionalStorageReads(generatedHead.Value))
+                if (IsSystemAccountRead(suggestedHead.Value, index) || HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
                     continue;
@@ -402,8 +402,11 @@ public class BlockAccessListManager(
             c.CodeChange is null &&
             !c.HasSlotChanges;
 
-   private static bool HasOptionalStorageReads(in ChangeAtIndex c)
+    private static bool HasOptionalStorageReads(in ChangeAtIndex c)
         => HasNoChanges(c) && c.Reads > 0;
+    
+    private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
+        => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
 
     private interface ITxProcessorWithWorldStateManager
     {

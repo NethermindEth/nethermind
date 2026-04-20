@@ -9,6 +9,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using System;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -34,15 +35,26 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
-        if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
-        {
-            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
-        }
+        // EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls.
+        bool suppressSystemAccountReads = !_isAura && tx.SenderAddress == Address.SystemUser;
+        IDisposable? systemAccountReadSuppression = suppressSystemAccountReads ? WorldState.BeginSystemAccountReadSuppression() : null;
 
-        ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
-            : opts);
+        try
+        {
+            if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
+            {
+                WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            }
+
+            ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
+            return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+                ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
+                : opts);
+        }
+        finally
+        {
+            systemAccountReadSuppression?.Dispose();
+        }
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,

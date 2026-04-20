@@ -21,16 +21,16 @@ namespace Nethermind.State;
 
 public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches
 {
-    protected IWorldState _innerWorldState = innerWorldState;
-    private readonly BlockAccessList _generatingBlockAccessList = new();
-
-    internal BlockAccessList GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
 
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
+    protected IWorldState _innerWorldState = innerWorldState;
+    private readonly BlockAccessList _generatingBlockAccessList = new();
+    private int _systemAccountReadSuppressionDepth;
+    internal BlockAccessList GetGeneratingBlockAccessList() => _generatingBlockAccessList;
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
@@ -67,6 +67,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
+
+    public IDisposable BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
@@ -179,7 +181,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     }
 
     public void AddAccountRead(Address address)
-        => _generatingBlockAccessList.AddAccountRead(address);
+    {
+        if (_systemAccountReadSuppressionDepth == 0 || address != Address.SystemUser)
+        {
+            _generatingBlockAccessList.AddAccountRead(address);
+        }
+    }
 
     public void SetIndex(int index)
         => _generatingBlockAccessList.Index = index;
@@ -372,6 +379,29 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         if (!nonce.IsZero)
         {
             _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
+        }
+    }
+
+    private sealed class SystemAccountReadSuppressionScope : IDisposable
+    {
+        private TracedAccessWorldState? _stateProvider;
+
+        public SystemAccountReadSuppressionScope(TracedAccessWorldState stateProvider)
+        {
+            _stateProvider = stateProvider;
+            stateProvider._systemAccountReadSuppressionDepth++;
+        }
+
+        public void Dispose()
+        {
+            TracedAccessWorldState? stateProvider = _stateProvider;
+            if (stateProvider is null)
+            {
+                return;
+            }
+
+            _stateProvider = null;
+            stateProvider._systemAccountReadSuppressionDepth--;
         }
     }
 }
