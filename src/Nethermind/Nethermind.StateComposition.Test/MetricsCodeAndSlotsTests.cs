@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Immutable;
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Test.Helpers;
 using NUnit.Framework;
