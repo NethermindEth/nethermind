@@ -25,6 +25,10 @@ namespace Nethermind.StateComposition.Test.Snapshots;
 [TestFixture]
 public class SnapshotRoundTripTests
 {
+    // Uses the positional constructor directly (not TestDataBuilders.BuildStats) because
+    // RoundTrip_DefaultHistogram_DecodesAsZeroFilledLength16 deliberately feeds `default`
+    // into the encoder — the shared helper normalises default→zeros before encoding,
+    // which would hide the edge case under test.
     private static CumulativeTrieStats BuildStats(long codeBytes, ImmutableArray<long> slotHist) =>
         new(
             AccountsTotal: 100,

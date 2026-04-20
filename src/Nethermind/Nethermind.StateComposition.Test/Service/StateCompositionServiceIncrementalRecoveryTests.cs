@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -14,9 +13,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
+using Nethermind.StateComposition.Test.Helpers;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -39,42 +38,11 @@ public class StateCompositionServiceIncrementalRecoveryTests
     private static StateCompositionSnapshotStore CreateSnapshotStore() =>
         new(new MemDb(), LimboLogs.Instance);
 
-    private static IStateCompositionConfig CreateConfig()
-    {
-        IStateCompositionConfig config = Substitute.For<IStateCompositionConfig>();
-        config.ScanParallelism.Returns(4);
-        config.ScanMemoryBudgetBytes.Returns(1_000_000_000L);
-        config.ScanQueueTimeoutSeconds.Returns(5);
-        config.TopNContracts.Returns(20);
-        config.ExcludeStorage.Returns(false);
-        config.PersistSnapshots.Returns(false);
-        config.TrackDepthIncrementally.Returns(true);
-        return config;
-    }
-
-    private static CumulativeTrieStats EmptyBaseline() =>
-        new(
-            AccountsTotal: 0,
-            ContractsTotal: 0,
-            StorageSlotsTotal: 0,
-            AccountTrieBranches: 0,
-            AccountTrieExtensions: 0,
-            AccountTrieLeaves: 0,
-            AccountTrieBytes: 0,
-            StorageTrieBranches: 0,
-            StorageTrieExtensions: 0,
-            StorageTrieLeaves: 0,
-            StorageTrieBytes: 0,
-            ContractsWithStorage: 0,
-            EmptyAccounts: 0)
-        {
-            CodeBytesTotal = 0,
-            SlotCountHistogram = ImmutableArray.Create(
-                new long[CumulativeTrieStats.SlotHistogramLength]),
-        };
+    private static IStateCompositionConfig CreateConfig() =>
+        TestDataBuilders.CreateTestConfig(trackDepthIncrementally: true);
 
     private static void SeedBaseline(StateCompositionStateHolder holder, long blockNumber, Hash256 stateRoot) =>
-        holder.InitializeIncremental(EmptyBaseline(), blockNumber, stateRoot);
+        holder.InitializeIncremental(TestDataBuilders.EmptyBaseline(), blockNumber, stateRoot);
 
     [Test]
     public void InvalidateBaseline_ClearsLastProcessedStateRoot_ButPreservesTrackers()

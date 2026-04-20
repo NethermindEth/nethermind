@@ -14,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Diff;
+using Nethermind.StateComposition.Test.Helpers;
 using Nethermind.StateComposition.Visitors;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -227,15 +228,7 @@ public class TrieDiffWalkerTests
         StateCompositionStats scan2 = v2.GetStats(2, root2);
         CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(scan2);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(updated.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal mismatch");
-            Assert.That(updated.ContractsTotal, Is.EqualTo(expected.ContractsTotal), "ContractsTotal mismatch");
-            Assert.That(updated.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches mismatch");
-            Assert.That(updated.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions mismatch");
-            Assert.That(updated.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves mismatch");
-            Assert.That(updated.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes mismatch");
-        }
+        TestDataBuilders.AssertAccountTrieFieldsEqual(updated, expected);
     }
 
     [Test]
@@ -280,15 +273,7 @@ public class TrieDiffWalkerTests
         tree.Accept(v4, root4);
         CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(v4.GetStats(4, root4));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cumulative.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal after 4 blocks");
-            Assert.That(cumulative.ContractsTotal, Is.EqualTo(expected.ContractsTotal), "ContractsTotal after 4 blocks");
-            Assert.That(cumulative.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches after 4 blocks");
-            Assert.That(cumulative.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions after 4 blocks");
-            Assert.That(cumulative.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves after 4 blocks");
-            Assert.That(cumulative.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes after 4 blocks");
-        }
+        TestDataBuilders.AssertAccountTrieFieldsEqual(cumulative, expected, "after 4 blocks");
     }
 
     [Test]
@@ -384,14 +369,7 @@ public class TrieDiffWalkerTests
         tree.Accept(v2, root2);
         CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(v2.GetStats(2, root2));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(updated.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal");
-            Assert.That(updated.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches");
-            Assert.That(updated.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions");
-            Assert.That(updated.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves");
-            Assert.That(updated.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes");
-        }
+        TestDataBuilders.AssertAccountTrieFieldsEqual(updated, expected);
     }
 
     [Test]

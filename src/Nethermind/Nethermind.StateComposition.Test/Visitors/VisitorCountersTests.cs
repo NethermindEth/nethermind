@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Visitors;
@@ -12,6 +13,11 @@ namespace Nethermind.StateComposition.Test.Visitors;
 [TestFixture]
 public class VisitorCountersTests
 {
+    // Mirrors TopNTracker.EntryComparer (which is internal — exposing it through a
+    // public test method signature triggers CS0051). Defined here so TestCaseSource
+    // can dispatch the three CompareBy* method groups through a single typed handle.
+    public delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
+
     [Test]
     public void VisitorCounters_MergeFrom_AggregatesCorrectly()
     {
@@ -122,44 +128,34 @@ public class VisitorCountersTests
         Assert.That(a.TopN.TopByDepthCount, Is.EqualTo(2));
     }
 
-    [TestCase("Depth")]
-    [TestCase("TotalNodes")]
-    [TestCase("ValueNodes")]
-    public void Comparator_DeterministicTiebreaking(string comparator)
+    // For each primary key, two entries with identical primary value but a
+    // different secondary must produce strict ordering so the heap never
+    // compares equal. `b` is constructed to win the tiebreak so the comparer
+    // returns < 0 for every case.
+    private static IEnumerable<TestCaseData> TiebreakCases()
     {
-        // For each primary key, two entries with identical primary value but
-        // different secondary (MaxDepth or TotalNodes) must produce a strict
-        // ordering so the heap never compares equal.
-        TopContractEntry a;
-        TopContractEntry b;
-        int result;
+        yield return new TestCaseData(
+            new TopContractEntry { MaxDepth = 10, TotalNodes = 100, ValueNodes = 50 },
+            new TopContractEntry { MaxDepth = 10, TotalNodes = 200, ValueNodes = 50 },
+            (EntryComparer)TopNTracker.CompareByDepth)
+            .SetName(nameof(Comparator_DeterministicTiebreaking) + "_ByDepth");
 
-        switch (comparator)
-        {
-            case "Depth":
-                // Same MaxDepth → tiebreak on TotalNodes DESC
-                a = new() { MaxDepth = 10, TotalNodes = 100, ValueNodes = 50 };
-                b = new() { MaxDepth = 10, TotalNodes = 200, ValueNodes = 50 };
-                result = TopNTracker.CompareByDepth(in a, in b);
-                break;
-            case "TotalNodes":
-                // Same TotalNodes → tiebreak on MaxDepth DESC
-                a = new() { TotalNodes = 200, MaxDepth = 5, ValueNodes = 50 };
-                b = new() { TotalNodes = 200, MaxDepth = 10, ValueNodes = 50 };
-                result = TopNTracker.CompareByTotalNodes(in a, in b);
-                break;
-            case "ValueNodes":
-                // Same ValueNodes → tiebreak on MaxDepth DESC
-                a = new() { ValueNodes = 100, MaxDepth = 5, TotalNodes = 50 };
-                b = new() { ValueNodes = 100, MaxDepth = 10, TotalNodes = 50 };
-                result = TopNTracker.CompareByValueNodes(in a, in b);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(comparator), comparator, null);
-        }
+        yield return new TestCaseData(
+            new TopContractEntry { TotalNodes = 200, MaxDepth = 5, ValueNodes = 50 },
+            new TopContractEntry { TotalNodes = 200, MaxDepth = 10, ValueNodes = 50 },
+            (EntryComparer)TopNTracker.CompareByTotalNodes)
+            .SetName(nameof(Comparator_DeterministicTiebreaking) + "_ByTotalNodes");
 
-        Assert.That(result, Is.LessThan(0)); // b wins the tiebreak → a < b
+        yield return new TestCaseData(
+            new TopContractEntry { ValueNodes = 100, MaxDepth = 5, TotalNodes = 50 },
+            new TopContractEntry { ValueNodes = 100, MaxDepth = 10, TotalNodes = 50 },
+            (EntryComparer)TopNTracker.CompareByValueNodes)
+            .SetName(nameof(Comparator_DeterministicTiebreaking) + "_ByValueNodes");
     }
+
+    [TestCaseSource(nameof(TiebreakCases))]
+    public void Comparator_DeterministicTiebreaking(TopContractEntry a, TopContractEntry b, EntryComparer cmp) =>
+        Assert.That(cmp(in a, in b), Is.LessThan(0));
 
     [Test]
     public void VisitorCounters_BeginStorageTrie_PreservesOwner()
