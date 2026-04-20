@@ -26,7 +26,23 @@ If you find an existing issue, please include your feedback in the discussion. D
 
 The project maintainers will accept changes that improve the product significantly at their discretion.
 
-If your PR is not ready for review and merge because you are still working on it, please convert it to draft and label it with `wip` (work in progress).
+### Pull request process
+
+To maintain consistent code quality, pull requests should follow this process:
+
+1. Create a feature branch following the [branch naming](#branch-naming) convention.
+2. Push your changes and open the PR. If the work is still in progress, open it as a **Draft** and label it `wip`.
+3. When the PR is opened (including as a Draft) or moved from Draft to Ready for Review, an automated review runs and posts findings as a comment. PRs carrying the `wip` label (or `WIP` / `[WIP]` in the title) are skipped; removing the `wip` label triggers the review.
+4. Address the findings:
+   - Critical, High, and Medium findings must be either fixed or explicitly acknowledged in a PR comment with rationale.
+   - Low-severity suggestions and nits should be addressed when reasonable.
+5. Re-run the automated review after fixes by commenting `@claude review`; repeat until no significant unresolved findings remain. New commits pushed after a review invalidate the `claude-review/reviewed` status on the previous commit — re-run `@claude review` to re-enable merging.
+6. Perform a thorough self-review of the full diff.
+7. Mark the PR **Ready for Review**; [CODEOWNERS](.github/CODEOWNERS) will auto-assign reviewers where applicable.
+
+> **Note for external contributors:** the automated review does not run on PRs from forks. A maintainer will trigger it manually by commenting `@claude review` during the review process.
+
+**Enforcement.** Merges to `master` are gated by a required `claude-review/reviewed` status check; the PR cannot be merged until Claude's latest review on the head commit reports no unresolved Critical, High, or Medium findings. Authors are responsible for not marking a PR Ready for Review while such findings remain unresolved and unexplained.
 
 ### DOs and DON'Ts
 

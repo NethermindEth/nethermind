@@ -68,11 +68,15 @@ public class BlockAccessListBasedWorldState(
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
-        accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
 
-        if (slotChanges is not null)
+        if (accountChanges is not null)
         {
-            return slotChanges.Get(blockAccessIndex);
+            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+
+            if (slotChanges is not null)
+            {
+                return slotChanges.Get(blockAccessIndex);
+            }
         }
 
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
@@ -81,11 +85,15 @@ public class BlockAccessListBasedWorldState(
     public byte[] GetOriginal(in StorageCell storageCell)
     {
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
-        accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
 
-        if (slotChanges is not null)
+        if (accountChanges is not null)
         {
-            return slotChanges.Get(blockAccessIndex);
+            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+
+            if (slotChanges is not null)
+            {
+                return slotChanges.Get(blockAccessIndex);
+            }
         }
 
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
