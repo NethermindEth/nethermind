@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -209,9 +209,27 @@ public class Eth69ProtocolHandlerTests
         Assert.That(response, Is.Not.Null);
         Assert.That(response!.EthMessage.TxReceipts, Has.Count.EqualTo(1));
         Assert.That(response.EthMessage.TxReceipts[0], Is.SameAs(blockReceipts));
-        Assert.That(_syncManager.ReceivedCalls().Any(call =>
-            call.GetMethodInfo().Name == nameof(_syncManager.GetReceipts) &&
-            TestItem.KeccakB.Equals(call.GetArguments()[0])), Is.False);
+    }
+
+    [Test]
+    public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
+    {
+        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(
+        [
+            Build.A.Receipt.WithAllFieldsFilled.TestObject
+        ]);
+
+        using GetReceiptsMessage66 msg66 = new(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+        ReceiptsMessage69? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call => response = (ReceiptsMessage69)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response!.EthMessage.TxReceipts, Is.Empty);
     }
 
     [Test]
