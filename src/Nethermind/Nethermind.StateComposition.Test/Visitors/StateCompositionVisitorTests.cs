@@ -46,33 +46,24 @@ public class StateCompositionVisitorTests
         Assert.That(dist.AvgBranchOccupancy, Is.EqualTo(3.0));
     }
 
-    [Test]
-    public void Visitor_ClassifiesContracts()
+    // Two SimulateAccounts batches per case: (count, hasCode, hasStorage) × 2, then expected totals.
+    [TestCase(5, false, false, 5, true, false, 10, 5, 0, TestName = "ClassifiesContracts_EOAsVsContracts")]
+    [TestCase(3, true, true, 2, true, false, 5, 5, 3, TestName = "TracksContractsWithStorage")]
+    public void Visitor_ClassifiesAccounts(
+        int n1, bool code1, bool storage1,
+        int n2, bool code2, bool storage2,
+        int expectedAccounts, int expectedContracts, int expectedWithStorage)
     {
-        SimulateAccounts(5, hasCode: false, hasStorage: false);
-        SimulateAccounts(5, hasCode: true, hasStorage: false);
+        SimulateAccounts(n1, hasCode: code1, hasStorage: storage1);
+        SimulateAccounts(n2, hasCode: code2, hasStorage: storage2);
 
         StateCompositionStats stats = _visitor.GetStats(1, null);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stats.AccountsTotal, Is.EqualTo(10));
-            Assert.That(stats.ContractsTotal, Is.EqualTo(5));
-        }
-    }
-
-    [Test]
-    public void Visitor_TracksContractsWithStorage()
-    {
-        SimulateAccounts(3, hasCode: true, hasStorage: true);
-        SimulateAccounts(2, hasCode: true, hasStorage: false);
-
-        StateCompositionStats stats = _visitor.GetStats(1, null);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stats.ContractsTotal, Is.EqualTo(5));
-            Assert.That(stats.ContractsWithStorage, Is.EqualTo(3));
+            Assert.That(stats.AccountsTotal, Is.EqualTo(expectedAccounts));
+            Assert.That(stats.ContractsTotal, Is.EqualTo(expectedContracts));
+            Assert.That(stats.ContractsWithStorage, Is.EqualTo(expectedWithStorage));
         }
     }
 
