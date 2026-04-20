@@ -49,14 +49,6 @@ public partial class BlockProcessor(
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     protected readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
-    private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
-        new(
-            beaconBlockRootHandler,
-            blockHashStore,
-            withdrawalProcessor,
-            executionRequestsProcessor,
-            balManager
-        ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private SystemContractHandler _systemContractHandler;
@@ -75,7 +67,7 @@ public partial class BlockProcessor(
 
         _balManager.PrepareForProcessing(suggestedBlock, spec, options);
 
-        _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
+        _systemContractHandler = _standardSystemContractHandler.Value;
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
@@ -171,7 +163,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        _balManager.SetBlockAccessList(block);
+        // _balManager.SetBlockAccessList(block);
 
         header.Hash = header.CalculateHash();
 

@@ -255,8 +255,8 @@ public class TaikoModule : Module
     {
         protected override void Load(ContainerBuilder builder)
             => builder
-                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>()
-                .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>();
+                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
+                // .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>();
     }
 
     private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
