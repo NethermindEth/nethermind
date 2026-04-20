@@ -499,7 +499,7 @@ public class BlockchainBridgeTests
         };
         yield return new TestCaseData(
             descriptiveTx,
-            TransactionResult.CreateMinerPremiumNegative(descriptiveTx, baseFee),
+            TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, $"err: max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee} (supplied gas 56786)"),
             $"err: max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee} (supplied gas 56786)"
         ).SetName("Descriptive");
     }

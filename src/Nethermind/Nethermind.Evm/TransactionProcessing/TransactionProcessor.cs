@@ -599,7 +599,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                return TransactionResult.CreateMinerPremiumNegative(tx, header.BaseFeePerGas);
+                return TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas} (supplied gas {tx.GasLimit})");
             }
 
             UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
@@ -1093,11 +1093,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? description = null) =>
             new(evmException: evmExceptionType, errorDescription: description ?? "");
 
-        public static TransactionResult CreateMinerPremiumNegative(Transaction tx, in UInt256 baseFee)
-        {
-            string detail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {baseFee} (supplied gas {tx.GasLimit})";
-            return new TransactionResult(ErrorType.MaxFeePerGasBelowBaseFee, errorDescription: detail);
-        }
+        public static TransactionResult WithDetail(ErrorType errorType, string detail) => new(errorType, errorDescription: detail);
 
         public static readonly TransactionResult Ok = new();
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
