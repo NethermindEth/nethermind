@@ -19,9 +19,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     private readonly Dictionary<Address, AccountChanges> _byAddress;
     private readonly Stack<Change> _changes;
 
-    private static readonly Comparer<AccountChanges> s_addressComparer =
-        Comparer<AccountChanges>.Create((a, b) => a.Address.CompareTo(b.Address));
-
     public BlockAccessList()
     {
         _accountChanges = [];
@@ -527,9 +524,15 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     private void InsertSortedAccount(AccountChanges ac)
     {
-        int idx = _accountChanges.BinarySearch(ac, s_addressComparer);
-        if (idx < 0) idx = ~idx;
-        _accountChanges.Insert(idx, ac);
+        int lo = 0, hi = _accountChanges.Count - 1;
+        while (lo <= hi)
+        {
+            int mid = lo + ((hi - lo) >> 1);
+            int cmp = _accountChanges[mid].Address.CompareTo(ac.Address);
+            if (cmp < 0) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        _accountChanges.Insert(lo, ac);
     }
 
     private enum ChangeType
