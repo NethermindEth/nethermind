@@ -67,7 +67,7 @@ public class ForkchoiceUpdatedHandler(
     protected virtual bool ShouldProceedWithReorg(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
-        if (_blockTree.IsOnMainChainBehindHead(newHeadHeader))
+        if (_blockTree.IsAncestorOnMainChainBeyondReorgDepthLimit(newHeadHeader))
         {
             if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
             errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);

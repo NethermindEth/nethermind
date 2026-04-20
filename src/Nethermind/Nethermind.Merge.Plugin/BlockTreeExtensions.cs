@@ -13,6 +13,6 @@ public static class BlockTreeExtensions
     public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, BlockHeader header) =>
         header.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(header);
 
-    public static bool IsOnMainChainBehindHead(this IBlockTree blockTree, BlockHeader header) =>
+    public static bool IsAncestorOnMainChainBeyondReorgDepthLimit(this IBlockTree blockTree, BlockHeader header) =>
         (blockTree.Head?.Number ?? 0) - header.Number > AncestorReorgDepthLimit && blockTree.IsMainChain(header);
 }
