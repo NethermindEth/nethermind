@@ -25,12 +25,16 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     private BlockAccessList _suggestedBlockAccessList;
     private long _gasUsed;
+    private BalIndexChangeIterator? _generatedIter;
+    private BalIndexChangeIterator? _suggestedIter;
 
     public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed)
     {
         GeneratedBlockAccessList = new();
         _suggestedBlockAccessList = suggested;
         _gasUsed = gasUsed;
+        _generatedIter = null;
+        _suggestedIter = null;
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
@@ -256,8 +260,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         // The generated BAL accumulates unsorted during build, so seal before reading.
         GeneratedBlockAccessList.Seal();
 
-        IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
-        IEnumerator<ChangeAtIndex> suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+        _generatedIter ??= new BalIndexChangeIterator(GeneratedBlockAccessList);
+        _suggestedIter ??= new BalIndexChangeIterator(_suggestedBlockAccessList);
+
+        IEnumerator<ChangeAtIndex> generatedChanges = _generatedIter.GetChangesAtIndex(index).GetEnumerator();
+        IEnumerator<ChangeAtIndex> suggestedChanges = _suggestedIter.GetChangesAtIndex(index).GetEnumerator();
 
         ChangeAtIndex? generatedHead;
         ChangeAtIndex? suggestedHead;

@@ -19,6 +19,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     private readonly List<AccountChanges> _accountChanges;
     private readonly Dictionary<Address, AccountChanges> _byAddress;
     private readonly Stack<Change> _changes;
+    private bool _sealed;
 
     public BlockAccessList()
     {
@@ -36,6 +37,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             _byAddress[ac.Address] = ac;
         }
         _changes = new();
+        // Decoder built this from already-sorted wire input; treat as sealed.
+        _sealed = true;
     }
 
     public bool Equals(BlockAccessList? other)
@@ -99,6 +102,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         _byAddress.Clear();
         _changes.Clear();
         Index = 0;
+        _sealed = false;
     }
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
@@ -187,6 +191,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             AccountChanges ac = new(address);
             _byAddress[address] = ac;
             _accountChanges.Add(ac);
+            _sealed = false;
         }
     }
 
@@ -395,6 +400,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             _byAddress[change.Address] = change;
             _accountChanges.Add(change);
         }
+        if (accountChanges.Length > 0) _sealed = false;
     }
 
     private bool HasBalanceChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
@@ -518,20 +524,26 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             AccountChanges accountChanges = new(address);
             _byAddress[address] = accountChanges;
             _accountChanges.Add(accountChanges);
+            _sealed = false;
             return accountChanges;
         }
         return existing;
     }
 
     // Sort the unsorted build-time collections into the canonical order required
-    // by RLP encoding and BAL validation. Must be called once the BAL is complete
-    // (e.g. in ParallelWorldState.SetBlockAccessList before encoding, and before
-    // ValidateBlockAccessList's sorted-merge walk).
-    public void Seal()
+    // by RLP encoding and BAL validation. Idempotent via _sealed; mutations that
+    // can grow _accountChanges (or any AccountChanges._storageChanges /
+    // _storageReads) clear the flag. Returns true when this call actually sorted
+    // (was unsealed), false when it was already sealed. The return value reflects
+    // only the outer BAL flag; per-account children track their own flags.
+    public bool Seal()
     {
+        if (_sealed) return false;
         _accountChanges.Sort(static (a, b) => a.Address.CompareTo(b.Address));
         List<AccountChanges> accountChanges = _accountChanges;
         Parallel.For(0, accountChanges.Count, i => accountChanges[i].Seal());
+        _sealed = true;
+        return true;
     }
 
     private enum ChangeType

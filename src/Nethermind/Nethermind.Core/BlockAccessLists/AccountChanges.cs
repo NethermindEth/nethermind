@@ -40,6 +40,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     private readonly List<BalanceChange> _balanceChanges;
     private readonly List<NonceChange> _nonceChanges;
     private readonly List<CodeChange> _codeChanges;
+    private bool _sealed;
 
     public AccountChanges() : this(Address.Zero) { }
 
@@ -81,6 +82,8 @@ public class AccountChanges : IEquatable<AccountChanges>
         _balanceChanges = balanceChanges;
         _nonceChanges = nonceChanges;
         _codeChanges = codeChanges;
+        // Decoder built these from already-sorted wire input; treat as sealed.
+        _sealed = true;
     }
 
     public bool Equals(AccountChanges? other) =>
@@ -127,6 +130,7 @@ public class AccountChanges : IEquatable<AccountChanges>
             SlotChanges slotChanges = new(key);
             _storageChangesByKey[key] = slotChanges;
             _storageChanges.Add(slotChanges);
+            _sealed = false;
             return slotChanges;
         }
         return existing;
@@ -148,6 +152,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         if (_storageReadsSet.Add(key))
         {
             _storageReads.Add(new(key));
+            _sealed = false;
         }
     }
 
@@ -266,15 +271,19 @@ public class AccountChanges : IEquatable<AccountChanges>
     }
 
     // Sorts the unsorted build-time collections into the canonical order required
-    // by RLP encoding and BAL validation. Idempotent — a no-op on already-sorted
-    // collections. Balance / nonce / code / slot-storage changes are appended in
-    // monotonically increasing BlockAccessIndex order during normal execution and
-    // DeleteAccount's Restore path, so only storage changes (by slot) and storage
-    // reads (by key) need sorting.
-    public void Seal()
+    // by RLP encoding and BAL validation. Idempotent via the _sealed flag, which
+    // is cleared by mutations that can grow _storageChanges or _storageReads.
+    // Balance / nonce / code / slot-storage changes are appended in monotonically
+    // increasing BlockAccessIndex order during normal execution and DeleteAccount's
+    // Restore path, so Seal() never touches them. Returns true when this call
+    // actually did work (was unsealed), false when it was already sealed.
+    public bool Seal()
     {
+        if (_sealed) return false;
         _storageChanges.Sort(static (a, b) => a.Slot.CompareTo(b.Slot));
         _storageReads.Sort();
+        _sealed = true;
+        return true;
     }
 
     private static bool PopChange<T>(List<T> changes, ushort index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
