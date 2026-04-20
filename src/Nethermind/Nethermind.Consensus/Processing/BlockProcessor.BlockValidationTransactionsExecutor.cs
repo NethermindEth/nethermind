@@ -31,13 +31,6 @@ namespace Nethermind.Consensus.Processing
                 Metrics.ResetBlockStats();
 
                 bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
-                bool shouldValidateBlockAccessList = _balBuilder is not null && shouldValidate;
-                long? gasRemaining = shouldValidateBlockAccessList ? _balBuilder!.GasUsed() : null;
-
-                if (shouldValidateBlockAccessList)
-                {
-                    _balBuilder!.ValidateBlockAccessList(block.Header, 0, gasRemaining!.Value);
-                }
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
@@ -48,12 +41,6 @@ namespace Nethermind.Consensus.Processing
                     if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                     {
                         ThrowInvalidBlockForGasLimit(block);
-                    }
-
-                    if (shouldValidateBlockAccessList)
-                    {
-                        gasRemaining -= currentTx.BlockGasUsed;
-                        _balBuilder!.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining!.Value);
                     }
                 }
                 _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();

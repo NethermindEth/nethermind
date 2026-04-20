@@ -262,17 +262,16 @@ public class BlockValidatorTests
         Assert.That(error, Does.StartWith(expectedError));
     }
 
-    [TestCase(30_000, true)]
-    [TestCase(29_999, false)]
-    public void ValidateSuggestedBlock_Enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
+    [Test]
+    public void ValidateSuggestedBlock_Defers_bal_item_gas_limit_boundary_to_processing()
     {
-        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithGasLimit(30_000).TestObject;
         BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
         byte[] encodedBal = Rlp.Encode(bal).Bytes;
         Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(gasLimit)
+            .WithGasLimit(29_999)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBlockAccessList(bal)
@@ -284,14 +283,7 @@ public class BlockValidatorTests
 
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
-        Assert.That(isValid, Is.EqualTo(expectedValid));
-        if (expectedValid)
-        {
-            Assert.That(error, Is.Null);
-        }
-        else
-        {
-            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
-        }
+        Assert.That(isValid, Is.True);
+        Assert.That(error, Is.Null);
     }
 }

@@ -18,10 +18,12 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -208,38 +210,130 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [TestCaseSource(nameof(BlockValidationTransactionsExecutor_bal_validation_cases))]
-    public void BlockValidationTransactionsExecutor_validates_bal_only_when_validation_enabled(
+    [TestCaseSource(nameof(BlockProcessor_bal_validation_cases))]
+    public void BlockProcessor_validates_bal_after_execution_requests_only_when_validation_enabled(
         ProcessingOptions processingOptions,
         bool shouldValidateBlockAccessList)
     {
         TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
-        stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), 37_568);
+        List<string> events = [];
+        stateProvider.OnValidate = (index, gasRemaining) => events.Add($"bal-{index}:{gasRemaining}");
 
         ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
-        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(static callInfo =>
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(callInfo =>
         {
+            events.Add("tx");
             Transaction transaction = callInfo.Arg<Transaction>();
             transaction.SpentGas = 63_586;
             transaction.BlockGasUsed = 37_568;
             return TransactionResult.Ok;
         });
 
-        BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider);
-        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
-        BlockReceiptsTracer receiptsTracer = new();
-        receiptsTracer.StartNewBlockTrace(block);
+        IExecutionRequestsProcessor executionRequestsProcessor = Substitute.For<IExecutionRequestsProcessor>();
+        executionRequestsProcessor
+            .When(static x => x.ProcessExecutionRequests(Arg.Any<Block>(), Arg.Any<IWorldState>(), Arg.Any<TxReceipt[]>(), Arg.Any<IReleaseSpec>()))
+            .Do(_ => events.Add("requests"));
 
-        txExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, CancellationToken.None);
+        OverridableReleaseSpec spec = new(London.Instance) { IsEip7928Enabled = true };
+        BlockProcessor processor = CreateBalTestBlockProcessor(stateProvider, transactionProcessor, executionRequestsProcessor, spec);
+        Block block = Build.A.Block
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithGasUsed(37_568)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        using IDisposable _ = stateProvider.BeginScope(null);
+        processor.ProcessOne(block, processingOptions, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         if (shouldValidateBlockAccessList)
         {
-            Assert.That(stateProvider.ValidatedGasRemaining, Is.EqualTo(new long[] { 37_568L, 0L }));
+            Assert.That(events, Is.EqualTo(new[] { "tx", "requests", "bal-0:37568", "bal-1:0" }));
         }
         else
         {
-            Assert.That(stateProvider.ValidatedGasRemaining, Is.Empty);
+            Assert.That(events, Is.EqualTo(new[] { "tx", "requests" }));
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockProcessor_prioritizes_execution_request_error_over_bal_validation()
+    {
+        TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        ITransactionProcessorAdapter transactionProcessor = SuccessfulTransactionProcessor();
+        IExecutionRequestsProcessor executionRequestsProcessor = Substitute.For<IExecutionRequestsProcessor>();
+        executionRequestsProcessor
+            .When(static x => x.ProcessExecutionRequests(Arg.Any<Block>(), Arg.Any<IWorldState>(), Arg.Any<TxReceipt[]>(), Arg.Any<IReleaseSpec>()))
+            .Do(callInfo => throw new InvalidBlockException(callInfo.Arg<Block>(), "DepositsInvalid: Invalid deposit event layout: test"));
+
+        OverridableReleaseSpec spec = new(London.Instance) { IsEip7928Enabled = true };
+        BlockProcessor processor = CreateBalTestBlockProcessor(stateProvider, transactionProcessor, executionRequestsProcessor, spec);
+        Block block = Build.A.Block
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithGasUsed(37_568)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        using IDisposable _ = stateProvider.BeginScope(null);
+        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(
+            () => processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, spec, CancellationToken.None))!;
+
+        Assert.That(exception.Message, Does.StartWith("DepositsInvalid: Invalid deposit event layout"));
+        Assert.That(stateProvider.ValidatedGasRemaining, Is.Empty);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockProcessor_prioritizes_transaction_error_over_bal_item_gas_limit()
+    {
+        TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.BlockGasLimitExceeded);
+        IExecutionRequestsProcessor executionRequestsProcessor = Substitute.For<IExecutionRequestsProcessor>();
+
+        OverridableReleaseSpec spec = new(London.Instance) { IsEip7928Enabled = true };
+        BlockProcessor processor = CreateBalTestBlockProcessor(stateProvider, transactionProcessor, executionRequestsProcessor, spec);
+        Block block = Build.A.Block
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithGasLimit(21_000)
+            .WithGasUsed(21_000)
+            .WithBlockAccessList(BlockAccessListWithAccountReads(15))
+            .TestObject;
+
+        using IDisposable _ = stateProvider.BeginScope(null);
+        Nethermind.Blockchain.InvalidTransactionException exception = Assert.Throws<Nethermind.Blockchain.InvalidTransactionException>(
+            () => processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, spec, CancellationToken.None))!;
+
+        Assert.That(exception.Message, Does.Contain("Block gas limit exceeded"));
+        Assert.That(stateProvider.ValidatedGasRemaining, Is.Empty);
+        executionRequestsProcessor
+            .DidNotReceive()
+            .ProcessExecutionRequests(Arg.Any<Block>(), Arg.Any<IWorldState>(), Arg.Any<TxReceipt[]>(), Arg.Any<IReleaseSpec>());
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockProcessor_validates_bal_item_gas_limit_after_transactions()
+    {
+        TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        ITransactionProcessorAdapter transactionProcessor = SuccessfulTransactionProcessor(blockGasUsed: 21_000);
+        IExecutionRequestsProcessor executionRequestsProcessor = Substitute.For<IExecutionRequestsProcessor>();
+
+        OverridableReleaseSpec spec = new(London.Instance) { IsEip7928Enabled = true };
+        BlockProcessor processor = CreateBalTestBlockProcessor(stateProvider, transactionProcessor, executionRequestsProcessor, spec);
+        Block block = Build.A.Block
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithGasLimit(21_000)
+            .WithGasUsed(21_000)
+            .WithBlockAccessList(BlockAccessListWithAccountReads(15))
+            .TestObject;
+
+        using IDisposable _ = stateProvider.BeginScope(null);
+        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(
+            () => processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, spec, CancellationToken.None))!;
+
+        Assert.That(exception.Message, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        Assert.That(stateProvider.ValidatedGasRemaining, Is.Empty);
+        executionRequestsProcessor
+            .Received(1)
+            .ProcessExecutionRequests(Arg.Any<Block>(), Arg.Any<IWorldState>(), Arg.Any<TxReceipt[]>(), Arg.Any<IReleaseSpec>());
     }
 
     [TestCase(2_000, false)]
@@ -467,6 +561,7 @@ public class BlockProcessorTests
         public bool TracingEnabled { get; set; }
         public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public List<long> ValidatedGasRemaining { get; } = [];
+        public Action<ushort, long>? OnValidate { get; set; }
 
         private long _gasUsed;
 
@@ -480,7 +575,10 @@ public class BlockProcessorTests
             => _gasUsed;
 
         public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining)
-            => ValidatedGasRemaining.Add(gasRemaining);
+        {
+            OnValidate?.Invoke(index, gasRemaining);
+            ValidatedGasRemaining.Add(gasRemaining);
+        }
 
         public void SetBlockAccessList(Block block, IReleaseSpec spec) { }
         public IDisposable BeginSystemAccountReadSuppression() => EmptyDisposable.Instance;
@@ -492,11 +590,57 @@ public class BlockProcessorTests
         }
     }
 
-    public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()
+    private static BlockProcessor CreateBalTestBlockProcessor(
+        IWorldState stateProvider,
+        ITransactionProcessorAdapter transactionProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        IReleaseSpec spec)
+    {
+        ITransactionProcessor systemTransactionProcessor = Substitute.For<ITransactionProcessor>();
+        return new(
+            new TestSingleReleaseSpecProvider(spec),
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(systemTransactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            executionRequestsProcessor);
+    }
+
+    private static ITransactionProcessorAdapter SuccessfulTransactionProcessor(long blockGasUsed = 37_568)
+    {
+        ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(callInfo =>
+        {
+            Transaction transaction = callInfo.Arg<Transaction>();
+            transaction.SpentGas = blockGasUsed;
+            transaction.BlockGasUsed = blockGasUsed;
+            return TransactionResult.Ok;
+        });
+
+        return transactionProcessor;
+    }
+
+    private static BlockAccessList BlockAccessListWithAccountReads(int count)
+    {
+        BlockAccessList blockAccessList = new();
+        for (int i = 0; i < count; i++)
+        {
+            blockAccessList.AddAccountRead(Address.FromNumber((UInt256)(ulong)(i + 1)));
+        }
+
+        return blockAccessList;
+    }
+
+    public static IEnumerable<TestCaseData> BlockProcessor_bal_validation_cases()
     {
         yield return new TestCaseData(ProcessingOptions.None, true)
-            .SetName("BlockValidationTransactionsExecutor_uses_block_gas_for_bal_validation_budget");
+            .SetName("BlockProcessor_uses_block_gas_for_bal_validation_budget");
         yield return new TestCaseData(ProcessingOptions.NoValidation, false)
-            .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
+            .SetName("BlockProcessor_skips_bal_validation_when_no_validation_requested");
     }
 }

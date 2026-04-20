@@ -15,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -144,6 +145,8 @@ public partial class BlockProcessor(
 
         executionRequestsProcessor.ProcessExecutionRequests(block, stateProvider, receipts, spec);
 
+        ValidateBlockAccessList(block, options);
+
         _balBuilder?.SetBlockAccessList(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
@@ -165,6 +168,33 @@ public partial class BlockProcessor(
         header.Hash = header.CalculateHash();
 
         return receipts;
+    }
+
+    private void ValidateBlockAccessList(Block block, ProcessingOptions options)
+    {
+        if (_balBuilder is null || options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            return;
+        }
+
+        if (block.BlockAccessList is not null)
+        {
+            int itemCount = block.BlockAccessList.ItemCount();
+            if ((long)itemCount * GasCostOf.BlockAccessListItem > block.Header.GasLimit)
+            {
+                throw new InvalidBlockException(block, BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, block.Header.GasLimit));
+            }
+        }
+
+        long gasRemaining = _balBuilder.GasUsed();
+        _balBuilder.ValidateBlockAccessList(block.Header, 0, gasRemaining);
+
+        Transaction[] transactions = block.Transactions;
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            gasRemaining -= transactions[i].BlockGasUsed;
+            _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining);
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
