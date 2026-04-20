@@ -169,8 +169,11 @@ public static class Metrics
         StateCompEmptyAccounts = s.EmptyAccounts;
         StateCompCodeBytesTotal = s.CodeBytesTotal;
 
-        for (int i = 0; i < s.SlotCountHistogram.Length; i++)
-            StateCompSlotCountHistogram[i] = s.SlotCountHistogram[i];
+        if (!s.SlotCountHistogram.IsDefault)
+        {
+            for (int i = 0; i < s.SlotCountHistogram.Length; i++)
+                StateCompSlotCountHistogram[i] = s.SlotCountHistogram[i];
+        }
     }
 
     internal static void UpdateDepthDistribution(CumulativeDepthStats s)
