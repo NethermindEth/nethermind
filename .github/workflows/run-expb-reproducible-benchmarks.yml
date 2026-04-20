@@ -654,19 +654,27 @@ jobs:
           # Marker for dottrace artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
+          fifo="${RUNNER_TEMP}/expb-pipe"
+          mkfifo "${fifo}"
+          tee "${RAW_RUN_LOG}" < "${fifo}" &
+          tee_pid=$!
+
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
             ${dottrace_flag} \
-            > >(tee "${RAW_RUN_LOG}") 2>&1 &
+            > "${fifo}" 2>&1 &
           expb_pid=$!
 
           set +e
           wait "${expb_pid}"
           expb_exit_code=$?
           set -e
+
+          rm -f "${fifo}"
+          wait "${tee_pid}"
 
           exit "${expb_exit_code}"
 
@@ -708,6 +716,15 @@ jobs:
             echo "Found invalid block lines in benchmark output:"
             head -n 40 "${invalid_block_lines}"
           fi
+
+          # Flag additional severe runtime signals (warn, don't hard-fail)
+          for pattern in "Unhandled" "Fatal" "^.*ERROR.*$"; do
+            severe_lines=$(grep -in "${pattern}" "${clean_log}" | head -n 20) || true
+            if [[ -n "${severe_lines}" ]]; then
+              echo "::warning::Severe log pattern '${pattern}' detected in benchmark output"
+              echo "${severe_lines}"
+            fi
+          done
 
           # Extract client-side processing times from SSE data feed (primary)
           client_ms="${RUNNER_TEMP}/expb-client-ms.txt"
@@ -751,7 +768,7 @@ jobs:
             local min max avg median p90 p95 p99
             min=$(head -n 1 "${sorted_file}")
             max=$(tail -n 1 "${sorted_file}")
-            avg=$(awk '{sum += $1} END {printf "%.6f", sum / NR}' "${sorted_file}")
+            avg=$(awk '{sum += $1} END {printf "%.2f", sum / NR}' "${sorted_file}")
 
             if (( n % 2 == 1 )); then
               local mi=$(( (n + 1) / 2 ))
@@ -762,7 +779,7 @@ jobs:
               local lv hv
               lv=$(sed -n "${lo}p" "${sorted_file}")
               hv=$(sed -n "${hi}p" "${sorted_file}")
-              median=$(awk -v a="${lv}" -v b="${hv}" 'BEGIN {printf "%.6f", (a + b) / 2}')
+              median=$(awk -v a="${lv}" -v b="${hv}" 'BEGIN {printf "%.2f", (a + b) / 2}')
             fi
 
             local p90i=$(( (90 * n + 99) / 100 ))
@@ -906,7 +923,16 @@ jobs:
           echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
           printf '  %s\n' "${dottrace_dirs[@]}"
 
-          zip -9j "${ARCHIVE}" "${dottrace_dirs[@]}"/*
+          file_count=0
+          for d in "${dottrace_dirs[@]}"; do
+            file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
+          done
+          if [[ "${file_count}" -eq 0 ]]; then
+            echo "Dottrace directories are empty, skipping zip."
+            exit 0
+          fi
+
+          zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
 
       - name: Upload dotTrace artifact
         if: always() && needs.resolve.outputs.dottrace == 'true'
@@ -1691,19 +1717,27 @@ jobs:
           # Marker for dottrace artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
+          fifo="${RUNNER_TEMP}/expb-pipe"
+          mkfifo "${fifo}"
+          tee "${RAW_RUN_LOG}" < "${fifo}" &
+          tee_pid=$!
+
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
             ${dottrace_flag} \
-            > >(tee "${RAW_RUN_LOG}") 2>&1 &
+            > "${fifo}" 2>&1 &
           expb_pid=$!
 
           set +e
           wait "${expb_pid}"
           expb_exit_code=$?
           set -e
+
+          rm -f "${fifo}"
+          wait "${tee_pid}"
 
           exit "${expb_exit_code}"
 
@@ -1755,6 +1789,15 @@ jobs:
             echo "Found invalid block lines in benchmark output:"
             head -n 40 "${invalid_block_lines}"
           fi
+
+          # Flag additional severe runtime signals (warn, don't hard-fail)
+          for pattern in "Unhandled" "Fatal" "^.*ERROR.*$"; do
+            severe_lines=$(grep -in "${pattern}" "${clean_log}" | head -n 20) || true
+            if [[ -n "${severe_lines}" ]]; then
+              echo "::warning::Severe log pattern '${pattern}' detected in benchmark output"
+              echo "${severe_lines}"
+            fi
+          done
 
           # Extract client-side processing times from SSE data feed (primary)
           client_ms="${RUNNER_TEMP}/expb-client-ms-${key}.txt"
@@ -1926,7 +1969,16 @@ jobs:
           echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
           printf '  %s\n' "${dottrace_dirs[@]}"
 
-          zip -9j "${ARCHIVE}" "${dottrace_dirs[@]}"/*
+          file_count=0
+          for d in "${dottrace_dirs[@]}"; do
+            file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
+          done
+          if [[ "${file_count}" -eq 0 ]]; then
+            echo "Dottrace directories are empty, skipping zip."
+            exit 0
+          fi
+
+          zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
 
       - name: Upload dotTrace artifact
         if: always() && needs.resolve.outputs.dottrace == 'true'
@@ -2141,7 +2193,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
 
           # Pattern file: match all methods, include full call stacks
-          $patternFile = (Resolve-Path 'pattern.xml' -ErrorAction SilentlyContinue) ?? 'pattern.xml'
+          $patternFile = 'pattern.xml'
           @'
           <Patterns>
             <Pattern PrintCallstacks="Full">.*</Pattern>
