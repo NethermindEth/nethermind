@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
   </ItemGroup>
 
 </Project>
