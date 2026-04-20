@@ -32,7 +32,7 @@ internal class SubnetEpochSwitchManager(
     protected override ulong GetCurrentEpochNumber(EpochSwitchInfo epochSwitchInfo, IXdcReleaseSpec xdcSpec) =>
         (ulong)(epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber / xdcSpec.EpochLength);
 
-    protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec)
+    protected override Address[] ResolvePenalties(XdcBlockHeader _, Snapshot snapshot)
     {
         if (snapshot is not SubnetSnapshot subnetSnapshot)
             throw new ArgumentException("Snapshot is not a SubnetSnapshot", nameof(snapshot));

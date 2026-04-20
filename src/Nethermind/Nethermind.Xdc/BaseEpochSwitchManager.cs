@@ -65,7 +65,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
             return null;
         }
 
-        Address[] penalties = ResolvePenalties(header, snap, xdcSpec);
+        Address[] penalties = ResolvePenalties(header, snap);
         Address[] candidates = snap.NextEpochCandidates;
 
         Address[] standbyNodes = [];
@@ -96,7 +96,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
         return epochSwitchInfo;
     }
 
-    protected abstract Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec);
+    protected abstract Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot);
 
     public EpochSwitchInfo? GetEpochSwitchInfo(Hash256 hash)
     {

@@ -71,8 +71,6 @@ internal class EpochSwitchManager(
     {
         IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(parent);
 
-        ulong epochNumber = (ulong)xdcSpec.SwitchEpoch + currentRound / (ulong)xdcSpec.EpochLength;
-
         if (parent.Number == xdcSpec.SwitchBlock)
         {
             return true;
@@ -96,7 +94,7 @@ internal class EpochSwitchManager(
     protected override ulong GetCurrentEpochNumber(EpochSwitchInfo epochSwitchInfo, IXdcReleaseSpec xdcSpec) =>
         (ulong)xdcSpec.SwitchEpoch + epochSwitchInfo.EpochSwitchBlockInfo.Round / (ulong)xdcSpec.EpochLength;
 
-    protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec) =>
+    protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot _) =>
         header.PenaltiesAddress is null
             ? throw new InvalidOperationException($"PenaltiesAddress is null on epoch-switch block {header.Number}")
             : [.. header.PenaltiesAddress.Value];
