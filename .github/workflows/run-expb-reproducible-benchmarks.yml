@@ -570,13 +570,17 @@ jobs:
                   close(flags_file)
                 }
                 {
-                  print
-                  if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
-                    match($0, /^[[:space:]]*/)
-                    indent = substr($0, RSTART, RLENGTH)
+                  if (!injected && flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:/) {
+                    match($0, /^[[:space:]]*/);
+                    indent = substr($0, RSTART, RLENGTH);
+                    sub(/extra_flags:.*/, "extra_flags:", $0);
+                    print
                     for (i = 1; i <= flags_count; i++) {
                       print indent "  - " flags[i]
                     }
+                    injected = 1
+                  } else {
+                    print
                   }
                 }
               ' > "${RENDERED_CONFIG_FILE}"
@@ -1638,13 +1642,17 @@ jobs:
                   close(flags_file)
                 }
                 {
-                  print
-                  if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
-                    match($0, /^[[:space:]]*/)
-                    indent = substr($0, RSTART, RLENGTH)
+                  if (!injected && flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:/) {
+                    match($0, /^[[:space:]]*/);
+                    indent = substr($0, RSTART, RLENGTH);
+                    sub(/extra_flags:.*/, "extra_flags:", $0);
+                    print
                     for (i = 1; i <= flags_count; i++) {
                       print indent "  - " flags[i]
                     }
+                    injected = 1
+                  } else {
+                    print
                   }
                 }
               ' > "${RENDERED_CONFIG_FILE}"
