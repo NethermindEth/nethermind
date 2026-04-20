@@ -61,6 +61,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         public override void HandleMessage(ZeroPacket message)
         {
+            ThrowIfStatusWasNotReceived(message.PacketType);
+
             int size = message.Content.ReadableBytes;
 
             switch (message.PacketType)

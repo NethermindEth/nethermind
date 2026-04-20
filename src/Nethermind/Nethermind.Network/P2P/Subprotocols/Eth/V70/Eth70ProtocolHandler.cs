@@ -54,6 +54,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     public override void HandleMessage(ZeroPacket message)
     {
+        ThrowIfStatusWasNotReceived(message.PacketType);
+
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {

@@ -58,6 +58,8 @@ public class Eth68ProtocolHandler(ISession session,
 
     public override void HandleMessage(ZeroPacket message)
     {
+        ThrowIfStatusWasNotReceived(message.PacketType);
+
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {

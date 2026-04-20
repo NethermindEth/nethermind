@@ -62,6 +62,8 @@ public class Eth69ProtocolHandler(
 
     public override void HandleMessage(ZeroPacket message)
     {
+        ThrowIfStatusWasNotReceived(message.PacketType);
+
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {

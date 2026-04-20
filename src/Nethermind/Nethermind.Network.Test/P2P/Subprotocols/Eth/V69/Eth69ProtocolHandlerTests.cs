@@ -182,6 +182,17 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_throw_when_receiving_GetReceipts_before_status()
+    {
+        using GetReceiptsMessage66 msg66 = new(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+
+        Action action = () => HandleZeroMessage(msg66, Eth69MessageCode.GetReceipts);
+
+        action.Should().Throw<SubprotocolException>();
+        _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage69>());
+    }
+
+    [Test]
     public void Should_throw_when_receiving_unrequested_receipts()
     {
         using ReceiptsMessage msg66 = new(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));

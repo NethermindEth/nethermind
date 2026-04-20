@@ -121,10 +121,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             int packetType = message.PacketType;
-            if (!_statusReceived && packetType != Eth62MessageCode.Status)
-            {
-                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
-            }
+            ThrowIfStatusWasNotReceived(packetType);
 
             switch (packetType)
             {
@@ -187,6 +184,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         HandleInBackground<NewBlockMessage>(message, Handle);
                     }
                     break;
+            }
+        }
+
+        protected void ThrowIfStatusWasNotReceived(int packetType)
+        {
+            if (!_statusReceived && packetType != Eth62MessageCode.Status)
+            {
+                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
         }
 

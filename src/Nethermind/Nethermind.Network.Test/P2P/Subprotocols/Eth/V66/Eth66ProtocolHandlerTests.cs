@@ -167,6 +167,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Should_throw_when_receiving_get_block_bodies_before_status()
+        {
+            using GetBlockBodiesMessage msg62 = new(new[] { Keccak.Zero, TestItem.KeccakA });
+            using Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage msg66 = new(1111, msg62);
+
+            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
+
+            act.Should().Throw<SubprotocolException>();
+            _session.DidNotReceive().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>());
+        }
+
+        [Test]
         public async Task Can_handle_block_bodies()
         {
             using BlockBodiesMessage msg62 = new(Build.A.Block.TestObjectNTimes(3));
@@ -265,6 +277,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
             _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>());
+        }
+
+        [Test]
+        public void Should_throw_when_receiving_get_receipts_before_status()
+        {
+            using GetReceiptsMessage msg63 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+            using Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage msg66 = new(1111, msg63);
+
+            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
+
+            act.Should().Throw<SubprotocolException>();
+            _session.DidNotReceive().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>());
         }
 
         [Test]

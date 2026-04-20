@@ -38,6 +38,8 @@ public class Eth67ProtocolHandler(
 
     public override void HandleMessage(ZeroPacket message)
     {
+        ThrowIfStatusWasNotReceived(message.PacketType);
+
         switch (message.PacketType)
         {
             case Eth66MessageCode.GetNodeData:

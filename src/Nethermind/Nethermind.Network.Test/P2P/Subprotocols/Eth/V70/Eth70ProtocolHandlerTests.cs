@@ -143,6 +143,17 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_throw_when_receiving_GetReceipts_before_status()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+
+        Action action = () => HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        action.Should().Throw<SubprotocolException>();
+        _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage70>());
+    }
+
+    [Test]
     public void Should_return_receipts_when_first_block_receipt_index_is_zero()
     {
         TxReceipt[] receipts =
