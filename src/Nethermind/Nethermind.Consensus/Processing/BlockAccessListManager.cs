@@ -281,7 +281,7 @@ public class BlockAccessListManager(
         {
             if (suggestedHead is null)
             {
-                if (HasNoChanges(generatedHead.Value))
+                if (HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
                     continue;
@@ -322,7 +322,7 @@ public class BlockAccessListManager(
             }
             else
             {
-                if (HasNoChanges(generatedHead.Value))
+                if (HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
                     continue;
@@ -401,6 +401,9 @@ public class BlockAccessListManager(
             c.NonceChange is null &&
             c.CodeChange is null &&
             !c.HasSlotChanges;
+
+   private static bool HasOptionalStorageReads(in ChangeAtIndex c)
+        => HasNoChanges(c) && c.Reads > 0;
 
     private interface ITxProcessorWithWorldStateManager
     {
