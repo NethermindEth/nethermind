@@ -193,9 +193,9 @@ public class HistoryPrunerTests
         CheckHeadPreserved(testBlockchain, blocks);
     }
 
-    [TestCase(0, 100000, false)]
-    [TestCase(100, 10, true)]
-    public void Validates_config(int minHistoryRetentionEpochs, int retentionEpochs, bool shouldThrow)
+    [TestCase(0, 100000u, false)]
+    [TestCase(100, 10u, true)]
+    public void Validates_config(int minHistoryRetentionEpochs, uint retentionEpochs, bool shouldThrow)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
