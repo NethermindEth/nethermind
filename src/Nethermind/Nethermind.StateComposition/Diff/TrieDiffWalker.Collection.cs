@@ -191,7 +191,8 @@ internal sealed partial class TrieDiffWalker
         // Whole-account create or delete: emit a code-hash transition between NoCode
         // and the account's code hash so the incremental tracker can refcount correctly.
         // DecodeAndDiffAccountLeaves handles the matched-leaf path separately.
-        Hash256 addressHash = GetAddressHash(leaf, ref path);
+        Hash256? addressHash = GetAddressHash(leaf, ref path);
+        if (addressHash is null) return;
 
         if (account.HasCode)
         {

@@ -55,7 +55,9 @@ internal sealed partial class TrieDiffWalker
         // leaves go through CollectLeaf instead and emit their own transitions there.
         bool storageUnchanged = oldAccount.StorageRoot == newAccount.StorageRoot;
 
-        Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
+        Hash256? addressHash = GetAddressHash(oldLeaf, ref path);
+        if (addressHash is null) return;
+
         RecordCodeHashChange(addressHash.ValueHash256, oldAccount.CodeHash, newAccount.CodeHash);
 
         if (storageUnchanged) return;
@@ -84,14 +86,13 @@ internal sealed partial class TrieDiffWalker
         return AccountDecoder.Instance.TryDecodeStruct(ref ctx, out account);
     }
 
-    private static Hash256 GetAddressHash(TrieNode leaf, ref TreePath path)
+    private static Hash256? GetAddressHash(TrieNode leaf, ref TreePath path)
     {
-        int prevLen = path.Length;
-        if (leaf.Key is not null)
-        {
-            path.AppendMut(leaf.Key);
-        }
+        // Null Key means a corrupted leaf — hashing the partial path would drift trackers under a wrong address.
+        if (leaf.Key is null) return null;
 
+        int prevLen = path.Length;
+        path.AppendMut(leaf.Key);
         Hash256 addressHash = path.Path.ToCommitment();
         path.TruncateMut(prevLen);
         return addressHash;
