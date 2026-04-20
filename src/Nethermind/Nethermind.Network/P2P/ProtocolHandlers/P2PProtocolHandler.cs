@@ -179,7 +179,7 @@ public class P2PProtocolHandler(
                     break;
                 }
             default:
-                if (Logger.IsTrace) TraceUnhandledPacket(msg.PacketType);
+                DisconnectUnhandledPacket(msg.PacketType);
                 break;
         }
 
@@ -222,8 +222,12 @@ public class P2PProtocolHandler(
             => Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceUnhandledPacket(int packetType)
-            => Logger.Trace($"{Session.RemoteNodeId} Unhandled packet type: {packetType}");
+        void DisconnectUnhandledPacket(int packetType)
+        {
+            string details = $"Unknown P2P message type {packetType}";
+            if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId} {details}");
+            Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
+        }
     }
 
     private void HandleHello(HelloMessage hello)

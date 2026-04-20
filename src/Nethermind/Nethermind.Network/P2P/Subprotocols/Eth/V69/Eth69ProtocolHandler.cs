@@ -60,7 +60,7 @@ public class Eth69ProtocolHandler(
 
     public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -69,23 +69,22 @@ public class Eth69ProtocolHandler(
                 StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
                 ReportIn(statusMsg, size);
                 Handle(statusMsg);
-                break;
+                return true;
             case Eth69MessageCode.Receipts:
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
                 ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);
-                break;
+                return true;
             case Eth69MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
-                break;
+                return true;
             case Eth69MessageCode.BlockRangeUpdate:
                 BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
                 ReportIn(blockRangeUpdateMsg, size);
                 Handle(blockRangeUpdateMsg);
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 

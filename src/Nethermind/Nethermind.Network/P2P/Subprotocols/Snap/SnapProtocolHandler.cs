@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             // Clear Events if set
             ProtocolInitialized = null;
 
-        protected override void HandleMessageCore(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -86,39 +86,41 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetAccountRange:
                     if (ShouldServeSnap())
                         HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
-                    break;
+                    return true;
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
                     ReportIn(accountRangeMessage, size);
                     Handle(accountRangeMessage, size);
-                    break;
+                    return true;
                 case SnapMessageCode.GetStorageRanges:
                     if (ShouldServeSnap())
                         HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
-                    break;
+                    return true;
                 case SnapMessageCode.StorageRanges:
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
                     ReportIn(storageRangesMessage, size);
                     Handle(storageRangesMessage, size);
-                    break;
+                    return true;
                 case SnapMessageCode.GetByteCodes:
                     if (ShouldServeSnap())
                         HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
-                    break;
+                    return true;
                 case SnapMessageCode.ByteCodes:
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
                     ReportIn(byteCodesMessage, size);
                     Handle(byteCodesMessage, size);
-                    break;
+                    return true;
                 case SnapMessageCode.GetTrieNodes:
                     if (ShouldServeSnap())
                         HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
-                    break;
+                    return true;
                 case SnapMessageCode.TrieNodes:
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
                     ReportIn(trieNodesMessage, size);
                     Handle(trieNodesMessage, size);
-                    break;
+                    return true;
+                default:
+                    return false;
             }
         }
 

@@ -60,24 +60,22 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer, I
         remove { }
     }
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
 
         switch (message.PacketType)
         {
             case NodeDataMessageCode.GetNodeData:
-                {
-                    HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
-                    break;
-                }
+                HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
+                return true;
             case NodeDataMessageCode.NodeData:
-                {
-                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                    ReportIn(nodeDataMessage, size);
-                    Handle(nodeDataMessage, size);
-                    break;
-                }
+                NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                ReportIn(nodeDataMessage, size);
+                Handle(nodeDataMessage, size);
+                return true;
+            default:
+                return false;
         }
     }
 

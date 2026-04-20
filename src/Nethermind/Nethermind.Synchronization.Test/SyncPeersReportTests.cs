@@ -180,7 +180,7 @@ namespace Nethermind.Synchronization.Test
             public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = static delegate { };
             public override void Init() =>
                 throw new NotImplementedException();
-            protected override void HandleMessageCore(ZeroPacket message) =>
+            protected override bool HandleMessageCore(ZeroPacket message) =>
                 throw new NotImplementedException();
             public override void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
                 throw new NotImplementedException();
