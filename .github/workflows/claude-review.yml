@@ -28,7 +28,7 @@ on:
   pull_request_review_comment:
     types: [created]
   issues:
-    types: [opened, assigned]
+    types: [opened]
   pull_request_review:
     types: [submitted]
   # `unlabeled` is included so that removing the `wip` label triggers a review.
