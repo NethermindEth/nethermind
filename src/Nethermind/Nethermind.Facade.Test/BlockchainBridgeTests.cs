@@ -487,7 +487,7 @@ public class BlockchainBridgeTests
             "miner premium is negative"
         ).SetName("Fallback");
 
-        Address sender = new("0xd3181ddbB2CEA7B4954b8D4a05DBf85D8Fc36aEF");
+        Address sender = TestItem.AddressA;
         UInt256 baseFee = 146_283_608_928UL;
         UInt256 maxFeePerGas = 140_000_000_000UL;
         Transaction descriptiveTx = new()
