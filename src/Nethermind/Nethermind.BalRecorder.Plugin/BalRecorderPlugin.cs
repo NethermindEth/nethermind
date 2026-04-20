@@ -45,6 +45,7 @@ public class BalRecorderModule(bool replayEnabled, bool recordingEnabled, string
             })
             .As<IRecordedBalStore>()
             .SingleInstance();
+        builder.RegisterDecorator<BalReplayBranchProcessor, Nethermind.Consensus.Processing.IBranchProcessor>();
         builder.RegisterDecorator<BalRecordingBlockProcessor, Nethermind.Consensus.Processing.IBlockProcessor>();
         builder.RegisterDecorator<BalTracingTransactionsExecutor, Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor>();
     }
