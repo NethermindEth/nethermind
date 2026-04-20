@@ -39,14 +39,16 @@ internal class SubnetEpochSwitchManager(
 
     public override BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
     {
-        if (Tree.Head?.Header is not XdcBlockHeader headHeader) return null;
+        XdcBlockHeader? headHeader = (XdcBlockHeader?)Tree.Head?.Header;
+        if (headHeader is null) return null;
 
         IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(headHeader);
 
         if (targetEpoch > (ulong)(long.MaxValue / xdcSpec.EpochLength)) return null;
         long targetNumber = (long)targetEpoch * xdcSpec.EpochLength;
 
-        if (Tree.FindHeader(targetNumber) is not XdcBlockHeader targetHeader) return null;
+        XdcBlockHeader? targetHeader = (XdcBlockHeader?)Tree.FindHeader(targetNumber);
+        if (targetHeader is null) return null;
 
         EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(targetHeader);
         if (epochSwitchInfo is null) return null;

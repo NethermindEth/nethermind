@@ -174,7 +174,8 @@ internal class EpochSwitchManager(
     {
         while (start < end)
         {
-            if (Tree.FindHeader((start + end) / 2) is not XdcBlockHeader header)
+            XdcBlockHeader? header = (XdcBlockHeader?)Tree.FindHeader((start + end) / 2);
+            if (header is null)
             {
                 epochBlockInfo = null;
                 return false;
@@ -226,7 +227,7 @@ internal class EpochSwitchManager(
 
     public override BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
     {
-        XdcBlockHeader headHeader = Tree.Head?.Header as XdcBlockHeader;
+        XdcBlockHeader? headHeader = (XdcBlockHeader?)Tree.Head?.Header;
         if (headHeader is null)
         {
             return null;
@@ -272,7 +273,8 @@ internal class EpochSwitchManager(
 
         if (closeEpochNum >= epochNumber - targetEpoch)
         {
-            if (Tree.FindHeader(estBlockNum) is not XdcBlockHeader estBlockHeader)
+            XdcBlockHeader? estBlockHeader = (XdcBlockHeader?)Tree.FindHeader(estBlockNum);
+            if (estBlockHeader is null)
             {
                 return null;
             }

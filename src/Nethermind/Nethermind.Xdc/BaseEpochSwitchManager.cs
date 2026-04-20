@@ -38,7 +38,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
         while (!IsEpochSwitchAtBlock(header))
         {
-            header = Tree.FindHeader(header.ParentHash!) as XdcBlockHeader ?? throw new InvalidOperationException($"Parent block {header.ParentHash} not found while walking to epoch switch");
+            header = (XdcBlockHeader)(Tree.FindHeader(header.ParentHash!) ?? throw new InvalidOperationException($"Parent block {header.ParentHash} not found while walking to epoch switch"));
         }
 
         Address[] masterNodes;
@@ -105,14 +105,16 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
             return epochSwitchInfo;
         }
 
-        if (Tree.FindHeader(hash) is not XdcBlockHeader h) return null;
+        XdcBlockHeader? h = (XdcBlockHeader?)Tree.FindHeader(hash);
+        if (h is null) return null;
 
         return GetEpochSwitchInfo(h);
     }
 
     public EpochSwitchInfo? GetEpochSwitchInfo(ulong round)
     {
-        if (Tree.Head?.Header is not XdcBlockHeader headOfChainHeader) return null;
+        XdcBlockHeader? headOfChainHeader = (XdcBlockHeader?)Tree.Head?.Header;
+        if (headOfChainHeader is null) return null;
 
         EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(headOfChainHeader);
         if (epochSwitchInfo is null)
