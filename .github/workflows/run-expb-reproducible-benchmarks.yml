@@ -432,6 +432,8 @@ jobs:
           PAYLOAD_SET: ${{ matrix.payload_set }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          RUN: ${{ matrix.run }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
         run: |
           set -euo pipefail
           if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
@@ -444,6 +446,9 @@ jobs:
             config_file="github-action-mainnet.yaml"
           fi
           scenario_name="nethermind-${STATE_LAYOUT}-${PAYLOAD_SET}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          if [[ "${RUN_COUNT}" -gt 1 ]]; then
+            scenario_name="${scenario_name}-run${RUN}"
+          fi
           echo "CONFIG_FILE=${config_file}" >> "${GITHUB_ENV}"
           echo "SCENARIO_NAME=${scenario_name}" >> "${GITHUB_ENV}"
           echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
@@ -624,42 +629,17 @@ jobs:
                 kill -KILL "${expb_pid}" 2>/dev/null || true
               fi
             fi
-
-            if [[ -f "${RAW_RUN_LOG}" ]]; then
-              cat "${RAW_RUN_LOG}"
-            fi
             exit 143
           }
 
           trap on_terminate TERM INT
-
-          # Save stdout fd before expb redirects it — container logs go here for live streaming
-          exec 3>&1
-
-          # Background: tail Nethermind container logs for live visibility
-          (
-            sleep 5
-            for i in $(seq 1 60); do
-              cid=$(docker ps --filter "name=nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
-              if [[ -z "$cid" ]]; then
-                cid=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep nethermind | head -1 | cut -d' ' -f1)
-              fi
-              if [[ -n "$cid" ]]; then
-                echo "=== Tailing Nethermind container ${cid} logs ===" >&3
-                docker logs -f "$cid" 2>&1 | sed 's/^/[nethermind] /' >&3
-                break
-              fi
-              sleep 2
-            done
-          ) &
-          log_tail_pid=$!
 
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
-            > "${RAW_RUN_LOG}" 2>&1 &
+            > >(tee "${RAW_RUN_LOG}") 2>&1 &
           expb_pid=$!
 
           set +e
@@ -667,9 +647,6 @@ jobs:
           expb_exit_code=$?
           set -e
 
-          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
-          exec 3>&-
-          cat "${RAW_RUN_LOG}"
           exit "${expb_exit_code}"
 
       - name: Analyze benchmark output
@@ -1381,41 +1358,17 @@ jobs:
                 kill -KILL "${expb_pid}" 2>/dev/null || true
               fi
             fi
-            if [[ -f "${RAW_RUN_LOG}" ]]; then
-              cat "${RAW_RUN_LOG}"
-            fi
             exit 143
           }
 
           trap on_terminate TERM INT
-
-          # Save stdout fd before expb redirects it — container logs go here for live streaming
-          exec 3>&1
-
-          # Background: tail Nethermind container logs for live visibility
-          (
-            sleep 5
-            for i in $(seq 1 60); do
-              cid=$(docker ps --filter "name=nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
-              if [[ -z "$cid" ]]; then
-                cid=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep nethermind | head -1 | cut -d' ' -f1)
-              fi
-              if [[ -n "$cid" ]]; then
-                echo "=== Tailing Nethermind container ${cid} logs ===" >&3
-                docker logs -f "$cid" 2>&1 | sed 's/^/[nethermind] /' >&3
-                break
-              fi
-              sleep 2
-            done
-          ) &
-          log_tail_pid=$!
 
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
-            > "${RAW_RUN_LOG}" 2>&1 &
+            > >(tee "${RAW_RUN_LOG}") 2>&1 &
           expb_pid=$!
 
           set +e
@@ -1423,9 +1376,6 @@ jobs:
           expb_exit_code=$?
           set -e
 
-          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
-          exec 3>&-
-          cat "${RAW_RUN_LOG}"
           exit "${expb_exit_code}"
 
       - name: Analyze benchmark output
