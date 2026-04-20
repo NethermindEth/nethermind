@@ -75,12 +75,6 @@ on:
         required: false
         type: boolean
         default: false
-      dottrace_run_id:
-        description: >-
-          Skip benchmarks and only generate dotTrace XML reports from artifacts
-          of a previous run. Provide the run ID (from Actions URL). Implies dottrace=true.
-        required: false
-        default: ""
   pull_request:
     types: [labeled]
   push:
@@ -122,7 +116,6 @@ jobs:
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
-      dottrace_run_id: ${{ steps.resolve.outputs.dottrace_run_id }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -147,7 +140,6 @@ jobs:
           DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
-          DISPATCH_DOTTRACE_RUN_ID: ${{ inputs.dottrace_run_id }}
         run: |
           set -euo pipefail
 
@@ -173,11 +165,6 @@ jobs:
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
             dottrace="${DISPATCH_DOTTRACE:-false}"
-            dottrace_run_id="${DISPATCH_DOTTRACE_RUN_ID:-}"
-            if [[ -n "${dottrace_run_id}" ]]; then
-              dottrace="true"
-              should_run="false"
-            fi
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -201,7 +188,6 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
-            dottrace_run_id=""
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
@@ -216,7 +202,6 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
-            dottrace_run_id=""
           fi
 
           branch="${branch#refs/heads/}"
@@ -303,7 +288,6 @@ jobs:
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
-            echo "dottrace_run_id=${dottrace_run_id:-}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -2125,7 +2109,7 @@ jobs:
 
   generate-dottrace-reports:
     needs: [resolve, benchmark, benchmark-multi]
-    if: always() && needs.resolve.outputs.dottrace == 'true'
+    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.resolve.outputs.should_run == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -2135,8 +2119,6 @@ jobs:
           pattern: dottrace-*
           path: snapshots/
           merge-multiple: true
-          run-id: ${{ needs.resolve.outputs.dottrace_run_id || github.run_id }}
-          github-token: ${{ github.token }}
 
       - name: Install dotTrace Reporter
         shell: pwsh
