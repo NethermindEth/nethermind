@@ -108,16 +108,6 @@ jobs:
         with:
           fetch-depth: 100
 
-      # The action auto-restores .claude/ from the PR base branch (see
-      # anthropics/claude-code-action restore-config.ts SENSITIVE_PATHS) but
-      # does NOT touch .agents/. Our skills under .claude/skills/ symlink
-      # into .agents/skills/, so we must overlay .agents/ from master too —
-      # otherwise the symlinks dangle on PR branches that predate the skills.
-      - name: Overlay .agents from master
-        run: |
-          git fetch origin master --depth=1 --no-recurse-submodules
-          git checkout origin/master -- .agents || true
-
       # Review path: runs for auto-triggers and for @claude comments mentioning "review".
       # - `track_progress: true` renders the v0.x-style tracking comment with checkboxes.
       # - The prompt is fixed (overrides whatever the user wrote in the comment), so Claude
@@ -170,7 +160,7 @@ jobs:
             - `review` — deep Nethermind-flavored code review. Useful for non-trivial logic changes, new features, or subsystem refactors. Skip for pure docs/CI/comment-only diffs.
             - `resource-leak-audit` — IDisposable / CancellationTokenSource / ArrayPool / event-subscription / async-lifecycle audit. Use only when the diff touches resource management, disposal, or async coordination.
 
-            **If you decide to run a skill, you MUST dispatch it via the Agent tool in a subagent** — do NOT invoke the Skill tool directly in the main context. This keeps skill output isolated so you can merge findings deliberately.
+            **If you decide to run a skill, you MUST dispatch it via the Agent tool in a subagent, and the subagent MUST invoke the Skill tool.** Do not invoke Skill directly in the main context, and do not write a dispatch prompt that lets the subagent complete the task without calling Skill.
 
             After the subagent returns, merge its findings with your own and deduplicate by file:line before reporting.
 
@@ -186,7 +176,7 @@ jobs:
 
             Set `mergeable: false` in the structured output if any Critical, High, or Medium findings exist that have not been explicitly acknowledged with rationale in prior PR comments. Otherwise `mergeable: true`.
           claude_args: |
-            --model claude-opus-4-6
+            --model claude-sonnet-4-6
             --json-schema '{"type":"object","properties":{"mergeable":{"type":"boolean","description":"False if any Critical, High, or Medium findings remain unresolved and unexplained"},"critical_count":{"type":"integer"},"high_count":{"type":"integer"},"medium_count":{"type":"integer"},"summary":{"type":"string"}},"required":["mergeable","critical_count","high_count","medium_count","summary"]}'
 
       # Mention path: any other `@claude ...` interaction (no "review" keyword). No prompt
@@ -220,7 +210,7 @@ jobs:
               }
             }
           claude_args: |
-            --model claude-opus-4-6
+            --model claude-sonnet-4-6
 
       # After a successful review, read the structured verdict from the previous step and
       # post a commit status on the PR head SHA:
