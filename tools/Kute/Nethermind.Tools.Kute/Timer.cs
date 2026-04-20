@@ -9,25 +9,13 @@ public sealed class Timer
 {
     public TimeSpan Elapsed { get; private set; } = TimeSpan.Zero;
 
-    public IDisposable Time()
+    public IDisposable Time() => new Context(this);
+
+    private readonly struct Context(Timer timer) : IDisposable
     {
-        return new Context(this);
-    }
+        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+        private readonly Timer _timer = timer;
 
-    private readonly struct Context : IDisposable
-    {
-        private readonly Stopwatch _stopwatch;
-        private readonly Timer _timer;
-
-        public Context(Timer timer)
-        {
-            _stopwatch = Stopwatch.StartNew();
-            _timer = timer;
-        }
-
-        public void Dispose()
-        {
-            _timer.Elapsed += _stopwatch.Elapsed;
-        }
+        public void Dispose() => _timer.Elapsed += _stopwatch.Elapsed;
     }
 }

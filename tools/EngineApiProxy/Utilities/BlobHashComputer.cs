@@ -11,7 +11,7 @@ namespace Nethermind.EngineApiProxy.Utilities;
 /// <summary>
 /// Computes versioned hashes from KZG commitments for blob transactions (EIP-4844)
 /// </summary>
-public class BlobHashComputer
+public class BlobHashComputer(ILogManager logManager)
 {
     /// <summary>
     /// Size of a KZG commitment in bytes
@@ -28,12 +28,7 @@ public class BlobHashComputer
     /// </summary>
     public const byte KzgVersionByte = 0x01;
 
-    private readonly ILogger _logger;
-
-    public BlobHashComputer(ILogManager logManager)
-    {
-        _logger = logManager?.GetClassLogger<BlobHashComputer>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
+    private readonly ILogger _logger = logManager?.GetClassLogger<BlobHashComputer>() ?? throw new ArgumentNullException(nameof(logManager));
 
     /// <summary>
     /// Computes a versioned hash from a single KZG commitment.
@@ -84,7 +79,7 @@ public class BlobHashComputer
     /// <returns>A JArray of versioned hash hex strings</returns>
     public JArray ComputeVersionedHashes(JObject? blobsBundle)
     {
-        var result = new JArray();
+        JArray result = new();
 
         if (blobsBundle is null)
         {
@@ -92,7 +87,7 @@ public class BlobHashComputer
             return result;
         }
 
-        var commitments = blobsBundle["commitments"] as JArray;
+        JArray? commitments = blobsBundle["commitments"] as JArray;
         if (commitments is null || commitments.Count == 0)
         {
             _logger.Debug("No commitments in blobsBundle, returning empty versioned hashes array");
@@ -102,7 +97,7 @@ public class BlobHashComputer
         _logger.Info($"Processing block with {commitments.Count} blobs");
 
         int successCount = 0;
-        foreach (var commitment in commitments)
+        foreach (JToken commitment in commitments)
         {
             string? commitmentHex = commitment?.ToString();
             if (string.IsNullOrEmpty(commitmentHex))
@@ -137,7 +132,7 @@ public class BlobHashComputer
             return new JArray();
         }
 
-        var blobHashes = requestParams[1];
+        JToken? blobHashes = requestParams[1];
 
         // Handle null or JTokenType.Null
         if (blobHashes is null || blobHashes.Type == JTokenType.Null)

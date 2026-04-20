@@ -27,7 +27,7 @@ public class GetPayloadHandler(
         try
         {
             // Forward the request to EC
-            var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+            JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
             return response;
         }

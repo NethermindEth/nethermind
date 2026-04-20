@@ -24,8 +24,5 @@ public class T8nOutput
         ExitCode = exitCode;
     }
 
-    public bool IsEmpty()
-    {
-        return Result is null && Body is null && Alloc is null;
-    }
+    public bool IsEmpty() => Result is null && Body is null && Alloc is null;
 }

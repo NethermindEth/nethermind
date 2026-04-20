@@ -3,7 +3,6 @@
 
 using System.CommandLine;
 using Nethermind.EngineApiProxy.Config;
-using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using NLog;
 using NLog.Config;
@@ -16,65 +15,65 @@ public class Program
     public static async Task<int> Main(string[] args)
     {
         // Create command line options
-        var executionClientOption = new Option<string?>(
+        Option<string?> executionClientOption = new(
             name: "--ec-endpoint",
             description: "The URL of the execution client API endpoint");
         executionClientOption.AddAlias("-e");
 
-        var consensusClientOption = new Option<string?>(
+        Option<string?> consensusClientOption = new(
             name: "--cl-endpoint",
             description: "The URL of the consensus client API endpoint (optional)");
         consensusClientOption.AddAlias("-c");
 
-        var portOption = new Option<int>(
+        Option<int> portOption = new(
             name: "--port",
             description: "The port to listen for consensus client requests",
             getDefaultValue: () => 8551);
         portOption.AddAlias("-p");
 
-        var logLevelOption = new Option<string>(
+        Option<string> logLevelOption = new(
             name: "--log-level",
             description: "Log level (Trace, Debug, Info, Warn, Error)",
             getDefaultValue: () => "Info");
         logLevelOption.AddAlias("-l");
 
-        var logFileOption = new Option<string?>(
+        Option<string?> logFileOption = new(
             name: "--log-file",
             description: "Path to log file (if not specified, only console logging is used)",
             getDefaultValue: () => null);
 
-        var validateAllBlocksOption = new Option<bool>(
+        Option<bool> validateAllBlocksOption = new(
             name: "--validate-all-blocks",
             description: "Enable validation for all blocks, including those where CL doesn't request validation",
             getDefaultValue: () => false);
 
-        var feeRecipientOption = new Option<string>(
+        Option<string> feeRecipientOption = new(
             name: "--fee-recipient",
             description: "Default fee recipient address for generated payload attributes",
             getDefaultValue: () => "0x8943545177806ed17b9f23f0a21ee5948ecaa776");
 
-        var validationModeOption = new Option<ValidationMode>(
+        Option<ValidationMode> validationModeOption = new(
             name: "--validation-mode",
             description: "Mode for block validation (ForkChoiceUpdated, NewPayload, Merged, or Lighthouse)",
             getDefaultValue: () => ValidationMode.Lighthouse);
 
-        var requestTimeoutOption = new Option<int>(
+        Option<int> requestTimeoutOption = new(
             name: "--request-timeout",
             description: "Timeout in seconds for HTTP requests to EL/CL clients",
             getDefaultValue: () => 60);
 
-        var getPayloadMethodOption = new Option<string>(
+        Option<string> getPayloadMethodOption = new(
             name: "--get-payload-method",
             description: "Engine API method to use when getting payloads for validation (e.g., engine_getPayloadV3, engine_getPayloadV4)",
             getDefaultValue: () => "engine_getPayloadV4");
 
-        var newPayloadMethodOption = new Option<string>(
+        Option<string> newPayloadMethodOption = new(
             name: "--new-payload-method",
             description: "Engine API method to use when sending new payloads for validation (e.g., engine_newPayloadV3, engine_newPayloadV4)",
             getDefaultValue: () => "engine_newPayloadV4");
 
         // Create root command with options
-        var rootCommand = new RootCommand("Nethermind Engine API Proxy");
+        RootCommand rootCommand = new("Nethermind Engine API Proxy");
         rootCommand.AddOption(executionClientOption);
         rootCommand.AddOption(consensusClientOption);
         rootCommand.AddOption(portOption);
@@ -91,27 +90,27 @@ public class Program
         {
             try
             {
-                var ecEndpoint = context.ParseResult.GetValueForOption(executionClientOption);
-                var clEndpoint = context.ParseResult.GetValueForOption(consensusClientOption);
-                var port = context.ParseResult.GetValueForOption(portOption);
-                var logLevel = context.ParseResult.GetValueForOption(logLevelOption) ?? "Info";
-                var logFile = context.ParseResult.GetValueForOption(logFileOption);
-                var validateAllBlocks = context.ParseResult.GetValueForOption(validateAllBlocksOption);
-                var feeRecipient = context.ParseResult.GetValueForOption(feeRecipientOption) ?? "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
-                var validationMode = context.ParseResult.GetValueForOption(validationModeOption);
-                var requestTimeout = context.ParseResult.GetValueForOption(requestTimeoutOption);
-                var getPayloadMethod = context.ParseResult.GetValueForOption(getPayloadMethodOption) ?? "engine_getPayloadV4";
-                var newPayloadMethod = context.ParseResult.GetValueForOption(newPayloadMethodOption) ?? "engine_newPayloadV4";
+                string? ecEndpoint = context.ParseResult.GetValueForOption(executionClientOption);
+                string? clEndpoint = context.ParseResult.GetValueForOption(consensusClientOption);
+                int port = context.ParseResult.GetValueForOption(portOption);
+                string logLevel = context.ParseResult.GetValueForOption(logLevelOption) ?? "Info";
+                string? logFile = context.ParseResult.GetValueForOption(logFileOption);
+                bool validateAllBlocks = context.ParseResult.GetValueForOption(validateAllBlocksOption);
+                string feeRecipient = context.ParseResult.GetValueForOption(feeRecipientOption) ?? "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
+                ValidationMode validationMode = context.ParseResult.GetValueForOption(validationModeOption);
+                int requestTimeout = context.ParseResult.GetValueForOption(requestTimeoutOption);
+                string getPayloadMethod = context.ParseResult.GetValueForOption(getPayloadMethodOption) ?? "engine_getPayloadV4";
+                string newPayloadMethod = context.ParseResult.GetValueForOption(newPayloadMethodOption) ?? "engine_newPayloadV4";
 
                 // Configure logging
-                var logManager = new NLogManager();
+                NLogManager logManager = new();
 
                 // Ensure all logs appear in console output
                 ConfigureConsoleLogging(logLevel);
 
                 logManager.SetGlobalVariable("logLevel", logLevel);
 
-                var logger = logManager.GetClassLogger<Program>();
+                Logging.ILogger logger = logManager.GetClassLogger<Program>();
 
                 // Configure file logging only if log file is specified
                 if (!string.IsNullOrWhiteSpace(logFile))
@@ -143,7 +142,7 @@ public class Program
                 }
 
                 // Create and configure proxy
-                var config = new ProxyConfig
+                ProxyConfig config = new()
                 {
                     ExecutionClientEndpoint = ecEndpoint,
                     ConsensusClientEndpoint = clEndpoint,
@@ -161,11 +160,11 @@ public class Program
                 logger.Info($"Starting Engine API Proxy with configuration: {config}");
 
                 // Create and start proxy
-                var proxy = new ProxyServer(config, logManager);
+                ProxyServer proxy = new(config, logManager);
                 await proxy.StartAsync();
 
                 // Wait for Ctrl+C
-                var cancellationTokenSource = new CancellationTokenSource();
+                CancellationTokenSource cancellationTokenSource = new();
                 Console.CancelKeyPress += (sender, e) =>
                 {
                     e.Cancel = true;
@@ -197,10 +196,10 @@ public class Program
     private static void ConfigureConsoleLogging(string logLevel)
     {
         // Access NLog's configuration
-        var config = LogManager.Configuration ?? new LoggingConfiguration();
+        LoggingConfiguration config = LogManager.Configuration ?? new LoggingConfiguration();
 
         // Create console target
-        var consoleTarget = new ColoredConsoleTarget("console")
+        ColoredConsoleTarget consoleTarget = new("console")
         {
             Layout = "${longdate}|${level:uppercase=true}|${message} ${exception:format=tostring}"
         };
@@ -209,8 +208,8 @@ public class Program
         config.AddTarget(consoleTarget);
 
         // Add rule for console target with specified log level
-        var level = NLog.LogLevel.FromString(logLevel);
-        var rule = new LoggingRule("*", level, consoleTarget);
+        NLog.LogLevel level = NLog.LogLevel.FromString(logLevel);
+        LoggingRule rule = new("*", level, consoleTarget);
         config.LoggingRules.Add(rule);
 
         // Apply configuration
@@ -220,10 +219,10 @@ public class Program
     private static void ConfigureFileLogging(string logDirectory, string logFileName, string logLevel)
     {
         // Access NLog's configuration
-        var config = LogManager.Configuration ?? new LoggingConfiguration();
+        LoggingConfiguration config = LogManager.Configuration ?? new LoggingConfiguration();
 
         // Create file target with JSON format
-        var fileTarget = new FileTarget("file")
+        FileTarget fileTarget = new("file")
         {
             FileName = Path.Combine(logDirectory, logFileName),
             Layout = "${longdate}|${level:uppercase=true}|${logger}|${message} ${exception:format=tostring}",
@@ -238,8 +237,8 @@ public class Program
         config.AddTarget(fileTarget);
 
         // Add rule for file target with specified log level
-        var level = NLog.LogLevel.FromString(logLevel);
-        var rule = new LoggingRule("*", level, fileTarget);
+        NLog.LogLevel level = NLog.LogLevel.FromString(logLevel);
+        LoggingRule rule = new("*", level, fileTarget);
         config.LoggingRules.Add(rule);
 
         // Apply configuration

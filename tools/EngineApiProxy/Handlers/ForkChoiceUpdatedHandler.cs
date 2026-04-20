@@ -49,17 +49,14 @@ public class ForkChoiceUpdatedHandler : IDisposable
         _cacheCleanupTimer = new System.Threading.Timer(CleanupExpiredCacheEntries, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
-    public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
+    public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request) => _config.ValidationMode switch
     {
-        return _config.ValidationMode switch
-        {
-            ValidationMode.NewPayload => await HandleNewPayloadMode(request),
-            ValidationMode.Merged => await HandleMergedMode(request),
-            ValidationMode.Lighthouse => await HandleLighthouseMode(request),
-            ValidationMode.ForkChoiceUpdated => await HandleForkChoiceUpdatedMode(request),
-            _ => await HandleForkChoiceUpdatedMode(request)
-        };
-    }
+        ValidationMode.NewPayload => await HandleNewPayloadMode(request),
+        ValidationMode.Merged => await HandleMergedMode(request),
+        ValidationMode.Lighthouse => await HandleLighthouseMode(request),
+        ValidationMode.ForkChoiceUpdated => await HandleForkChoiceUpdatedMode(request),
+        _ => await HandleForkChoiceUpdatedMode(request)
+    };
 
     private async Task<JsonRpcResponse> HandleNewPayloadMode(JsonRpcRequest request)
     {
@@ -214,7 +211,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
 
     private async Task<JsonRpcResponse> ProcessWithoutValidation(JsonRpcRequest request)
     {
-        var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+        JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
         // If response contains payloadId, store it for tracking
         if (response.Result is JObject resultObj &&
@@ -229,7 +226,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
 
             if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
             {
-                var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                Hash256 headBlockHash = new(Bytes.FromHexString(headBlockHashStr));
                 _payloadTracker.TrackPayload(headBlockHash, payloadId);
                 _logger.Debug($"Tracked payloadId {payloadId} for head block {headBlockHash}");
             }
@@ -267,12 +264,12 @@ public class ForkChoiceUpdatedHandler : IDisposable
             {
                 _logger.Info($"Merged validation flow successfully got payloadId {payloadId}");
                 // Track this payload ID with the hash so it can be found later
-                var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                Hash256 headBlockHash = new(Bytes.FromHexString(headBlockHashStr));
                 _payloadTracker.TrackPayload(headBlockHash, payloadId);
             }
 
             // 2. Create a response without payloadId to return to CL
-            var response = new JsonRpcResponse
+            JsonRpcResponse response = new()
             {
                 Id = request.Id,
                 Result = new JObject
@@ -315,16 +312,16 @@ public class ForkChoiceUpdatedHandler : IDisposable
                 string requestFingerprint = ComputeRequestFingerprint(request);
 
                 // Check if we've seen this exact request recently
-                if (_lhResponseCache.TryGetValue(requestFingerprint, out var cachedResponse))
+                if (_lhResponseCache.TryGetValue(requestFingerprint, out JsonRpcResponse? cachedResponse))
                 {
-                    if (_lhCacheTimestamps.TryGetValue(requestFingerprint, out var timestamp))
+                    if (_lhCacheTimestamps.TryGetValue(requestFingerprint, out DateTime timestamp))
                     {
                         if (DateTime.UtcNow - timestamp < _lhCacheExpiryTime)
                         {
                             _logger.Info($"LH mode: Duplicate FCU request detected (fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}...), returning cached response to CL");
 
                             // Update ID to match the current request
-                            var clonedResponse = CloneResponseWithNewId(cachedResponse, request.Id);
+                            JsonRpcResponse clonedResponse = CloneResponseWithNewId(cachedResponse, request.Id);
                             return clonedResponse;
                         }
                         else
@@ -357,7 +354,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                 {
                     try
                     {
-                        var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                        Hash256 headBlockHash = new(Bytes.FromHexString(headBlockHashStr));
                         _payloadTracker.AssociateParentBeaconBlockRoot(headBlockHash, extractedParentBeaconBlockRoot);
                         _logger.Debug($"Pre-emptively stored parentBeaconBlockRoot {extractedParentBeaconBlockRoot} for head block {headBlockHash}");
                     }
@@ -368,7 +365,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                 }
 
                 // Forward the original request to EL
-                var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+                JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
                 // If response contains payloadId, store it for tracking
                 if (response.Result is JObject resultObj &&
@@ -379,7 +376,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                     if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
                     {
                         // Track this payload ID with the hash so it can be found later
-                        var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                        Hash256 headBlockHash = new(Bytes.FromHexString(headBlockHashStr));
 
                         // Extract parent beacon block root if available in request
                         string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
@@ -423,7 +420,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                 _logger.Info("LH mode: FCU request without payload attributes, forwarding normally. This usually means the node is not synced yet.");
 
                 // Forward the original request to EL
-                var response = await _requestForwarder.ForwardRequestToExecutionClient(request);
+                JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
                 // Process response normally
                 if (response.Result is JObject resultObj &&
@@ -439,7 +436,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                     if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
                     {
                         // Track this payload ID with the hash so it can be found later
-                        var headBlockHash = new Hash256(Bytes.FromHexString(headBlockHashStr));
+                        Hash256 headBlockHash = new(Bytes.FromHexString(headBlockHashStr));
 
                         // Extract parent beacon block root if available in request
                         string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
@@ -481,26 +478,23 @@ public class ForkChoiceUpdatedHandler : IDisposable
     /// <summary>
     /// Creates a clone of a response with a new ID to match the current request
     /// </summary>
-    private static JsonRpcResponse CloneResponseWithNewId(JsonRpcResponse response, object? newId)
+    private static JsonRpcResponse CloneResponseWithNewId(JsonRpcResponse response, object? newId) => new()
     {
-        return new JsonRpcResponse
-        {
-            Id = newId,
-            Result = response.Result is not null
-                ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Result))
-                : null,
-            Error = response.Error is not null
-                ? new JsonRpcError
-                {
-                    Code = response.Error.Code,
-                    Message = response.Error.Message,
-                    Data = response.Error.Data is not null
-                        ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Error.Data))
-                        : null
-                }
-                : null
-        };
-    }
+        Id = newId,
+        Result = response.Result is not null
+            ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Result))
+            : null,
+        Error = response.Error is not null
+            ? new JsonRpcError
+            {
+                Code = response.Error.Code,
+                Message = response.Error.Message,
+                Data = response.Error.Data is not null
+                    ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Error.Data))
+                    : null
+            }
+            : null
+    };
 
     private static string ExtractHeadBlockHash(JsonRpcRequest request)
     {
@@ -535,7 +529,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         try
         {
             int removedCount = 0;
-            var now = DateTime.UtcNow;
+            DateTime now = DateTime.UtcNow;
 
             // Find and remove expired entries
             List<string> expiredKeys = new();

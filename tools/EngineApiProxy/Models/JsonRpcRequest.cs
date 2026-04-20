@@ -34,8 +34,5 @@ public class JsonRpcRequest
         Id = id;
     }
 
-    public override string ToString()
-    {
-        return $"{{method: {Method}, id: {Id}, params: {Params?.ToString() ?? "null"}}}";
-    }
+    public override string ToString() => $"{{method: {Method}, id: {Id}, params: {Params?.ToString() ?? "null"}}}";
 }

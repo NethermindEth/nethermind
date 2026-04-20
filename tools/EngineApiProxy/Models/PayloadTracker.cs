@@ -76,7 +76,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="headBlockHash">The hash of the head block</param>
     /// <returns>The associated Payload ID or null if not found</returns>
     public string? GetPayloadId(Hash256 headBlockHash)
-        => _headBlockToPayloadId.TryGetValue(headBlockHash, out var payloadId) ? payloadId : null;
+        => _headBlockToPayloadId.TryGetValue(headBlockHash, out string? payloadId) ? payloadId : null;
 
     /// <summary>
     /// Tries to get the Payload ID associated with a head block hash
@@ -100,7 +100,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="payloadId">The Payload ID</param>
     /// <returns>The associated head block hash or null if not found</returns>
     public Hash256? GetHeadBlock(string payloadId)
-        => _payloadIdToHeadBlock.TryGetValue(payloadId, out var headBlockHash) ? headBlockHash : null;
+        => _payloadIdToHeadBlock.TryGetValue(payloadId, out Hash256? headBlockHash) ? headBlockHash : null;
 
     /// <summary>
     /// Removes a Payload ID and its associated head block hash from tracking
@@ -108,7 +108,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="payloadId">The Payload ID to remove</param>
     public void RemovePayload(string payloadId)
     {
-        if (_payloadIdToHeadBlock.TryRemove(payloadId, out var headBlockHash))
+        if (_payloadIdToHeadBlock.TryRemove(payloadId, out Hash256? headBlockHash))
         {
             _headBlockToPayloadId.TryRemove(headBlockHash, out _);
             _logger.Debug($"Removed tracking for payload {payloadId}");
@@ -121,7 +121,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="headBlockHash">The head block hash to remove</param>
     public void RemoveHeadBlock(Hash256 headBlockHash)
     {
-        if (_headBlockToPayloadId.TryRemove(headBlockHash, out var payloadId))
+        if (_headBlockToPayloadId.TryRemove(headBlockHash, out string? payloadId))
         {
             _payloadIdToHeadBlock.TryRemove(payloadId, out _);
 
@@ -186,7 +186,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="headBlockHash">The hash of the head block</param>
     /// <returns>The associated parent beacon block root or null if not found</returns>
     public string? GetParentBeaconBlockRoot(Hash256 headBlockHash)
-        => _headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out var parentBeaconBlockRoot) ? parentBeaconBlockRoot : null;
+        => _headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out string? parentBeaconBlockRoot) ? parentBeaconBlockRoot : null;
 
     /// <summary>
     /// Associates a parent beacon block root with a head block hash
@@ -229,7 +229,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="headBlockHash">The hash of the head block</param>
     /// <returns>The associated blob versioned hashes or null if not found</returns>
     public string[]? GetBlobVersionedHashes(Hash256 headBlockHash)
-        => _headBlockToBlobVersionedHashes.TryGetValue(headBlockHash, out var blobVersionedHashes) ? blobVersionedHashes : null;
+        => _headBlockToBlobVersionedHashes.TryGetValue(headBlockHash, out string[]? blobVersionedHashes) ? blobVersionedHashes : null;
 
     /// <summary>
     /// Tries to get the blob versioned hashes associated with a head block hash

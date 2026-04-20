@@ -72,7 +72,7 @@ public class RequestOrchestrator(
         {
             // Check if Authorization header is present in original request
             if (originalRequest.OriginalHeaders is not null &&
-                originalRequest.OriginalHeaders.TryGetValue("Authorization", out var authHeader))
+                originalRequest.OriginalHeaders.TryGetValue("Authorization", out string? authHeader))
             {
                 _logger.Debug($"Original request contains Authorization header: {authHeader.Substring(0, Math.Min(10, authHeader.Length))}...");
             }
@@ -84,7 +84,7 @@ public class RequestOrchestrator(
             // Check if DefaultRequestHeaders has Authorization
             if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
             {
-                var authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                string? authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
                 _logger.Debug($"HttpClient DefaultRequestHeaders contains Authorization: {authHeaderValue?.Substring(0, Math.Min(10, authHeaderValue?.Length ?? 0))}...");
             }
             else
@@ -100,12 +100,12 @@ public class RequestOrchestrator(
                 return string.Empty;
             }
 
-            JObject payloadAttributes = new JObject();
+            JObject payloadAttributes = new();
 
             // Original behavior for non-LH modes
             if (!fromCL)
             {
-                var blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
+                JObject? blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
                 if (blockData is null)
                 {
                     _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
@@ -118,7 +118,7 @@ public class RequestOrchestrator(
             else
             {
                 // Get the head block data
-                var beaconBlockHeader = await _blockFetcher.GetBeaconBlockHeader();
+                JObject? beaconBlockHeader = await _blockFetcher.GetBeaconBlockHeader();
                 if (beaconBlockHeader is null)
                 {
                     _logger.Warn("Failed to fetch beacon block header");
@@ -126,7 +126,7 @@ public class RequestOrchestrator(
                 }
                 headBlockHash = beaconBlockHeader["data"]?["root"]?.ToString() ?? string.Empty;
 
-                var blockData = await _blockFetcher.GetBeaconBlock(headBlockHash);
+                JObject? blockData = await _blockFetcher.GetBeaconBlock(headBlockHash);
                 if (blockData is null)
                 {
                     _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
@@ -134,7 +134,7 @@ public class RequestOrchestrator(
                 }
                 else
                 {
-                    var payload = blockData["data"]?["message"]?["body"]?["execution_payload"]?.ToObject<JObject>();
+                    JObject? payload = blockData["data"]?["message"]?["body"]?["execution_payload"]?.ToObject<JObject>();
                     if (payload is null)
                     {
                         _logger.Warn($"Failed to fetch payload for hash: {headBlockHash}");
@@ -149,7 +149,7 @@ public class RequestOrchestrator(
             }
 
             // 3. Clone the request and add payload attributes
-            var modifiedRequest = CloneRequest(originalRequest);
+            JsonRpcRequest modifiedRequest = CloneRequest(originalRequest);
             modifiedRequest.Params ??= [];
 
             // Make sure we explicitly copy the originalRequest headers to ensure auth is preserved
@@ -180,7 +180,7 @@ public class RequestOrchestrator(
 
             // 4. Send modified FCU to execution client
             _logger.Debug($"Sending modified FCU with payload attributes: {modifiedRequest}");
-            var fcuResponse = await SendJsonRpcRequest(modifiedRequest);
+            JsonRpcResponse fcuResponse = await SendJsonRpcRequest(modifiedRequest);
 
             // 5. Extract payload ID from response
             if (fcuResponse.Result is JObject resultObj && resultObj["payloadId"] is not null)
@@ -231,7 +231,7 @@ public class RequestOrchestrator(
         try
         {
             // Get payload ID from the tracking system
-            var headBlock = _payloadTracker.GetHeadBlock(payloadId);
+            Hash256? headBlock = _payloadTracker.GetHeadBlock(payloadId);
             if (headBlock is null)
             {
                 _logger.Error($"No head block found for payloadId {payloadId}");
@@ -242,7 +242,7 @@ public class RequestOrchestrator(
             await Task.Delay(500);
 
             // Get the payload and process it, passing along the parentBeaconBlockRoot
-            var response = await GetAndProcessPayload(payloadId, headBlock, parentBeaconBlockRoot);
+            JsonRpcResponse response = await GetAndProcessPayload(payloadId, headBlock, parentBeaconBlockRoot);
 
             // Check if the response indicates success
             if (response.Error is not null)
@@ -294,7 +294,7 @@ public class RequestOrchestrator(
             }
 
             // Create getPayload request
-            var getPayloadRequest = new JsonRpcRequest(
+            JsonRpcRequest getPayloadRequest = new(
                 _config.GetPayloadMethod,
                 new JArray(payloadId),
                 Guid.NewGuid().ToString());
@@ -302,7 +302,7 @@ public class RequestOrchestrator(
             // Make sure any authorization headers from HttpClient are included
             if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
             {
-                var authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                string? authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
                 if (!string.IsNullOrEmpty(authHeaderValue))
                 {
                     getPayloadRequest.OriginalHeaders = new Dictionary<string, string>
@@ -314,7 +314,7 @@ public class RequestOrchestrator(
             }
 
             // Send request to get the payload
-            var payloadResponse = await SendJsonRpcRequest(getPayloadRequest);
+            JsonRpcResponse payloadResponse = await SendJsonRpcRequest(getPayloadRequest);
 
             // Check for error in response
             if (payloadResponse.Error is not null)
@@ -334,7 +334,7 @@ public class RequestOrchestrator(
                 try
                 {
                     // Extract blobsBundle and compute versioned hashes
-                    var blobsBundle = payload["blobsBundle"] as JObject;
+                    JObject? blobsBundle = payload["blobsBundle"] as JObject;
                     JArray blobVersionedHashes = _blobHashComputer.ComputeVersionedHashes(blobsBundle);
 
                     // Store blob versioned hashes in tracker for this head block
@@ -347,12 +347,12 @@ public class RequestOrchestrator(
 
                     // Create newPayload request from the payload
                     _logger.Info($"Creating newPayload request from payload with parentBeaconBlockRoot: {parentBeaconBlockRoot}");
-                    var newPayloadRequest = CreateNewPayloadRequest(payload, parentBeaconBlockRoot, blobVersionedHashes);
+                    JsonRpcRequest newPayloadRequest = CreateNewPayloadRequest(payload, parentBeaconBlockRoot, blobVersionedHashes);
 
                     // Copy auth headers to new request too
                     if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
                     {
-                        var authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                        string? authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
                         if (!string.IsNullOrEmpty(authHeaderValue))
                         {
                             newPayloadRequest.OriginalHeaders = new Dictionary<string, string>
@@ -365,7 +365,7 @@ public class RequestOrchestrator(
 
                     // Send newPayload request
                     _logger.Debug($"Sending synthetic newPayload request: {newPayloadRequest}");
-                    var newPayloadResponse = await SendJsonRpcRequest(newPayloadRequest);
+                    JsonRpcResponse newPayloadResponse = await SendJsonRpcRequest(newPayloadRequest);
 
                     // Check if newPayload resulted in an error
                     if (newPayloadResponse.Error is not null)
@@ -414,7 +414,7 @@ public class RequestOrchestrator(
         try
         {
             // Extract the executionPayload from the response
-            var executionPayload = payload["executionPayload"] ?? payload;
+            JToken executionPayload = payload["executionPayload"] ?? payload;
 
             // Use provided blobVersionedHashes or empty array
             blobVersionedHashes ??= new JArray();
@@ -431,10 +431,10 @@ public class RequestOrchestrator(
                     try
                     {
                         // Try to get the parentBeaconBlockRoot from the PayloadTracker
-                        var hash = new Hash256(Bytes.FromHexString(blockHash));
+                        Hash256 hash = new(Bytes.FromHexString(blockHash));
 
                         // First try the fast-path TryGet method to avoid multiple lookups
-                        if (_payloadTracker.TryGetParentBeaconBlockRoot(hash, out var trackedParentBeaconBlockRoot) &&
+                        if (_payloadTracker.TryGetParentBeaconBlockRoot(hash, out string? trackedParentBeaconBlockRoot) &&
                             !string.IsNullOrEmpty(trackedParentBeaconBlockRoot))
                         {
                             parentBeaconBlockRoot = trackedParentBeaconBlockRoot;
@@ -464,7 +464,7 @@ public class RequestOrchestrator(
             }
 
             // Create the parameter array for the newPayload request
-            var parameters = new JArray
+            JArray parameters = new()
             {
                 executionPayload,          // First parameter: executionPayload
                 blobVersionedHashes,       // Second parameter: blobVersionedHashes
@@ -497,14 +497,14 @@ public class RequestOrchestrator(
         try
         {
             // Serialize request
-            var requestJson = JsonConvert.SerializeObject(request);
+            string requestJson = JsonConvert.SerializeObject(request);
             string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
             _logger.Debug($"Forwarding validation request to EL at: {targetHost}");
             _logger.Info($"PR -> EL|{request.Method}|V|{requestJson}");
-            var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+            StringContent httpContent = new(requestJson, Encoding.UTF8, "application/json");
 
             // Create a request message instead of using PostAsync
-            var requestMessage = new HttpRequestMessage(HttpMethod.Post, "")
+            HttpRequestMessage requestMessage = new(HttpMethod.Post, "")
             {
                 Content = httpContent
             };
@@ -513,7 +513,7 @@ public class RequestOrchestrator(
 
             // First, check if the request already has an Authorization header
             if (request.OriginalHeaders is not null &&
-                request.OriginalHeaders.TryGetValue("Authorization", out var requestAuthHeader) &&
+                request.OriginalHeaders.TryGetValue("Authorization", out string? requestAuthHeader) &&
                 !string.IsNullOrEmpty(requestAuthHeader))
             {
                 requestMessage.Headers.TryAddWithoutValidation("Authorization", requestAuthHeader);
@@ -524,7 +524,7 @@ public class RequestOrchestrator(
             // Next, try to get the Authorization header from the HttpClient's default headers
             if (!authHeaderAdded && _httpClient.DefaultRequestHeaders.Contains("Authorization"))
             {
-                var httpClientAuthHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                string? httpClientAuthHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
                 if (!string.IsNullOrEmpty(httpClientAuthHeader))
                 {
                     requestMessage.Headers.TryAddWithoutValidation("Authorization", httpClientAuthHeader);
@@ -536,7 +536,7 @@ public class RequestOrchestrator(
             // Then, copy any remaining original headers if present
             if (request.OriginalHeaders is not null)
             {
-                foreach (var header in request.OriginalHeaders)
+                foreach (KeyValuePair<string, string> header in request.OriginalHeaders)
                 {
                     // Skip content-related headers and the Authorization header we already added
                     if (!header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase) &&
@@ -554,10 +554,10 @@ public class RequestOrchestrator(
 
             // Send request
             _logger.Debug($"Sending request with method: {request.Method}, HasAuth: {authHeaderAdded}, Target: {targetHost}");
-            var response = await _httpClient.SendAsync(requestMessage);
+            HttpResponseMessage response = await _httpClient.SendAsync(requestMessage);
             if (!response.IsSuccessStatusCode)
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
+                string errorContent = await response.Content.ReadAsStringAsync();
                 _logger.Error($"HTTP request failed with status code: {response.StatusCode}, Content: {errorContent}");
 
                 // Return an error response instead of throwing in tests
@@ -565,13 +565,13 @@ public class RequestOrchestrator(
             }
 
             // Parse response
-            var responseJson = await response.Content.ReadAsStringAsync();
+            string responseJson = await response.Content.ReadAsStringAsync();
             _logger.Debug($"Received response from EL at: {targetHost}");
             _logger.Info($"EL -> PR|{request.Method}|V|{responseJson}");
 
             try
             {
-                var jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
+                JsonRpcResponse? jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
                 if (jsonRpcResponse is null)
                 {
                     _logger.Error($"Failed to deserialize JSON-RPC response: {responseJson}");
@@ -608,18 +608,15 @@ public class RequestOrchestrator(
     /// </summary>
     /// <param name="request">The request to clone</param>
     /// <returns>A clone of the request</returns>
-    private static JsonRpcRequest CloneRequest(JsonRpcRequest request)
-    {
-        return new JsonRpcRequest(
+    private static JsonRpcRequest CloneRequest(JsonRpcRequest request) => new(
             request.Method,
             request.Params?.DeepClone() as JArray,
             request.Id)
-        {
-            OriginalHeaders = request.OriginalHeaders is not null
+    {
+        OriginalHeaders = request.OriginalHeaders is not null
                 ? new Dictionary<string, string>(request.OriginalHeaders)
                 : null
-        };
-    }
+    };
 
     /// <summary>
     /// Checks if the execution payload for the given payloadId matches the expected block hash
@@ -635,7 +632,7 @@ public class RequestOrchestrator(
         try
         {
             // Get the head block hash from the payload tracker
-            var headBlock = _payloadTracker.GetHeadBlock(payloadId);
+            Hash256? headBlock = _payloadTracker.GetHeadBlock(payloadId);
             if (headBlock is null)
             {
                 _logger.Error($"No head block found for payloadId {payloadId}");
@@ -643,12 +640,12 @@ public class RequestOrchestrator(
             }
 
             // Get the payload using the existing method
-            var payloadResponse = await GetAndProcessPayload(payloadId, headBlock);
+            JsonRpcResponse payloadResponse = await GetAndProcessPayload(payloadId, headBlock);
 
             // Extract the block hash from the response
             if (payloadResponse.Result is JObject payload)
             {
-                var executionPayload = payload["executionPayload"]?.ToObject<JObject>();
+                JObject? executionPayload = payload["executionPayload"]?.ToObject<JObject>();
                 if (executionPayload is not null)
                 {
                     string? synthBlockHash = executionPayload["blockHash"]?.ToString();

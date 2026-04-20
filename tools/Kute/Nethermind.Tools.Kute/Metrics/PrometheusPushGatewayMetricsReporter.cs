@@ -30,8 +30,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         string? user,
         string? password)
     {
-        var registry = new CollectorRegistry();
-        var factory = new MetricFactory(registry);
+        CollectorRegistry registry = new();
+        MetricFactory factory = new(registry);
 
         _messageCounter = factory.CreateCounter(GetMetricName("messages_total"), "");
         _succeededCounter = factory.CreateCounter(GetMetricName("messages_succeeded"), "");
@@ -44,7 +44,7 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         string instanceLabel = labels.TryGetValue("instance", out string? instance) ? instance : Guid.NewGuid().ToString();
         labels.Remove("instance");
 
-        var httpClient = new HttpClient();
+        HttpClient httpClient = new();
         if (user is not null && password is not null)
         {
             string authParameter = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));

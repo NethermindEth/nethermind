@@ -41,17 +41,17 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
         try
         {
             // Create JSON-RPC request
-            var request = new JsonRpcRequest(
+            JsonRpcRequest request = new(
                 "eth_getBlockByHash",
                 [blockHash, true], // Include transaction objects
                 Guid.NewGuid().ToString());
 
             // Send request to EC
-            var requestJson = JsonConvert.SerializeObject(request);
-            var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+            string requestJson = JsonConvert.SerializeObject(request);
+            StringContent httpContent = new(requestJson, Encoding.UTF8, "application/json");
 
             // Create a request message instead of using PostAsync directly
-            var requestMessage = new HttpRequestMessage(HttpMethod.Post, "")
+            HttpRequestMessage requestMessage = new(HttpMethod.Post, "")
             {
                 Content = httpContent
             };
@@ -61,7 +61,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
             // Copy all authorization headers from the HttpClient
             if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
             {
-                var authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                string? authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
                 if (!string.IsNullOrEmpty(authHeader))
                 {
                     _logger.Debug($"Adding Authorization header to block data fetch request for hash: {blockHash}");
@@ -77,16 +77,16 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
 
             _logger.Debug($"Sending block data fetch request with Authorization header: {authHeaderAdded}");
             _logger.Debug($"PR -> EL|{request.Method}|V|{requestJson}");
-            var response = await _httpClient.SendAsync(requestMessage);
+            HttpResponseMessage response = await _httpClient.SendAsync(requestMessage);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.Error($"Failed to get block data. Status: {response.StatusCode}");
                 return null;
             }
 
-            var responseJson = await response.Content.ReadAsStringAsync();
+            string responseJson = await response.Content.ReadAsStringAsync();
             _logger.Debug($"EL -> PR|{request.Method}|V|{responseJson}");
-            var jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
+            JsonRpcResponse? jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
 
             if (jsonResponse?.Result is JObject blockData)
             {
@@ -115,17 +115,17 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
         try
         {
             // Create JSON-RPC request
-            var request = new JsonRpcRequest(
+            JsonRpcRequest request = new(
                 "eth_getBlockByNumber",
                 ["latest", true], // Include transaction objects
                 Guid.NewGuid().ToString());
 
             // Send request to EC
-            var requestJson = JsonConvert.SerializeObject(request);
-            var httpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+            string requestJson = JsonConvert.SerializeObject(request);
+            StringContent httpContent = new(requestJson, Encoding.UTF8, "application/json");
 
             // Create a request message instead of using PostAsync directly
-            var requestMessage = new HttpRequestMessage(HttpMethod.Post, "")
+            HttpRequestMessage requestMessage = new(HttpMethod.Post, "")
             {
                 Content = httpContent
             };
@@ -135,7 +135,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
             // Copy all authorization headers from the HttpClient
             if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
             {
-                var authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
+                string? authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
                 if (!string.IsNullOrEmpty(authHeader))
                 {
                     _logger.Debug("Adding Authorization header to latest block fetch request");
@@ -150,15 +150,15 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
             }
 
             _logger.Debug($"Sending latest block fetch request with Authorization header: {authHeaderAdded}");
-            var response = await _httpClient.SendAsync(requestMessage);
+            HttpResponseMessage response = await _httpClient.SendAsync(requestMessage);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.Error($"Failed to get latest block data. Status: {response.StatusCode}");
                 return null;
             }
 
-            var responseJson = await response.Content.ReadAsStringAsync();
-            var jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
+            string responseJson = await response.Content.ReadAsStringAsync();
+            JsonRpcResponse? jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
 
             if (jsonResponse?.Result is JObject blockData)
             {
@@ -193,20 +193,20 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
 
         try
         {
-            var requestMessage = new HttpRequestMessage(HttpMethod.Get, "/eth/v1/beacon/headers/head");
+            HttpRequestMessage requestMessage = new(HttpMethod.Get, "/eth/v1/beacon/headers/head");
 
             _logger.Info("PR -> CL|B|/eth/v1/beacon/headers/head");
-            var response = await _consensusClient.SendAsync(requestMessage);
+            HttpResponseMessage response = await _consensusClient.SendAsync(requestMessage);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.Error($"Failed to get beacon block header. Status: {response.StatusCode}");
                 return null;
             }
 
-            var responseJson = await response.Content.ReadAsStringAsync();
+            string responseJson = await response.Content.ReadAsStringAsync();
             _logger.Info($"CL -> PR|B|/eth/v1/beacon/headers/head|{responseJson}");
 
-            var responseObj = JObject.Parse(responseJson);
+            JObject responseObj = JObject.Parse(responseJson);
             _logger.Debug("Successfully received head beacon block header");
 
             return responseObj;
@@ -235,20 +235,20 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
 
         try
         {
-            var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"/eth/v1/beacon/blocks/{blockId}");
+            HttpRequestMessage requestMessage = new(HttpMethod.Get, $"/eth/v1/beacon/blocks/{blockId}");
 
             _logger.Info($"PR -> CL|B|/eth/v1/beacon/blocks/{blockId}");
-            var response = await _consensusClient.SendAsync(requestMessage);
+            HttpResponseMessage response = await _consensusClient.SendAsync(requestMessage);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.Error($"Failed to get beacon block. Status: {response.StatusCode}");
                 return null;
             }
 
-            var responseJson = await response.Content.ReadAsStringAsync();
+            string responseJson = await response.Content.ReadAsStringAsync();
             _logger.Info($"CL -> PR|B|/eth/v1/beacon/blocks/{blockId}|{responseJson.Substring(0, Math.Min(200, responseJson.Length))}...");
 
-            var responseObj = JObject.Parse(responseJson);
+            JObject responseObj = JObject.Parse(responseJson);
             _logger.Debug($"Successfully received beacon block with ID: {blockId}");
 
             return responseObj;
