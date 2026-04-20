@@ -1,0 +1,81 @@
+name: Generate dotTrace Reports
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run ID of a benchmark workflow that produced dottrace-* artifacts"
+        required: true
+        type: string
+      pattern_regex:
+        description: "Regex pattern for methods to include in report (default: all methods)"
+        required: false
+        default: ".*"
+
+permissions:
+  actions: read
+
+jobs:
+  generate-reports:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download snapshot artifacts from source run
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dottrace-*
+          path: snapshots/
+          merge-multiple: true
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Install dotTrace Reporter
+        run: dotnet tool install --global JetBrains.dotTrace.GlobalTools
+
+      - name: Generate XML reports
+        shell: pwsh
+        env:
+          PATTERN_REGEX: ${{ inputs.pattern_regex }}
+        run: |
+          New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
+
+          $patternFile = 'pattern.xml'
+          @"
+          <Patterns>
+            <Pattern PrintCallstacks="Full">$env:PATTERN_REGEX</Pattern>
+          </Patterns>
+          "@ | Set-Content -Path $patternFile
+
+          Get-ChildItem -Path snapshots -Filter '*.zip' | ForEach-Object {
+            $dest = Join-Path extracted $_.BaseName
+            Write-Host "Extracting $($_.Name) -> $dest"
+            Expand-Archive -Path $_.FullName -DestinationPath $dest
+          }
+
+          $snapshots = Get-ChildItem -Path extracted -Recurse | Where-Object { $_.Extension -eq '.dtp' }
+
+          if ($snapshots.Count -eq 0) {
+            Write-Host "No .dtp snapshot files found after extraction."
+            exit 0
+          }
+
+          foreach ($dtp in $snapshots) {
+            $name = $dtp.BaseName
+            $outFile = "reports/${name}-report.xml"
+            Write-Host "::group::Generating report for $name"
+            Write-Host "  $($dtp.FullName) -> $outFile"
+            & Reporter.exe report $dtp.FullName --pattern=$patternFile --save-to=$outFile
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Reporter failed for $name with exit code $LASTEXITCODE"
+            }
+            Write-Host "::endgroup::"
+          }
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dottrace-reports
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn
