@@ -189,6 +189,6 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 ### Notes for agents
 
 - The benchmark config is rendered to a temporary file and removed afterward; no source config revert is required.
-- For `pull_request` and `push` auto-runs, default mode is currently `halfpath + superblocks`.
+- For `pull_request` and `push` auto-runs, default mode is `flat` layout with both `superblocks` and `realblocks` payload sets.
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
 - When dotTrace artifacts are available, download `*-report.xml` from the `dottrace-reports` artifact. Each `<Function>` node has `FQN` (fully qualified name), `TotalTime`, `OwnTime`, `Calls`, and `<Instance CallStack="...">` subnodes. Sort by `OwnTime` descending to find hot spots; read `CallStack` for the call tree.
