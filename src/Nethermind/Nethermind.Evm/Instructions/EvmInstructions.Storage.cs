@@ -155,7 +155,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a 32-byte store; if insufficient gas, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, in BigInt32, vmState) || !vmState.Memory.TrySaveWord(in result, bytes))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, vmState) || !vmState.Memory.TrySaveWord(in result, bytes))
         {
             goto OutOfGas;
         }
@@ -201,7 +201,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, in UInt256.One, vmState) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, vmState) ||
         !vmState.Memory.TrySaveByte(in result, data))
         {
             goto OutOfGas;
@@ -245,7 +245,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update memory cost for a 32-byte load.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, in BigInt32, vmState) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, vmState) ||
         !vmState.Memory.TryLoadSpan(in result, out Span<byte> bytes))
         {
             goto OutOfGas;

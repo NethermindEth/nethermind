@@ -14,9 +14,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct EvmPooledMemory : IEvmMemory
+public struct EvmPooledMemory
 {
     public const int WordSize = 32;
+    internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
+    internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
     private ulong _lastZeroedSize;
 
@@ -71,9 +73,10 @@ public struct EvmPooledMemory : IEvmMemory
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool isViolation)
     {
-        if (length.IsLargerThanULong())
+        if (!length.IsUint64)
         {
             isViolation = true;
             newLength = 0;
@@ -83,30 +86,33 @@ public struct EvmPooledMemory : IEvmMemory
         CheckMemoryAccessViolation(in location, length.u0, out newLength, out isViolation);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength, out bool isViolation)
     {
-        // Check for overflow and ensure the word-aligned size fits in int.
-        // Word alignment can add up to 31 bytes, so we use (int.MaxValue - WordSize + 1) as the limit.
-        // This ensures that after word alignment, the size still fits in int for .NET array operations.
-        const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
-
-        if (location.IsLargerThanULong() || length > MaxMemorySize)
+        // First pass: bail if length exceeds the aligned-memory cap or the location isn't a u64.
+        // Checking length first lets the compiler drop this branch entirely at call sites with a
+        // constant length (MSTORE/MSTORE8/MLOAD pass 32 or 1).
+        if (length > MaxMemorySize || !location.IsUint64)
         {
             isViolation = true;
             newLength = 0;
             return;
         }
 
-        ulong totalSize = location.u0 + length;
-        if (totalSize < location.u0 || totalSize > MaxMemorySize)
+        // length <= MaxMemorySize, so (MaxMemorySize - length) does not underflow. This single
+        // comparison subsumes both the unsigned-overflow check and the final bounds check that the
+        // original code wrote as two separate branches.
+        ulong offset = location.u0;
+        if (offset > MaxMemorySize - length)
         {
             isViolation = true;
             newLength = 0;
             return;
         }
 
+        // locU0 + length <= MaxMemorySize < 2^31, no overflow possible.
         isViolation = false;
-        newLength = totalSize;
+        newLength = offset + length;
     }
 
     public bool TrySave(in UInt256 location, byte[] value)
@@ -252,41 +258,55 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
+    public long CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
+    {
+        if (length == 0)
+        {
+            outOfGas = false;
+            return 0L;
+        }
+
+        CheckMemoryAccessViolation(in location, length, out ulong newSize, out outOfGas);
+        if (outOfGas) return 0;
+
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+    }
+
     public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
     {
-        outOfGas = false;
         if (length.IsZero)
         {
+            outOfGas = false;
             return 0L;
         }
 
         CheckMemoryAccessViolation(in location, in length, out ulong newSize, out outOfGas);
         if (outOfGas) return 0;
 
-        if (newSize > Size)
-        {
-            long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
-            if (outOfGas) return 0;
-            long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
-            if (outOfGas) return 0;
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+    }
 
-            // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
-            ulong cost = (ulong)
-                ((newActiveWords - activeWords) * GasCostOf.Memory +
-                 ((newActiveWords * newActiveWords) >> 9) -
-                 ((activeWords * activeWords) >> 9));
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private long ComputeMemoryExpansionCost(ulong newSize)
+    {
+        // CheckMemoryAccessViolation has already capped newSize at MaxMemorySize (< 2^31), so the
+        // ceiling division cannot overflow uint and the squared terms stay below 2^52. Size is
+        // maintained as a word-aligned invariant by UpdateSize, so no ceiling is required there.
+        Debug.Assert(newSize <= MaxMemorySize);
+        Debug.Assert(Size % WordSize == 0);
 
-            if (cost > long.MaxValue)
-            {
-                return long.MaxValue;
-            }
+        long newActiveWords = (long)((newSize + (WordSize - 1UL)) >> 5);
+        long activeWords = (long)(Size >> 5);
 
-            UpdateSize(newSize, rentIfNeeded: false);
+        // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
+        // in long -- so the outOfGas propagation that older revisions carried is unreachable.
+        long cost = (newActiveWords - activeWords) * GasCostOf.Memory +
+            ((newActiveWords * newActiveWords) >> 9) -
+            ((activeWords * activeWords) >> 9);
 
-            return (long)cost;
-        }
+        UpdateSize(newSize, rentIfNeeded: false);
 
-        return 0L;
+        return cost;
     }
 
     public TraceMemory GetTrace()
@@ -309,45 +329,53 @@ public struct EvmPooledMemory : IEvmMemory
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
-        const int minRentSize = 1_024;
         Length = length;
 
-        if (Length > Size)
+        // CheckMemoryAccessViolation has already proven length <= MaxMemorySize, so
+        // (length + 31) cannot overflow. Branchless align-up replaces the original
+        // "modulo + conditional" pair: one AND and one ADD, no jumps.
+        if (length > Size)
         {
-            ulong remainder = Length % WordSize;
-            Size = remainder != 0 ? Length + WordSize - remainder : Length;
+            Size = (length + (WordSize - 1UL)) & ~(WordSize - 1UL);
         }
 
         if (rentIfNeeded)
         {
-            if (_memory is null)
+            Rent();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Rent()
+    {
+        const int MinRentSize = 1_024;
+        if (_memory is null)
+        {
+            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
+            Array.Clear(_memory, 0, (int)Size);
+        }
+        else
+        {
+            int lastZeroedSize = (int)_lastZeroedSize;
+            if (Size > (ulong)_memory.LongLength)
             {
-                _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max(Size, minRentSize));
-                Array.Clear(_memory, 0, (int)Size);
+                byte[] beforeResize = _memory;
+                _memory = SafeArrayPool<byte>.Shared.Rent((int)Size);
+                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
+                Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                SafeArrayPool<byte>.Shared.Return(beforeResize);
+            }
+            else if (Size > _lastZeroedSize)
+            {
+                Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
             }
             else
             {
-                int lastZeroedSize = (int)_lastZeroedSize;
-                if (Size > (ulong)_memory.LongLength)
-                {
-                    byte[] beforeResize = _memory;
-                    _memory = SafeArrayPool<byte>.Shared.Rent((int)Size);
-                    Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                    SafeArrayPool<byte>.Shared.Return(beforeResize);
-                }
-                else if (Size > _lastZeroedSize)
-                {
-                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                }
-                else
-                {
-                    return;
-                }
+                return;
             }
-
-            _lastZeroedSize = Size;
         }
+
+        _lastZeroedSize = Size;
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -362,8 +390,7 @@ public static class UInt256Extensions
 {
     extension(in UInt256 value)
     {
-        public bool IsLargerThanULong() => (value.u1 | value.u2 | value.u3) != 0;
-        public bool IsLargerThanLong() => value.IsLargerThanULong() || value.u0 > long.MaxValue;
-        public long ToLong() => value.IsLargerThanLong() ? long.MaxValue : (long)value.u0;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long ToLong() => !value.IsUint64 || value.u0 > long.MaxValue ? long.MaxValue : (long)value.u0;
     }
 }
