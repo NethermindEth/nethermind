@@ -96,7 +96,7 @@ public partial class DebugRpcModuleTests
         BlockHeader parent = blockchain.BlockTree.Head!.Header;
 
         // Construct witness-generating infrastructure manually to demonstrate the tree visitor pattern.
-        IReadOnlyTrieStore readOnlyTrieStore = blockchain.Container.Resolve<IReadOnlyTrieStore>();
+        IReadOnlyTrieStore readOnlyTrieStore = blockchain.Container.Resolve<IWorldStateManager>().CreateReadOnlyTrieStore();
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(blockchain.DbProvider, true);
         WitnessCapturingTrieStore capturingTrieStore = new(readOnlyTrieStore);
         StateReader stateReader = new(capturingTrieStore, readOnlyDbProvider.CodeDb, blockchain.LogManager);
