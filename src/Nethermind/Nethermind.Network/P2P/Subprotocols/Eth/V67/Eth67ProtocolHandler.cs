@@ -36,10 +36,8 @@ public class Eth67ProtocolHandler(
     public new static byte Version => EthVersions.Eth67;
     public override byte ProtocolVersion => Version;
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override void HandleMessageCore(ZeroPacket message)
     {
-        ThrowIfStatusWasNotReceived(message.PacketType);
-
         switch (message.PacketType)
         {
             case Eth66MessageCode.GetNodeData:
@@ -47,7 +45,7 @@ public class Eth67ProtocolHandler(
             case Eth66MessageCode.NodeData:
                 break;
             default:
-                base.HandleMessage(message);
+                base.HandleMessageCore(message);
                 break;
         }
     }

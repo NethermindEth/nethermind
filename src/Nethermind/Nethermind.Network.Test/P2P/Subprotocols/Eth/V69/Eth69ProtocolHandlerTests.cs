@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -104,14 +103,14 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth69");
-        _handler.ProtocolVersion.Should().Be(69);
-        _handler.MessageIdSpaceSize.Should().Be(18);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth69"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(69));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
@@ -119,7 +118,7 @@ public class Eth69ProtocolHandlerTests
     {
         HandleIncomingStatusMessage();
 
-        _handler.TotalDifficulty.Should().Be(null);
+        Assert.That(_handler.TotalDifficulty, Is.Null);
     }
 
     [Test] // From Eth62ProtocolHandlerTests
@@ -168,7 +167,7 @@ public class Eth69ProtocolHandlerTests
 
         IOwnedReadOnlyList<TxReceipt[]>? response = await getReceiptsTask;
 
-        response.Should().HaveCount(count);
+        Assert.That(response.Count, Is.EqualTo(count));
     }
 
     [Test]
@@ -188,7 +187,7 @@ public class Eth69ProtocolHandlerTests
 
         Action action = () => HandleZeroMessage(msg66, Eth69MessageCode.GetReceipts);
 
-        action.Should().Throw<SubprotocolException>();
+        Assert.That(action, Throws.TypeOf<SubprotocolException>());
         _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage69>());
     }
 
@@ -199,7 +198,7 @@ public class Eth69ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
-        action.Should().Throw<SubprotocolException>();
+        Assert.That(action, Throws.TypeOf<SubprotocolException>());
     }
 
     [Test]

@@ -96,7 +96,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             });
         }
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override void BeforeHandleMessage(ZeroPacket message) => ThrowIfStatusWasNotReceived(message.PacketType);
+
+        protected override void HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -120,10 +122,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return true;
             }
 
-            int packetType = message.PacketType;
-            ThrowIfStatusWasNotReceived(packetType);
-
-            switch (packetType)
+            switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:
                     {

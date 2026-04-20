@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -102,14 +101,14 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth70");
-        _handler.ProtocolVersion.Should().Be(70);
-        _handler.MessageIdSpaceSize.Should().Be(18);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth70"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
@@ -149,7 +148,7 @@ public class Eth70ProtocolHandlerTests
 
         Action action = () => HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
 
-        action.Should().Throw<SubprotocolException>();
+        Assert.That(action, Throws.TypeOf<SubprotocolException>());
         _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage70>());
     }
 
@@ -265,8 +264,8 @@ public class Eth70ProtocolHandlerTests
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
         using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-        result.Should().HaveCount(1);
-        result[0].Should().BeEquivalentTo(receipts);
+        Assert.That(result.Count, Is.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
     }
 
     [Test]
@@ -307,10 +306,10 @@ public class Eth70ProtocolHandlerTests
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-        result.Should().HaveCount(2);
-        result[0].Should().BeEquivalentTo(block1);
-        result[1].Should().BeEquivalentTo(block2);
-        seenOffsets.AsSpan().ToArray().Should().Equal(0, 2);
+        Assert.That(result.Count, Is.EqualTo(2));
+        AssertReceiptsEqual(result[0], block1);
+        AssertReceiptsEqual(result[1], block2);
+        Assert.That(seenOffsets.AsSpan().ToArray(), Is.EqualTo(new[] { 0L, 2L }));
     }
 
     [Test]
@@ -386,7 +385,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public async Task Should_reject_when_receipts_response_below_minimum_size()
+    public void Should_reject_when_receipts_response_below_minimum_size()
     {
         TxReceipt[] receipts =
         [
@@ -403,8 +402,8 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        await act.Should().ThrowAsync<SubprotocolException>()
-            .WithMessage("Received partial receipts response below minimum size*");
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Does.StartWith("Received partial receipts response below minimum size"));
     }
 
     [Test]
@@ -426,7 +425,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        act.Should().ThrowAsync<SubprotocolException>();
+        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
     }
 
     [Test]
@@ -451,7 +450,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        act.Should().ThrowAsync<SubprotocolException>();
+        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
     }
 
     [Test]
@@ -491,8 +490,8 @@ public class Eth70ProtocolHandlerTests
 
         // Handler should make only 1 request - not loop trying to get remaining 3 blocks
         // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
-        requestCount.Should().Be(1, "handler should not loop requesting more when peer returned fewer with incomplete=false");
-        result.Should().HaveCount(7, "should return what peer gave us without looping");
+        Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
+        Assert.That(result.Count, Is.EqualTo(7), "should return what peer gave us without looping");
     }
 
     [Test]
@@ -683,6 +682,17 @@ public class Eth70ProtocolHandlerTests
     {
         public bool IsDisposed { get; private set; }
         public override void Dispose() { IsDisposed = true; base.Dispose(); }
+    }
+
+    private static void AssertReceiptsEqual(TxReceipt[] actual, TxReceipt[] expected)
+    {
+        Assert.That(actual.Length, Is.EqualTo(expected.Length));
+
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.That(actual[i].GasUsedTotal, Is.EqualTo(expected[i].GasUsedTotal));
+            Assert.That(actual[i].Logs, Is.EqualTo(expected[i].Logs));
+        }
     }
 
     public enum EmptyReceiptsPayloadScenario
