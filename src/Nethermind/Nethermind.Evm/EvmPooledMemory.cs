@@ -14,6 +14,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
+using Word = Vector256<byte>;
+
 public struct EvmPooledMemory
 {
     public const int WordSize = 32;
@@ -33,16 +35,11 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool outOfGas);
         if (outOfGas) return false;
 
+        int offset = (int)(uint)location.u0;
+        Word word1 = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
-
-        int offset = (int)location;
-
-        // Direct 256bit register copy rather than invoke Memmove
-        Unsafe.WriteUnaligned(
-            ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), offset),
-            Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(word))
-        );
-
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
         return true;
     }
 
@@ -51,9 +48,9 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, 1, out ulong newLength, out bool isViolation);
         if (isViolation) return false;
 
+        int offset = (int)(uint)location.u0;
         UpdateSize(newLength);
-
-        _memory![(long)location] = value;
+        _memory![offset] = value;
         return true;
     }
 
@@ -68,8 +65,7 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
-
-        value.CopyTo(_memory.AsSpan((int)location, value.Length));
+        value.CopyTo(_memory.AsSpan((int)(uint)location.u0, value.Length));
         return true;
     }
 
@@ -128,7 +124,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        Array.Copy(value, 0, _memory!, (long)location, value.Length);
+        Array.Copy(value, 0, _memory!, (int)(uint)location.u0, value.Length);
         return true;
     }
 
@@ -171,8 +167,7 @@ public struct EvmPooledMemory
             return false;
         }
 
-        UpdateSize(newLength);
-        data = _memory.AsSpan((int)location, WordSize);
+        data = LoadSpan(newLength, (int)(uint)location.u0, WordSize);
         return true;
     }
 
@@ -191,8 +186,7 @@ public struct EvmPooledMemory
             return false;
         }
 
-        UpdateSize(newLength);
-        data = _memory.AsSpan((int)location, (int)length);
+        data = LoadSpan(newLength, (int)(uint)location.u0, (int)(uint)length.u0);
         return true;
     }
 
@@ -213,7 +207,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        data = _memory.AsMemory((int)location, (int)length);
+        data = _memory.AsMemory((int)(uint)location.u0, (int)(uint)length.u0);
         return true;
     }
 
@@ -286,6 +280,61 @@ public struct EvmPooledMemory
         return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void StoreWordAfterGas(in UInt256 location, ReadOnlySpan<byte> word)
+    {
+        Debug.Assert(location.IsUint64);
+        int offset = (int)(uint)location.u0;
+        PrepareAccessAfterGas(location.u0 + WordSize);
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+        Unsafe.CopyBlockUnaligned(ref Unsafe.Add(ref memory, offset), ref MemoryMarshal.GetReference(word), (uint)WordSize);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void StoreByteAfterGas(in UInt256 location, byte value)
+    {
+        Debug.Assert(location.IsUint64);
+        int offset = (int)(uint)location.u0;
+        PrepareAccessAfterGas(location.u0 + 1);
+        _memory![offset] = value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal Word LoadWordAfterGas(in UInt256 location)
+    {
+        Debug.Assert(location.IsUint64);
+        int offset = (int)(uint)location.u0;
+        PrepareAccessAfterGas(location.u0 + WordSize);
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+        return Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref memory, offset));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal Span<byte> LoadSpanAfterGas(in UInt256 location, ulong length)
+    {
+        Debug.Assert(location.IsUint64);
+        int offset = (int)(uint)location.u0;
+        int length1 = (int)(uint)length;
+        PrepareAccessAfterGas(location.u0 + length);
+        return length == 0 ? [] : _memory!.AsSpan(offset, length1);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void CopyAfterGas(in UInt256 destination, in UInt256 source, ulong length)
+    {
+        if (length == 0)
+        {
+            return;
+        }
+
+        int destinationOffset = (int)(uint)destination.u0;
+        int sourceOffset = (int)(uint)source.u0;
+        int intLength = (int)(uint)length;
+
+        PrepareAccessAfterGas(destination.u0 + length);
+        _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long ComputeMemoryExpansionCost(ulong newSize)
     {
@@ -341,18 +390,43 @@ public struct EvmPooledMemory
 
         if (rentIfNeeded)
         {
-            Rent();
+            EnsureRented();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Span<byte> LoadSpan(ulong newLength, int offset, int length)
+    {
+        UpdateSize(newLength);
+        return _memory!.AsSpan(offset, length);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PrepareAccessAfterGas(ulong newLength)
+    {
+        Debug.Assert(newLength <= Size);
+        Length = newLength;
+        EnsureRented();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureRented()
+    {
+        byte[]? memory = _memory;
+        if (memory is null || Size > (ulong)memory.Length || Size > _lastZeroedSize)
+        {
+            RentSlow();
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void Rent()
+    private void RentSlow()
     {
         const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
-            Array.Clear(_memory, 0, (int)Size);
+            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
+            Array.Clear(_memory, 0, (int)(uint)Size);
         }
         else
         {
@@ -360,14 +434,14 @@ public struct EvmPooledMemory
             if (Size > (ulong)_memory.LongLength)
             {
                 byte[] beforeResize = _memory;
-                _memory = SafeArrayPool<byte>.Shared.Rent((int)Size);
+                _memory = SafeArrayPool<byte>.Shared.Rent((int)(uint)Size);
                 Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                Array.Clear(_memory, lastZeroedSize, (int)(uint)(Size - _lastZeroedSize));
                 SafeArrayPool<byte>.Shared.Return(beforeResize);
             }
             else if (Size > _lastZeroedSize)
             {
-                Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                Array.Clear(_memory, lastZeroedSize, (int)(uint)(Size - _lastZeroedSize));
             }
             else
             {
