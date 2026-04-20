@@ -34,6 +34,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Test.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
@@ -135,7 +136,17 @@ public abstract class StateSyncFeedTestsBase(
             .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)))
 
             .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
-            .AddSingleton<IStateSyncTestOperation, LocalDbContext>();
+            .AddSingleton<IStateSyncTestOperation, LocalDbContext>()
+
+            // Substitute the sync mode selector so StateSyncRunner.RunRound's
+            // WaitUntilMode(StateNodes) returns immediately in tests rather than
+            // blocking on real MultiSyncModeSelector state transitions.
+            .AddSingleton<ISyncModeSelector>(static _ =>
+            {
+                ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+                selector.Current.Returns(SyncMode.StateNodes);
+                return selector;
+            });
 
         containerBuilder.RegisterBuildCallback((ctx) =>
         {

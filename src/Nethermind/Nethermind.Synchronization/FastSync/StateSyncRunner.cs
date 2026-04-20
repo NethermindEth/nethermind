@@ -70,6 +70,11 @@ public class StateSyncRunner(
 
         while (!token.IsCancellationRequested)
         {
+            // Yield between rounds when the mode selector has moved away from StateNodes
+            // (e.g. beacon control, UpdatingPivot, fast-sync re-entry) so those phases
+            // can claim peers. WaitUntilMode returns immediately if already in StateNodes.
+            await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
+
             treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
             await dispatcher.RunFeed(
                 stateSyncFeed,
