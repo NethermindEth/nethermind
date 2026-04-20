@@ -509,6 +509,19 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void MCopy_zero_length_does_not_validate_offsets()
+    {
+        byte[] bytecode = Prepare.EvmCode
+            .MCOPY(UInt256.MaxValue, UInt256.MaxValue, UInt256.Zero)
+            .STOP()
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.CancunActivation, bytecode);
+
+        Assert.That(receipt.Error, Is.Null);
+    }
+
+    [Test]
     public void MCopy_Overwrite_areas_copy_left()
     {
         int SLICE_SIZE = 8;
