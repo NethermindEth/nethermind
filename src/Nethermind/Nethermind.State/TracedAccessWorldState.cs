@@ -68,7 +68,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public IDisposable BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
+    public IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
