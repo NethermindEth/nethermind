@@ -322,7 +322,7 @@ public class BlockAccessListManager(
             }
             else
             {
-                if (IsSystemAccountRead(suggestedHead.Value, index) || HasOptionalStorageReads(generatedHead.Value))
+                if (IsSystemAccountRead(generatedHead.Value, index) || HasOptionalStorageReads(generatedHead.Value))
                 {
                     AdvanceGenerated();
                     continue;
