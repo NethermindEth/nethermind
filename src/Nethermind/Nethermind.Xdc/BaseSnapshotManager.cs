@@ -126,4 +126,6 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     }
 
     protected abstract TSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec);
+
+    public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
 }

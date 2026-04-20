@@ -428,7 +428,7 @@ public partial class BlockTreeTests
                 if (moveToBeaconMainChain)
                 {
                     if (moveSyncedTree) SyncedTree.UpdateMainChain(blocks, true, true);
-                    NotSyncedTree.UpdateBeaconMainChain(blockInfos.ToArray(), blockInfos[^1].BlockNumber);
+                    NotSyncedTree.UpdateBeaconMainChain(blockInfos, blockInfos[^1].BlockNumber);
                 }
 
                 return this;
