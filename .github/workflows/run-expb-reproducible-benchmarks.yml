@@ -2121,7 +2121,7 @@ jobs:
           merge-multiple: true
 
       - name: Install dotTrace Reporter
-        run: dotnet tool install --global JetBrains.dotTrace.CommandLineTools
+        run: dotnet tool install --global JetBrains.dotTrace.GlobalTools
 
       - name: Generate XML reports
         shell: pwsh
