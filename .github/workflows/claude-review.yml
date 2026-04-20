@@ -1,4 +1,26 @@
+# Claude Code Review workflow
+#
+# This workflow has two modes:
+#
+#   1. Review path — triggered automatically on PR open / ready-for-review, and manually when
+#      someone comments a variant of "@claude review". Runs Claude with a fixed review prompt,
+#      captures a structured `mergeable` verdict via --json-schema, and posts a
+#      `claude-review/reviewed` commit status (success/failure) that branch protection uses
+#      to gate merging.
+#
+#   2. Mention path — triggered by any other `@claude ...` comment/mention (e.g.
+#      `@claude explain X`, `@claude fix Y`). Runs Claude with the comment body as its prompt,
+#      does NOT post a commit status, and does NOT force structured output.
+#
+# PRs marked as WIP (via the `wip` label or a WIP marker in the title) are skipped by the
+# auto-trigger; removing the `wip` label is itself a trigger so authors can "release" a WIP
+# for review. Manual `@claude review` comments always work, regardless of WIP state.
+
 name: Claude Code Review
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
 
 on:
   issue_comment:
@@ -6,31 +28,200 @@ on:
   pull_request_review_comment:
     types: [created]
   issues:
-    types: [opened, assigned]
+    types: [opened]
   pull_request_review:
     types: [submitted]
+  # `unlabeled` is included so that removing the `wip` label triggers a review.
+  pull_request:
+    types: [opened, ready_for_review, unlabeled]
 
 jobs:
   claude:
+    # Gate the job on either:
+    #  - a pull_request event that is NOT a WIP PR (label/title filter), OR
+    #  - an unlabeled event where the removed label was specifically `wip`, OR
+    #  - an `@claude` mention on comments/reviews/issues from a trusted author.
+    #
+    # The `author_association` guard on mention paths is a security boundary: `issue_comment`
+    # and related events always run in the base-repo context with full secret access, even
+    # for comments on fork PRs, so without this guard an external contributor could trigger
+    # a Claude run (consuming the OAuth token) by commenting `@claude ...` on their own PR.
+    # The `pull_request` auto-trigger path doesn't need this guard because GitHub strips
+    # secrets from fork-PR `pull_request` events, so the action would fail without auth anyway.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'unlabeled' && github.event.label.name == 'wip') ||
+        (
+          (github.event.action == 'opened' || github.event.action == 'ready_for_review') &&
+          !contains(github.event.pull_request.labels.*.name, 'wip') &&
+          !startsWith(github.event.pull_request.title, 'WIP') &&
+          !contains(github.event.pull_request.title, '[WIP]') &&
+          !contains(github.event.pull_request.title, '[wip]')
+        )
+      )) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.review.author_association)) ||
+      (github.event_name == 'issues' &&
+        (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
+    env:
+      RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
     permissions:
       contents: write
       pull-requests: write
       issues: write
-      id-token: write
+      id-token: write # Required by anthropics/claude-code-action for OIDC auth
       actions: read # Required for Claude to read CI results on PRs
+      statuses: write # Required to post the claude-review/reviewed commit status
     steps:
+      # Classify this invocation as a review (→ review path, posts commit status) or a
+      # generic @claude mention (→ mention path, no status). The classification is used
+      # as the `if:` gate on the subsequent steps.
+      - name: Detect review intent
+        id: detect
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_BODY: ${{ github.event.review.body }}
+        run: |
+          # Job-level `if:` already ensures `@claude` is present for comment/review events.
+          # Here we classify: a comment/review that also mentions "review" (any case) runs
+          # the review path (structured output + commit status). Anything else — e.g.
+          # `@claude implement X`, `@claude explain Y` — falls through to the mention path.
+          IS_REVIEW=false
+          case "$GITHUB_EVENT_NAME" in
+            pull_request)
+              # Auto-triggers (opened, ready_for_review, unlabeled-wip) are always reviews.
+              IS_REVIEW=true
+              ;;
+            issue_comment|pull_request_review_comment)
+              [[ "${COMMENT_BODY,,}" == *"review"* ]] && IS_REVIEW=true
+              ;;
+            pull_request_review)
+              [[ "${REVIEW_BODY,,}" == *"review"* ]] && IS_REVIEW=true
+              ;;
+          esac
+          echo "is_review=$IS_REVIEW" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Run Claude Code
-        id: claude
+      # Review path: runs for auto-triggers and for @claude comments mentioning "review".
+      # - `track_progress: true` renders the v0.x-style tracking comment with checkboxes.
+      # - The prompt is fixed (overrides whatever the user wrote in the comment), so Claude
+      #   always produces a full Nethermind-flavored review with severity-tagged findings.
+      # - `--json-schema` forces Claude's final result message into a structured JSON we
+      #   parse in the status-posting step below. This JSON is NOT shown to humans — Claude
+      #   still posts rich prose comments via the gh/MCP tools; the JSON is just the verdict.
+      - name: Run Claude Code (review path)
+        timeout-minutes: 20
+        if: steps.detect.outputs.is_review == 'true'
+        id: claude_review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_tools: "Bash(gh:*),WebFetch"
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+
+            Review this pull request focusing on:
+            - Correctness, edge cases, and potential regressions
+            - Security implications
+            - Performance (this is a hot-path Ethereum execution client)
+            - Adherence to repo rules in CONTRIBUTING.md and .agents/rules/
+
+            Categorize each finding by severity:
+            - **Critical**: blocks merge, likely production impact
+            - **High**: significant issue, should be addressed before merge
+            - **Medium**: notable issue, should be addressed or explicitly acknowledged with rationale
+            - **Low**: minor suggestions
+
+            Post a top-level summary with `gh pr comment`. Use `mcp__github_inline_comment__create_inline_comment` for specific code issues.
+
+            Set `mergeable: false` in the structured output if any Critical, High, or Medium findings exist that have not been explicitly acknowledged with rationale in prior PR comments. Otherwise `mergeable: true`.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh:*),WebFetch"
+            --json-schema '{"type":"object","properties":{"mergeable":{"type":"boolean","description":"False if any Critical, High, or Medium findings remain unresolved and unexplained"},"critical_count":{"type":"integer"},"high_count":{"type":"integer"},"medium_count":{"type":"integer"},"summary":{"type":"string"}},"required":["mergeable","critical_count","high_count","medium_count","summary"]}'
+
+      # Mention path: any other `@claude ...` interaction (no "review" keyword). No prompt
+      # is supplied, so the action parses the comment body and runs Claude against it —
+      # preserving the original "@claude do this thing" behaviour for implementation help,
+      # explanations, etc. No commit status is posted in this path.
+      - name: Run Claude Code (mention path)
+        timeout-minutes: 20
+        if: steps.detect.outputs.is_review != 'true'
+        id: claude_mention
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --allowedTools "Bash(gh:*),WebFetch"
+
+      # After a successful review, read the structured verdict from the previous step and
+      # post a commit status on the PR head SHA:
+      #   - mergeable == true  → state=success, merging is allowed
+      #   - mergeable == false → state=failure, branch protection will block merging
+      # Statuses are keyed by (sha, context), so a later re-review overwrites the previous
+      # verdict on the same commit. Pushing new commits changes the SHA and leaves the new
+      # commit with no status → branch protection blocks until `@claude review` is re-run.
+      - name: Post claude-review status (success)
+        if: success() && steps.detect.outputs.is_review == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STRUCTURED: ${{ steps.claude_review.outputs.structured_output }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          # Resolve the PR head SHA. Works for both pull_request events (where PR_NUMBER
+          # comes from event.pull_request.number) and comment events (from event.issue.number).
+          SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq .headRefOid)
+          # `// default` in jq guards against missing/malformed fields — we default to the
+          # most conservative interpretation (not mergeable, zero counts reported).
+          MERGEABLE=$(printf '%s' "$STRUCTURED" | jq -r '.mergeable // false')
+          CRIT=$(printf '%s' "$STRUCTURED" | jq -r '.critical_count // 0')
+          HIGH=$(printf '%s' "$STRUCTURED" | jq -r '.high_count // 0')
+          MED=$(printf '%s' "$STRUCTURED" | jq -r '.medium_count // 0')
+          SUMMARY=$(printf '%s' "$STRUCTURED" | jq -r '.summary // ""' | tr '\n' ' ')
+          if [[ "$MERGEABLE" == "true" ]]; then
+            STATE=success
+            PREFIX="Claude reviewed: no blockers"
+          else
+            STATE=failure
+            PREFIX="Claude blockers: $CRIT critical, $HIGH high, $MED medium"
+          fi
+          # GitHub truncates commit status descriptions at 140 chars in the UI; build
+          # "<prefix> — <summary>" and clip so the summary surfaces directly in the PR checks.
+          if [[ -n "$SUMMARY" ]]; then
+            DESC="$PREFIX — $SUMMARY"
+          else
+            DESC="$PREFIX"
+          fi
+          DESC="${DESC:0:140}"
+          gh api "repos/$REPO/statuses/$SHA" \
+            -f state="$STATE" \
+            -f context=claude-review/reviewed \
+            -f description="$DESC" \
+            -f target_url="$RUN_URL"
+
+      # If the action itself errored out (API timeout, rate limit, schema violation, etc.)
+      # we still need to record a non-success status so branch protection keeps the PR
+      # blocked. `state=error` is distinct from `failure` so reviewers can tell the workflow
+      # broke vs. Claude flagged blockers.
+      - name: Post claude-review status (error)
+        if: failure() && steps.detect.outputs.is_review == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq .headRefOid)
+          gh api "repos/$REPO/statuses/$SHA" \
+            -f state=error \
+            -f context=claude-review/reviewed \
+            -f description="Claude review workflow failed; please re-run with @claude review" \
+            -f target_url="$RUN_URL"
