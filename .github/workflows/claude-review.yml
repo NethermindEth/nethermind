@@ -39,7 +39,7 @@ jobs:
   claude:
     # Gate the job on either:
     #  - a pull_request event that is NOT a WIP PR (label/title filter), OR
-    #    an unlabeled event where the removed label was specifically `wip`, OR
+    #  - an unlabeled event where the removed label was specifically `wip`, OR
     #  - an `@claude` mention on comments/reviews/issues from a trusted author.
     #
     # The `author_association` guard on mention paths is a security boundary: `issue_comment`
