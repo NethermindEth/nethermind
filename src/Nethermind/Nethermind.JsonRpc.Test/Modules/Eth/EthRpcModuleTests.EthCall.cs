@@ -748,4 +748,40 @@ public partial class EthRpcModuleTests
         JToken.Parse(serialized).Should().BeEquivalentTo(
             $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"Block gas limit exceeded\"}},\"id\":67}}");
     }
+
+    // Each test deploys a one-opcode contract that stores the chosen block property and returns it,
+    // then verifies the returned value matches what was supplied in blockOverride.
+    [TestCase(
+        "NUMBER opcode returns overridden block number",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4360005260206000f3"}}""",
+        """{"number":"0x89543F"}""",
+        "0x000000000000000000000000000000000000000000000000000000000089543f"
+    )]
+    [TestCase(
+        "TIMESTAMP opcode returns overridden timestamp",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4260005260206000f3"}}""",
+        """{"time":"0x68E0F100"}""",
+        "0x0000000000000000000000000000000000000000000000000000000068e0f100"
+    )]
+    [TestCase(
+        "GASLIMIT opcode returns overridden gas limit",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4560005260206000f3"}}""",
+        """{"gasLimit":"0x7E1200"}""",
+        "0x00000000000000000000000000000000000000000000000000000000007e1200"
+    )]
+    public async Task Eth_call_with_block_override(string name, string txJson, string stateOverrideJson, string blockOverrideJson, string expectedResult)
+    {
+        object? transaction = JsonSerializer.Deserialize<object>(txJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson);
+
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        JToken.Parse(serialized)["result"]!.Value<string>().Should().Be(expectedResult);
+    }
 }

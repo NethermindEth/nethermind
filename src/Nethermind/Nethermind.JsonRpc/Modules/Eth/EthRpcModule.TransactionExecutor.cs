@@ -25,6 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
             private bool NoBaseFee { get; set; }
+            private BlockOverride? _blockOverride;
 
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
@@ -47,6 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 clonedHeader.GasUsed = 0;
+                _blockOverride?.ApplyOverrides(clonedHeader);
 
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
@@ -59,12 +61,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
 
-                // default to previous block gas if unspecified
+                // default to overridden or previous block gas limit if unspecified
                 if (transactionCall.Gas is null)
                 {
                     searchResult ??= _blockFinder.SearchForHeader(blockParameter);
                     if (!searchResult.Value.IsError)
-                        transactionCall.Gas = searchResult.Value.Object!.GasLimit;
+                        transactionCall.Gas = _blockOverride?.GasLimit is not null
+                            ? (long)_blockOverride.GasLimit.Value
+                            : searchResult.Value.Object!.GasLimit;
                 }
 
                 // enforces gas cap
@@ -73,8 +77,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
-                => Execute(transactionCall, blockParameter, stateOverride);
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+            {
+                _blockOverride = blockOverride;
+                return Execute(transactionCall, blockParameter, stateOverride);
+            }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 
