@@ -176,7 +176,6 @@ jobs:
 
             Set `mergeable: false` in the structured output if any Critical, High, or Medium findings exist that have not been explicitly acknowledged with rationale in prior PR comments. Otherwise `mergeable: true`.
           claude_args: |
-            --model claude-sonnet-4-6
             --json-schema '{"type":"object","properties":{"mergeable":{"type":"boolean","description":"False if any Critical, High, or Medium findings remain unresolved and unexplained"},"critical_count":{"type":"integer"},"high_count":{"type":"integer"},"medium_count":{"type":"integer"},"summary":{"type":"string"}},"required":["mergeable","critical_count","high_count","medium_count","summary"]}'
 
       # Mention path: any other `@claude ...` interaction (no "review" keyword). No prompt
@@ -209,8 +208,6 @@ jobs:
                 ]
               }
             }
-          claude_args: |
-            --model claude-sonnet-4-6
 
       # After a successful review, read the structured verdict from the previous step and
       # post a commit status on the PR head SHA:
