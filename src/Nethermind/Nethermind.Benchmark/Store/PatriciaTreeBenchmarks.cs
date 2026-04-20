@@ -397,6 +397,69 @@ namespace Nethermind.Benchmarks.Store
             tempTree.Commit();
         }
 
+        [Benchmark]
+        public void LargeBulkSetAndCommit()
+        {
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            tempTree.RootHash = Keccak.EmptyTreeHash;
+
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_largerEntryCount);
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (Hash256 address, Account account) = _uniqueLargeSet[i];
+                Serialization.Rlp.Rlp rlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
+                bulkSet.Add(new PatriciaTree.BulkSetEntry(address, rlp?.Bytes));
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.BulkSetAndCommit(bulkSet);
+        }
+
+        [Benchmark]
+        public void LargeBulkSetAndCommitNoParallel()
+        {
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            tempTree.RootHash = Keccak.EmptyTreeHash;
+
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_largerEntryCount);
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (Hash256 address, Account account) = _uniqueLargeSet[i];
+                Serialization.Rlp.Rlp rlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
+                bulkSet.Add(new PatriciaTree.BulkSetEntry(address, rlp?.Bytes));
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.BulkSetAndCommit(bulkSet, PatriciaTree.Flags.DoNotParallelize);
+        }
+
+        [Benchmark]
+        public void LargeBulkSetAndCommitPreSorted()
+        {
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+            tempTree.RootHash = Keccak.EmptyTreeHash;
+
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_largerEntryCount);
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (Hash256 address, Account account) = _presortedLargeSet[i];
+                Serialization.Rlp.Rlp rlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
+                bulkSet.Add(new PatriciaTree.BulkSetEntry(address, rlp?.Bytes));
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.BulkSetAndCommit(bulkSet, PatriciaTree.Flags.WasSorted);
+        }
+
         TrieStore _largeUncommittedFullTree;
         StateTree _largeUncommittedStateTree;
 
