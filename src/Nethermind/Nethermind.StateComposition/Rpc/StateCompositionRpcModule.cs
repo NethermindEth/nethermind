@@ -23,11 +23,8 @@ internal sealed class StateCompositionRpcModule(
     public Task<ResultWrapper<StateCompositionReport>> statecomp_get() => Task.FromResult(
             ResultWrapper<StateCompositionReport>.Success(stateHolder.BuildReport()));
 
-    public Task<ResultWrapper<bool>> statecomp_cancelScan()
-    {
-        service.CancelScan();
-        return Task.FromResult(ResultWrapper<bool>.Success(true));
-    }
+    public Task<ResultWrapper<bool>> statecomp_cancelScan() =>
+        Task.FromResult(ResultWrapper<bool>.Success(service.CancelScan()));
 
     public async Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Address? address)
     {

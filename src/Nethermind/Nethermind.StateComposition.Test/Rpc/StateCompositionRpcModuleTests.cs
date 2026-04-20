@@ -51,7 +51,7 @@ public class StateCompositionRpcModuleTests
     }
 
     [Test]
-    public async Task CancelScan_ReturnsTrue()
+    public async Task CancelScan_ReturnsFalse_WhenNoScanActive()
     {
         StateCompositionRpcModule rpc = new(
             CreateService(),
@@ -61,7 +61,7 @@ public class StateCompositionRpcModuleTests
 
         ResultWrapper<bool> result = await rpc.statecomp_cancelScan();
 
-        Assert.That(result.Data, Is.True);
+        Assert.That(result.Data, Is.False);
     }
 
     [Test]

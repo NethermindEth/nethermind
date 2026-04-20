@@ -292,4 +292,42 @@ public class StateCompositionServiceTests
         releaseScan.Set();
         await scanTask.WaitAsync(TimeSpan.FromSeconds(3), testCt);
     }
+
+    [Test]
+    public async Task CancelScan_ReturnsFalse_WhenNoScanActive()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        await using Harness harness = CreateHarness(stateReader);
+
+        Assert.That(harness.Service.CancelScan(), Is.False);
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task CancelScan_ReturnsTrue_WhenScanActive(CancellationToken testCt)
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        ManualResetEventSlim scanEntered = new(false);
+        ManualResetEventSlim releaseScan = new(false);
+
+        stateReader.WhenForAnyArgs(x =>
+            x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            .Do(_ =>
+            {
+                scanEntered.Set();
+                releaseScan.Wait(testCt);
+            });
+
+        await using Harness harness = CreateHarness(stateReader);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Task<Result<StateCompositionStats>> scanTask = harness.Service.AnalyzeAsync(header, testCt);
+        Assert.That(scanEntered.Wait(TimeSpan.FromSeconds(3), testCt), Is.True, "Scan did not enter RunTreeVisitor");
+
+        Assert.That(harness.Service.CancelScan(), Is.True);
+
+        releaseScan.Set();
+        try { await scanTask.WaitAsync(TimeSpan.FromSeconds(3), testCt); }
+        catch (OperationCanceledException) { }
+    }
 }

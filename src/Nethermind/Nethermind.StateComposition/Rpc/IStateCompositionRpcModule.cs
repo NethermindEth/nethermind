@@ -25,7 +25,8 @@ public interface IStateCompositionRpcModule : IRpcModule
     Task<ResultWrapper<StateCompositionReport>> statecomp_get();
 
     [JsonRpcMethod(IsImplemented = true,
-        Description = "Cancel the currently running scan, if any.",
+        Description = "Cancel the currently running scan, if any. " +
+                      "Returns true if a scan was active and cancellation was signalled; false if no scan was running.",
         ExampleResponse = "true")]
     Task<ResultWrapper<bool>> statecomp_cancelScan();
 

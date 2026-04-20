@@ -186,19 +186,24 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         }
     }
 
-    public void CancelScan()
+    /// <summary>
+    /// Cancels the currently running scan, if any.
+    /// </summary>
+    /// <returns><c>true</c> if a scan was active and a cancellation signal was issued; <c>false</c> if no scan was running.</returns>
+    public bool CancelScan()
     {
         // Capture to local variable to prevent TOCTOU race.
         // The CTS may be disposed between our read and Cancel() call
         // if the scan completes concurrently — catch and ignore.
         CancellationTokenSource? cts = _currentScanCts;
-        if (cts is null) return;
+        if (cts is null) return false;
 
         try
         {
             cts.Cancel();
         }
         catch (ObjectDisposedException) { }
+        return true;
     }
 
     private (int topN, int parallelism, long memoryBudget) ResolveScanOptions()
