@@ -92,10 +92,12 @@ internal static class TestDataBuilders
     }
 
     /// <summary>
-    /// Field-by-field comparison of the diff-tracked portion of <see cref="CumulativeTrieStats"/>.
-    /// Covers the six fields shared by the round-trip assertions in <c>TrieDiffWalkerTests</c>.
+    /// Asserts equality of the six account-trie fields plus <see cref="CumulativeTrieStats.AccountsTotal"/>
+    /// and <see cref="CumulativeTrieStats.ContractsTotal"/>. Intentionally does NOT cover the storage-trie
+    /// side (<c>StorageSlotsTotal</c>, <c>StorageTrieBranches/Extensions/Leaves/Bytes</c>) —
+    /// callers that exercise storage tries should assert those fields directly.
     /// </summary>
-    public static void AssertAccountCumulativeEquals(
+    public static void AssertAccountTrieFieldsEqual(
         CumulativeTrieStats actual, CumulativeTrieStats expected, string? context = null)
     {
         string prefix = context is null ? string.Empty : context + " — ";

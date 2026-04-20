@@ -30,9 +30,6 @@ public class StateCompositionStateHolderTests
 {
     private static readonly Hash256 AnyRoot = Keccak.Compute("root");
 
-    private static CumulativeTrieStats EmptyBaseline(long codeBytes = 0, long[]? histogram = null) =>
-        TestDataBuilders.EmptyBaseline(codeBytes, histogram);
-
     private static TrieDiff DiffWithPayloads(
         IReadOnlyList<SlotCountChange>? slotCountChanges = null,
         IReadOnlyList<CodeHashChange>? codeHashChanges = null) =>
@@ -73,7 +70,7 @@ public class StateCompositionStateHolderTests
     public void ApplyIncrementalDiff_AddNewCodeHash_AddsToCodeBytesTotal()
     {
         ValueHash256 proxy = Keccak.Compute("proxy").ValueHash256;
-        StateCompositionStateHolder holder = HolderWithBaseline(EmptyBaseline());
+        StateCompositionStateHolder holder = HolderWithBaseline(TestDataBuilders.EmptyBaseline());
 
         TrieDiff diff = DiffWithPayloads(codeHashChanges:
         [
@@ -95,7 +92,7 @@ public class StateCompositionStateHolderTests
         ValueHash256 proxy = Keccak.Compute("proxy").ValueHash256;
         ValueHash256 acc1 = Keccak.Compute("a1").ValueHash256;
         ValueHash256 acc2 = Keccak.Compute("a2").ValueHash256;
-        StateCompositionStateHolder holder = HolderWithBaseline(EmptyBaseline());
+        StateCompositionStateHolder holder = HolderWithBaseline(TestDataBuilders.EmptyBaseline());
 
         int lookups = 0;
         int Lookup(ValueHash256 h)
@@ -132,7 +129,7 @@ public class StateCompositionStateHolderTests
         ValueHash256 acc2 = Keccak.Compute("a2").ValueHash256;
 
         StateCompositionStateHolder holder = HolderWithBaseline(
-            EmptyBaseline(codeBytes: 1024),
+            TestDataBuilders.EmptyBaseline(codeBytes: 1024),
             codeHashRefcounts: new Dictionary<ValueHash256, int> { [proxy] = 2 },
             codeHashSizes: new Dictionary<ValueHash256, int> { [proxy] = 1024 });
 
@@ -169,7 +166,7 @@ public class StateCompositionStateHolderTests
         ValueHash256 acc = Keccak.Compute("acc").ValueHash256;
 
         StateCompositionStateHolder holder = HolderWithBaseline(
-            EmptyBaseline(codeBytes: 1024),
+            TestDataBuilders.EmptyBaseline(codeBytes: 1024),
             codeHashRefcounts: new Dictionary<ValueHash256, int> { [oldImpl] = 1 },
             codeHashSizes: new Dictionary<ValueHash256, int> { [oldImpl] = 1024 });
 
@@ -189,7 +186,7 @@ public class StateCompositionStateHolderTests
     {
         // Fresh contract lands with 5 slots — bucket = floor(log2(6)) = 2.
         ValueHash256 acc = Keccak.Compute("acc").ValueHash256;
-        StateCompositionStateHolder holder = HolderWithBaseline(EmptyBaseline());
+        StateCompositionStateHolder holder = HolderWithBaseline(TestDataBuilders.EmptyBaseline());
 
         TrieDiff diff = DiffWithPayloads(slotCountChanges:
         [
@@ -221,7 +218,7 @@ public class StateCompositionStateHolderTests
         long[] seedHist = new long[CumulativeTrieStats.SlotHistogramLength];
         seedHist[startBucket] = 1;
         StateCompositionStateHolder holder = HolderWithBaseline(
-            EmptyBaseline(histogram: seedHist),
+            TestDataBuilders.EmptyBaseline(histogram: seedHist),
             slotCountByAddress: new Dictionary<ValueHash256, long> { [acc] = 3 });
 
         TrieDiff diff = DiffWithPayloads(slotCountChanges:
@@ -249,7 +246,7 @@ public class StateCompositionStateHolderTests
         long[] seedHist = new long[CumulativeTrieStats.SlotHistogramLength];
         seedHist[bucket] = 1;
         StateCompositionStateHolder holder = HolderWithBaseline(
-            EmptyBaseline(histogram: seedHist),
+            TestDataBuilders.EmptyBaseline(histogram: seedHist),
             slotCountByAddress: new Dictionary<ValueHash256, long> { [acc] = 10 });
 
         TrieDiff diff = DiffWithPayloads(slotCountChanges:
@@ -274,7 +271,7 @@ public class StateCompositionStateHolderTests
 
         long[] seed = new long[CumulativeTrieStats.SlotHistogramLength];
         seed[2] = 5;
-        StateCompositionStateHolder holder = HolderWithBaseline(EmptyBaseline(histogram: seed));
+        StateCompositionStateHolder holder = HolderWithBaseline(TestDataBuilders.EmptyBaseline(histogram: seed));
         ImmutableArray<long> capturedBaseline = holder.IncrementalStats.SlotCountHistogram;
 
         TrieDiff diff = DiffWithPayloads(slotCountChanges:

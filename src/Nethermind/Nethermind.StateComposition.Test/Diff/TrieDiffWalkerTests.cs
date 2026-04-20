@@ -228,7 +228,7 @@ public class TrieDiffWalkerTests
         StateCompositionStats scan2 = v2.GetStats(2, root2);
         CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(scan2);
 
-        TestDataBuilders.AssertAccountCumulativeEquals(updated, expected);
+        TestDataBuilders.AssertAccountTrieFieldsEqual(updated, expected);
     }
 
     [Test]
@@ -273,7 +273,7 @@ public class TrieDiffWalkerTests
         tree.Accept(v4, root4);
         CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(v4.GetStats(4, root4));
 
-        TestDataBuilders.AssertAccountCumulativeEquals(cumulative, expected, "after 4 blocks");
+        TestDataBuilders.AssertAccountTrieFieldsEqual(cumulative, expected, "after 4 blocks");
     }
 
     [Test]
@@ -369,7 +369,7 @@ public class TrieDiffWalkerTests
         tree.Accept(v2, root2);
         CumulativeTrieStats expected = CumulativeTrieStats.FromScanStats(v2.GetStats(2, root2));
 
-        TestDataBuilders.AssertAccountCumulativeEquals(updated, expected);
+        TestDataBuilders.AssertAccountTrieFieldsEqual(updated, expected);
     }
 
     [Test]
