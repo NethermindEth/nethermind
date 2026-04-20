@@ -66,6 +66,7 @@ public class Eth69ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
+        _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
         _syncManager.LowestBlock.Returns(0);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
@@ -179,6 +180,38 @@ public class Eth69ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
         _session.Received(1).DeliverMessage(Arg.Any<ReceiptsMessage69>());
+    }
+
+    [Test]
+    public void Should_stop_receipts_response_at_first_unknown_block_hash()
+    {
+        TxReceipt[] blockReceipts =
+        [
+            Build.A.Receipt.WithAllFieldsFilled.TestObject
+        ];
+
+        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(blockReceipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakB).Returns(
+        [
+            Build.A.Receipt.WithAllFieldsFilled.TestObject
+        ]);
+
+        using GetReceiptsMessage66 msg66 = new(1111, new(new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList()));
+        ReceiptsMessage69? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call => response = (ReceiptsMessage69)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response!.EthMessage.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That(response.EthMessage.TxReceipts[0], Is.SameAs(blockReceipts));
+        Assert.That(_syncManager.ReceivedCalls().Any(call =>
+            call.GetMethodInfo().Name == nameof(_syncManager.GetReceipts) &&
+            TestItem.KeccakB.Equals(call.GetArguments()[0])), Is.False);
     }
 
     [Test]

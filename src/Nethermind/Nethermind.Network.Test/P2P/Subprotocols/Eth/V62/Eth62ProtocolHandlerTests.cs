@@ -366,6 +366,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
         }
 
+        [Test]
+        public void Should_omit_unknown_hashes_from_get_block_bodies()
+        {
+            Block block = Build.A.Block.TestObject;
+            _syncManager.Find(Keccak.Zero).Returns((Block?)null);
+            _syncManager.Find(TestItem.KeccakA).Returns(block);
+
+            using GetBlockBodiesMessage msg = new(new[] { Keccak.Zero, TestItem.KeccakA });
+            BlockBodiesMessage? response = null;
+            _session.When(session => session.DeliverMessage(Arg.Any<BlockBodiesMessage>()))
+                .Do(call => response = (BlockBodiesMessage)call[0]);
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
+
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.Bodies!.Bodies, Has.Length.EqualTo(1));
+            Assert.That(response.Bodies.Bodies[0], Is.SameAs(block.Body));
+        }
+
         [TestCase(5, 5)]
         [TestCase(50, 19)]
         public void Should_truncate_array_when_too_many_body(int availableBody, int expectedResponseSize)

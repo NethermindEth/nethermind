@@ -330,7 +330,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     break;
                 }
 
-                Block block = SyncServer.Find(hashes[i]);
+                Block? block = SyncServer.Find(hashes[i]);
+                if (block is null)
+                {
+                    continue;
+                }
+
                 sizeEstimate += MessageSizeEstimator.EstimateSize(block);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
@@ -370,7 +375,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     break;
                 }
 
-                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
+                Hash256 blockHash = getReceiptsMessage.Hashes[i];
+                if (SyncServer.FindHeader(blockHash) is null)
+                {
+                    break;
+                }
+
+                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(blockHash);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)

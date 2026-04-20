@@ -65,6 +65,7 @@ public class Eth70ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
+        _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
         _syncManager.LowestBlock.Returns(0);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
@@ -536,6 +537,40 @@ public class Eth70ProtocolHandlerTests
             m.EthMessage.TxReceipts[0].Length == 0 &&
             m.EthMessage.TxReceipts[1].Length == 1 &&
             !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_stop_receipts_response_at_first_unknown_block_hash()
+    {
+        TxReceipt[] block1Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakB).Returns(
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ]);
+
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList()));
+        ReceiptsMessage70? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
+            .Do(call => response = (ReceiptsMessage70)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response!.EthMessage.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That(response.EthMessage.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
+        Assert.That(response.EthMessage.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
+        Assert.That(response.LastBlockIncomplete, Is.False);
+        Assert.That(_syncManager.ReceivedCalls().Any(call =>
+            call.GetMethodInfo().Name == nameof(_syncManager.GetReceipts) &&
+            TestItem.KeccakB.Equals(call.GetArguments()[0])), Is.False);
     }
 
     [Test]
