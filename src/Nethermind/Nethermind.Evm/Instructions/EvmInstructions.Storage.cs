@@ -3,6 +3,8 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -12,6 +14,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 namespace Nethermind.Evm;
 
 using Int256;
+using Word = Vector256<byte>;
 
 /// <summary>
 /// Implements various EVM instruction handlers for transient storage, memory, and persistent storage operations.
@@ -155,14 +158,18 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a 32-byte store; if insufficient gas, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, in BigInt32, vmState) || !vmState.Memory.TrySaveWord(in result, bytes))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, vmState))
         {
             goto OutOfGas;
         }
 
+        vmState.Memory.StoreWordAfterGas(in result, bytes);
+
         // Report memory changes if tracing is active.
         if (TTracingInst.IsActive)
-            vm.TxTracer.ReportMemoryChange((long)result, bytes);
+        {
+            vm.TxTracer.ReportMemoryChange((long)result.u0, bytes);
+        }
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
@@ -201,11 +208,12 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, in UInt256.One, vmState) ||
-        !vmState.Memory.TrySaveByte(in result, data))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, vmState))
         {
             goto OutOfGas;
         }
+
+        vmState.Memory.StoreByteAfterGas(in result, data);
 
         // Report the memory change if tracing is active.
         if (TTracingInst.IsActive)
@@ -245,18 +253,22 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update memory cost for a 32-byte load.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, in BigInt32, vmState) ||
-        !vmState.Memory.TryLoadSpan(in result, out Span<byte> bytes))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, vmState))
         {
             goto OutOfGas;
         }
 
+        Word word = vmState.Memory.LoadWordAfterGas(in result);
+
         // Report the memory load if tracing is active.
         if (TTracingInst.IsActive)
-            vm.TxTracer.ReportMemoryChange(result, bytes);
+        {
+            ref byte wordBytes = ref Unsafe.As<Word, byte>(ref word);
+            vm.TxTracer.ReportMemoryChange(result, MemoryMarshal.CreateReadOnlySpan(ref wordBytes, EvmPooledMemory.WordSize));
+        }
 
         // Push the loaded bytes onto the stack.
-        stack.PushBytes<TTracingInst>(bytes);
+        stack.Push32Bytes<TTracingInst>(in word);
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
@@ -294,25 +306,33 @@ public static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
+        if (c.IsZero)
+        {
+            return EvmExceptionType.None;
+        }
+
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update memory cost for the destination area (largest offset among source and destination) over the specified length.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, UInt256.Max(b, a), c, vmState) ||
-            !vmState.Memory.TryLoadSpan(in b, c, out Span<byte> bytes))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, UInt256.Max(b, a), c, vmState))
         {
             goto OutOfGas;
         }
 
-        // Report the memory change at the source if tracing is active.
-        if (TTracingInst.IsActive)
-            vm.TxTracer.ReportMemoryChange(b, bytes);
+        ulong length = c.u0;
 
-        // Write the bytes into memory at the destination offset.
-        if (!vmState.Memory.TrySave(in a, bytes)) goto OutOfGas;
-
-        // Report the memory change at the destination if tracing is active.
         if (TTracingInst.IsActive)
-            vm.TxTracer.ReportMemoryChange(a, bytes);
+        {
+            Span<byte> source = vmState.Memory.LoadSpanAfterGas(in b, length);
+            vm.TxTracer.ReportMemoryChange(b, source);
+            vmState.Memory.CopyAfterGas(in a, in b, length);
+            Span<byte> destination = vmState.Memory.LoadSpanAfterGas(in a, length);
+            vm.TxTracer.ReportMemoryChange(a, destination);
+        }
+        else
+        {
+            vmState.Memory.CopyAfterGas(in a, in b, length);
+        }
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
