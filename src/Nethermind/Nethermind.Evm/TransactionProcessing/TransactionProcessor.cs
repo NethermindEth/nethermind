@@ -1075,6 +1075,7 @@ namespace Nethermind.Evm.TransactionProcessing
             EvmExceptionType = evmException;
             ErrorDescription = errorDescription;
         }
+
         public ErrorType Error { get; }
         public bool TransactionExecuted => Error is ErrorType.None;
         public EvmExceptionType EvmExceptionType { get; }
@@ -1087,20 +1088,12 @@ namespace Nethermind.Evm.TransactionProcessing
         public static bool operator !=(TransactionResult obj1, TransactionResult obj2) => !obj1.Equals(obj2);
         public override bool Equals(object? obj) => obj is TransactionResult result && Equals(result);
         public override int GetHashCode() => TransactionExecuted ? 1 : Error.GetHashCode();
-
         public override string ToString() => Error is not ErrorType.None ? $"Fail : {ErrorDescription}" : "Success";
 
         public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? description = null) =>
-            new(ErrorType.None, evmExceptionType, description ?? "");
-
-        public static TransactionResult CreateMinerPremiumNegative(Transaction tx, in UInt256 baseFee)
-        {
-            string detail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {baseFee} (supplied gas {tx.GasLimit})";
-            return new TransactionResult(ErrorType.MaxFeePerGasBelowBaseFee, errorDescription: detail);
-        }
+            new(evmException: evmExceptionType, errorDescription: description ?? "");
 
         public static readonly TransactionResult Ok = new();
-
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
         public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "gas limit below intrinsic gas");
         public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient MaxFeePerGas for sender balance");
