@@ -141,6 +141,10 @@ public partial class PatriciaTree
         }
 
         bool newBranch = false;
+        // If MakeFakeBranch runs, it seeds the fakeBranch with one dirty child at the original
+        // key's first nibble — track that so the commit loop doesn't miss it when our entries
+        // don't also land on that nibble.
+        int makeFakeBranchNib = -1;
 
         if (node is null)
         {
@@ -153,6 +157,7 @@ public partial class PatriciaTree
 
             if (!node.IsBranch)
             {
+                makeFakeBranchNib = node.Key![0];
                 node = MakeFakeBranch(ref path, node);
                 newBranch = true;
             }
@@ -189,6 +194,9 @@ public partial class PatriciaTree
 
         bool hasRemove = false;
         int nonNullChildCount = 0;
+        // Preserved for the commit loop below — the main sort loops below consume nibMask.
+        // Include MakeFakeBranch's seeded slot too, since it can be dirty without appearing in nibMask.
+        int dirtyMask = nibMask | (makeFakeBranchNib >= 0 ? 1 << makeFakeBranchNib : 0);
 
         if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
@@ -341,9 +349,15 @@ public partial class PatriciaTree
         {
             if (node.IsBranch)
             {
+                // Only the nibbles our entries touched can hold newly-dirty children — every other
+                // slot retains its pre-existing (sealed) value from the inherited branch. Iterate
+                // the saved nibMask instead of all 16.
                 path.AppendMut(0);
-                for (int i = 0; i < 16; i++)
+                int mask = dirtyMask;
+                while (mask != 0)
                 {
+                    int i = BitOperations.TrailingZeroCount(mask);
+                    mask &= mask - 1;
                     if (node.TryGetDirtyChild(i, out TrieNode? dirtyChild))
                     {
                         path.SetLast(i);
