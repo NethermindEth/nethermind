@@ -27,9 +27,6 @@ public class BalRecordingBlockProcessor(
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
-        if (store.ReplayEnabled && suggestedBlock.BlockAccessList is null && suggestedBlock.Hash is not null)
-            suggestedBlock.BlockAccessList = store.Get(suggestedBlock.Number, suggestedBlock.Hash);
-
         (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
         if (store.RecordingEnabled && _balBuilder is not null)
