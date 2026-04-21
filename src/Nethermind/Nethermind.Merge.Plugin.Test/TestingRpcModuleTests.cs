@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -24,6 +25,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
@@ -195,12 +197,34 @@ public class TestingRpcModuleTests
         result.Result.Error.Should().Contain("unknown parent block");
     }
 
+    [TestCase(null, Description = "No config — uses default target, adjusts up from parent below default")]
+    [TestCase(20_000_000L, Description = "Configured target below parent — adjusts down")]
+    public async Task Gas_limit_uses_configured_or_default_target(long? targetBlockGasLimit)
+    {
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule(
+            targetBlockGasLimit: targetBlockGasLimit);
+
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(
+            parentHash, CreateDefaultPayloadAttributes(parentHeader), [], []);
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+
+        long effectiveTarget = targetBlockGasLimit ?? TestingRpcModule.DefaultTestingGasLimit;
+        TargetAdjustedGasLimitCalculator expectedCalculator = new(
+            new TestSpecProvider(Osaka.Instance),
+            new BlocksConfig { TargetBlockGasLimit = effectiveTarget });
+        long expectedGasLimit = expectedCalculator.GetGasLimit(parentHeader);
+        payloadResult.ExecutionPayload.GasLimit.Should().Be(expectedGasLimit);
+    }
+
     private static (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) CreateDefaultTestingModule(
         IReleaseSpec? spec = null,
         ulong? slotNumber = null,
         Action<Block>? onProcess = null,
         Func<Block, Block?>? processOverride = null,
-        ITxSource? txSource = null)
+        ITxSource? txSource = null,
+        long? targetBlockGasLimit = null)
     {
         Hash256 parentHash = Keccak.Compute("parent");
         BlockHeader parentHeader = new(
@@ -209,7 +233,7 @@ public class TestingRpcModuleTests
             Address.Zero,
             UInt256.Zero,
             1,
-            30_000_000,
+            TestingRpcModule.DefaultTestingGasLimit / 2,
             1,
             [])
         {
@@ -229,8 +253,7 @@ public class TestingRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? Osaka.Instance);
 
-        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
-        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+        IBlocksConfig blocksConfig = new BlocksConfig { TargetBlockGasLimit = targetBlockGasLimit };
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(parentHash).Returns(parentBlock);
@@ -245,7 +268,7 @@ public class TestingRpcModuleTests
         IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
         blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
 
-        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, LimboLogs.Instance);
+        TestingRpcModule module = new(blockProducerEnvFactory, blocksConfig, specProvider, blockFinder, LimboLogs.Instance);
         return (module, parentHash, parentHeader);
     }
 
