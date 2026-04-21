@@ -60,7 +60,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer, I
         remove { }
     }
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override void HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
 

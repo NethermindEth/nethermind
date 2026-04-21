@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -22,37 +21,40 @@ using Polly;
 
 namespace Nethermind.Init.Steps.Migrations
 {
-    public class ReceiptFixMigration(IApiWithNetwork api) : IDatabaseMigration
+    public class ReceiptFixMigration(
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        ISyncPeerPool syncPeerPool,
+        ISyncConfig syncConfig,
+        ILogManager logManager) : IDatabaseMigration
     {
-        private readonly IApiWithNetwork _api = api;
+        private readonly ILogger _logger = logManager.GetClassLogger<ReceiptFixMigration>();
 
         public async Task Run(CancellationToken cancellationToken)
         {
-            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            ILogger logger = _api.LogManager.GetClassLogger<ReceiptFixMigration>();
-            if (syncConfig.FixReceipts && _api.BlockTree is not null)
+            if (syncConfig.FixReceipts)
             {
                 MissingReceiptsFixVisitor visitor = new(
                     syncConfig.AncientReceiptsBarrierCalc,
-                    _api.BlockTree.Head?.Number - 2 ?? 0,
-                    _api.ReceiptStorage!,
-                    _api.LogManager,
-                    _api.SyncPeerPool!,
-                    _api.BlockTree,
+                    blockTree.Head?.Number - 2 ?? 0,
+                    receiptStorage,
+                    logManager,
+                    syncPeerPool,
+                    blockTree,
                     cancellationToken
                 );
 
                 try
                 {
-                    await _api.BlockTree.Accept(visitor, cancellationToken);
+                    await blockTree.Accept(visitor, cancellationToken);
                 }
                 catch (InvalidOperationException)
                 {
-                    if (logger.IsWarn) logger.Warn("Fixing receipts in DB canceled.");
+                    if (_logger.IsWarn) _logger.Warn("Fixing receipts in DB canceled.");
                 }
                 catch (Exception e)
                 {
-                    if (logger.IsError) logger.Error("Fixing receipts in DB failed.", e);
+                    if (_logger.IsError) _logger.Error("Fixing receipts in DB failed.", e);
                 }
             }
         }

@@ -189,6 +189,23 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         in UInt256 length, VmState<TSelf> vmState);
 
     /// <summary>
+    /// Calculates and deducts the gas cost for accessing a specific memory region.
+    /// Overload for call sites that already have a native-sized length.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="position">The starting position in memory.</param>
+    /// <param name="length">The length of the memory region.</param>
+    /// <param name="vmState">The current EVM state.</param>
+    /// <returns><c>true</c> if sufficient gas was available and deducted; otherwise, <c>false</c>.</returns>
+    static virtual bool UpdateMemoryCost(ref TSelf gas,
+        in UInt256 position,
+        ulong length, VmState<TSelf> vmState)
+    {
+        UInt256 uint256Length = new(length);
+        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, vmState);
+    }
+
+    /// <summary>
     /// Deducts a specified gas cost from the available gas.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
