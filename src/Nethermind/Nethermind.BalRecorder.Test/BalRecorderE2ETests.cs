@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Ethash;
