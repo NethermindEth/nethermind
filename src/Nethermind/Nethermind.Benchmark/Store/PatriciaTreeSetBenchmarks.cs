@@ -116,6 +116,24 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void RepeatedBulkSetNoParallel() => DoBulkSet(PatriciaTree.Flags.DoNotParallelize);
 
+        [Benchmark]
+        public void RepeatedBulkSetCommit() => DoBulkSetCommit(PatriciaTree.Flags.None);
+
+        [Benchmark]
+        public void RepeatedBulkSetCommitNoParallel() => DoBulkSetCommit(PatriciaTree.Flags.DoNotParallelize);
+
+        [Benchmark]
+        public void RepeatedBulkSetUpdateRootCommit() => DoBulkSetUpdateRootCommit(PatriciaTree.Flags.None);
+
+        [Benchmark]
+        public void RepeatedBulkSetUpdateRootCommitNoParallel() => DoBulkSetUpdateRootCommit(PatriciaTree.Flags.DoNotParallelize);
+
+        [Benchmark]
+        public void RepeatedBulkSetAndCommit() => DoBulkSetAndCommit(PatriciaTree.Flags.None);
+
+        [Benchmark]
+        public void RepeatedBulkSetAndCommitNoParallel() => DoBulkSetAndCommit(PatriciaTree.Flags.DoNotParallelize);
+
         private void DoBulkSet(PatriciaTree.Flags flags)
         {
             if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
@@ -139,6 +157,87 @@ namespace Nethermind.Benchmarks.Store
             }
 
             tree.BulkSet(bulkSet, flags);
+        }
+
+        private void DoBulkSetCommit(PatriciaTree.Flags flags)
+        {
+            if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
+
+            PatriciaTree tree = null;
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(BatchSize);
+            for (int i = 0; i < _entryCount; i++)
+            {
+                if (i % BatchSize == 0)
+                {
+                    if (tree is not null)
+                    {
+                        tree.BulkSet(bulkSet, flags);
+                        tree.Commit();
+                        bulkSet.Clear();
+                    }
+                    _blockCacheStore.ResetBlockCache();
+                    tree = new(_blockCacheStore, _preloadedRootHash, true, LimboLogs.Instance);
+                }
+
+                bulkSet.Add(_entries[i]);
+            }
+
+            tree.BulkSet(bulkSet, flags);
+            tree.Commit();
+        }
+
+        private void DoBulkSetUpdateRootCommit(PatriciaTree.Flags flags)
+        {
+            if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
+
+            PatriciaTree tree = null;
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(BatchSize);
+            for (int i = 0; i < _entryCount; i++)
+            {
+                if (i % BatchSize == 0)
+                {
+                    if (tree is not null)
+                    {
+                        tree.BulkSet(bulkSet, flags);
+                        tree.UpdateRootHash();
+                        tree.Commit();
+                        bulkSet.Clear();
+                    }
+                    _blockCacheStore.ResetBlockCache();
+                    tree = new(_blockCacheStore, _preloadedRootHash, true, LimboLogs.Instance);
+                }
+
+                bulkSet.Add(_entries[i]);
+            }
+
+            tree.BulkSet(bulkSet, flags);
+            tree.UpdateRootHash();
+            tree.Commit();
+        }
+
+        private void DoBulkSetAndCommit(PatriciaTree.Flags flags)
+        {
+            if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
+
+            PatriciaTree tree = null;
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(BatchSize);
+            for (int i = 0; i < _entryCount; i++)
+            {
+                if (i % BatchSize == 0)
+                {
+                    if (tree is not null)
+                    {
+                        tree.BulkSetAndCommit(bulkSet, flags);
+                        bulkSet.Clear();
+                    }
+                    _blockCacheStore.ResetBlockCache();
+                    tree = new(_blockCacheStore, _preloadedRootHash, true, LimboLogs.Instance);
+                }
+
+                bulkSet.Add(_entries[i]);
+            }
+
+            tree.BulkSetAndCommit(bulkSet, flags);
         }
     }
 }
