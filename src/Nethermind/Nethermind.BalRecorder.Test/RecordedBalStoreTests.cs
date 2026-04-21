@@ -4,7 +4,6 @@
 using System.IO;
 using FluentAssertions;
 using Nethermind.Api;
-using Nethermind.BalRecorder;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
