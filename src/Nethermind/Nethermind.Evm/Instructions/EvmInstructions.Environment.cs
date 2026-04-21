@@ -173,9 +173,7 @@ public static partial class EvmInstructions
         Address result = TOpEnv.Operation(vm.VmState);
 
         // Push the resulting bytes onto the EVM stack.
-        stack.PushAddress<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushAddress<TTracingInst>(result);
     }
 
     /// <summary>
@@ -202,9 +200,7 @@ public static partial class EvmInstructions
         Address result = TOpEnv.Operation(vm);
 
         // Push the resulting bytes onto the EVM stack.
-        stack.PushAddress<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushAddress<TTracingInst>(result);
     }
 
     /// <summary>
@@ -227,9 +223,7 @@ public static partial class EvmInstructions
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm.VmState);
 
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
     }
 
     /// <summary>
@@ -252,9 +246,7 @@ public static partial class EvmInstructions
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm);
 
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
     }
 
     /// <summary>
@@ -277,9 +269,19 @@ public static partial class EvmInstructions
 
         uint result = TOpEnv.Operation(vm.VmState);
 
-        stack.PushUInt32<TTracingInst>(result);
+        return stack.PushUInt32<TTracingInst>(result);
+    }
 
-        return EvmExceptionType.None;
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionCodeSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+
+        uint result = (uint)stack.CodeLength;
+
+        return stack.PushUInt32<TTracingInst>(result);
     }
 
     /// <summary>
@@ -302,9 +304,7 @@ public static partial class EvmInstructions
 
         ulong result = TOpEnv.Operation(vm.VmState);
 
-        stack.PushUInt64<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt64<TTracingInst>(result);
     }
 
     /// <summary>
@@ -327,9 +327,7 @@ public static partial class EvmInstructions
 
         ulong result = TOpEnv.Operation(vm);
 
-        stack.PushUInt64<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt64<TTracingInst>(result);
     }
 
     /// <summary>
@@ -352,9 +350,7 @@ public static partial class EvmInstructions
 
         ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
 
-        stack.Push32Bytes<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.Push32Bytes<TTracingInst>(in result);
     }
 
     /// <summary>
@@ -368,16 +364,6 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Returns the size of the executing code.
-    /// </summary>
-    public struct OpCodeSize<TGasPolicy> : IOpEnvUInt32<TGasPolicy>
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        public static uint Operation(VmState<TGasPolicy> vmState)
-            => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
-    }
-
-    /// <summary>
     /// Retrieves the length of the return data buffer and pushes it onto the stack.
     /// </summary>
     [SkipLocalsInit]
@@ -386,8 +372,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
-        return EvmExceptionType.None;
+        return stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
     }
 
     /// <summary>
@@ -463,9 +448,7 @@ public static partial class EvmInstructions
 
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
-
-        return EvmExceptionType.None;
+        return stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
         // Jump forward to be unpredicted by the branch predictor.
     BadInstruction:
         return EvmExceptionType.BadInstruction;
@@ -571,9 +554,7 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -601,9 +582,7 @@ public static partial class EvmInstructions
 
         // Get balance for currently executing account.
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
     }
 
     /// <summary>
@@ -637,16 +616,11 @@ public static partial class EvmInstructions
         // For dead accounts, the specification requires pushing zero.
         if (state.IsDeadAccount(address))
         {
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
-        else
-        {
-            // Otherwise, push the account's code hash.
-            ref readonly ValueHash256 hash = ref state.GetCodeHash(address);
-            stack.Push32Bytes<TTracingInst>(in hash);
-        }
-
-        return EvmExceptionType.None;
+        // Otherwise, push the account's code hash.
+        ref readonly ValueHash256 hash = ref state.GetCodeHash(address);
+        return stack.Push32Bytes<TTracingInst>(in hash);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -673,8 +647,7 @@ public static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.Push32Bytes<TTracingInst>(in vm.BlockExecutionContext.PrevRandao);
-        return EvmExceptionType.None;
+        return stack.Push32Bytes<TTracingInst>(in vm.BlockExecutionContext.PrevRandao);
     }
 
     /// <summary>
@@ -701,9 +674,7 @@ public static partial class EvmInstructions
         if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
 
         // Push the remaining gas (as unsigned 64-bit) onto the stack.
-        stack.PushUInt64<TTracingInst>((ulong)TGasPolicy.GetRemainingGas(in gas));
-
-        return EvmExceptionType.None;
+        return stack.PushUInt64<TTracingInst>((ulong)TGasPolicy.GetRemainingGas(in gas));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -739,16 +710,9 @@ public static partial class EvmInstructions
 
         // If versioned hashes are available and the index is within range, push the corresponding blob hash.
         // Otherwise, push zero.
-        if (versionedHashes is not null && result < versionedHashes.Length)
-        {
-            stack.PushBytes<TTracingInst>(versionedHashes[result.u0]);
-        }
-        else
-        {
-            stack.PushZero<TTracingInst>();
-        }
-
-        return EvmExceptionType.None;
+        return versionedHashes is not null && result < versionedHashes.Length
+            ? stack.PushBytes<TTracingInst>(versionedHashes[result.u0])
+            : stack.PushZero<TTracingInst>();
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
@@ -790,7 +754,7 @@ public static partial class EvmInstructions
             vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
-        stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
+        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
         // If block hash tracing is enabled and a valid block hash was obtained, report it.
         if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)
@@ -798,7 +762,7 @@ public static partial class EvmInstructions
             vm.TxTracer.ReportBlockHash(blockHash);
         }
 
-        return EvmExceptionType.None;
+        return pushResult;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
@@ -827,9 +791,7 @@ public static partial class EvmInstructions
 
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.PushUInt64<TTracingInst>(slotNumber.Value);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt64<TTracingInst>(slotNumber.Value);
         // Jump forward to be unpredicted by the branch predictor.
     BadInstruction:
         return EvmExceptionType.BadInstruction;
