@@ -196,14 +196,14 @@ public static class BitmapHelper
             }
         }
 
-    // As there are so many true/false exit points the Jit will coalesce them to one location.
-    // We want them at the end so the conditional early exit jmps are all jmp forwards so the
-    // branch predictor in a uninitialized state will not take them e.g.
-    // - loops are conditional jmps backwards and predicted
-    // - exceptions are conditional forwards jmps and not predicted
+        // As there are so many true/false exit points the Jit will coalesce them to one location.
+        // We want them at the end so the conditional early exit jmps are all jmp forwards so the
+        // branch predictor in a uninitialized state will not take them e.g.
+        // - loops are conditional jmps backwards and predicted
+        // - exceptions are conditional forwards jmps and not predicted
 
-    // When no collision happens; which is the longest execution, we want it to determine that
-    // as fast as possible so we do not want the early outs to be "predicted not taken" branches.
+        // When no collision happens; which is the longest execution, we want it to determine that
+        // as fast as possible so we do not want the early outs to be "predicted not taken" branches.
     NoCollision:
         return false;
     Collision:
