@@ -26,6 +26,7 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -448,15 +449,10 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_uses_block_gas_limit_when_not_specified()
+    public async Task Eth_call_uses_gas_cap_when_not_specified()
     {
         using Context ctx = await Context.Create();
-
-        // Get the current block's gas limit
-        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
-        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
-        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
-        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+        ctx.Test.RpcConfig.GasCap = 5_000_000;
 
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"data\": \"{InfiniteLoopCode.ToHexString()}\"}}");
@@ -470,7 +466,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_uses_specified_gas_limit()
     {
         using Context ctx = await Context.Create();
-        await TestEthCallOutOfGas(ctx, 30000000, 30000000);
+        await TestEthCallOutOfGas(ctx, 30000000);
     }
 
     [Test]
@@ -478,7 +474,23 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.GasCap = 50000000;
-        await TestEthCallOutOfGas(ctx, 300000000, 50000000);
+        await TestEthCallOutOfGas(ctx, 300000000);
+    }
+
+    [Test]
+    public async Task Eth_call_gas_available_is_capped_by_gas_cap()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = 50_000_000;
+        await TestEthCallOutOfGas(ctx, null);
+    }
+
+    [Test]
+    public async Task Eth_call_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = 5_000_000;
+        await TestEthCallOutOfGas(ctx, null);
     }
 
     [Test]
@@ -660,7 +672,18 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Precompile MODEXP failed with error: one or more of base/exponent/modulus length exceeded 1024 bytes\",\"data\":\"0x\"},\"id\":67}"));
     }
 
-    private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
+    [Test]
+    public async Task Eth_call_odd_length_input_returns_invalid_params()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_call",
+            "{\"from\":\"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\",\"data\":\"0x1\"}",
+            "latest");
+        JToken result = JToken.Parse(serialized);
+        result.SelectToken("error.code")!.Value<int>().Should().Be(ErrorCodes.InvalidParams);
+    }
+
+    private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
@@ -668,6 +691,6 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"Block gas limit exceeded\"}},\"id\":67}}");
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\",\"data\":\"0x\"}},\"id\":67}}");
     }
 }

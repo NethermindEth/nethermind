@@ -375,20 +375,14 @@ public partial class EthRpcModuleTests
     public async Task Estimate_gas_uses_block_gas_limit_when_not_specified()
     {
         using Context ctx = await Context.Create();
-
-        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
-        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
-        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
-        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
-
-        await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, "out of gas");
+        await TestEstimateGasOutOfGas(ctx, null, "out of gas");
     }
 
     [Test]
     public async Task Estimate_gas_uses_specified_gas_limit()
     {
         using Context ctx = await Context.Create();
-        await TestEstimateGasOutOfGas(ctx, 30000000, 30000000, "Block gas limit exceeded");
+        await TestEstimateGasOutOfGas(ctx, 30000000, "out of gas");
     }
 
     [Test]
@@ -396,7 +390,32 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.GasCap = 50000000;
-        await TestEstimateGasOutOfGas(ctx, 300000000, 50000000, "Block gas limit exceeded");
+        await TestEstimateGasOutOfGas(ctx, 300000000, "out of gas");
+    }
+
+    [Test]
+    public async Task Estimate_gas_not_limited_by_latest_block_gas_used()
+    {
+        using Context ctx = await Context.Create();
+
+        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
+        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
+        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
+        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+        long gasUsed = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasUsed")!.Value<string>(), 16);
+
+        // Specify gas = blockGasLimit; with old code this would fail because gasUsed > 0 means
+        // blockGasLimit - gasUsed < blockGasLimit, triggering BlockGasLimitExceeded.
+        // With validate=false the check is skipped so estimation proceeds normally.
+        if (gasUsed > 0)
+        {
+            await TestEstimateGasOutOfGas(ctx, blockGasLimit, "out of gas");
+        }
+        else
+        {
+            // Block is empty, the check would not have triggered regardless — skip the assertion.
+            Assert.Pass("Block has no gas used; limit-exceeded check would not have triggered.");
+        }
     }
 
     [Test]
@@ -441,7 +460,7 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
     }
 
-    private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit, string message)
+    private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, string message)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(

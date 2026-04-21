@@ -423,10 +423,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
             }
 
-            return ValidateGas(tx, header, TGasPolicy.GetRemainingGas(intrinsicGas.MinimalGas));
+            return ValidateGas(tx, header, spec, TGasPolicy.GetRemainingGas(intrinsicGas.MinimalGas), validate);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired, bool validate)
         {
             if (tx.GasLimit < minGasRequired)
             {
@@ -434,7 +434,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            if (tx.GasLimit > header.GasLimit - header.GasUsed)
+            if (validate && tx.GasLimit > header.GasLimit - header.GasUsed)
             {
                 TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
                 return TransactionResult.BlockGasLimitExceeded;

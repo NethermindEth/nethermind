@@ -177,4 +177,53 @@ public partial class DebugRpcModuleTests
 
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
     }
+
+    [Test]
+    public async Task Debug_traceCallMany_caps_gas_to_gas_cap()
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.RpcConfig.GasCap = 50_000_000;
+
+        byte[] infiniteLoop = Prepare.EvmCode
+            .Op(Instruction.JUMPDEST)
+            .PushData(0)
+            .Op(Instruction.JUMP)
+            .Done;
+
+        LegacyTransactionForRpc tx = new()
+        {
+            From = TestItem.AddressD,
+            Data = infiniteLoop,
+            Gas = 300_000_000
+        };
+        TransactionBundle bundle = CreateBundle(tx);
+
+        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        result.Data.First().First().Failed.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.RpcConfig.GasCap = 5_000_000;
+
+        byte[] infiniteLoop = Prepare.EvmCode
+            .Op(Instruction.JUMPDEST)
+            .PushData(0)
+            .Op(Instruction.JUMP)
+            .Done;
+
+        LegacyTransactionForRpc tx = new()
+        {
+            From = TestItem.AddressD,
+            Data = infiniteLoop
+        };
+        TransactionBundle bundle = CreateBundle(tx);
+
+        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        result.Data.First().First().Failed.Should().BeTrue();
+    }
 }

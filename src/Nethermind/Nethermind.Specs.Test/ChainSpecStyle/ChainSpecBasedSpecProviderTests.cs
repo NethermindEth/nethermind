@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Evm;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
 

@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -182,5 +183,47 @@ public partial class DebugRpcModuleTests
             JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
             JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
         }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_caps_gas_to_gas_cap()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Blockchain.RpcConfig.GasCap = 50_000_000;
+
+        byte[] infiniteLoop = Prepare.EvmCode
+            .Op(Instruction.JUMPDEST)
+            .PushData(0)
+            .Op(Instruction.JUMP)
+            .Done;
+
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = $"{TestItem.AddressA}", data = infiniteLoop.ToHexString(true), gas = $"0x{300_000_000:X}" }
+        );
+
+        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<GethLikeTxTrace>().Subject;
+        trace.Failed.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task Debug_traceCall_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Blockchain.RpcConfig.GasCap = 5_000_000;
+
+        byte[] infiniteLoop = Prepare.EvmCode
+            .Op(Instruction.JUMPDEST)
+            .PushData(0)
+            .Op(Instruction.JUMP)
+            .Done;
+
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = $"{TestItem.AddressA}", data = infiniteLoop.ToHexString(true) }
+        );
+
+        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<GethLikeTxTrace>().Subject;
+        trace.Failed.Should().BeTrue();
     }
 }

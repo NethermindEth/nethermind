@@ -1267,6 +1267,34 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
+    [Test]
+    public async Task Eth_createAccessList_cannot_exceed_gas_cap()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = 50_000_000;
+
+        AccessListTransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<AccessListTransactionForRpc>(
+            $"{{\"type\":\"0x1\", \"from\":\"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gas\":\"0x{300_000_000:X}\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", false);
+        JToken result = JToken.Parse(serialized);
+        result.SelectToken("result.error")!.Value<string>().Should().NotBeNullOrEmpty();
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = 5_000_000;
+
+        AccessListTransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<AccessListTransactionForRpc>(
+            $"{{\"type\":\"0x1\", \"from\":\"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", false);
+        JToken result = JToken.Parse(serialized);
+        result.SelectToken("result.error")!.Value<string>().Should().NotBeNullOrEmpty();
+    }
+
     [TestCase(null)]
     [TestCase(0)]
     public static void Should_handle_gasCap_as_max_if_null_or_zero(long? gasCap)
