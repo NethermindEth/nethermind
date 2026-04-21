@@ -569,23 +569,55 @@ jobs:
                   }
                   close(flags_file)
                 }
-                {
-                  if (!injected && flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:/) {
-                    match($0, /^[[:space:]]*/);
-                    indent = substr($0, RSTART, RLENGTH);
-                    sub(/extra_flags:.*/, "extra_flags:", $0);
-                    print
+                function flush_flags() {
+                  if (!injected && flags_count > 0 && ef_indent != "") {
                     for (i = 1; i <= flags_count; i++) {
-                      print indent "  - " flags[i]
+                      print ef_indent "  - " flags[i]
                     }
                     injected = 1
-                  } else {
-                    print
                   }
+                  in_extra_flags = 0
+                }
+                {
+                  if (in_extra_flags) {
+                    # Still inside the extra_flags block — items are indented deeper
+                    if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) {
+                      # blank or comment line — keep inside block
+                      print
+                      next
+                    }
+                    match($0, /^[[:space:]]*/);
+                    cur_indent = RLENGTH;
+                    if (cur_indent > ef_indent_len) {
+                      # deeper indent — still part of extra_flags block
+                      print
+                      next
+                    }
+                    # same or less indent — block ended, inject before this line
+                    flush_flags()
+                    print
+                    next
+                  }
+                  if (!injected && flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:/) {
+                    match($0, /^[[:space:]]*/);
+                    ef_indent = substr($0, RSTART, RLENGTH);
+                    ef_indent_len = RLENGTH;
+                    sub(/extra_flags:.*/, "extra_flags:", $0);
+                    print
+                    in_extra_flags = 1
+                    next
+                  }
+                  print
+                }
+                END {
+                  flush_flags()
                 }
               ' > "${RENDERED_CONFIG_FILE}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
+          echo "--- Rendered config ---"
+          cat "${RENDERED_CONFIG_FILE}"
+          echo "--- End rendered config ---"
 
       - name: Install or upgrade expb
         shell: bash
@@ -1641,23 +1673,55 @@ jobs:
                   }
                   close(flags_file)
                 }
-                {
-                  if (!injected && flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:/) {
-                    match($0, /^[[:space:]]*/);
-                    indent = substr($0, RSTART, RLENGTH);
-                    sub(/extra_flags:.*/, "extra_flags:", $0);
-                    print
+                function flush_flags() {
+                  if (!injected && flags_count > 0 && ef_indent != "") {
                     for (i = 1; i <= flags_count; i++) {
-                      print indent "  - " flags[i]
+                      print ef_indent "  - " flags[i]
                     }
                     injected = 1
-                  } else {
-                    print
                   }
+                  in_extra_flags = 0
+                }
+                {
+                  if (in_extra_flags) {
+                    # Still inside the extra_flags block — items are indented deeper
+                    if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) {
+                      # blank or comment line — keep inside block
+                      print
+                      next
+                    }
+                    match($0, /^[[:space:]]*/);
+                    cur_indent = RLENGTH;
+                    if (cur_indent > ef_indent_len) {
+                      # deeper indent — still part of extra_flags block
+                      print
+                      next
+                    }
+                    # same or less indent — block ended, inject before this line
+                    flush_flags()
+                    print
+                    next
+                  }
+                  if (!injected && flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:/) {
+                    match($0, /^[[:space:]]*/);
+                    ef_indent = substr($0, RSTART, RLENGTH);
+                    ef_indent_len = RLENGTH;
+                    sub(/extra_flags:.*/, "extra_flags:", $0);
+                    print
+                    in_extra_flags = 1
+                    next
+                  }
+                  print
+                }
+                END {
+                  flush_flags()
                 }
               ' > "${RENDERED_CONFIG_FILE}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
+          echo "--- Rendered config ---"
+          cat "${RENDERED_CONFIG_FILE}"
+          echo "--- End rendered config ---"
 
       - name: Install or upgrade expb
         shell: bash
