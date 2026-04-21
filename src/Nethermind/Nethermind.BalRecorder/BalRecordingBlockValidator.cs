@@ -4,7 +4,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
 namespace Nethermind.BalRecorder;
