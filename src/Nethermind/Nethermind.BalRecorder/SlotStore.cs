@@ -3,58 +3,65 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.IO;
+using System.Threading;
 
 namespace Nethermind.BalRecorder;
 
 /// <summary>
-/// Stores arbitrary byte blobs indexed by block number, using an era file layout.
-/// One <see cref="SlotFile"/> covers <see cref="SlotFile.SlotsPerFile"/> consecutive blocks.
-/// Files are opened lazily and kept open for the store's lifetime.
-/// Non-existent files are re-checked on every read miss (no null caching).
+/// Stores arbitrary byte blobs indexed by block number using a slot-file layout.
+/// Caches a single open <see cref="SlotFile"/> at a time to bound memory usage.
 /// </summary>
 public class SlotStore(string directory, string extension = "bin") : IDisposable
 {
-    private readonly ConcurrentDictionary<long, Lazy<SlotFile>> _files = new();
+    private SlotFile? _file;
+    private long _fileEra = -1;
+    private readonly Lock _lock = new();
 
     private string FilePath(long era) => Path.Combine(directory, $"{era:D8}.{extension}");
-
-    private Lazy<SlotFile>? TryGetOrOpenForRead(long era)
-    {
-        if (_files.TryGetValue(era, out Lazy<SlotFile>? existing)) return existing;
-        string path = FilePath(era);
-        if (!File.Exists(path)) return null;
-        return _files.GetOrAdd(era, static (_, p) => new Lazy<SlotFile>(() => new SlotFile(p)), path);
-    }
-
-    private Lazy<SlotFile> GetOrCreateForWrite(long era)
-    {
-        Directory.CreateDirectory(directory);
-        return _files.GetOrAdd(era, static (e, ctx) =>
-            new Lazy<SlotFile>(() => new SlotFile(ctx.path)),
-            (path: FilePath(era), _: 0));
-    }
 
     public bool TryRead<TArg>(long blockNumber, ReadOnlySpanAction<byte, TArg> action, TArg arg)
     {
         long era = blockNumber / SlotFile.SlotsPerFile;
-        Lazy<SlotFile>? file = TryGetOrOpenForRead(era);
-        return file?.Value.TryRead((int)(blockNumber % SlotFile.SlotsPerFile), action, arg) ?? false;
+        int slot = (int)(blockNumber % SlotFile.SlotsPerFile);
+        lock (_lock)
+        {
+            if (_fileEra != era)
+            {
+                string path = FilePath(era);
+                if (!File.Exists(path)) return false;
+                _file?.Dispose();
+                _file = new SlotFile(path);
+                _fileEra = era;
+            }
+            return _file!.TryRead(slot, action, arg);
+        }
     }
 
     public void Write(long blockNumber, ReadOnlySpan<byte> data)
     {
         long era = blockNumber / SlotFile.SlotsPerFile;
-        GetOrCreateForWrite(era).Value.Write((int)(blockNumber % SlotFile.SlotsPerFile), data);
+        int slot = (int)(blockNumber % SlotFile.SlotsPerFile);
+        lock (_lock)
+        {
+            if (_fileEra != era)
+            {
+                _file?.Dispose();
+                Directory.CreateDirectory(directory);
+                _file = new SlotFile(FilePath(era));
+                _fileEra = era;
+            }
+            _file!.TryWrite(slot, data);
+        }
     }
 
     public void Dispose()
     {
-        foreach (Lazy<SlotFile> lazy in _files.Values)
+        lock (_lock)
         {
-            if (lazy.IsValueCreated) lazy.Value.Dispose();
+            _file?.Dispose();
+            _file = null;
+            _fileEra = -1;
         }
-        _files.Clear();
     }
 }
