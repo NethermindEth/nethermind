@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 
 namespace Nethermind.BalRecorder;
 
@@ -15,9 +16,18 @@ public class BalRecordingBlockProcessor(
     IBlockProcessor inner,
     IRecordedBalStore store,
     IWorldState stateProvider,
-    BalRecorderSpecSwitch balSwitch) : IBlockProcessor
+    BalRecorderSpecSwitch balSwitch,
+    ILogManager logManager) : IBlockProcessor
 {
-    private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+    private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder is { } b ? b
+        : store.RecordingEnabled ? WarnNullBuilder(logManager) : null;
+
+    private static IBlockAccessListBuilder? WarnNullBuilder(ILogManager logManager)
+    {
+        logManager.GetClassLogger<BalRecordingBlockProcessor>()
+            .Warn("RecordingEnabled is true but IWorldState does not implement IBlockAccessListBuilder — BAL recording is disabled.");
+        return null;
+    }
 
     public event Action? TransactionsExecuted
     {

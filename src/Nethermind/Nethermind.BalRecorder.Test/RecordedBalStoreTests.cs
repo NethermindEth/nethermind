@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.BalRecorder.Test;
@@ -32,7 +33,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             BlockAccessList bal = MakeBal(TestItem.AddressA, TestItem.AddressB);
             Block block = Build.A.Block.WithNumber(100).TestObject;
 
@@ -49,7 +50,7 @@ public class RecordedBalStoreTests
     [Test]
     public void Get_ReturnsNull_WhenFileDoesNotExist()
     {
-        using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = TempDir() }, new InitConfig());
+        using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = TempDir() }, new InitConfig(), LimboLogs.Instance);
         store.Get(999, TestItem.KeccakA).Should().BeNull();
     }
 
@@ -59,7 +60,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             Block block1 = Build.A.Block.WithNumber(0).TestObject;
             store.Insert(block1, MakeBal(TestItem.AddressA));
 
@@ -75,7 +76,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             Block blockA = Build.A.Block.WithNumber(0).TestObject;
             Block blockB = Build.A.Block.WithNumber(1).TestObject;
             BlockAccessList balA = MakeBal(TestItem.AddressA);
@@ -101,7 +102,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             long era0Block = 0;
             long era1Block = 8192;
 
@@ -125,7 +126,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             Block block = Build.A.Block.WithNumber(42).TestObject;
 
             store.Insert(block, MakeBal(TestItem.AddressA));
@@ -143,7 +144,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             Block block = Build.A.Block.WithNumber(7).TestObject;
             store.Insert(block, MakeBal(TestItem.AddressA));
 
