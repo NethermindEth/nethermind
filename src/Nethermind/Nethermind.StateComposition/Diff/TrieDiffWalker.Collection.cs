@@ -239,7 +239,15 @@ internal sealed partial class TrieDiffWalker
             else _trieNodesRemoved[trieIdx, kind]++;
         }
 
-        if (added) _trieBytesAdded[trieIdx] += rlpLength;
-        else _trieBytesRemoved[trieIdx] += rlpLength;
+        if (added)
+        {
+            if (isStorage) _storageBytesAdded += rlpLength;
+            else _accountBytesAdded += rlpLength;
+        }
+        else
+        {
+            if (isStorage) _storageBytesRemoved += rlpLength;
+            else _accountBytesRemoved += rlpLength;
+        }
     }
 }

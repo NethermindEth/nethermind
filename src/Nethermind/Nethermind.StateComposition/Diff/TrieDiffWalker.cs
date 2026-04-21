@@ -41,8 +41,8 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
     private const int LeafKind = 2;
     private readonly int[,] _trieNodesAdded = new int[2, 3];
     private readonly int[,] _trieNodesRemoved = new int[2, 3];
-    private readonly long[] _trieBytesAdded = new long[2];
-    private readonly long[] _trieBytesRemoved = new long[2];
+    private long _accountBytesAdded, _accountBytesRemoved;
+    private long _storageBytesAdded, _storageBytesRemoved;
 
     private long _storageSlotsAdded, _storageSlotsRemoved;
     private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
@@ -68,11 +68,11 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
             _trieNodesAdded[AccountTrie, BranchKind], _trieNodesRemoved[AccountTrie, BranchKind],
             _trieNodesAdded[AccountTrie, ExtensionKind], _trieNodesRemoved[AccountTrie, ExtensionKind],
             _trieNodesAdded[AccountTrie, LeafKind], _trieNodesRemoved[AccountTrie, LeafKind],
-            _trieBytesAdded[AccountTrie], _trieBytesRemoved[AccountTrie],
+            _accountBytesAdded, _accountBytesRemoved,
             _trieNodesAdded[StorageTrie, BranchKind], _trieNodesRemoved[StorageTrie, BranchKind],
             _trieNodesAdded[StorageTrie, ExtensionKind], _trieNodesRemoved[StorageTrie, ExtensionKind],
             _trieNodesAdded[StorageTrie, LeafKind], _trieNodesRemoved[StorageTrie, LeafKind],
-            _trieBytesAdded[StorageTrie], _trieBytesRemoved[StorageTrie],
+            _storageBytesAdded, _storageBytesRemoved,
             _storageSlotsAdded, _storageSlotsRemoved,
             _contractsWithStorageAdded, _contractsWithStorageRemoved,
             _emptyAccountsAdded, _emptyAccountsRemoved,
@@ -188,8 +188,8 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
         _contractsAdded = 0; _contractsRemoved = 0;
         Array.Clear(_trieNodesAdded);
         Array.Clear(_trieNodesRemoved);
-        Array.Clear(_trieBytesAdded);
-        Array.Clear(_trieBytesRemoved);
+        _accountBytesAdded = 0; _accountBytesRemoved = 0;
+        _storageBytesAdded = 0; _storageBytesRemoved = 0;
         _storageSlotsAdded = 0; _storageSlotsRemoved = 0;
         _contractsWithStorageAdded = 0; _contractsWithStorageRemoved = 0;
         _emptyAccountsAdded = 0; _emptyAccountsRemoved = 0;
