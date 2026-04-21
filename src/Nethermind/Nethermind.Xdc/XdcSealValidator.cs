@@ -14,14 +14,20 @@ using System.Linq;
 
 namespace Nethermind.Xdc;
 
-internal class XdcSealValidator(IMasternodesCalculator masternodesCalculator, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider) : ISealValidator
+internal class XdcSealValidator(
+    IMasternodesCalculator masternodesCalculator,
+    IEpochSwitchManager epochSwitchManager,
+    ISpecProvider specProvider) : ISealValidator
 {
     private readonly EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
     private readonly XdcHeaderDecoder _headerDecoder = new();
 
+    protected IMasternodesCalculator MasternodesCalculator { get; } = masternodesCalculator;
+    protected ISpecProvider SpecProvider { get; } = specProvider;
+
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false) => ValidateParams(parent, header, out _);
 
-    public bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
+    public virtual bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
@@ -39,7 +45,7 @@ internal class XdcSealValidator(IMasternodesCalculator masternodesCalculator, IE
             return false;
         }
 
-        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found
+        IXdcReleaseSpec xdcSpec = SpecProvider.GetXdcSpec(xdcHeader); // will throw if no spec found
 
         Address[] masternodes;
 
@@ -62,7 +68,7 @@ internal class XdcSealValidator(IMasternodesCalculator masternodesCalculator, IE
             }
 
             //TODO init masternodes by reading from most recent checkpoint
-            (masternodes, Address[] penaltiesAddresses) = masternodesCalculator.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
+            (masternodes, Address[] penaltiesAddresses) = MasternodesCalculator.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
             if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
             {
                 error = "Validators does not match what's stored in snapshot minus its penalty.";
