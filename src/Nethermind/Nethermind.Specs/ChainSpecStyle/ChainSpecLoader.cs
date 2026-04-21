@@ -216,6 +216,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
             Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
             Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
+            Eip8198TransitionTimestamp = chainSpecJson.Params.Eip8198TransitionTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);

@@ -189,6 +189,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip8024TransitionTimestamp = config.AmsterdamTime,
             Eip8037TransitionTimestamp = config.AmsterdamTime,
 
+            Eip8198TransitionTimestamp = config.BogotaTime,
+
             BlobSchedule = blobSchedule
         };
     }
@@ -205,6 +207,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             [nameof(BPO3)] = static c => c.Bpo3Time,
             [nameof(BPO4)] = static c => c.Bpo4Time,
             [nameof(BPO5)] = static c => c.Bpo5Time,
+            [nameof(Bogota)] = static c => c.BogotaTime,
         };
 
     private ulong? GetHardforkTimestamp(GethGenesisConfigJson config, string hardforkName) =>

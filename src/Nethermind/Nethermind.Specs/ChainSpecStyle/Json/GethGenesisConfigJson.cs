@@ -70,6 +70,8 @@ public class GethGenesisConfigJson
 
     public ulong? Bpo5Time { get; set; }
 
+    public ulong? BogotaTime { get; set; }
+
     public UInt256? TerminalTotalDifficulty { get; set; }
 
     public bool? TerminalTotalDifficultyPassed { get; set; }
