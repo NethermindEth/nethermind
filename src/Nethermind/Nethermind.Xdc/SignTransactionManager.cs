@@ -24,6 +24,8 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
 
         await signer.Sign(transaction);
 
+        transaction.Hash = transaction.CalculateHash();
+
         AcceptTxResult added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
@@ -43,10 +45,9 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
         transaction.GasPrice = 0;
         transaction.Data = inputData;
         transaction.SenderAddress = sender;
+        transaction.IsServiceTransaction =  true;
 
         transaction.Type = TxType.Legacy;
-
-        transaction.Hash = transaction.CalculateHash();
 
         return transaction;
     }
