@@ -176,7 +176,9 @@ public class PrewarmerScopeProvider(
 
         public void HintBal(BlockAccessList bal)
         {
-            if (!populatePreBlockCache)
+            // Skip on prewarmer-env scope (populatePreBlockCache=true) — HintBal only runs
+            // on the main processing scope, which is the one BalReplayBlockProcessor targets.
+            if (populatePreBlockCache)
             {
                 return;
             }
