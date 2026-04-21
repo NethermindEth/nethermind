@@ -11,8 +11,9 @@ using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.BalRecorder;
 
-public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig) : IRecordedBalStore
+public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig, ILogManager logManager) : IRecordedBalStore
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<RecordedBalStore>();
     private readonly SlotStore _store = new(
         config.Path.GetApplicationResourcePath(initConfig.BaseDbPath), "bal");
 
@@ -29,12 +30,21 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig)
 
     public BlockAccessList? Get(long blockNumber, Hash256 blockHash)
     {
-        ResultRef resultRef = new();
-        _store.TryRead(blockNumber, static (data, state) => state.Value = BlockAccessListDecoder.Instance.Decode(data), resultRef);
-        return resultRef.Value;
+        ReadState state = new() { Logger = _logger, BlockNumber = blockNumber };
+        _store.TryRead(blockNumber, static (data, s) =>
+        {
+            try { s.Value = BlockAccessListDecoder.Instance.Decode(data); }
+            catch (RlpException ex) { s.Logger.Warn($"Corrupt BAL slot for block {s.BlockNumber}: {ex.Message}"); }
+        }, state);
+        return state.Value;
     }
 
-    private sealed class ResultRef { public BlockAccessList? Value; }
+    private sealed class ReadState
+    {
+        public BlockAccessList? Value;
+        public ILogger Logger;
+        public long BlockNumber;
+    }
 }
 
 public class NullRecordedBalStore : IRecordedBalStore
