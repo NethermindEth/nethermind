@@ -39,13 +39,12 @@ public partial class BlockProcessor(
     IBlockhashStore blockHashStore,
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
-    IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IExecutionRequestsProcessor executionRequestsProcessor)
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly IWorldState _stateProvider = stateProvider;
-    protected readonly IBlockAccessListManager _balManager = balManager;
+    // protected readonly IBlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     protected readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
@@ -65,7 +64,7 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        _balManager.PrepareForProcessing(suggestedBlock, spec, options);
+        // _balManager.PrepareForProcessing(suggestedBlock, spec, options);
 
         _systemContractHandler = _standardSystemContractHandler.Value;
 
@@ -115,7 +114,7 @@ public partial class BlockProcessor(
 
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
-        _balManager.Setup(block);
+        // _balManager.Setup(block);
 
         _systemContractHandler.StoreBeaconRoot(block, spec);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
