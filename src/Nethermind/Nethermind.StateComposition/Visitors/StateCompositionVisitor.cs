@@ -175,8 +175,6 @@ internal sealed class StateCompositionVisitor(
             // Per-thread refcount: one increment per account observation. Summed across
             // threads in MergeFrom to give the total number of accounts pointing at each
             // distinct code hash. Seeds the state holder's incremental refcount tracker.
-            // GetValueRefOrAddDefault folds the TryGetValue+indexer pair into a single
-            // hash lookup with an in-place ref to the slot.
             ref int refcount = ref CollectionsMarshal.GetValueRefOrAddDefault(c.CodeHashRefcounts, account.CodeHash, out _);
             refcount++;
 

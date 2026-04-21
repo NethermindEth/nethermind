@@ -264,11 +264,8 @@ internal sealed class StateCompositionStateHolder
 
         if (change.HasCode)
         {
-            // GetValueRefOrAddDefault replaces the TryGetValue + indexer-set pair
-            // with a single hash lookup. The `exists` flag doubles as the
-            // "first-reference" signal that previously keyed off newRefcount == 0.
-            ref int newRefcount = ref CollectionsMarshal.GetValueRefOrAddDefault(_codeHashRefcounts, change.NewCodeHash, out bool exists);
-            if (!exists)
+            ref int newRefcount = ref CollectionsMarshal.GetValueRefOrAddDefault(_codeHashRefcounts, change.NewCodeHash, out bool existed);
+            if (!existed)
             {
                 int size = codeSizeLookup(change.NewCodeHash);
                 _codeHashSizes[change.NewCodeHash] = size;

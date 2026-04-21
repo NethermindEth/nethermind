@@ -5,13 +5,7 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.StateComposition.Visitors;
 
-/// <summary>
-/// Fixed-size inline buffer of 16 <see cref="DepthCounter"/> values (one slot
-/// per tracked trie depth). Embedding the counters inline keeps per-thread
-/// <see cref="VisitorCounters"/> allocation-free for the hot per-node path and
-/// improves cache locality — all depth rows sit contiguously with the enclosing
-/// struct instead of hanging off a separate heap array.
-/// </summary>
+/// <summary>Inline storage for 16 DepthCounter rows — keeps the per-thread visitor allocation-free.</summary>
 [InlineArray(Long16.Length)]
 internal struct DepthCounter16
 {

@@ -33,11 +33,9 @@ public enum DepthSlot
 /// delta container produced by <see cref="TrieDiffWalker"/> — same shape, same
 /// field semantics, merged into the holder's baseline via <see cref="AddInPlace"/>.
 ///
-/// Storage layout: a single <c>9 × 16</c> inline buffer (9 × <see cref="Long16"/>),
-/// indexed by <see cref="DepthSlot"/>. All 144 longs live contiguously inside this
-/// class instance — no per-row heap array, no jagged pointer chase. Every cumulative
-/// operation (Reset, Clone, AddInPlace, IsEmpty, SeedFromSnapshot) is one loop over
-/// the flat span instead of nine array-by-array copies.
+/// Storage layout: a single <c>9 × 16</c> inline buffer (9 × <see cref="Long16"/> = 144
+/// contiguous longs), indexed by <see cref="DepthSlot"/>. Cumulative ops (Reset, Clone,
+/// AddInPlace, IsEmpty, SeedFromSnapshot) walk the flat span in one loop.
 ///
 /// Physical-depth storage: rows are indexed by physical depth [0..15].
 /// The Geth +1 depth shift for ValueNodeCount is applied only at presentation
@@ -53,11 +51,6 @@ public sealed class CumulativeDepthStats
     public const int DepthCount = Long16.Length;
     private const int TotalLongs = CategoryCount * DepthCount;
 
-    /// <summary>
-    /// Inline buffer of nine <see cref="Long16"/> rows, laid out as 144 contiguous
-    /// <see cref="long"/> values. Accessed through per-category <see cref="Span{T}"/>
-    /// accessors and <see cref="GetRow"/>; never exposed directly.
-    /// </summary>
     [InlineArray(CategoryCount)]
     private struct DepthRows9
     {
@@ -66,7 +59,6 @@ public sealed class CumulativeDepthStats
 
     private DepthRows9 _rows;
 
-    /// <summary>Returns the per-depth row at <paramref name="slotIndex"/> as a <see cref="Span{T}"/> of 16 longs.</summary>
     public Span<long> GetRow(int slotIndex) => MemoryMarshal.CreateSpan(
         ref Unsafe.Add(ref Unsafe.As<DepthRows9, long>(ref _rows), slotIndex * DepthCount),
         DepthCount);
@@ -96,7 +88,6 @@ public sealed class CumulativeDepthStats
     /// </summary>
     public bool IsSeeded { get; private set; }
 
-    /// <summary>Flat view over all 144 longs, for one-shot bulk operations.</summary>
     private Span<long> FlatRows => MemoryMarshal.CreateSpan(
         ref Unsafe.As<DepthRows9, long>(ref _rows), TotalLongs);
 
@@ -190,12 +181,9 @@ public sealed class CumulativeDepthStats
 
     /// <summary>
     /// Deep copy intended for handing a diff's DepthDelta to a consumer without
-    /// sharing mutable state with the producer. Preserves raw counters but leaves
-    /// <see cref="IsSeeded"/> at its default (false) — a delta is always accumulated
-    /// into a seeded target, so the seeded flag is immaterial for consumers.
-    ///
-    /// With the inline storage, the 144-long payload copies as one struct assignment
-    /// rather than 9 separate <c>Array.Copy</c> calls plus 10 allocations.
+    /// sharing mutable state with the producer. Leaves <see cref="IsSeeded"/> at
+    /// its default (false) — a delta is always accumulated into a seeded target,
+    /// so the seeded flag is immaterial for consumers.
     /// </summary>
     public CumulativeDepthStats CloneAsDelta()
     {
