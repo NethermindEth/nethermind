@@ -32,9 +32,9 @@ on:
         required: false
         default: "0"
       amount:
-        description: Value used to replace <<AMOUNT>> placeholder (integer, number of payloads)
+        description: Override payload amount (default 1000 for realblocks, 100 for superblocks)
         required: false
-        default: "0"
+        default: ""
       additional_extra_flags:
         description: >-
           Optional extra Nethermind flags. Example (single): --Merge.SweepMemory=NoGC.
@@ -159,7 +159,13 @@ jobs:
             expb_branch="${DISPATCH_EXPB_BRANCH}"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
-            amount="${DISPATCH_AMOUNT:-0}"
+            if [[ -n "${DISPATCH_AMOUNT}" ]]; then
+              amount="${DISPATCH_AMOUNT}"
+            elif [[ "${payload_set}" == "realblocks" ]]; then
+              amount="1000"
+            else
+              amount="100"
+            fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
@@ -190,7 +196,7 @@ jobs:
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="0"
-            amount="0"
+            amount=""
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -205,7 +211,7 @@ jobs:
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="0"
-            amount="0"
+            amount=""
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -578,7 +584,7 @@ jobs:
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
-            -e "s#<<AMOUNT>>#${AMOUNT}#g" \
+            ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
@@ -1644,7 +1650,7 @@ jobs:
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
-            -e "s#<<AMOUNT>>#${AMOUNT}#g" \
+            ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
