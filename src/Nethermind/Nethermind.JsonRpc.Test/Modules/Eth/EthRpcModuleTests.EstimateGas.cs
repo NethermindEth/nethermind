@@ -550,7 +550,7 @@ public partial class EthRpcModuleTests
         // A state override funds the sender so balance is not the limiting factor.
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        const string sender = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
+        string sender = TestItem.AddressA.ToString();
         object? transaction = JsonSerializer.Deserialize<object>(
             "{\"from\":\"" + sender + "\",\"to\":\"0xc200000000000000000000000000000000000000\",\"gasPrice\":\"0x1\"}");
         object? stateOverride = JsonSerializer.Deserialize<object>(
