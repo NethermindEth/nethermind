@@ -1327,8 +1327,8 @@ jobs:
                   echo "| Stat | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) |"
                   echo "|------|----------|-------------|----------|----------|----------|----------|----------|"
                   echo "| Mean | $(compute_mean ${avg_values}) | $(compute_mean ${median_values}) | $(compute_mean ${p90_values}) | $(compute_mean ${p95_values}) | $(compute_mean ${p99_values}) | $(compute_mean ${min_values}) | $(compute_mean ${max_values}) |"
-                  echo "| Best | $(compute_min_of ${avg_values}) | $(compute_min_of ${median_values}) | $(compute_min_of ${p90_values}) | $(compute_min_of ${p95_values}) | $(compute_min_of ${p99_values}) | $(compute_min_of ${min_values}) | $(compute_min_of ${min_values}) |"
-                  echo "| Worst | $(compute_max_of ${avg_values}) | $(compute_max_of ${median_values}) | $(compute_max_of ${p90_values}) | $(compute_max_of ${p95_values}) | $(compute_max_of ${p99_values}) | $(compute_max_of ${max_values}) | $(compute_max_of ${max_values}) |"
+                  echo "| Best | $(compute_min_of ${avg_values}) | $(compute_min_of ${median_values}) | $(compute_min_of ${p90_values}) | $(compute_min_of ${p95_values}) | $(compute_min_of ${p99_values}) | $(compute_min_of ${min_values}) | $(compute_min_of ${max_values}) |"
+                  echo "| Worst | $(compute_max_of ${avg_values}) | $(compute_max_of ${median_values}) | $(compute_max_of ${p90_values}) | $(compute_max_of ${p95_values}) | $(compute_max_of ${p99_values}) | $(compute_max_of ${min_values}) | $(compute_max_of ${max_values}) |"
                 } >> "${summary_file}"
               fi
             else
@@ -2171,7 +2171,7 @@ jobs:
       - name: Install dotTrace Reporter
         shell: pwsh
         run: |
-          $url = 'https://www.nuget.org/api/v2/package/JetBrains.dotTrace.CommandLineTools.windows-x64'
+          $url = 'https://www.nuget.org/api/v2/package/JetBrains.dotTrace.CommandLineTools.windows-x64/2026.1.0.1'
           Write-Host "Downloading dotTrace CommandLineTools from NuGet..."
           Invoke-WebRequest -Uri $url -OutFile dottrace-clt.zip
           Expand-Archive -Path dottrace-clt.zip -DestinationPath dottrace-clt
