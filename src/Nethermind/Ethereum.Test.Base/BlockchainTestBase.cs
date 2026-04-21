@@ -143,9 +143,16 @@ public abstract class BlockchainTestBase
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
             .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty
+            // matching, so legacy invalid-block fixtures (wrongDifficulty_*) are actually rejected.
+            .AddSingleton<ISealValidator, IDifficultyCalculator>(diffCalc => new DifficultyOnlySealValidator(diffCalc))
             .AddSingleton<ITxPool>(NullTxPool.Instance);
 
-        if (isEngineTest)
+        // Wire in the merge module for any post-Merge test (engine API flow OR post-Paris
+        // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
+        // EIP-3675 post-Merge field rules (difficulty=0, nonce=0, empty UnclesHash) which the
+        // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
+        if (isEngineTest || isPostMerge)
         {
             containerBuilder.AddModule(new TestMergeModule(configProvider));
         }
