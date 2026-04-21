@@ -33,8 +33,10 @@ public class BalRecorderModule : Module
             })
             .As<IRecordedBalStore>()
             .SingleInstance();
+        builder.RegisterType<BalRecorderSpecSwitch>().AsSelf().SingleInstance();
+        builder.RegisterDecorator<BalRecorderSpecProvider, Nethermind.Core.Specs.ISpecProvider>();
+        builder.RegisterDecorator<BalRecordingBlockValidator, Nethermind.Consensus.Validators.IBlockValidator>();
         builder.RegisterDecorator<BalReplayBranchProcessor, Nethermind.Consensus.Processing.IBranchProcessor>();
         builder.RegisterDecorator<BalRecordingBlockProcessor, Nethermind.Consensus.Processing.IBlockProcessor>();
-        builder.RegisterDecorator<BalTracingTransactionsExecutor, Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor>();
     }
 }

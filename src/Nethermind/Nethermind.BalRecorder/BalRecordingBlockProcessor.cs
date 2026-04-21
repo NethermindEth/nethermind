@@ -15,7 +15,8 @@ namespace Nethermind.BalRecorder;
 public class BalRecordingBlockProcessor(
     IBlockProcessor inner,
     IRecordedBalStore store,
-    IWorldState stateProvider) : IBlockProcessor
+    IWorldState stateProvider,
+    BalRecorderSpecSwitch balSwitch) : IBlockProcessor
 {
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
 
@@ -27,11 +28,25 @@ public class BalRecordingBlockProcessor(
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
-        (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        bool shouldFlip = ShouldFlip(suggestedBlock);
+        if (shouldFlip) balSwitch.Enabled = true;
+        try
+        {
+            (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+            if (store.RecordingEnabled && _balBuilder is not null)
+                store.Insert(block, _balBuilder.GeneratedBlockAccessList);
+            return (block, receipts);
+        }
+        finally
+        {
+            if (shouldFlip) balSwitch.Enabled = false;
+        }
+    }
 
-        if (store.RecordingEnabled && _balBuilder is not null)
-            store.Insert(block, _balBuilder.GeneratedBlockAccessList);
-
-        return (block, receipts);
+    private bool ShouldFlip(Block suggestedBlock)
+    {
+        if (suggestedBlock.IsGenesis) return false;
+        if (store.RecordingEnabled) return true;
+        return store.ReplayEnabled && suggestedBlock.BlockAccessList is not null;
     }
 }
