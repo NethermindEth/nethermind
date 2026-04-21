@@ -119,7 +119,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
     {
-        // Phase 1: Bulk read all accounts from the state trie
         int accountCount = 0;
         foreach (AccountChanges _ in bal.AccountChanges)
             accountCount++;
@@ -128,149 +127,92 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             return Task.CompletedTask;
 
         AccountChanges[] accountChangesList = new AccountChanges[accountCount];
-        int idx = 0;
+        int copyIdx = 0;
         foreach (AccountChanges ac in bal.AccountChanges)
-        {
-            accountChangesList[idx] = ac;
-            idx++;
-        }
+            accountChangesList[copyIdx++] = ac;
 
-        // Precompute keccak hashes and radix sort for disk cache locality
-        int[] sortedOrder = RadixSortAddresses(accountChangesList, accountCount);
-
+        // Phase 1: parallel account fetch, gated by the sink
         Account?[] accounts = new Account?[accountCount];
+        int skippedAccounts = 0;
         Parallel.For(0, accountCount, (i) =>
         {
-            int orig = sortedOrder[i];
-            Address address = accountChangesList[orig].Address;
+            Address address = accountChangesList[i].Address;
+            if (!sink.StillNeeded(address, out Account? cached))
+            {
+                accounts[i] = cached;
+                Interlocked.Increment(ref skippedAccounts);
+                return;
+            }
+
             Account? account = _snapshotBundle.GetAccount(address);
-            accounts[orig] = account;
+            accounts[i] = account;
             sink.OnAccountRead(address, account);
         });
 
-        // HintGet sequentially — triggers warmer jobs and snapshot cache updates
-        for (int i = 0; i < accountCount; i++)
-            HintGet(accountChangesList[i].Address, accounts[i]);
-
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Phase 2: Per-account bulk read of storage slots
+        // Phase 2: flatten (address, tree, slot) jobs and read in one parallel pass
+        int totalSlots = 0;
         for (int i = 0; i < accountCount; i++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            AccountChanges accountChanges = accountChangesList[i];
             Account? account = accounts[i];
-
-            int slotCount = accountChanges.StorageChanges.Count + accountChanges.StorageReads.Count;
-            if (slotCount == 0 || account is null)
-                continue;
-
+            if (account is null) continue;
             Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-            if (storageRoot == Keccak.EmptyTreeHash)
-                continue;
-
-            Address address = accountChanges.Address;
-            IWorldStateScopeProvider.IStorageTree storageTree = CreateStorageTree(address);
-
-            UInt256[] slotIndices = new UInt256[slotCount];
-            int si = 0;
-
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-                slotIndices[si++] = slotChanges.Slot;
-
-            foreach (StorageRead storageRead in accountChanges.StorageReads)
-                slotIndices[si++] = storageRead.Key;
-
-            // Radix sort storage slot hashes for disk cache locality
-            int[] slotOrder = RadixSortStorageSlots(slotIndices, slotCount);
-
-            byte[][] slotValues = new byte[slotCount][];
-            Parallel.For(0, slotCount, (si2) =>
-            {
-                int orig = slotOrder[si2];
-                byte[] value = storageTree.Get(in slotIndices[orig]);
-                slotValues[orig] = value;
-                StorageCell cell = new(address, slotIndices[orig]);
-                sink.OnStorageRead(in cell, value);
-            });
-
-            // HintGet sequentially — triggers warmer jobs
-            for (int si2 = 0; si2 < slotCount; si2++)
-                storageTree.HintGet(in slotIndices[si2], slotValues[si2]);
+            if (storageRoot == Keccak.EmptyTreeHash) continue;
+            totalSlots += accountChangesList[i].StorageChanges.Count + accountChangesList[i].StorageReads.Count;
         }
 
+        int skippedStorageFlat = 0;
+        if (totalSlots > 0)
+        {
+            (Address Address, IWorldStateScopeProvider.IStorageTree Tree, UInt256 Slot)[] jobs =
+                new (Address, IWorldStateScopeProvider.IStorageTree, UInt256)[totalSlots];
+            int jobIdx = 0;
+            for (int i = 0; i < accountCount; i++)
+            {
+                Account? account = accounts[i];
+                if (account is null) continue;
+                Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                if (storageRoot == Keccak.EmptyTreeHash) continue;
+
+                AccountChanges accountChanges = accountChangesList[i];
+                Address address = accountChanges.Address;
+                IWorldStateScopeProvider.IStorageTree storageTree = CreateStorageTree(address);
+
+                foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+                    jobs[jobIdx++] = (address, storageTree, slotChanges.Slot);
+
+                foreach (StorageRead storageRead in accountChanges.StorageReads)
+                    jobs[jobIdx++] = (address, storageTree, storageRead.Key);
+            }
+
+            Parallel.For(0, totalSlots, (s) =>
+            {
+                (Address address, IWorldStateScopeProvider.IStorageTree tree, UInt256 slot) = jobs[s];
+                StorageCell cell = new(address, in slot);
+                if (!sink.StillNeeded(in cell))
+                {
+                    Interlocked.Increment(ref skippedStorageFlat);
+                    return;
+                }
+
+                byte[] value = tree.Get(in slot);
+                sink.OnStorageRead(in cell, value);
+            });
+        }
+
+        LogBalSkipRates(accountCount, skippedAccounts, totalSlots, skippedStorageFlat);
         return Task.CompletedTask;
     }
 
-    private static int[] RadixSortAddresses(AccountChanges[] accountChanges, int count)
+    private void LogBalSkipRates(int accountCount, int skippedAccounts, int totalSlots, int skippedStorageFlat)
     {
-        ValueHash256[] hashes = new ValueHash256[count];
-        for (int i = 0; i < count; i++)
-            hashes[i] = KeccakCache.Compute(accountChanges[i].Address.Bytes);
+        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+        if (!logger.IsInfo) return;
 
-        return RadixSortByHash(hashes, count);
-    }
-
-    private static int[] RadixSortStorageSlots(UInt256[] slotIndices, int count)
-    {
-        ValueHash256[] hashes = new ValueHash256[count];
-        for (int i = 0; i < count; i++)
-            StorageTree.ComputeKeyWithLookup(in slotIndices[i], ref hashes[i]);
-
-        return RadixSortByHash(hashes, count);
-    }
-
-    private static int[] RadixSortByHash(ValueHash256[] hashes, int count)
-    {
-        int[] idx0 = new int[count];
-        int[] idx1 = new int[count];
-        ValueHash256[] buf = new ValueHash256[count];
-
-        for (int i = 0; i < count; i++)
-            idx0[i] = i;
-
-        Span<int> counts = stackalloc int[256];
-        bool flipped = false;
-
-        for (int p = 3; p >= 0; p--)
-        {
-            RadixPassWithIndices(
-                flipped ? buf : hashes,
-                flipped ? hashes : buf,
-                flipped ? idx1 : idx0,
-                flipped ? idx0 : idx1,
-                count, p, counts);
-            flipped = !flipped;
-        }
-
-        return flipped ? idx1 : idx0;
-    }
-
-    private static void RadixPassWithIndices(
-        ReadOnlySpan<ValueHash256> hashSrc, Span<ValueHash256> hashDst,
-        ReadOnlySpan<int> idxSrc, Span<int> idxDst,
-        int len, int byteIndex, Span<int> counts)
-    {
-        counts.Clear();
-        for (int i = 0; i < len; i++)
-            counts[hashSrc[i].BytesAsSpan[byteIndex]]++;
-
-        int total = 0;
-        for (int b = 0; b < 256; b++)
-        {
-            int c = counts[b];
-            counts[b] = total;
-            total += c;
-        }
-
-        for (int i = 0; i < len; i++)
-        {
-            byte key = hashSrc[i].BytesAsSpan[byteIndex];
-            int pos = counts[key]++;
-            hashDst[pos] = hashSrc[i];
-            idxDst[pos] = idxSrc[i];
-        }
+        double accountSkipPct = accountCount == 0 ? 0 : 100.0 * skippedAccounts / accountCount;
+        double slotSkipPct = totalSlots == 0 ? 0 : 100.0 * skippedStorageFlat / totalSlots;
+        logger.Info($"[BAL] accounts={accountCount} skipped={skippedAccounts} ({accountSkipPct:F1}%) slots={totalSlots} skipped={skippedStorageFlat} ({slotSkipPct:F1}%)");
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
