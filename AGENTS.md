@@ -192,3 +192,17 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - For `pull_request` and `push` auto-runs, default mode is `flat` layout with both `superblocks` and `realblocks` payload sets.
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
 - When dotTrace artifacts are available, download `*-report.xml` from the `dottrace-reports` artifact. Each `<Function>` node has `FQN` (fully qualified name), `TotalTime`, `OwnTime`, `Calls`, and `<Instance CallStack="...">` subnodes. Sort by `OwnTime` descending to find hot spots; read `CallStack` for the call tree.
+- **IMPORTANT**: Report XML files are 50-70MB. Never load the full file into context. Use [`scripts/dottrace-report.sh`](./scripts/dottrace-report.sh) for fast analysis:
+  ```bash
+  # Top 30 functions by OwnTime (<1 second on 70MB files)
+  scripts/dottrace-report.sh top report.xml 30
+  # Compare two reports — regressions and improvements sorted by delta
+  scripts/dottrace-report.sh compare baseline.xml current.xml 30
+  ```
+  On Windows (PowerShell), use `bash scripts/dottrace-report.sh` or the equivalent one-liner:
+  ```powershell
+  Select-String 'FQN="([^"]*)" TotalTime="([^"]*)" OwnTime="([^"]*)" Calls="([^"]*)"' report.xml |
+    ForEach-Object { [PSCustomObject]@{FQN=$_.Matches.Groups[1].Value; OwnTime=[int]$_.Matches.Groups[3].Value; TotalTime=[int]$_.Matches.Groups[2].Value; Calls=[int]$_.Matches.Groups[4].Value} } |
+    Sort-Object OwnTime -Descending | Select-Object -First 30 | Format-Table -AutoSize
+  ```
+  The key: grep for `FQN=` attributes, don't XML-parse. These are flat `<Function ... />` elements with no nesting.
