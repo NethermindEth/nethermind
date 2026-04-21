@@ -646,20 +646,6 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void EstimateGas_tx_returns_InsufficientMaxFeePerGasForSenderBalanceError()
-    {
-        BlockHeader header = Build.A.BlockHeader
-            .TestObject;
-        Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
-
-        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
-
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
-    }
-
-    [Test]
     public void Call_tx_returns_noError()
     {
         BlockHeader header = Build.A.BlockHeader

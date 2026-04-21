@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using RocksDbSharp;
 
@@ -25,7 +26,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DbOnTheRocks.IteratorManager? iteratorManager = null,
-    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore
+    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
@@ -34,12 +35,39 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     private readonly ReadOptions _options = options;
     private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
+    private readonly bool _ownsReadOptions;
+    private int _disposed;
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DbOnTheRocks.IteratorManager? iteratorManager = null,
         ColumnFamilyHandle? columnFamily = null)
-        : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily) => _hintCacheMissOptions.SetFillCache(false);
+        : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
+    {
+        _ownsReadOptions = true;
+        _hintCacheMissOptions.SetFillCache(false);
+    }
+
+    public virtual void Dispose()
+    {
+        if (!_ownsReadOptions || Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        DestroyReadOptions(_options);
+        DestroyReadOptions(_hintCacheMissOptions);
+    }
+
+    /// <summary>
+    /// Destroys a native ReadOptions handle and suppresses its finalizer to prevent
+    /// finalizer queue buildup from short-lived ReadOptions instances.
+    /// </summary>
+    internal static void DestroyReadOptions(ReadOptions options)
+    {
+        RocksDbSharp.Native.Instance.rocksdb_readoptions_destroy(options.Handle);
+        GC.SuppressFinalize(options);
+    }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
@@ -112,6 +140,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, iterateLowerBound, iterateUpperBound);
+        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
     }
 }

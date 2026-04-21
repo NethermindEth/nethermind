@@ -86,6 +86,24 @@ public class Eip8037Tests
     }
 
     [Test]
+    public void Code_insert_state_refund_is_available_to_later_state_gas()
+    {
+        const long intrinsicAuthState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+        EthereumGasPolicy gas = new()
+        {
+            StateGasUsed = intrinsicAuthState,
+        };
+
+        long regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, intrinsicAuthState);
+        EthereumGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState);
+        EthereumGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState);
+
+        Assert.That(regularRefund, Is.Zero);
+        Assert.That((gas.StateReservoir, gas.StateGasUsed),
+            Is.EqualTo((GasCostOf.NewAccountState - 2 * GasCostOf.SSetState, GasCostOf.PerAuthBaseState + 2 * GasCostOf.SSetState)));
+    }
+
+    [Test]
     public void Exceptional_halt_preserves_state_gas()
     {
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 500, StateGasUsed = 10 };

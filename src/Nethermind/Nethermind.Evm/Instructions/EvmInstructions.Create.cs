@@ -99,9 +99,7 @@ public static partial class EvmInstructions
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
-            !stack.PopUInt256(out UInt256 initCodeLength))
+        if (!stack.PopUInt256(out UInt256 value, out UInt256 memoryPositionOfInitCode, out UInt256 initCodeLength))
             goto StackUnderflow;
 
         Span<byte> salt = default;
@@ -126,21 +124,15 @@ public static partial class EvmInstructions
             }
         }
 
-        bool outOfGas = false;
-        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas);
+        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out bool outOfGas);
         if (outOfGas)
             goto OutOfGas;
 
         long initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
         long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
         long extraCost = initCodeWordCost + create2HashCost;
-
-        bool createOutOfGas = TEip8037.IsActive switch
-        {
-            true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost) || !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState),
-            false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.Create + extraCost),
-        };
-
+        long gasCost = (TEip8037.IsActive ? GasCostOf.CreateRegular : GasCostOf.Create) + extraCost;
+        bool createOutOfGas = !TGasPolicy.UpdateGas(ref gas, gasCost);
         if (createOutOfGas) goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
@@ -152,12 +144,14 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return stack.PushZero<TTracingInst>();
         }
 
         // Load the initialization code from memory based on the specified position and length.
         if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+            goto OutOfGas;
+
+        if (TEip8037.IsActive && !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
@@ -165,8 +159,7 @@ public static partial class EvmInstructions
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return stack.PushZero<TTracingInst>();
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
@@ -175,8 +168,7 @@ public static partial class EvmInstructions
         if (accountNonce >= maxNonce)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return stack.PushZero<TTracingInst>();
         }
 
         // Get remaining gas for the create operation.
@@ -219,8 +211,7 @@ public static partial class EvmInstructions
         if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return stack.PushZero<TTracingInst>();
         }
 
         // If the contract address refers to a dead account, clear its storage before creation.
@@ -256,7 +247,7 @@ public static partial class EvmInstructions
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
-    None:
+
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:

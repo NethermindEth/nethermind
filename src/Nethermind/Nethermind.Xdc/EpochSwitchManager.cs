@@ -333,8 +333,7 @@ internal class EpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree
 
     public BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
     {
-        XdcBlockHeader headHeader = _tree.Head?.Header as XdcBlockHeader;
-        if (headHeader is null)
+        if (_tree.Head?.Header is not XdcBlockHeader headHeader)
         {
             return null;
         }
