@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -14,7 +13,6 @@ using static Nethermind.Evm.VirtualMachineStatics;
 namespace Nethermind.Evm;
 
 using Int256;
-using Word = Vector256<byte>;
 
 /// <summary>
 /// Implements various EVM instruction handlers for transient storage, memory, and persistent storage operations.
@@ -257,17 +255,16 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        Word word = vmState.Memory.LoadWordAfterGas(in result);
+        ref byte wordBytes = ref vmState.Memory.Load32BytesAfterGas(in result);
 
         // Report the memory load if tracing is active.
         if (TTracingInst.IsActive)
         {
-            ref byte wordBytes = ref Unsafe.As<Word, byte>(ref word);
             vm.TxTracer.ReportMemoryChange(result, MemoryMarshal.CreateReadOnlySpan(ref wordBytes, EvmPooledMemory.WordSize));
         }
 
         // Push the loaded bytes onto the stack.
-        return stack.Push32Bytes<TTracingInst>(ref Unsafe.As<Word, byte>(ref word));
+        return stack.Push32Bytes<TTracingInst>(ref wordBytes);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
