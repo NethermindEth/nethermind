@@ -3,9 +3,12 @@ name: Sync PR Gate (Hoodi)
 on:
   pull_request:
     branches: [master]
+    types: [opened, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
 
 concurrency:
-  group: sync-pr-${{ github.head_ref || github.ref }}
+  group: sync-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
@@ -13,8 +16,68 @@ env:
   TERM: xterm
 
 jobs:
+  gate:
+    name: "Decide whether to run sync"
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    outputs:
+      run_sync: ${{ steps.decide.outputs.run_sync }}
+    steps:
+      - name: Decide based on event
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          APPROVAL_THRESHOLD: "2"
+        run: |
+          set -euo pipefail
+
+          # PR opened / reopened / marked ready-for-review -> always run once
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "Event: pull_request ($EVENT_ACTION); running sync."
+            echo "run_sync=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A review was submitted -> run only when the approval threshold is hit
+          if [ "$EVENT_NAME" = "pull_request_review" ]; then
+            if [ "$REVIEW_STATE" != "approved" ]; then
+              echo "Review state '$REVIEW_STATE' is not an approval; skipping."
+              echo "run_sync=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # Count distinct users whose LATEST review on this PR is APPROVED.
+            approvals=$(gh api --paginate \
+              "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+              --jq '[.[] | {user: .user.login, state: .state, t: .submitted_at}]
+                    | group_by(.user)
+                    | map(max_by(.t))
+                    | map(select(.state == "APPROVED"))
+                    | length')
+
+            echo "Current approval count: $approvals (threshold: $APPROVAL_THRESHOLD)"
+            if [ "$approvals" = "$APPROVAL_THRESHOLD" ]; then
+              echo "Approval threshold reached; running sync."
+              echo "run_sync=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Approval count is not exactly $APPROVAL_THRESHOLD; skipping."
+              echo "run_sync=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          echo "Unhandled event: $EVENT_NAME; skipping."
+          echo "run_sync=false" >> "$GITHUB_OUTPUT"
+
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }})"
+    needs: gate
+    if: needs.gate.outputs.run_sync == 'true'
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
     strategy:
@@ -39,7 +102,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -86,7 +149,7 @@ jobs:
           docker build -t nethermind:pr-local \
             --build-arg BUILD_CONFIG=release \
             --build-arg CI=true \
-            --build-arg COMMIT_HASH=${{ github.sha }} \
+            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
             .
 
       - name: Generate and run Sedge
