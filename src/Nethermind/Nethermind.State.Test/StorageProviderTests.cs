@@ -3,9 +3,12 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -815,6 +818,11 @@ public class StorageProviderTests(bool useFlat)
             public Account Get(Address address) => baseScope.Get(address);
 
             public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
+
+            public void HintBal(BlockAccessList bal) => baseScope.HintBal(bal);
+
+            public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
+                => baseScope.ReadBalAsync(bal, sink, cancellationToken);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
