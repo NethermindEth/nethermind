@@ -755,6 +755,19 @@ public class PatriciaTreeBulkSetterTests
 
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
-        public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseTrieStore.BeginCommit(root, writeFlags);
+        // BulkSetAndCommit's parallel path requires a concurrency-safe ICommitter. Production
+        // TrieStore.BlockCommitter is; RawScopedTrieStore.Committer (the test backing) isn't —
+        // it wraps a plain IWriteBatch. Wrap it with a lock so tests can exercise the parallel path.
+        public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) =>
+            new SynchronizedCommitter(baseTrieStore.BeginCommit(root, writeFlags));
+
+        private sealed class SynchronizedCommitter(ICommitter inner) : ICommitter
+        {
+            public void Dispose() => inner.Dispose();
+            public TrieNode CommitNode(ref TreePath path, TrieNode node)
+            {
+                lock (inner) return inner.CommitNode(ref path, node);
+            }
+        }
     }
 }
