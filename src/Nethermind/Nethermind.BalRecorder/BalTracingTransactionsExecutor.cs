@@ -13,28 +13,30 @@ using static Nethermind.Consensus.Processing.IBlockProcessor;
 namespace Nethermind.BalRecorder;
 
 /// <summary>
-/// Decorates <see cref="IBlockTransactionsExecutor"/> to enable BAL tracing
-/// just before transactions run, after <see cref="BlockProcessor"/> has already
-/// set <see cref="IBlockAccessListBuilder.TracingEnabled"/> based on the spec.
-/// If tracing was already enabled by the spec this is a no-op.
+/// Decorates <see cref="IBlockTransactionsExecutor"/> to enable BAL tracing when recording or
+/// replay is active, so that pre-Prague blocks are captured correctly. Tracing is enabled in
+/// <see cref="SetBlockExecutionContext"/> — before system transactions
+/// (BeaconRoot store, blockhash state changes) run in <see cref="BlockProcessor"/>.
+/// On Prague, <see cref="BlockProcessor"/> already enables tracing; this is a no-op there.
 /// </summary>
 public class BalTracingTransactionsExecutor(
     IBlockTransactionsExecutor inner,
-    IWorldState stateProvider) : IBlockTransactionsExecutor
+    IWorldState stateProvider,
+    IRecordedBalStore store) : IBlockTransactionsExecutor
 {
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
 
-    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
-        if (_balBuilder is not null && !_balBuilder.TracingEnabled)
-        {
+        if (_balBuilder is not null && (store.RecordingEnabled || store.ReplayEnabled))
             _balBuilder.TracingEnabled = true;
-            if (block.BlockAccessList is not null)
-                _balBuilder.LoadSuggestedBlockAccessList(block.BlockAccessList, block.GasUsed);
-        }
-        return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+        inner.SetBlockExecutionContext(blockExecutionContext);
     }
 
-    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
-        inner.SetBlockExecutionContext(blockExecutionContext);
+    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+    {
+        if (_balBuilder is not null && block.BlockAccessList is not null)
+            _balBuilder.LoadSuggestedBlockAccessList(block.BlockAccessList, block.GasUsed);
+        return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+    }
 }
