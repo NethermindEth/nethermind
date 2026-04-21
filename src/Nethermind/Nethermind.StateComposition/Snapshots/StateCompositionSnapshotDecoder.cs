@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using Nethermind.Core.Crypto;
@@ -18,8 +19,8 @@ namespace Nethermind.StateComposition.Snapshots;
 ///   1. 13 longs (CumulativeTrieStats)
 ///   2. blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber
 ///   3. depthPresent (long; 1 = depth stats follow, 0 = absent)
-///   4. [optional] 162 longs of CumulativeDepthStats:
-///        10 arrays × 16 longs (Account{Full,Short,Value,Bytes}, Storage{Full,Short,Value,Bytes}, BranchOccupancy)
+///   4. [optional] 146 longs of CumulativeDepthStats:
+///        9 rows × 16 longs (Account{Full,Short,Value,Bytes}, Storage{Full,Short,Value,Bytes}, BranchOccupancy)
 ///        + TotalBranchNodes + TotalBranchChildren
 ///   5. codeBytesTotal (long)
 ///   6. 16 longs of SlotCountHistogram
@@ -77,20 +78,23 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         length += EncodeLong(stream, item.Stats.EmptyAccounts);
 
         length += EncodeLong(stream, item.BlockNumber);
-        if (stream is not null) stream.Encode(item.StateRoot);
+        stream?.Encode(item.StateRoot);
         length += Rlp.LengthOf(item.StateRoot);
         length += EncodeInt(stream, item.DiffsSinceBaseline);
         length += EncodeLong(stream, item.ScanBlockNumber);
 
         // Depth stats: present only if seeded. Stored as a leading marker long
-        // (1 = present, 0 = absent) followed by 162 longs (9×16 + 2 scalars)
+        // (1 = present, 0 = absent) followed by 146 longs (9×16 + 2 scalars)
         // when present.
         CumulativeDepthStats depth = item.DepthStats;
         if (depth.IsSeeded)
         {
             length += EncodeLong(stream, 1L);
-            foreach (long[] arr in depth.ByDepth)
-                foreach (long v in arr) length += EncodeLong(stream, v);
+            for (int s = 0; s < CumulativeDepthStats.CategoryCount; s++)
+            {
+                ReadOnlySpan<long> row = depth.GetRow(s);
+                foreach (long v in row) length += EncodeLong(stream, v);
+            }
             length += EncodeLong(stream, depth.TotalBranchNodes);
             length += EncodeLong(stream, depth.TotalBranchChildren);
         }
@@ -156,7 +160,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         Dictionary<ValueHash256, TValue> map = new(count);
         for (int i = 0; i < count; i++)
         {
-            ValueHash256 key = ctx.DecodeKeccak()!;
+            ValueHash256 key = ctx.DecodeKeccak();
             map[key] = decodeValue(ref ctx);
         }
         return map;
@@ -192,7 +196,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         int diffsSinceBaseline = ctx.DecodeInt();
         long scanBlockNumber = ctx.DecodeLong();
 
-        // Depth stats: marker long followed by 162 longs when present. The
+        // Depth stats: marker long followed by 146 longs when present. The
         // decoder always materializes an instance — an unseeded one when the
         // snapshot was written before depth tracking was enabled — so the
         // holder gates on IsSeeded instead of a null check.
@@ -200,8 +204,11 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         CumulativeDepthStats depthStats = new();
         if (depthPresent == 1L)
         {
-            foreach (long[] arr in depthStats.ByDepth)
-                for (int i = 0; i < arr.Length; i++) arr[i] = ctx.DecodeLong();
+            for (int s = 0; s < CumulativeDepthStats.CategoryCount; s++)
+            {
+                Span<long> row = depthStats.GetRow(s);
+                for (int i = 0; i < row.Length; i++) row[i] = ctx.DecodeLong();
+            }
             depthStats.TotalBranchNodes = ctx.DecodeLong();
             depthStats.TotalBranchChildren = ctx.DecodeLong();
             depthStats.MarkSeeded();

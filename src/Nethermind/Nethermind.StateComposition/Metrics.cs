@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Threading;
@@ -202,7 +203,7 @@ public static class Metrics
         StateCompAvgBranchOccupancy = s.TotalBranchNodes > 0 ? (double)s.TotalBranchChildren / s.TotalBranchNodes : 0.0;
     }
 
-    private static double WeightedAvgDepth(long[] full, long[] shrt, long[] value)
+    private static double WeightedAvgDepth(ReadOnlySpan<long> full, ReadOnlySpan<long> shrt, ReadOnlySpan<long> value)
     {
         long totalNodes = 0;
         long weightedSum = 0;
@@ -215,7 +216,7 @@ public static class Metrics
         return totalNodes > 0 ? (double)weightedSum / totalNodes : 0.0;
     }
 
-    private static long LastNonZeroDepth(long[] full, long[] shrt, long[] value)
+    private static long LastNonZeroDepth(ReadOnlySpan<long> full, ReadOnlySpan<long> shrt, ReadOnlySpan<long> value)
     {
         for (int i = 15; i >= 0; i--)
         {

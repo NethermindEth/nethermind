@@ -29,12 +29,10 @@ public class CumulativeDepthStatsTests
     {
         CumulativeDepthStats stats = NewSeededEmpty();
 
-        CumulativeDepthStats delta = new()
-        {
-            AccountValueNodes = { [5] = 1 },
-            AccountShortNodes = { [5] = 1 },
-            AccountNodeBytes = { [5] = 42 }
-        };
+        CumulativeDepthStats delta = new();
+        delta.AccountValueNodes[5] = 1;
+        delta.AccountShortNodes[5] = 1;
+        delta.AccountNodeBytes[5] = 42;
 
         stats.AddInPlace(delta);
 
@@ -60,7 +58,7 @@ public class CumulativeDepthStatsTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(stats.StorageValueNodes[i], Is.Zero);
-                Assert.That(stats.BranchOccupancy[i], Is.EqualTo(0));
+                Assert.That(stats.BranchOccupancy[i], Is.Zero);
             }
         }
 
@@ -80,11 +78,11 @@ public class CumulativeDepthStatsTests
         {
             CumulativeDepthStats delta = new()
             {
-                AccountFullNodes = { [2] = 1 },
-                BranchOccupancy = { [3] = 2 },
                 TotalBranchNodes = 2,
                 TotalBranchChildren = 8 // 2 branches × 4 children each
             };
+            delta.AccountFullNodes[2] = 1;
+            delta.BranchOccupancy[3] = 2;
             stats.AddInPlace(delta);
         }
 
@@ -102,18 +100,14 @@ public class CumulativeDepthStatsTests
     {
         CumulativeDepthStats stats = NewSeededEmpty();
 
-        CumulativeDepthStats addDelta = new()
-        {
-            AccountValueNodes = { [7] = 5 },
-            AccountShortNodes = { [7] = 5 }
-        };
+        CumulativeDepthStats addDelta = new();
+        addDelta.AccountValueNodes[7] = 5;
+        addDelta.AccountShortNodes[7] = 5;
         stats.AddInPlace(addDelta);
 
-        CumulativeDepthStats removeDelta = new()
-        {
-            AccountValueNodes = { [7] = -3 },
-            AccountShortNodes = { [7] = -3 }
-        };
+        CumulativeDepthStats removeDelta = new();
+        removeDelta.AccountValueNodes[7] = -3;
+        removeDelta.AccountShortNodes[7] = -3;
         stats.AddInPlace(removeDelta);
 
         using (Assert.EnterMultipleScope())

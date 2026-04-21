@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Visitors;
 
 namespace Nethermind.StateComposition.Diff;
 
 /// <summary>
 /// Fixed slot index for the nine per-depth counter rows in
-/// <see cref="CumulativeDepthStats.ByDepth"/>. The numeric order is load-bearing:
+/// <see cref="CumulativeDepthStats"/>. The numeric order is load-bearing:
 /// it pins the RLP layout that the snapshot decoder writes and reads back.
 /// </summary>
 public enum DepthSlot
@@ -30,9 +33,11 @@ public enum DepthSlot
 /// delta container produced by <see cref="TrieDiffWalker"/> — same shape, same
 /// field semantics, merged into the holder's baseline via <see cref="AddInPlace"/>.
 ///
-/// Storage layout: a single <c>long[9][16]</c> jagged array indexed by
-/// <see cref="DepthSlot"/>. Every cumulative operation (Reset, Clone, AddInPlace,
-/// IsEmpty, SeedFromSnapshot) is one loop instead of nine field-by-field copies.
+/// Storage layout: a single <c>9 × 16</c> inline buffer (9 × <see cref="Long16"/>),
+/// indexed by <see cref="DepthSlot"/>. All 144 longs live contiguously inside this
+/// class instance — no per-row heap array, no jagged pointer chase. Every cumulative
+/// operation (Reset, Clone, AddInPlace, IsEmpty, SeedFromSnapshot) is one loop over
+/// the flat span instead of nine array-by-array copies.
 ///
 /// Physical-depth storage: rows are indexed by physical depth [0..15].
 /// The Geth +1 depth shift for ValueNodeCount is applied only at presentation
@@ -44,28 +49,38 @@ public enum DepthSlot
 /// </summary>
 public sealed class CumulativeDepthStats
 {
-    internal const int CategoryCount = 9;
-    internal const int DepthCount = 16;
+    public const int CategoryCount = 9;
+    public const int DepthCount = Long16.Length;
+    private const int TotalLongs = CategoryCount * DepthCount;
 
-    /// <summary>Nine contiguous <c>long[16]</c> rows, indexed by <see cref="DepthSlot"/>.</summary>
-    public long[][] ByDepth { get; }
-
-    public CumulativeDepthStats()
+    /// <summary>
+    /// Inline buffer of nine <see cref="Long16"/> rows, laid out as 144 contiguous
+    /// <see cref="long"/> values. Accessed through per-category <see cref="Span{T}"/>
+    /// accessors and <see cref="GetRow"/>; never exposed directly.
+    /// </summary>
+    [InlineArray(CategoryCount)]
+    private struct DepthRows9
     {
-        ByDepth = new long[CategoryCount][];
-        for (int s = 0; s < CategoryCount; s++) ByDepth[s] = new long[DepthCount];
+        private Long16 _row;
     }
 
-    public long[] AccountFullNodes => ByDepth[(int)DepthSlot.AccountFull];
-    public long[] AccountShortNodes => ByDepth[(int)DepthSlot.AccountShort];
-    public long[] AccountValueNodes => ByDepth[(int)DepthSlot.AccountValue];
-    public long[] AccountNodeBytes => ByDepth[(int)DepthSlot.AccountBytes];
-    public long[] StorageFullNodes => ByDepth[(int)DepthSlot.StorageFull];
-    public long[] StorageShortNodes => ByDepth[(int)DepthSlot.StorageShort];
-    public long[] StorageValueNodes => ByDepth[(int)DepthSlot.StorageValue];
-    public long[] StorageNodeBytes => ByDepth[(int)DepthSlot.StorageBytes];
+    private DepthRows9 _rows;
+
+    /// <summary>Returns the per-depth row at <paramref name="slotIndex"/> as a <see cref="Span{T}"/> of 16 longs.</summary>
+    public Span<long> GetRow(int slotIndex) => MemoryMarshal.CreateSpan(
+        ref Unsafe.Add(ref Unsafe.As<DepthRows9, long>(ref _rows), slotIndex * DepthCount),
+        DepthCount);
+
+    public Span<long> AccountFullNodes => GetRow((int)DepthSlot.AccountFull);
+    public Span<long> AccountShortNodes => GetRow((int)DepthSlot.AccountShort);
+    public Span<long> AccountValueNodes => GetRow((int)DepthSlot.AccountValue);
+    public Span<long> AccountNodeBytes => GetRow((int)DepthSlot.AccountBytes);
+    public Span<long> StorageFullNodes => GetRow((int)DepthSlot.StorageFull);
+    public Span<long> StorageShortNodes => GetRow((int)DepthSlot.StorageShort);
+    public Span<long> StorageValueNodes => GetRow((int)DepthSlot.StorageValue);
+    public Span<long> StorageNodeBytes => GetRow((int)DepthSlot.StorageBytes);
     /// <summary>Branch occupancy histogram: index i = count of account-trie branches with (i+1) children.</summary>
-    public long[] BranchOccupancy => ByDepth[(int)DepthSlot.BranchOccupancy];
+    public Span<long> BranchOccupancy => GetRow((int)DepthSlot.BranchOccupancy);
 
     public long TotalBranchNodes { get; set; }
     public long TotalBranchChildren { get; set; }
@@ -81,16 +96,17 @@ public sealed class CumulativeDepthStats
     /// </summary>
     public bool IsSeeded { get; private set; }
 
+    /// <summary>Flat view over all 144 longs, for one-shot bulk operations.</summary>
+    private Span<long> FlatRows => MemoryMarshal.CreateSpan(
+        ref Unsafe.As<DepthRows9, long>(ref _rows), TotalLongs);
+
     /// <remarks>No-op until this instance's <see cref="IsSeeded"/> is true.</remarks>
     public void AddInPlace(CumulativeDepthStats other)
     {
         if (!IsSeeded) return;
-        for (int s = 0; s < CategoryCount; s++)
-        {
-            long[] dst = ByDepth[s];
-            long[] src = other.ByDepth[s];
-            for (int d = 0; d < DepthCount; d++) dst[d] += src[d];
-        }
+        Span<long> dst = FlatRows;
+        ReadOnlySpan<long> src = other.FlatRows;
+        for (int i = 0; i < TotalLongs; i++) dst[i] += src[i];
         TotalBranchNodes += other.TotalBranchNodes;
         TotalBranchChildren += other.TotalBranchChildren;
     }
@@ -98,18 +114,13 @@ public sealed class CumulativeDepthStats
     public bool IsEmpty()
     {
         if (TotalBranchNodes != 0 || TotalBranchChildren != 0) return false;
-        for (int s = 0; s < CategoryCount; s++)
-        {
-            long[] row = ByDepth[s];
-            for (int d = 0; d < DepthCount; d++)
-                if (row[d] != 0) return false;
-        }
+        foreach (long v in FlatRows) if (v != 0) return false;
         return true;
     }
 
     public void Reset()
     {
-        for (int s = 0; s < CategoryCount; s++) Array.Clear(ByDepth[s]);
+        _rows = default;
         TotalBranchNodes = 0;
         TotalBranchChildren = 0;
         IsSeeded = false;
@@ -126,32 +137,41 @@ public sealed class CumulativeDepthStats
     {
         Reset();
 
+        Span<long> accFull = AccountFullNodes;
+        Span<long> accShort = AccountShortNodes;
+        Span<long> accValue = AccountValueNodes;
+        Span<long> accBytes = AccountNodeBytes;
         foreach (TrieLevelStat stat in dist.AccountTrieLevels)
         {
             int d = stat.Depth < DepthCount ? stat.Depth : DepthCount - 1;
-            AccountFullNodes[d] = stat.FullNodeCount;
-            AccountShortNodes[d] = stat.ShortNodeCount;
-            AccountNodeBytes[d] = stat.TotalSize;
-            if (d > 0) AccountValueNodes[d - 1] = stat.ValueNodeCount;
+            accFull[d] = stat.FullNodeCount;
+            accShort[d] = stat.ShortNodeCount;
+            accBytes[d] = stat.TotalSize;
+            if (d > 0) accValue[d - 1] = stat.ValueNodeCount;
         }
 
+        Span<long> stoFull = StorageFullNodes;
+        Span<long> stoShort = StorageShortNodes;
+        Span<long> stoValue = StorageValueNodes;
+        Span<long> stoBytes = StorageNodeBytes;
         foreach (TrieLevelStat stat in dist.StorageTrieLevels)
         {
             int d = stat.Depth < DepthCount ? stat.Depth : DepthCount - 1;
-            StorageFullNodes[d] = stat.FullNodeCount;
-            StorageShortNodes[d] = stat.ShortNodeCount;
-            StorageNodeBytes[d] = stat.TotalSize;
-            if (d > 0) StorageValueNodes[d - 1] = stat.ValueNodeCount;
+            stoFull[d] = stat.FullNodeCount;
+            stoShort[d] = stat.ShortNodeCount;
+            stoBytes[d] = stat.TotalSize;
+            if (d > 0) stoValue[d - 1] = stat.ValueNodeCount;
         }
 
+        Span<long> branch = BranchOccupancy;
         for (int i = 0; i < dist.BranchOccupancyDistribution.Length && i < DepthCount; i++)
-            BranchOccupancy[i] = dist.BranchOccupancyDistribution[i];
+            branch[i] = dist.BranchOccupancyDistribution[i];
 
         long nodes = 0, children = 0;
         for (int i = 0; i < DepthCount; i++)
         {
-            nodes += BranchOccupancy[i];
-            children += BranchOccupancy[i] * (i + 1);
+            nodes += branch[i];
+            children += branch[i] * (i + 1);
         }
         TotalBranchNodes = nodes;
         TotalBranchChildren = children;
@@ -162,9 +182,7 @@ public sealed class CumulativeDepthStats
 
     public void SeedFromSnapshot(CumulativeDepthStats source)
     {
-        Reset();
-        for (int s = 0; s < CategoryCount; s++)
-            Array.Copy(source.ByDepth[s], ByDepth[s], DepthCount);
+        _rows = source._rows;
         TotalBranchNodes = source.TotalBranchNodes;
         TotalBranchChildren = source.TotalBranchChildren;
         IsSeeded = true;
@@ -175,14 +193,18 @@ public sealed class CumulativeDepthStats
     /// sharing mutable state with the producer. Preserves raw counters but leaves
     /// <see cref="IsSeeded"/> at its default (false) — a delta is always accumulated
     /// into a seeded target, so the seeded flag is immaterial for consumers.
+    ///
+    /// With the inline storage, the 144-long payload copies as one struct assignment
+    /// rather than 9 separate <c>Array.Copy</c> calls plus 10 allocations.
     /// </summary>
     public CumulativeDepthStats CloneAsDelta()
     {
-        CumulativeDepthStats copy = new();
-        for (int s = 0; s < CategoryCount; s++)
-            Array.Copy(ByDepth[s], copy.ByDepth[s], DepthCount);
-        copy.TotalBranchNodes = TotalBranchNodes;
-        copy.TotalBranchChildren = TotalBranchChildren;
+        CumulativeDepthStats copy = new()
+        {
+            _rows = _rows,
+            TotalBranchNodes = TotalBranchNodes,
+            TotalBranchChildren = TotalBranchChildren,
+        };
         return copy;
     }
 }
