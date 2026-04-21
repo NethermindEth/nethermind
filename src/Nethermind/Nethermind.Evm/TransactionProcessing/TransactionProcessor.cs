@@ -1069,32 +1069,18 @@ namespace Nethermind.Evm.TransactionProcessing
 
     public readonly struct TransactionResult : IEquatable<TransactionResult>
     {
-        private TransactionResult(ErrorType error = ErrorType.None, EvmExceptionType evmException = EvmExceptionType.None)
+        private TransactionResult(ErrorType error = ErrorType.None, EvmExceptionType evmException = EvmExceptionType.None, string errorDescription = "")
         {
             Error = error;
             EvmExceptionType = evmException;
+            ErrorDescription = errorDescription;
         }
+
         public ErrorType Error { get; }
-        public string? SubstateError { get; private init; }
         public bool TransactionExecuted => Error is ErrorType.None;
         public EvmExceptionType EvmExceptionType { get; }
+        public string ErrorDescription { get; }
 
-        public string ErrorDescription => Error switch
-        {
-            ErrorType.BlockGasLimitExceeded => "Block gas limit exceeded",
-            ErrorType.GasLimitBelowIntrinsicGas => "gas limit below intrinsic gas",
-            ErrorType.InsufficientMaxFeePerGasForSenderBalance => "insufficient MaxFeePerGas for sender balance",
-            ErrorType.InsufficientSenderBalance => "insufficient sender balance",
-            ErrorType.MalformedTransaction => "malformed",
-            ErrorType.MinerPremiumNegative => "miner premium is negative",
-            ErrorType.NonceOverflow => "nonce overflow",
-            ErrorType.SenderHasDeployedCode => "sender has deployed code",
-            ErrorType.SenderNotSpecified => "sender not specified",
-            ErrorType.TransactionSizeOverMaxInitCodeSize => "EIP-3860 - transaction size over max init code size",
-            ErrorType.TransactionNonceTooHigh => "transaction nonce is too high",
-            ErrorType.TransactionNonceTooLow => "transaction nonce is too low",
-            _ => ""
-        };
         public static implicit operator TransactionResult(ErrorType error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.TransactionExecuted;
         public bool Equals(TransactionResult other) => (TransactionExecuted && other.TransactionExecuted) || (Error == other.Error);
@@ -1102,25 +1088,24 @@ namespace Nethermind.Evm.TransactionProcessing
         public static bool operator !=(TransactionResult obj1, TransactionResult obj2) => !obj1.Equals(obj2);
         public override bool Equals(object? obj) => obj is TransactionResult result && Equals(result);
         public override int GetHashCode() => TransactionExecuted ? 1 : Error.GetHashCode();
-
         public override string ToString() => Error is not ErrorType.None ? $"Fail : {ErrorDescription}" : "Success";
 
-        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? substateError = null) => new(ErrorType.None, evmExceptionType) { SubstateError = substateError };
+        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? description = null) =>
+            new(evmException: evmExceptionType, errorDescription: description ?? "");
 
         public static readonly TransactionResult Ok = new();
-
-        public static readonly TransactionResult BlockGasLimitExceeded = ErrorType.BlockGasLimitExceeded;
-        public static readonly TransactionResult GasLimitBelowIntrinsicGas = ErrorType.GasLimitBelowIntrinsicGas;
-        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = ErrorType.InsufficientMaxFeePerGasForSenderBalance;
-        public static readonly TransactionResult InsufficientSenderBalance = ErrorType.InsufficientSenderBalance;
-        public static readonly TransactionResult MalformedTransaction = ErrorType.MalformedTransaction;
-        public static readonly TransactionResult MinerPremiumNegative = ErrorType.MinerPremiumNegative;
-        public static readonly TransactionResult NonceOverflow = ErrorType.NonceOverflow;
-        public static readonly TransactionResult SenderHasDeployedCode = ErrorType.SenderHasDeployedCode;
-        public static readonly TransactionResult SenderNotSpecified = ErrorType.SenderNotSpecified;
-        public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = ErrorType.TransactionSizeOverMaxInitCodeSize;
-        public static readonly TransactionResult TransactionNonceTooHigh = ErrorType.TransactionNonceTooHigh;
-        public static readonly TransactionResult TransactionNonceTooLow = ErrorType.TransactionNonceTooLow;
+        public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
+        public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "gas limit below intrinsic gas");
+        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient MaxFeePerGas for sender balance");
+        public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient sender balance");
+        public static readonly TransactionResult MalformedTransaction = new(ErrorType.MalformedTransaction, errorDescription: "malformed");
+        public static readonly TransactionResult MinerPremiumNegative = new(ErrorType.MinerPremiumNegative, errorDescription: "miner premium is negative");
+        public static readonly TransactionResult NonceOverflow = new(ErrorType.NonceOverflow, errorDescription: "nonce overflow");
+        public static readonly TransactionResult SenderHasDeployedCode = new(ErrorType.SenderHasDeployedCode, errorDescription: "sender has deployed code");
+        public static readonly TransactionResult SenderNotSpecified = new(ErrorType.SenderNotSpecified, errorDescription: "sender not specified");
+        public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = new(ErrorType.TransactionSizeOverMaxInitCodeSize, errorDescription: "EIP-3860 - transaction size over max init code size");
+        public static readonly TransactionResult TransactionNonceTooHigh = new(ErrorType.TransactionNonceTooHigh, errorDescription: "transaction nonce is too high");
+        public static readonly TransactionResult TransactionNonceTooLow = new(ErrorType.TransactionNonceTooLow, errorDescription: "transaction nonce is too low");
 
         public enum ErrorType
         {

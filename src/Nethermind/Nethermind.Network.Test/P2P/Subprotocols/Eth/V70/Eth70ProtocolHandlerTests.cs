@@ -65,6 +65,7 @@ public class Eth70ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
+        _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
         _syncManager.LowestBlock.Returns(0);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
@@ -539,6 +540,45 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_stop_receipts_response_at_first_unknown_block_hash()
+    {
+        TxReceipt[] block1Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakB).Returns(
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ]);
+
+        ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
+
+        Assert.That(response.EthMessage.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That(response.EthMessage.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
+        Assert.That(response.EthMessage.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
+        Assert.That(response.LastBlockIncomplete, Is.False);
+    }
+
+    [Test]
+    public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
+    {
+        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ]);
+
+        ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
+
+        Assert.That(response.EthMessage.TxReceipts, Is.Empty);
+        Assert.That(response.LastBlockIncomplete, Is.False);
+    }
+
+    [Test]
     public void Should_disconnect_when_first_block_receipt_index_nonzero_for_empty_block()
     {
         using GetReceiptsMessage70 request = new(1111, 5, new(new[] { Keccak.Zero }.ToPooledList()));
@@ -719,5 +759,19 @@ public class Eth70ProtocolHandlerTests
         using DisposableByteBuffer packet = _svc!.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
         _handler!.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+    }
+
+    private ReceiptsMessage70 RequestReceipts(params Hash256[] hashes)
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, new(hashes.ToPooledList()));
+        ReceiptsMessage70? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
+            .Do(call => response = (ReceiptsMessage70)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        return response!;
     }
 }

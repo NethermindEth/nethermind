@@ -42,7 +42,7 @@ public abstract class StateSyncFeedTestsBase(
     int defaultPeerCount = 1,
     int defaultPeerMaxRandomLatency = 0)
 {
-    public const int TimeoutLength = 20000;
+    public const int TimeoutLength = 60000;
 
     // Chain length used for test block trees, use a constant to avoid shared state
     private const int TestChainLength = 100;
@@ -145,7 +145,7 @@ public abstract class StateSyncFeedTestsBase(
         return containerBuilder;
     }
 
-    protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength)
+    protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength, bool failOnTimeout = true)
     {
         // Note: The `RunContinuationsAsynchronously` is very important, or the thread might continue synchronously
         // which causes unexpected hang.
@@ -161,9 +161,14 @@ public abstract class StateSyncFeedTestsBase(
         safeContext.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
         safeContext.StartDispatcher(safeContext.CancellationToken);
 
-        await Task.WhenAny(
+        Task completed = await Task.WhenAny(
             dormantAgainSource.Task,
             Task.Delay(timeout));
+
+        if (failOnTimeout && completed != dormantAgainSource.Task)
+        {
+            Assert.Fail($"State sync did not reach Dormant within {timeout}ms.");
+        }
     }
 
     protected class SafeContext(
