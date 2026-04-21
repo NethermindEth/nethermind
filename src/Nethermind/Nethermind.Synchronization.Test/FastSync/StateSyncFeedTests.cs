@@ -154,7 +154,8 @@ namespace Nethermind.Synchronization.Test.FastSync
                 mock.SetFilter(new[] { remote.StateTree.RootHash }));
             IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
             SafeContext ctx = container.Resolve<SafeContext>();
-            await ActivateAndWait(ctx, 1000);
+            // Peers only serve the root; expected to time out before completing the tree.
+            await ActivateAndWait(ctx, 1000, failOnTimeout: false);
 
             ctx.Pool.WakeUpAll();
             foreach (SyncPeerMock mock in ctx.SyncPeerMocks)

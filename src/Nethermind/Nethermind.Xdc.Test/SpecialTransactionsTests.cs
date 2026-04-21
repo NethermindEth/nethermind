@@ -40,7 +40,7 @@ internal class SpecialTransactionsTests
     private Task ProposeBatchTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, int count, XdcTestBlockchain chain) =>
         Task.Run(() =>
         {
-            (PrivateKey, PrivateKey) swap(PrivateKey a, PrivateKey b) => (b, a);
+            static (PrivateKey, PrivateKey) swap(PrivateKey a, PrivateKey b) => (b, a);
 
             for (int i = 0; i < count; i++)
             {

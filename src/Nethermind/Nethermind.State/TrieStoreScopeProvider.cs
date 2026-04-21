@@ -225,6 +225,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;
+            int bulkCount = 0;
             if (_bulkWrite is not null)
             {
                 if (_hasSelfDestruct)
@@ -232,11 +233,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
-                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
-                    new(_bulkWrite.AsSpan());
+                bulkCount = _bulkWrite.Count;
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 storageTree.BulkSet(asRef);
-
-                _bulkWrite?.Dispose();
             }
 
             if (hasSet)
@@ -247,7 +246,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 }
                 else
                 {
-                    storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
+                    storageTree.UpdateRootHash(bulkCount > 64);
                 }
                 onRootUpdated(address, storageTree.RootHash);
             }

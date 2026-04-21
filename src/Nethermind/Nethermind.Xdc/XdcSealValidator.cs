@@ -93,7 +93,7 @@ internal class XdcSealValidator(IMasternodesCalculator masternodesCalculator, IE
             EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
             masternodes = epochSwitchInfo.Masternodes;
             if (masternodes is null || masternodes.Length == 0)
-                throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader.ToString()}");
+                throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader}");
         }
 
         ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.BlockRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);

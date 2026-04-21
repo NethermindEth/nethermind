@@ -332,7 +332,8 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             AdvanceSuggested();
         }
 
-        if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.BlockAccessListItem)
+        int surplusSuggestedReads = suggestedReads - generatedReads;
+        if (surplusSuggestedReads > 0 && gasRemaining < surplusSuggestedReads * GasCostOf.BlockAccessListItem)
         {
             throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
         }
