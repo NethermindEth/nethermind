@@ -17,8 +17,8 @@ public class Eip7976Tests
 {
     private static readonly IReleaseSpec Eip7976Spec = new OverridableReleaseSpec(Prague.Instance) { IsEip7976Enabled = true };
 
-    // EIP-7976 floor: 21000 + byteCount * nonzeroMultiplier(4) * 16
-    // EIP-7623 floor: 21000 + tokens * 10  (tokens = zeros*1 + non-zeros*multiplier)
+    // EIP-7976 floor: 21000 + byteCount * STANDARD_TOKEN_COST(4) * TOTAL_COST_FLOOR_PER_TOKEN(16)
+    // EIP-7623 floor: 21000 + tokens * 10  (tokens = zeros + nonzeros * STANDARD_TOKEN_COST)
     // Standard: 21000 + zero*4 + nonzero*16 (+ 32000 + InitCodeWord for contract creation)
     private static IEnumerable<TestCaseData> IntrinsicGasCases()
     {
