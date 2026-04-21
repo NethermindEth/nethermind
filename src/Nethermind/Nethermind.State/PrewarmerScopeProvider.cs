@@ -200,6 +200,15 @@ public class PrewarmerScopeProvider(
 
             public void OnStorageRead(in StorageCell storageCell, byte[] value)
                 => storageCache.Set(in storageCell, value);
+
+            public bool StillNeeded(Address address, out Account? account)
+            {
+                AddressAsKey key = address;
+                return !stateCache.TryGetValue(in key, out account);
+            }
+
+            public bool StillNeeded(in StorageCell storageCell)
+                => !storageCache.TryGetValue(in storageCell, out _);
         }
 
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);

@@ -109,6 +109,28 @@ public interface IWorldStateScopeProvider
         /// <param name="storageCell">The storage cell (address + slot index).</param>
         /// <param name="value">The storage value bytes.</param>
         void OnStorageRead(in StorageCell storageCell, byte[] value);
+
+        /// <summary>
+        /// Returns whether the BAL reader should still fetch the given account.
+        /// Implementations backed by a cache can return <c>false</c> and hand back the
+        /// cached <paramref name="account"/> to let the reader skip the fetch.
+        /// </summary>
+        /// <param name="address">The account address from the BAL.</param>
+        /// <param name="account">The cached account, or null when not cached.</param>
+        /// <returns><c>true</c> if the reader should fetch; <c>false</c> if it should skip.</returns>
+        bool StillNeeded(Address address, out Account? account)
+        {
+            account = null;
+            return true;
+        }
+
+        /// <summary>
+        /// Returns whether the BAL reader should still fetch the given storage cell.
+        /// Implementations backed by a cache can return <c>false</c> to let the reader skip the fetch.
+        /// </summary>
+        /// <param name="storageCell">The storage cell from the BAL.</param>
+        /// <returns><c>true</c> if the reader should fetch; <c>false</c> if it should skip.</returns>
+        bool StillNeeded(in StorageCell storageCell) => true;
     }
 
     public interface ICodeDb
