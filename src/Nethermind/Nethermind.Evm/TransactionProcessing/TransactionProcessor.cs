@@ -491,8 +491,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
                 : TGasPolicy.GetRemainingGas(in minimal);
 
-            TransactionResult gasResult = ValidateGas(tx, header, spec, minGasRequired);
-            if (!gasResult) return gasResult;
+            return ValidateGas(tx, header, spec, minGasRequired, validate);
+        }
+
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired, bool validate)
+        {
+            if (tx.GasLimit < minGasRequired)
+            {
+                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
+                return TransactionResult.GasLimitBelowIntrinsicGas;
+            }
 
             if (validate)
             {
@@ -510,17 +518,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
                     return TransactionResult.BlockGasLimitExceeded;
                 }
-            }
-
-            return TransactionResult.Ok;
-        }
-
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired)
-        {
-            if (tx.GasLimit < minGasRequired)
-            {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
             return TransactionResult.Ok;
