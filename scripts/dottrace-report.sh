@@ -11,7 +11,15 @@ set -uo pipefail
 
 extract() {
     grep '<Function ' "$1" \
-        | sed -n 's/.*FQN="\([^"]*\)".*TotalTime="\([^"]*\)".*OwnTime="\([^"]*\)".*/\1\t\2\t\3/p'
+        | sed -n 's/.*FQN="\([^"]*\)".*TotalTime="\([^"]*\)".*OwnTime="\([^"]*\)".*/\1\t\2\t\3/p' \
+        | awk -F'\t' '{
+            own = $3 + 0
+            if (!(($1) in best) || own > best[$1]) {
+                best[$1] = own; total[$1] = $2
+            }
+        } END {
+            for (fqn in best) printf "%s\t%s\t%s\n", fqn, total[fqn], best[fqn]
+        }'
 }
 
 fmt_num() {
