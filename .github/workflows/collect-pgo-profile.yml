@@ -8,10 +8,10 @@ on:
         required: true
         type: choice
         options:
-          - both
           - flat
+          - both
           - halfpath
-        default: both
+        default: flat
       payload_set:
         description: Payload set mode
         required: true
@@ -139,7 +139,7 @@ jobs:
         id: resolve
         shell: bash
         env:
-          STATE_LAYOUT: ${{ inputs.state_layout || 'both' }}
+          STATE_LAYOUT: ${{ inputs.state_layout || 'flat' }}
           PAYLOAD_SET: ${{ inputs.payload_set || 'realblocks' }}
           WARMUP_BLOCKS: ${{ inputs.warmup_blocks || '500' }}
           AMOUNT: ${{ inputs.amount || '5000' }}
