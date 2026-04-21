@@ -3,6 +3,7 @@
 
 using System.IO;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.BalRecorder;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -26,19 +27,13 @@ public class RecordedBalStoreTests
         return bal;
     }
 
-    [TearDown]
-    public void TearDown()
-    {
-        // cleanup any leftover dirs from this test (best-effort)
-    }
-
     [Test]
     public void InsertAndGet_RoundTrip()
     {
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(dir, new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true });
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
             BlockAccessList bal = MakeBal(TestItem.AddressA, TestItem.AddressB);
             Block block = Build.A.Block.WithNumber(100).TestObject;
 
@@ -55,7 +50,7 @@ public class RecordedBalStoreTests
     [Test]
     public void Get_ReturnsNull_WhenFileDoesNotExist()
     {
-        using RecordedBalStore store = new(TempDir(), new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true });
+        using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = TempDir() }, new InitConfig());
         store.Get(999, TestItem.KeccakA).Should().BeNull();
     }
 
@@ -65,7 +60,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(dir, new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true });
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
             Block block1 = Build.A.Block.WithNumber(0).TestObject;
             store.Insert(block1, MakeBal(TestItem.AddressA));
 
@@ -81,7 +76,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(dir, new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true });
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
             Block blockA = Build.A.Block.WithNumber(0).TestObject;
             Block blockB = Build.A.Block.WithNumber(1).TestObject;
             BlockAccessList balA = MakeBal(TestItem.AddressA);
@@ -107,7 +102,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(dir, new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true });
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
             long era0Block = 0;
             long era1Block = 8192;
 
@@ -131,7 +126,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(dir, new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true });
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
             Block block = Build.A.Block.WithNumber(42).TestObject;
 
             store.Insert(block, MakeBal(TestItem.AddressA));
@@ -149,7 +144,7 @@ public class RecordedBalStoreTests
         string dir = TempDir();
         try
         {
-            using RecordedBalStore store = new(dir, new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true });
+            using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig());
             Block block = Build.A.Block.WithNumber(7).TestObject;
             store.Insert(block, MakeBal(TestItem.AddressA));
 

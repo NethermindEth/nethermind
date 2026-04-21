@@ -63,6 +63,8 @@ public sealed class SlotFile : IDisposable
         {
             if (BinaryPrimitives.ReadUInt32BigEndian(_header.AsSpan(slot * 8, 8)) != 0) return false;
 
+            if (_length > uint.MaxValue)
+                throw new InvalidOperationException($"Era file exceeded 4 GB limit at offset {_length}.");
             uint offset = (uint)_length;
             RandomAccess.Write(_handle, data, offset);
             _length += data.Length;

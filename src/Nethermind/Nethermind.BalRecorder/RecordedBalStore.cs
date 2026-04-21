@@ -1,17 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.BalRecorder;
 
-public class RecordedBalStore(string directory, IBalRecorderConfig config) : IRecordedBalStore
+public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig) : IRecordedBalStore
 {
-    private readonly SlotStore _store = new(directory, "bal");
+    private readonly SlotStore _store = new(
+        config.Path.GetApplicationResourcePath(initConfig.BaseDbPath), "bal");
 
     public bool ReplayEnabled => config.ReplayEnabled;
     public bool RecordingEnabled => config.RecordingEnabled;

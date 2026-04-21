@@ -33,9 +33,13 @@ public class BalRecordingBlockValidator(IBlockValidator inner, BalRecorderSpecSw
     {
         if (balSwitch.Enabled && suggestedBlock.Header.BlockAccessListHash is null)
         {
-            // Pre-Prague suggested block has no BlockAccessListHash; processed block does.
-            // Null it and recompute the header hash so all other field checks still run
-            // while the Hash == Hash short-circuit can succeed.
+            // The suggested block is a pre-Prague draft (no BlockAccessListHash in its sealed header).
+            // Our spec switch caused SetBlockAccessList to populate BlockAccessListHash on the
+            // processed block, which would fail the per-field comparison. Strip it and recompute
+            // the hash so the Hash == Hash short-circuit fires instead. This is safe because the
+            // SHA-3 pre-image guarantee means equal hashes imply all other header fields are equal.
+            // Note: store.Insert() in BalRecordingBlockProcessor runs after this method returns and
+            // uses block.Number as the key, so the stripped hash does not affect BAL persistence.
             processedBlock.Header.BlockAccessListHash = null;
             processedBlock.Header.Hash = processedBlock.Header.CalculateHash();
         }
