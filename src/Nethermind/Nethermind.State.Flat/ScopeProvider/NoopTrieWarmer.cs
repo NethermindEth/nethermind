@@ -10,6 +10,8 @@ public class NoopTrieWarmer : ITrieWarmer
 {
     public void PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId) { }
 
+    public void PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) { }
+
     public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) { }
 
     public void OnEnterScope() { }
