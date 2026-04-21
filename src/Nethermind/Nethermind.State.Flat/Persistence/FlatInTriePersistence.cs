@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.Persistence;
 public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
     private readonly WriteBufferAdjuster _adjuster = new(db);
-    private int _layoutPersisted = BasePersistence.InitLayoutPersistedFlag(db);
+    private int _layoutPersisted = BasePersistence.EnsureLayout(db, FlatLayout.FlatInTrie);
     public void Flush() => db.Flush();
 
     public void Clear() => BasePersistence.ClearAllColumns(db);

@@ -98,8 +98,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
-                BasePersistence.EnsureLayout(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), flatDbConfig.Layout);
-
                 IPersistence persistence = flatDbConfig.Layout switch
                 {
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),

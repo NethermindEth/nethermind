@@ -23,7 +23,7 @@ namespace Nethermind.State.Flat.Persistence;
 public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
     private readonly WriteBufferAdjuster _adjuster = new(db);
-    private int _layoutPersisted = BasePersistence.InitLayoutPersistedFlag(db);
+    private int _layoutPersisted = BasePersistence.EnsureLayout(db, FlatLayout.PreimageFlat);
 
     public void Flush() => db.Flush();
 

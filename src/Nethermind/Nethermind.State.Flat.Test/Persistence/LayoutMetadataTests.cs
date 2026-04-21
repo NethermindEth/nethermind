@@ -35,11 +35,11 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
-    public void EnsureLayout_DoesNotWrite_OnFreshDb(FlatLayout configured)
+    public void EnsureLayout_ReturnsZero_AndDoesNotWrite_OnFreshDb(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
 
-        BasePersistence.EnsureLayout(db, configured);
+        BasePersistence.EnsureLayout(db, layout).Should().Be(0);
 
         BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)).Should().BeNull();
     }
@@ -47,12 +47,12 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
-    public void EnsureLayout_IsNoOp_WhenStoredMatchesConfigured(FlatLayout layout)
+    public void EnsureLayout_ReturnsZero_AndDoesNotWrite_WhenStoredMatches(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
         BasePersistence.SetLayout(db.GetColumnDb(FlatDbColumns.Metadata), layout);
 
-        Assert.DoesNotThrow(() => BasePersistence.EnsureLayout(db, layout));
+        BasePersistence.EnsureLayout(db, layout).Should().Be(0);
 
         BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)).Should().Be(layout);
     }
@@ -61,7 +61,7 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.FlatInTrie, FlatLayout.Flat)]
     [TestCase(FlatLayout.Flat, FlatLayout.PreimageFlat)]
     [TestCase(FlatLayout.PreimageFlat, FlatLayout.FlatInTrie)]
-    public void EnsureLayout_Throws_WhenStoredDiffersFromConfigured(FlatLayout stored, FlatLayout configured)
+    public void EnsureLayout_Throws_WhenStoredDiffers(FlatLayout stored, FlatLayout configured)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
         BasePersistence.SetLayout(db.GetColumnDb(FlatDbColumns.Metadata), stored);
@@ -71,21 +71,6 @@ public class LayoutMetadataTests
 
         ex.Message.Should().Contain(stored.ToString());
         ex.Message.Should().Contain(configured.ToString());
-    }
-
-    [Test]
-    public void InitLayoutPersistedFlag_ReturnsZero_OnFreshDb()
-    {
-        using MemColumnsDb<FlatDbColumns> db = new();
-        BasePersistence.InitLayoutPersistedFlag(db).Should().Be(0);
-    }
-
-    [Test]
-    public void InitLayoutPersistedFlag_ReturnsOne_WhenLayoutAlreadyStored()
-    {
-        using MemColumnsDb<FlatDbColumns> db = new();
-        BasePersistence.SetLayout(db.GetColumnDb(FlatDbColumns.Metadata), FlatLayout.Flat);
-        BasePersistence.InitLayoutPersistedFlag(db).Should().Be(1);
     }
 
     [TestCase(FlatLayout.Flat)]
