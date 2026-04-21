@@ -11,11 +11,16 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
+using Nethermind.Taiko.ZkGas;
+using Nethermind.TxPool;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
-public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ZkGasMeterHolder? zkGasMeterHolder = null) : IBlockProcessor.IBlockTransactionsExecutor
 {
+    private readonly ILogger _logger = logManager.GetClassLogger();
+
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => txProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -32,11 +37,27 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         block.Transactions[0].IsAnchorTx = true;
 
+        // ZK gas exclusion is only valid during block production. During validation the
+        // block-level check in TaikoBlockProcessor is used instead, ensuring the validator
+        // faithfully re-executes every transaction and produces the same GasUsed as the
+        // producer.
+        bool enforceZkGas = (processingOptions & ProcessingOptions.ProducingBlock) != 0
+                            && zkGasMeterHolder is not null;
+
         using ArrayPoolListRef<Transaction> correctTransactions = new(block.Transactions.Length);
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
+            // Stop including transactions once the ZK gas block limit is already exceeded
+            // (only during block production).
+            if (enforceZkGas && zkGasMeterHolder!.Meter?.IsLimitExceeded == true)
+                break;
+
             Snapshot snap = worldState.TakeSnapshot();
+            // Also snapshot the receipts so that, if we roll back a transaction due to the
+            // ZK gas limit, the pre-committed receipt (added by MarkAsSuccess inside
+            // txProcessor.Execute) and the running Block.Header.GasUsed are both undone.
+            int receiptsSnap = receiptsTracer.TakeSnapshot();
             Transaction tx = block.Transactions[i];
 
             if (tx.Type == TxType.Blob)
@@ -53,6 +74,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 {
                     // if the transaction was invalid, we ignore it and continue
                     worldState.Restore(snap);
+                    receiptsTracer.Restore(receiptsSnap);
                     continue;
                 }
             }
@@ -61,8 +83,33 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 // sometimes invalid transactions can throw exceptions because
                 // they are detected later in the processing pipeline
                 worldState.Restore(snap);
+                receiptsTracer.Restore(receiptsSnap);
                 continue;
             }
+
+            // If this transaction pushed the ZK gas over the block limit, exclude it
+            // and stop building the block (matches alethia-reth payload builder behavior).
+            // Only checked during production — see enforceZkGas above.
+            if (enforceZkGas && zkGasMeterHolder!.Meter?.IsLimitExceeded == true)
+            {
+                worldState.Restore(snap);
+                // Roll back the receipt that MarkAsSuccess added during Execute so
+                // that Block.Header.GasUsed does not include this transaction's gas.
+                receiptsTracer.Restore(receiptsSnap);
+                // Clear IsLimitExceeded so the flag does not leak into the block-level
+                // check in TaikoBlockProcessor after production finishes.
+                zkGasMeterHolder!.Meter!.CancelTransaction();
+                // Remove the offending transaction from the tx pool so that the
+                // proposer does not keep re-including it in future batches.
+                // Without this, a tx that individually exceeds the ZK gas budget
+                // causes infinite empty block production.
+                if (txPool.RemoveTransaction(tx.Hash))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Removed tx {tx.Hash} from pool: exceeded ZK gas limit");
+                }
+                break;
+            }
+
             // only end the trace if the transaction was successful
             // so that we don't increment the receipt index for failed transactions
             receiptsTracer.EndTxTrace();

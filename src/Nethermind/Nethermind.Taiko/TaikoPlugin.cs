@@ -41,6 +41,7 @@ using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.Tdx;
 using Nethermind.Taiko.Precompiles;
 using Nethermind.Taiko.TaikoSpec;
+using Nethermind.Taiko.ZkGas;
 
 namespace Nethermind.Taiko;
 
@@ -176,6 +177,7 @@ public class TaikoModule : Module
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
             .AddSingleton<IMainProcessingModule, TaikoMainBlockProcessingModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
+            .AddScoped<IBlockProcessor, TaikoBlockProcessor>()
             .AddScoped<IExecutionRequestsProcessor, TaikoExecutionRequestsProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
@@ -265,7 +267,11 @@ public class TaikoModule : Module
 
     private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder) => builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder.AddScoped<ZkGasMeterHolder>();
+            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
+        }
     }
 
 }

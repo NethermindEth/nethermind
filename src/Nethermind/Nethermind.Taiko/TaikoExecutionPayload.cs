@@ -11,7 +11,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Taiko;
 
-public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams
+public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, IExecutionPayloadFactory<TaikoExecutionPayload>
 {
     /// <summary>
     /// Taiko always uses V2 payloads regardless of the EVM spec (Cancun/Prague/Osaka).
@@ -32,9 +32,18 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams
     public Hash256? TxHash { get; set; } = null;
 
     /// <summary>
-    /// Uzen sidecar field: carries the header difficulty (ZK gas used) through the Engine API.
+    /// Uzen sidecar field: carries the header difficulty (ZK gas used) through the Engine API
+    /// newPayload direction. The driver populates this from blockValue returned by getPayload.
     /// </summary>
     public UInt256? HeaderDifficulty { get; set; }
+
+    /// <summary>
+    /// Creates a <see cref="TaikoExecutionPayload"/> from a <see cref="Block"/>.
+    /// </summary>
+    public new static TaikoExecutionPayload Create(Block block)
+    {
+        return Create<TaikoExecutionPayload>(block);
+    }
 
     public new byte[][]? Transactions
     {

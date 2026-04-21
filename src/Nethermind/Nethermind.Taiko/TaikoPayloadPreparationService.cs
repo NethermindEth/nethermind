@@ -134,7 +134,7 @@ public class TaikoPayloadPreparationService(
             ParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot,
             BaseFeePerGas = payloadAttributes.BaseFeePerGas,
             Difficulty = UInt256.Zero,
-            TotalDifficulty = UInt256.Zero
+            TotalDifficulty = UInt256.Zero,
         };
 
         var taikoSpec = (ITaikoReleaseSpec)specProvider.GetSpec(header);

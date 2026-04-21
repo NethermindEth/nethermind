@@ -31,7 +31,8 @@ public class TaikoGetPayloadV2Handler(
         Block block = context.CurrentBestBlock!;
         var spec = (ITaikoReleaseSpec)_taikoSpecProvider.GetSpec(block.Header);
 
-        // For Uzen, carry header difficulty through blockValue (matches alethia-reth behavior)
+        // For Uzen, carry header difficulty through blockValue (matches alethia-reth behavior).
+        // The driver reads blockValue from the standard ExecutionPayloadEnvelopeV2.
         UInt256 blockValue = spec.IsUzenEnabled ? block.Difficulty : context.BlockFees;
 
         return new TaikoGetPayloadV2Result(block, blockValue);
@@ -39,10 +40,21 @@ public class TaikoGetPayloadV2Handler(
 }
 
 /// <summary>
-/// Taiko-specific GetPayloadV2 result that always passes fork validation.
-/// Taiko uses V2 payloads regardless of EVM spec (Cancun/Prague/Osaka).
+/// Taiko-specific GetPayloadV2 result that uses <see cref="TaikoExecutionPayload"/>
+/// and always passes fork validation since Taiko uses V2 regardless of EVM spec.
+/// Header difficulty is carried solely through blockValue in the envelope,
+/// matching alethia-reth behavior.
 /// </summary>
-public class TaikoGetPayloadV2Result(Block block, UInt256 blockFees) : GetPayloadV2Result(block, blockFees)
+public class TaikoGetPayloadV2Result : GetPayloadV2Result
 {
+    public TaikoGetPayloadV2Result(Block block, UInt256 blockFees) : base(block, blockFees)
+    {
+        _taikoPayload = TaikoExecutionPayload.Create(block);
+    }
+
+    private readonly TaikoExecutionPayload _taikoPayload;
+
+    public override ExecutionPayload ExecutionPayload => _taikoPayload;
+
     public override bool ValidateFork(ISpecProvider specProvider) => true;
 }

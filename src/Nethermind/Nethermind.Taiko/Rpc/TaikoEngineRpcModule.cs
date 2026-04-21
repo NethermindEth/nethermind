@@ -143,7 +143,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 head.Timestamp + 1,
                 [])
         {
-            TotalDifficulty = 0,
             BaseFeePerGas = baseFee,
             StateRoot = head.StateRoot,
             IsPostMerge = true,
