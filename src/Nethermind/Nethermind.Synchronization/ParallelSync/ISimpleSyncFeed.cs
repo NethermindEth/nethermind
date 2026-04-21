@@ -8,7 +8,7 @@ using Nethermind.Synchronization.Peers;
 namespace Nethermind.Synchronization.ParallelSync;
 
 /// <summary>
-/// Simplified sync feed interface for use with <see cref="SimpleDispatcher"/>.
+/// Simplified sync feed interface for use with <see cref="SimpleDispatcher{T}"/>.
 /// PrepareRequest returns null to signal completion. It blocks internally if waiting for work.
 /// </summary>
 public interface ISimpleSyncFeed<T>

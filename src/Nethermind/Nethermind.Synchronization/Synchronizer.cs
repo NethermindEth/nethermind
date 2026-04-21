@@ -384,12 +384,28 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         }
     }
 
-    private void ConfigureSnapComponent(ContainerBuilder serviceCollection) =>
+    private void ConfigureSnapComponent(ContainerBuilder serviceCollection)
+    {
         serviceCollection
             .AddSingleton<ProgressTracker>()
             .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<ISnapProvider, SnapProvider>()
+            .AddSingleton<SnapSyncFeed>()
+            .AddSingleton<SnapSyncDownloader>()
+            .AddSingleton<SnapSyncAllocationStrategyFactory>()
             .AddSingleton<ISnapSyncRunner, SnapSyncRunner>();
+
+        serviceCollection.Register(static ctx => new SimpleDispatcher<SnapSyncBatch?>(
+            ctx.Resolve<SnapSyncFeed>(),
+            ctx.Resolve<SnapSyncDownloader>(),
+            ctx.Resolve<SnapSyncAllocationStrategyFactory>(),
+            AllocationContexts.Snap,
+            ctx.Resolve<ISyncPeerPool>(),
+            ctx.Resolve<ISyncConfig>(),
+            ctx.Resolve<ILogManager>()))
+            .AsSelf()
+            .SingleInstance();
+    }
 
     private void ConfigureReceiptSyncComponent(ContainerBuilder serviceCollection)
     {
@@ -415,7 +431,8 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
     }
 
-    private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection) =>
+    private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection)
+    {
         serviceCollection
             .AddSingleton<IStateSyncPivot, StateSyncPivot>()
             .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
@@ -424,6 +441,18 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<StateSyncDownloader>()
             .AddSingleton<StateSyncAllocationStrategyFactory>()
             .AddSingleton<IStateSyncRunner, StateSyncRunner>();
+
+        serviceCollection.Register(static ctx => new SimpleDispatcher<StateSyncBatch?>(
+            ctx.Resolve<StateSyncFeed>(),
+            ctx.Resolve<StateSyncDownloader>(),
+            ctx.Resolve<StateSyncAllocationStrategyFactory>(),
+            AllocationContexts.State,
+            ctx.Resolve<ISyncPeerPool>(),
+            ctx.Resolve<ISyncConfig>(),
+            ctx.Resolve<ILogManager>()))
+            .AsSelf()
+            .SingleInstance();
+    }
 
     private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch> => serviceCollection
             .AddSingleton<ISyncFeed<TBatch>, TFeed>()

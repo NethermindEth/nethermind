@@ -12,7 +12,6 @@ using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Synchronization.FastSync;
 
@@ -20,9 +19,7 @@ public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
     TreeSync treeSync,
     IStateSyncPivot stateSyncPivot,
-    StateSyncFeed stateSyncFeed,
-    StateSyncDownloader stateSyncDownloader,
-    StateSyncAllocationStrategyFactory stateSyncAllocationStrategyFactory,
+    SimpleDispatcher<StateSyncBatch?> stateSyncDispatcher,
     ISyncConfig syncConfig,
     ISyncModeSelector syncModeSelector,
     ISyncProgressResolver syncProgressResolver,
@@ -66,7 +63,6 @@ public class StateSyncRunner(
     public async Task RunRound(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting state sync.");
-        SimpleDispatcher dispatcher = new(syncPeerPool, syncConfig, logManager);
 
         while (!token.IsCancellationRequested)
         {
@@ -76,12 +72,7 @@ public class StateSyncRunner(
             await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
 
             treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
-            await dispatcher.RunFeed(
-                stateSyncFeed,
-                stateSyncDownloader,
-                stateSyncAllocationStrategyFactory,
-                AllocationContexts.State,
-                token);
+            await stateSyncDispatcher.Run(token);
 
             if (treeSync.IsRootComplete) break;
         }

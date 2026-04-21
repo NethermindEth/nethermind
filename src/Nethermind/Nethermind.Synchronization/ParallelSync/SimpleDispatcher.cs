@@ -14,38 +14,39 @@ using Nethermind.Synchronization.Peers;
 namespace Nethermind.Synchronization.ParallelSync;
 
 /// <summary>
-/// A lightweight dispatcher that runs feeds sequentially via <see cref="RunFeed{T}"/>,
-/// with the ability to wait for specific sync modes from <see cref="ISyncModeSelector"/>.
-/// Replaces SyncDispatcher for snap+state sync to guarantee sequential execution.
+/// A lightweight dispatcher bound to a single <see cref="ISimpleSyncFeed{T}"/>. Drives
+/// the feed to completion: repeatedly calls <see cref="ISimpleSyncFeed{T}.PrepareRequest"/>,
+/// dispatches each batch through the supplied downloader on a peer allocated from the pool,
+/// and hands the response back to the feed. Returns when the feed signals completion by
+/// returning null. Replaces <c>SyncDispatcher</c> for snap+state sync where sequential
+/// execution is required.
 /// </summary>
-public class SimpleDispatcher(
+public class SimpleDispatcher<T>(
+    ISimpleSyncFeed<T> feed,
+    ISyncDownloader<T> downloader,
+    IPeerAllocationStrategyFactory<T> strategyFactory,
+    AllocationContexts contexts,
     ISyncPeerPool peerPool,
     ISyncConfig syncConfig,
     ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<SimpleDispatcher>();
-    private readonly TimeSpan _emptyRequestDelay = TimeSpan.FromMilliseconds(syncConfig.SyncDispatcherEmptyRequestDelayMs);
+    private readonly ILogger _logger = logManager.GetClassLogger<SimpleDispatcher<T>>();
     private readonly int _allocateTimeoutMs = syncConfig.SyncDispatcherAllocateTimeoutMs;
+    private readonly string _feedName = feed.GetType().Name;
 
-    public async Task RunFeed<T>(
-        ISimpleSyncFeed<T> feed,
-        ISyncDownloader<T> downloader,
-        IPeerAllocationStrategyFactory<T> strategyFactory,
-        AllocationContexts contexts,
-        CancellationToken token)
+    public async Task Run(CancellationToken token)
     {
         int maxThreads = syncConfig.MaxProcessingThreads == 0
             ? Environment.ProcessorCount
             : syncConfig.MaxProcessingThreads;
         SemaphoreSlim semaphore = new(maxThreads, maxThreads);
-        string feedName = feed.GetType().Name;
 
         while (!token.IsCancellationRequested)
         {
             long prepareTime = Stopwatch.GetTimestamp();
             T? request = await feed.PrepareRequest(token);
             Metrics.SyncDispatcherPrepareRequestTimeMicros.Observe(
-                Stopwatch.GetElapsedTime(prepareTime).TotalMicroseconds, new StringLabel(feedName));
+                Stopwatch.GetElapsedTime(prepareTime).TotalMicroseconds, new StringLabel(_feedName));
 
             if (request is null)
                 break;
@@ -56,7 +57,7 @@ public class SimpleDispatcher(
 
             if (peer is null)
             {
-                HandleResponse(feed, request, null, feedName);
+                HandleResponse(request, null);
                 continue;
             }
 
@@ -65,7 +66,7 @@ public class SimpleDispatcher(
             {
                 try
                 {
-                    await DoDispatch(feed, downloader, request, peer, allocation, contexts, feedName, token);
+                    await DoDispatch(request, peer, allocation, token);
                 }
                 finally
                 {
@@ -80,14 +81,10 @@ public class SimpleDispatcher(
             await semaphore.WaitAsync(CancellationToken.None);
     }
 
-    private async Task DoDispatch<T>(
-        ISimpleSyncFeed<T> feed,
-        ISyncDownloader<T> downloader,
+    private async Task DoDispatch(
         T request,
         PeerInfo peer,
         SyncPeerAllocation allocation,
-        AllocationContexts contexts,
-        string feedName,
         CancellationToken token)
     {
         long dispatchTime = Stopwatch.GetTimestamp();
@@ -112,27 +109,22 @@ public class SimpleDispatcher(
             if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
         }
         Metrics.SyncDispatcherDispatchTimeMicros.Observe(
-            Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(feedName));
+            Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
 
         peerPool.Free(allocation);
 
         if (token.IsCancellationRequested) return;
 
-        HandleResponse(feed, request, peer, feedName, contexts);
+        HandleResponse(request, peer);
     }
 
-    private void HandleResponse<T>(
-        ISimpleSyncFeed<T> feed,
-        T request,
-        PeerInfo? peer,
-        string feedName,
-        AllocationContexts contexts = default)
+    private void HandleResponse(T request, PeerInfo? peer)
     {
         long handleTime = Stopwatch.GetTimestamp();
         try
         {
             SyncResponseHandlingResult result = feed.HandleResponse(request, peer);
-            ReactToHandlingResult(result, peer, contexts);
+            ReactToHandlingResult(result, peer);
         }
         catch (ObjectDisposedException)
         {
@@ -145,11 +137,11 @@ public class SimpleDispatcher(
         finally
         {
             Metrics.SyncDispatcherHandleTimeMicros.Observe(
-                Stopwatch.GetElapsedTime(handleTime).TotalMicroseconds, new StringLabel(feedName));
+                Stopwatch.GetElapsedTime(handleTime).TotalMicroseconds, new StringLabel(_feedName));
         }
     }
 
-    private void ReactToHandlingResult(SyncResponseHandlingResult result, PeerInfo? peer, AllocationContexts contexts)
+    private void ReactToHandlingResult(SyncResponseHandlingResult result, PeerInfo? peer)
     {
         if (peer is null) return;
 
