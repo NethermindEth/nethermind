@@ -91,10 +91,6 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        // default to previous block gas if unspecified
-        call.Gas ??= header!.GasLimit;
-
-        // enforces gas cap
         call.EnsureDefaults(jsonRpcConfig.GasCap);
 
         Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, spec: specProvider.GetSpec(header!));
@@ -545,7 +541,6 @@ public class DebugRpcModule(
         {
             foreach (TransactionForRpc call in bundle.Transactions)
             {
-                call.Gas ??= header.GasLimit;
                 call.EnsureDefaults(jsonRpcConfig.GasCap);
             }
         }

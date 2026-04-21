@@ -468,10 +468,10 @@ namespace Nethermind.Evm.TransactionProcessing
             long minGasRequired = spec.IsEip8037Enabled
                 ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
                 : TGasPolicy.GetRemainingGas(in minimal);
-            return ValidateGas(tx, header, minGasRequired);
+            return ValidateGas(tx, header, minGasRequired, validate);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate)
         {
             if (tx.GasLimit < minGasRequired)
             {
@@ -479,10 +479,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            if (tx.GasLimit > header.GasLimit - header.GasUsed)
+            // PR #11282: skip the block-gas-limit ceiling for RPC calls (SkipValidation). Normal
+            // block-execution paths still enforce it. EIP-8037 / EIP-7778 cumulative-gas variants
+            // from the original PR depend on fields added in #11182 — not present on this branch,
+            // so we keep the pre-EIP formula (header.GasUsed).
+            if (validate)
             {
-                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
-                return TransactionResult.BlockGasLimitExceeded;
+                if (tx.GasLimit > header.GasLimit - header.GasUsed)
+                {
+                    TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
+                    return TransactionResult.BlockGasLimitExceeded;
+                }
             }
 
             return TransactionResult.Ok;

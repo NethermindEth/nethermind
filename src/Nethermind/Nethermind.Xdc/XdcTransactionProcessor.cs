@@ -150,14 +150,14 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate)
     {
         var spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
         if (tx.RequiresSpecialHandling(spec))
         {
             return TransactionResult.Ok;
         }
-        return base.ValidateGas(tx, header, minGasRequired);
+        return base.ValidateGas(tx, header, minGasRequired, validate);
     }
 
     protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
