@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -41,6 +42,9 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public virtual IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
+
+    public virtual void HintBal(BlockAccessList bal)
+        => _innerWorldState.HintBal(bal);
 
     public virtual void ClearStorage(Address address)
         => _innerWorldState.ClearStorage(address);

@@ -3,7 +3,10 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 
@@ -47,5 +50,10 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             parent._updateMetrics(parent._stateMerkleizationTime);
         }
+
+        public void HintBal(BlockAccessList bal) => baseScope.HintBal(bal);
+
+        public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
+            => baseScope.ReadBalAsync(bal, sink, cancellationToken);
     }
 }

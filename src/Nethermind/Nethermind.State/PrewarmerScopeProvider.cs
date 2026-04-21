@@ -3,7 +3,10 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
@@ -51,9 +54,20 @@ public class PrewarmerScopeProvider(
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
         private long _writeBatchTime = 0;
+        private CancellationTokenSource? _balCts;
+        private Task? _balTask;
+
+        private void CancelBal()
+        {
+            _balCts?.Cancel();
+            _balTask?.GetAwaiter().GetResult();
+            _balTask = null;
+        }
 
         public void Dispose()
         {
+            CancelBal();
+            _balCts?.Dispose();
             if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
@@ -71,6 +85,9 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            // Cancel BAL background read — write batches are processor-intensive and already parallelized
+            CancelBal();
+
             if (!_measureMetric)
             {
                 return baseScope.StartWriteBatch(estimatedAccountNum);
@@ -87,6 +104,8 @@ public class PrewarmerScopeProvider(
 
         public void Commit(long blockNumber)
         {
+            CancelBal();
+
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
@@ -150,6 +169,38 @@ public class PrewarmerScopeProvider(
         }
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
+
+        public void HintBal(BlockAccessList bal)
+        {
+            if (!populatePreBlockCache)
+            {
+                return;
+            }
+
+            CancelBal();
+            _balCts = new CancellationTokenSource();
+            CacheSink cacheSink = new(preBlockCache, storageCache);
+            CancellationToken token = _balCts.Token;
+            _balTask = Task.Run(() => baseScope.ReadBalAsync(bal, cacheSink, token));
+        }
+
+        public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
+            => baseScope.ReadBalAsync(bal, sink, cancellationToken);
+
+        private sealed class CacheSink(
+            SeqlockCache<AddressAsKey, Account> stateCache,
+            SeqlockCache<StorageCell, byte[]> storageCache
+        ) : IWorldStateScopeProvider.IAsyncBalReaderSink
+        {
+            public void OnAccountRead(Address address, Account? account)
+            {
+                AddressAsKey key = address;
+                stateCache.Set(in key, account);
+            }
+
+            public void OnStorageRead(in StorageCell storageCell, byte[] value)
+                => storageCache.Set(in storageCell, value);
+        }
 
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
     }
