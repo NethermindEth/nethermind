@@ -9,12 +9,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.BalRecorder;
 
-public class BalRecorderPlugin : INethermindPlugin
+public class BalRecorderPlugin(IBalRecorderConfig config) : INethermindPlugin
 {
     public string Name => "BalRecorder";
     public string Description => "Records and replays block access lists as era files for prewarming benchmarks";
     public string Author => "Nethermind";
-    public bool Enabled => true;
+    public bool Enabled => config.RecordingEnabled || config.ReplayEnabled;
     public IModule? Module => new BalRecorderModule();
 }
 
