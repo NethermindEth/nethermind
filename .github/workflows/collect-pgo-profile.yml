@@ -449,7 +449,7 @@ jobs:
     name: Create PR to update PGO profile
     needs: collect
     runs-on: ubuntu-latest
-    if: success()
+    if: success() && github.ref_name == 'master'
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
