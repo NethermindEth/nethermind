@@ -9,7 +9,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System.Linq;
+using System;
 
 namespace Nethermind.Xdc.TxPool;
 
@@ -69,5 +69,5 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
 
     private static bool IsEpochCandidate(Snapshot? snapshot, Address? senderAddress) =>
         snapshot is not null && senderAddress is not null &&
-        snapshot.NextEpochCandidates.Contains(senderAddress);
+        snapshot.NextEpochCandidates.AsSpan().IndexOf(senderAddress) != -1;
 }

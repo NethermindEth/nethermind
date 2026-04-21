@@ -3,10 +3,13 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
@@ -100,5 +103,20 @@ internal class SignTransactionFilterTests
         TxFilteringState state = default;
 
         filter.Accept(tx, ref state, TxHandlingOptions.None).Should().Be(AcceptTxResult.Invalid);
+    }
+
+    [Test]
+    public void CreateTxSign_HashCalculatedAfterSigning_CoversSignature()
+    {
+        Transaction tx = SignTransactionManager.CreateTxSign(100, Hash256.Zero, 0, BlockSignerContract, TestItem.AddressB);
+
+        Hash256 hashBeforeSigning = tx.CalculateHash();
+
+        Signer signer = new(0, TestItem.PrivateKeyB, NullLogManager.Instance);
+        signer.Sign(tx).GetAwaiter().GetResult();
+
+        Hash256 hashAfterSigning = tx.CalculateHash();
+
+        hashAfterSigning.Should().NotBe(hashBeforeSigning, "hash must cover the signature");
     }
 }
