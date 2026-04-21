@@ -36,7 +36,6 @@ public class BalRecorderModule : Module
         builder.RegisterType<BalRecorderSpecSwitch>().AsSelf().SingleInstance();
         builder.RegisterDecorator<BalRecorderSpecProvider, Nethermind.Core.Specs.ISpecProvider>();
         builder.RegisterDecorator<BalRecordingBlockValidator, Nethermind.Consensus.Validators.IBlockValidator>();
-        builder.RegisterDecorator<BalReplayBranchProcessor, Nethermind.Consensus.Processing.IBranchProcessor>();
         builder.RegisterDecorator<BalRecordingBlockProcessor, Nethermind.Consensus.Processing.IBlockProcessor>();
     }
 }
