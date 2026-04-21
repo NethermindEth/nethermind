@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoSlotsNoProofs()
         {
-            using StorageRangeMessage msg = new()
+            StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneProof()
         {
-            using StorageRangeMessage msg = new()
+            StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneSlot()
         {
-            using StorageRangeMessage msg = new()
+            StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_Many()
         {
-            using StorageRangeMessage msg = new()
+            StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(2) {
