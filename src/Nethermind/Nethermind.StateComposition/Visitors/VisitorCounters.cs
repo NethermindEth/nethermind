@@ -235,10 +235,11 @@ internal sealed class VisitorCounters(int topN = 20)
 
         // Code-hash refcounts: additive merge. Each account contributed one increment
         // on its own thread, so summing across threads yields the total refcount.
+        // GetValueRefOrAddDefault lets us add to the slot with a single lookup.
         foreach (KeyValuePair<ValueHash256, int> kvp in other.CodeHashRefcounts)
         {
-            CodeHashRefcounts.TryGetValue(kvp.Key, out int existing);
-            CodeHashRefcounts[kvp.Key] = existing + kvp.Value;
+            ref int slot = ref CollectionsMarshal.GetValueRefOrAddDefault(CodeHashRefcounts, kvp.Key, out _);
+            slot += kvp.Value;
         }
 
         TopN.MergeFrom(other.TopN);

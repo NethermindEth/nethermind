@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -174,8 +175,10 @@ internal sealed class StateCompositionVisitor(
             // Per-thread refcount: one increment per account observation. Summed across
             // threads in MergeFrom to give the total number of accounts pointing at each
             // distinct code hash. Seeds the state holder's incremental refcount tracker.
-            c.CodeHashRefcounts.TryGetValue(account.CodeHash, out int existing);
-            c.CodeHashRefcounts[account.CodeHash] = existing + 1;
+            // GetValueRefOrAddDefault folds the TryGetValue+indexer pair into a single
+            // hash lookup with an in-place ref to the slot.
+            ref int refcount = ref CollectionsMarshal.GetValueRefOrAddDefault(c.CodeHashRefcounts, account.CodeHash, out _);
+            refcount++;
 
             // Dedup by codeHash across all worker threads: only the first observer
             // of a given codeHash pays the lookup cost and contributes bytes. Proxies,
