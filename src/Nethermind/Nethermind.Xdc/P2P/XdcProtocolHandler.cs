@@ -52,7 +52,7 @@ internal class XdcProtocolHandler(
 
     protected override TimeSpan InitTimeout => base.InitTimeout;
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override void HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
 
@@ -61,7 +61,7 @@ internal class XdcProtocolHandler(
         (bool isSyncing, _, _) = _blockTree.IsSyncing();
         if (isSyncing) // ignore XDC updates while syncing
         {
-            base.HandleMessage(message);
+            base.HandleMessageCore(message);
             return;
         }
 
@@ -90,7 +90,7 @@ internal class XdcProtocolHandler(
                 }
             default:
                 {
-                    base.HandleMessage(message);
+                    base.HandleMessageCore(message);
                     break;
                 }
         }

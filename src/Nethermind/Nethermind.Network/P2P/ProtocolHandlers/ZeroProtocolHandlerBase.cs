@@ -36,7 +36,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        public abstract void HandleMessage(ZeroPacket message);
+        public void HandleMessage(ZeroPacket message)
+        {
+            BeforeHandleMessage(message);
+            HandleMessageCore(message);
+        }
+
+        protected virtual void BeforeHandleMessage(ZeroPacket message) { }
+
+        protected abstract void HandleMessageCore(ZeroPacket message);
 
         protected Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,

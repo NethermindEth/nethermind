@@ -68,12 +68,15 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
+      # EvmOpcodesBenchmarkConfig sets OutlierMode.RemoveAll; the Median / Error / StdDev
+      # columns consumed below already reflect an outlier-trimmed distribution, so the
+      # multipliers here act on cleaner signals than raw BDN would produce.
       # Default threshold; per-opcode thresholds come from the Threshold column in BDN output
       THRESHOLD_PERCENT: "5"
       # Noise guard for unchanged-code stability.
       # Effective threshold = max(opcode threshold, max(baseCV, prCV) * NOISE_MULTIPLIER)
       NOISE_MULTIPLIER: "2.0"
-      # Uncertainty guard from BDN Error column.
+      # Uncertainty guard from BDN Error column (post-outlier-removal half-width).
       # Effective threshold also includes (baseError + prError) / baseMedian * ERROR_MULTIPLIER.
       ERROR_MULTIPLIER: "1.0"
       # Absolute delta floor in ns to avoid flagging tiny changes on ultra-fast opcodes.
@@ -180,12 +183,17 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t opcodes < evm-rerun-opcodes.txt
-          filter_args=()
+          # BDN 0.16+ rejects repeated --filter flags ("Option 'f, filter' is defined multiple times").
+          # The CLI accepts one --filter followed by multiple glob patterns as positional args.
+          filter_args=(--filter)
           for opcode in "${opcodes[@]}"; do
             [[ -z "${opcode}" ]] && continue
-            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode=${opcode}*")
+            # BDN renders params as "(Opcode: ADD)" (colon space); the trailing ")" anchors the
+            # glob so "ADD" does not also match "ADDMOD".
+            filter_args+=("*EvmOpcodesBenchmark*Opcode: ${opcode})*")
           done
-          if [[ "${#filter_args[@]}" -eq 0 ]]; then
+          # If no opcodes accumulated, filter_args still contains just "--filter" (length 1).
+          if [[ "${#filter_args[@]}" -le 1 ]]; then
             exit 0
           fi
 
@@ -203,12 +211,17 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t opcodes < evm-rerun-opcodes.txt
-          filter_args=()
+          # BDN 0.16+ rejects repeated --filter flags ("Option 'f, filter' is defined multiple times").
+          # The CLI accepts one --filter followed by multiple glob patterns as positional args.
+          filter_args=(--filter)
           for opcode in "${opcodes[@]}"; do
             [[ -z "${opcode}" ]] && continue
-            filter_args+=(--filter "*EvmOpcodesBenchmark*Opcode=${opcode}*")
+            # BDN renders params as "(Opcode: ADD)" (colon space); the trailing ")" anchors the
+            # glob so "ADD" does not also match "ADDMOD".
+            filter_args+=("*EvmOpcodesBenchmark*Opcode: ${opcode})*")
           done
-          if [[ "${#filter_args[@]}" -eq 0 ]]; then
+          # If no opcodes accumulated, filter_args still contains just "--filter" (length 1).
+          if [[ "${#filter_args[@]}" -le 1 ]]; then
             exit 0
           fi
 
