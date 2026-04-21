@@ -41,7 +41,7 @@ public class TaikoExtendedEthModuleTests
         TaikoExtendedEthModule rpc = new(new SyncConfig()
         {
             SnapSync = snapEnabled
-        }, Substitute.For<IL1OriginStore>());
+        }, Substitute.For<IL1OriginStore>(), Substitute.For<IBlockFinder>());
 
         rpc.taiko_getSyncMode().Result.Data.Should().Be(result);
     }
@@ -50,7 +50,7 @@ public class TaikoExtendedEthModuleTests
     public void TestHeadL1Origin()
     {
         IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        TaikoExtendedEthModule rpc = new(new SyncConfig(), originStore);
+        TaikoExtendedEthModule rpc = new(new SyncConfig(), originStore, Substitute.For<IBlockFinder>());
 
         L1Origin origin = new(0, TestItem.KeccakA, 1, Hash256.Zero, null);
         originStore.ReadHeadL1Origin().Returns((UInt256)1);
@@ -63,7 +63,7 @@ public class TaikoExtendedEthModuleTests
     public void TestL1OriginById()
     {
         IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        TaikoExtendedEthModule rpc = new(new SyncConfig(), originStore);
+        TaikoExtendedEthModule rpc = new(new SyncConfig(), originStore, Substitute.For<IBlockFinder>());
 
         L1Origin origin = new(0, TestItem.KeccakA, 1, Hash256.Zero, null);
         originStore.ReadL1Origin((UInt256)0).Returns(origin);
@@ -75,7 +75,7 @@ public class TaikoExtendedEthModuleTests
     public void TestL1OriginById_WithBuildPayloadArgsId()
     {
         IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        TaikoExtendedEthModule rpc = new(new SyncConfig(), originStore);
+        TaikoExtendedEthModule rpc = new(new SyncConfig(), originStore, Substitute.For<IBlockFinder>());
 
         int[] buildPayloadArgsId = new int[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
         L1Origin origin = new(0, TestItem.KeccakA, 1, Hash256.Zero, buildPayloadArgsId);
@@ -88,7 +88,7 @@ public class TaikoExtendedEthModuleTests
     public void TestL1OriginById_ValueHash256_EvenLengthHex()
     {
         IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        TaikoExtendedEthModule rpc = new(new SyncConfig(), originStore);
+        TaikoExtendedEthModule rpc = new(new SyncConfig(), originStore, Substitute.For<IBlockFinder>());
         int expectedLengthInChars = ValueHash256.Length * 2 + 2;
 
         // Create odd length hash values
