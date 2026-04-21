@@ -161,16 +161,15 @@ public class BlockValidator(
         // the suggested block carries a BAL (engine-API path); RLP-imported blocks have a
         // null suggested BAL and the agreed gas limit must still be validated against the
         // generated BAL here.
-        IReleaseSpec spec = _specProvider.GetSpec(suggestedBlock.Header);
-        if (spec.BlockLevelAccessListsEnabled
-            && suggestedBlock.BlockAccessList is null
-            && processedBlock.GeneratedBlockAccessList is not null)
+        if (suggestedBlock.BlockAccessList is null
+            && processedBlock.GeneratedBlockAccessList is not null
+            && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled)
         {
             int itemCount = processedBlock.GeneratedBlockAccessList.ItemCount();
             if (itemCount * GasCostOf.BlockAccessListItem > suggestedBlock.Header.GasLimit)
             {
                 error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, suggestedBlock.Header.GasLimit);
-                if (_logger.IsWarn) _logger.Warn($"BAL item count {itemCount} exceeds block gas limit bound in block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}.");
+                if (_logger.IsWarn) _logger.Warn($"Block level access list item count {itemCount} exceeds block gas limit bound in block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}.");
                 return false;
             }
         }
