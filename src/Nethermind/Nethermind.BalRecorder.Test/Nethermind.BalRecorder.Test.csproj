@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.BalRecorder\Nethermind.BalRecorder.csproj" />
-    <ProjectReference Include="..\Nethermind.BalRecorder.Plugin\Nethermind.BalRecorder.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
   </ItemGroup>
