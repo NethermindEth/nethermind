@@ -13,7 +13,6 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -145,13 +144,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
+            private readonly ISpecProvider _specProvider = specProvider;
+
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, token, optimize);
+                IReleaseSpec spec = _specProvider.GetSpec(header);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: GetResultGas(tx, result),
+                    gasUsed: GetResultGas(tx, result, spec),
                     result.Error);
 
                 return result.InputError
@@ -159,15 +161,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     : ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
             }
 
-            private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
+            private static UInt256 GetResultGas(Transaction transaction, CallOutput result, IReleaseSpec spec)
             {
                 long gas = result.GasSpent;
                 long operationGas = result.OperationGas;
                 if (result.AccessList is not null)
                 {
-                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
                     transaction.AccessList = result.AccessList;
-                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
                     long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
                     if (gas > operationGas)
                     {

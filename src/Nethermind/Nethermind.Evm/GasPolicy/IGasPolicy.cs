@@ -384,21 +384,36 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
+    /// <summary>
+    /// Counts floor tokens in the access list for floor cost pricing (EIP-7981).
+    /// Every byte costs TxDataNonZeroMultiplier tokens regardless of value,
+    /// matching the EIP-7976 calldata floor formula.
+    /// </summary>
+    public static long CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec)
+    {
+        if (!spec.IsEip7981Enabled) return 0L;
+
+        AccessList? accessList = transaction.AccessList;
+        if (accessList is null) return 0L;
+
+        (int addressCount, int storageKeyCount) = accessList.Count;
+        return (addressCount * 20L + storageKeyCount * 32L) * spec.GasCosts.TxDataNonZeroMultiplier;
+    }
+
+    public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long floorTokensInAccessList)
     {
         AccessList? accessList = transaction.AccessList;
-        if (accessList is not null)
-        {
-            if (!spec.UseTxAccessLists)
-            {
-                ThrowInvalidDataException(spec);
-            }
+        if (accessList is null) return 0;
 
-            (int addressesCount, int storageKeysCount) = accessList.Count;
-            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
+        if (!spec.UseTxAccessLists)
+        {
+            ThrowInvalidDataException(spec);
         }
 
-        return 0;
+        (int addressesCount, int storageKeysCount) = accessList.Count;
+        return addressesCount * GasCostOf.AccessAccountListEntry
+            + storageKeysCount * GasCostOf.AccessStorageListEntry
+            + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec spec) =>
@@ -435,12 +450,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
 
     /// <summary>
-    /// Calculates the calldata floor cost for a transaction.
+    /// Calculates the calldata floor cost for a transaction, including EIP-7981 access list tokens.
     /// </summary>
-    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData) => spec switch
+    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData, long floorTokensInAccessList) => spec switch
     {
-        { IsEip7976Enabled: true } => GasCostOf.Transaction + CalculateFloorTokensInCallData(transaction, spec) * spec.GasCosts.TotalCostFloorPerToken,
-        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
+        { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
+        { IsEip7623Enabled: true } => GasCostOf.Transaction + (tokensInCallData + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
         _ => 0L
     };
 }
