@@ -49,15 +49,32 @@ namespace Nethermind.Trie
 
                 HexPrefix.CopyToSpan(hexPrefix, isLeaf: false, keyBytes);
 
-                int previousLength = item.AppendChildPath(ref path, 0);
-                TrieNode nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
-                Debug.Assert(nodeRef is not null,
-                    "Extension child is null when encoding.");
+                // Read the child slot directly. When it already holds a Hash256 (e.g. after UnresolveChild
+                // pruned a persisted child mid-BulkSetAndCommit), the Keccak is exactly what the encoded RLP
+                // needs — going through GetChildWithChildPath would force a FindCachedOrUnknown+LoadRlp that
+                // can't see nodes still in the unflushed write batch.
+                object childOrRef = item._nodeData[1];
 
-                nodeRef.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                path.TruncateMut(previousLength);
+                Hash256? childKeccak;
+                CappedArray<byte> childFullRlp = default;
+                if (childOrRef is Hash256 cachedHash)
+                {
+                    childKeccak = cachedHash;
+                }
+                else
+                {
+                    // TrieNode (or null — in which case GetChildWithChildPath decodes lazily from RLP).
+                    int previousLength = item.AppendChildPath(ref path, 0);
+                    TrieNode nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
+                    Debug.Assert(nodeRef is not null,
+                        "Extension child is null when encoding.");
+                    nodeRef.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                    path.TruncateMut(previousLength);
+                    childKeccak = nodeRef.Keccak;
+                    if (childKeccak is null) childFullRlp = nodeRef.FullRlp;
+                }
 
-                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
+                int contentLength = Rlp.LengthOf(keyBytes) + (childKeccak is null ? childFullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRent(totalLength);
@@ -69,19 +86,15 @@ namespace Nethermind.Trie
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-                if (nodeRef.Keccak is null)
+                if (childKeccak is null)
                 {
-                    // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
-                    // so |
-                    // so |
-                    // so E - - - - - - - - - - - - - - -
-                    // so |
-                    // so |
-                    nodeRef.FullRlp.AsSpan().CopyTo(destination.Slice(position));
+                    // Inline case: a short extension whose child RLP is < 32 bytes — copy the child's RLP
+                    // into the parent's encoding instead of a keccak reference.
+                    childFullRlp.AsSpan().CopyTo(destination.Slice(position));
                 }
                 else
                 {
-                    Rlp.Encode(destination, position, nodeRef.Keccak);
+                    Rlp.Encode(destination, position, childKeccak);
                 }
 
                 return data;

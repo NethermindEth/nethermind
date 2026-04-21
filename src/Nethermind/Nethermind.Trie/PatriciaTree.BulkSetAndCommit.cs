@@ -38,7 +38,7 @@ public partial class PatriciaTree
             if (RootRef is null || !RootRef.IsDirty)
                 return;
 
-            using (ICommitter committer = new NonPruningCommitter(TrieStore.BeginCommit(RootRef, writeFlags)))
+            using (ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags))
             {
                 TreePath emptyPath = TreePath.Empty;
                 HashAndCommitDescendants(committer, ref emptyPath, RootRef, null);
@@ -62,7 +62,7 @@ public partial class PatriciaTree
                 OriginalSortBufferArray = entries.UnsafeGetInternalArray(),
             };
 
-            using (ICommitter committer = new NonPruningCommitter(TrieStore.BeginCommit(RootRef, writeFlags)))
+            using (ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags))
             {
                 newRoot = BulkSetAndCommit(ctx, traverseStack, committer,
                     entries.AsSpan(), entries.AsSpan(),
@@ -79,7 +79,7 @@ public partial class PatriciaTree
                 OriginalEntriesArray = entries.UnsafeGetInternalArray(),
             };
 
-            using (ICommitter committer = new NonPruningCommitter(TrieStore.BeginCommit(RootRef, writeFlags)))
+            using (ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags))
             {
                 newRoot = BulkSetAndCommit(ctx, traverseStack, committer,
                     entries.AsSpan(), sortBuffer.AsSpan(),
@@ -449,22 +449,4 @@ public partial class PatriciaTree
         }
     }
 
-    // The fused descent commits nodes into the write batch while still walking the tree via
-    // GetChildWithChildPath (e.g. inside MaybeCombineNode). That walk has a pruning optimization
-    // (TrieNode.cs: "if (child?.IsPersisted == true && !keepChildRef && childPath.Length > 4 ...)
-    // UnresolveChild(...)") which drops the in-memory TrieNode, expecting the node to be
-    // reloadable from the backing store. But the write batch hasn't been flushed yet — ResolveNode
-    // would throw MissingTrieNodeException. Keep IsPersisted=false until the batch flushes on
-    // Dispose so the pruning branch doesn't fire for nodes committed in this same descent.
-    private sealed class NonPruningCommitter(ICommitter inner) : ICommitter
-    {
-        public void Dispose() => inner.Dispose();
-
-        public TrieNode CommitNode(ref TreePath path, TrieNode node)
-        {
-            TrieNode result = inner.CommitNode(ref path, node);
-            result.IsPersisted = false;
-            return result;
-        }
-    }
 }
