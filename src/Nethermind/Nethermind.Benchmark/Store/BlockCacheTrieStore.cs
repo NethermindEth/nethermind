@@ -107,26 +107,49 @@ internal sealed class BlockCacheTrieStore(IScopedTrieStore inner, Dictionary<Tre
         shard.Set(blockId);
     }
 
+    // Committed nodes from BulkSet(AndCommit)'s commit phase land here directly. Bypasses
+    // RawScopedTrieStore → IWriteBatch entirely so PatriciaTree's parallel workers can race on
+    // CommitNode safely without a coarse lock. The dictionary isn't read back during a benchmark
+    // iteration (each iteration rebuilds the tree from _preloadedRootHash), so storing TrieNode
+    // references is fine — no RLP byte[] copy needed.
+    private readonly ConcurrentDictionary<Hash256, TrieNode> _committed = new();
+
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => inner.GetStorageTrieNodeResolver(address);
     public INodeStorage.KeyScheme Scheme => inner.Scheme;
-    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new QuotaCommitter(inner.BeginCommit(root, writeFlags));
+    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new QuotaCommitter(_committed, this);
+
+    /// <summary>
+    /// When true, <see cref="QuotaCommitter.TryRequestConcurrentQuota"/> always returns false, forcing
+    /// PatriciaTree's commit descent fully serial. Used by benchmark variants that want a serial wall-time
+    /// reading so the commit-phase parallelism can't mask the algorithmic difference.
+    /// </summary>
+    public bool DisableConcurrencyQuota { get; set; }
 
     /// <summary>
     /// Mirrors <c>TrieStore.BlockCommitter</c>'s bounded concurrency quota so PatriciaTree's parallel
-    /// commit path actually dispatches work in benchmarks. The underlying <see cref="RawScopedTrieStore.Committer"/>
-    /// inherits the default <c>TryRequestConcurrentQuota() => false</c>, which would otherwise force a fully
-    /// serial descent regardless of <see cref="PatriciaTree.Flags.DoNotParallelize"/>.
+    /// commit path actually dispatches work in benchmarks. CommitNode stores TrieNode references in a
+    /// <see cref="ConcurrentDictionary{TKey,TValue}"/> for thread safety — production's
+    /// <c>BlockCommitter</c> handles concurrent writes internally, this mimics that without a lock.
     /// </summary>
-    private sealed class QuotaCommitter(ICommitter inner) : ICommitter
+    private sealed class QuotaCommitter(ConcurrentDictionary<Hash256, TrieNode> committed, BlockCacheTrieStore owner) : ICommitter
     {
         private int _concurrency = Environment.ProcessorCount;
 
-        public void Dispose() => inner.Dispose();
+        public void Dispose() { }
 
-        public TrieNode CommitNode(ref TreePath path, TrieNode node) => inner.CommitNode(ref path, node);
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
+        {
+            if (!node.IsBoundaryProofNode && node.Keccak is Hash256 keccak)
+            {
+                node.IsPersisted = true;
+                committed[keccak] = node;
+            }
+            return node;
+        }
 
         public bool TryRequestConcurrentQuota()
         {
+            if (owner.DisableConcurrencyQuota) return false;
             if (Interlocked.Decrement(ref _concurrency) >= 0) return true;
             Interlocked.Increment(ref _concurrency);
             return false;
