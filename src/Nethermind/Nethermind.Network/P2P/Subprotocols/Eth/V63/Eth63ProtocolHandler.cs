@@ -47,9 +47,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override void HandleMessageCore(ZeroPacket message)
         {
-            base.HandleMessage(message);
+            base.HandleMessageCore(message);
             int size = message.Content.ReadableBytes;
 
             switch (message.PacketType)
