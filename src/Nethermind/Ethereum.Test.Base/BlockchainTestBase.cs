@@ -107,7 +107,13 @@ public abstract class BlockchainTestBase
             await KzgPolynomialCommitments.InitializeAsync();
         }
 
-        DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
+        // Per-test fresh instance instead of the shared static wrapper: tests run with
+        // [Parallelizable(ParallelScope.All)] and a shared Wrapped field is racy, which only
+        // matters once something actually consumes the calculator via DI (the difficulty-aware
+        // seal validator below). Keep the static wrapper field for backward compatibility, but
+        // hand the container a fresh instance bound to this test's specProvider.
+        IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
+        DifficultyCalculator.Wrapped = difficultyCalculator;
         IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
         bool isPostMerge = test.Network != London.Instance &&
                            test.Network != Berlin.Instance &&
@@ -142,10 +148,10 @@ public abstract class BlockchainTestBase
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            .AddSingleton<IDifficultyCalculator>(difficultyCalculator)
             // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty
             // matching, so legacy invalid-block fixtures (wrongDifficulty_*) are actually rejected.
-            .AddSingleton<ISealValidator, IDifficultyCalculator>(diffCalc => new DifficultyOnlySealValidator(diffCalc))
+            .AddSingleton<ISealValidator>(new DifficultyOnlySealValidator(difficultyCalculator))
             .AddSingleton<ITxPool>(NullTxPool.Instance);
 
         // Wire in the merge module for any post-Merge test (engine API flow OR post-Paris
