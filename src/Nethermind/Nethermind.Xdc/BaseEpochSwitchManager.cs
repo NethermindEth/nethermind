@@ -74,12 +74,11 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
         {
             HashSet<Address> excluded = new(masterNodes);
             excluded.UnionWith(penalties);
-            HashSet<Address> seen = new();
 
             List<Address> result = new();
             foreach (Address candidate in candidates)
             {
-                if (seen.Add(candidate) && !excluded.Contains(candidate))
+                if (excluded.Add(candidate))
                     result.Add(candidate);
             }
             standbyNodes = result.ToArray();
