@@ -30,6 +30,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
+    private readonly Lock _storagesLock = new();
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -37,6 +38,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _hintSequenceId = 0;
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
+
+    // Tracked HintBal background task — mirrors PrewarmerScopeProvider's _balCts/_balTask pattern.
+    private CancellationTokenSource? _hintBalCts;
+    private Task? _hintBalTask;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -81,8 +86,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        CancelHintBal();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
+    }
+
+    private void CancelHintBal()
+    {
+        _hintBalCts?.Cancel();
+        try { _hintBalTask?.GetAwaiter().GetResult(); }
+        catch { }
+        _hintBalCts?.Dispose();
+        _hintBalCts = null;
+        _hintBalTask = null;
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
@@ -117,14 +133,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintBal(BlockAccessList bal)
     {
+        // Cancel any previous HintBal task and start a new one. Tracks the task so
+        // Dispose / next HintBal can stop it cleanly, matching PrewarmerScopeProvider's pattern.
+        CancelHintBal();
+        _hintBalCts = new CancellationTokenSource();
+        CancellationToken token = _hintBalCts.Token;
         int snapshot = _hintSequenceId;
 
-        _ = Task.Run(() =>
+        _hintBalTask = Task.Run(() =>
         {
             try
             {
                 foreach (AccountChanges accountChanges in bal.AccountChanges)
                 {
+                    if (token.IsCancellationRequested) return;
                     if (_hintSequenceId != snapshot || _pausePrewarmer) return;
 
                     Address address = accountChanges.Address;
@@ -150,14 +172,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         _logManager);
 
                     foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+                    {
+                        if (token.IsCancellationRequested) return;
                         _warmer.PushSlotJobMpmc(storageWarmer, slotChanges.Slot, snapshot);
+                    }
 
                     foreach (StorageRead storageRead in accountChanges.StorageReads)
+                    {
+                        if (token.IsCancellationRequested) return;
                         _warmer.PushSlotJobMpmc(storageWarmer, storageRead.Key, snapshot);
+                    }
                 }
             }
+            catch (OperationCanceledException) { }
             catch (ObjectDisposedException) { }
-        });
+        }, token);
     }
 
     public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
@@ -174,23 +203,29 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         foreach (AccountChanges ac in bal.AccountChanges)
             accountChangesList[copyIdx++] = ac;
 
+        ParallelOptions parallelOptions = new() { CancellationToken = cancellationToken };
+
         // Phase 1: parallel account fetch, gated by the sink
         Account?[] accounts = new Account?[accountCount];
         int skippedAccounts = 0;
-        Parallel.For(0, accountCount, (i) =>
+        try
         {
-            Address address = accountChangesList[i].Address;
-            if (!sink.StillNeeded(address, out Account? cached))
+            Parallel.For(0, accountCount, parallelOptions, (i) =>
             {
-                accounts[i] = cached;
-                Interlocked.Increment(ref skippedAccounts);
-                return;
-            }
+                Address address = accountChangesList[i].Address;
+                if (!sink.StillNeeded(address, out Account? cached))
+                {
+                    accounts[i] = cached;
+                    Interlocked.Increment(ref skippedAccounts);
+                    return;
+                }
 
-            Account? account = _snapshotBundle.GetAccount(address);
-            accounts[i] = account;
-            sink.OnAccountRead(address, account);
-        });
+                Account? account = _snapshotBundle.GetAccount(address);
+                accounts[i] = account;
+                sink.OnAccountRead(address, account);
+            });
+        }
+        catch (OperationCanceledException) { return Task.CompletedTask; }
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -229,19 +264,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     jobs[jobIdx++] = (address, storageTree, storageRead.Key);
             }
 
-            Parallel.For(0, totalSlots, (s) =>
+            try
             {
-                (Address address, IWorldStateScopeProvider.IStorageTree tree, UInt256 slot) = jobs[s];
-                StorageCell cell = new(address, in slot);
-                if (!sink.StillNeeded(in cell))
+                Parallel.For(0, totalSlots, parallelOptions, (s) =>
                 {
-                    Interlocked.Increment(ref skippedStorageFlat);
-                    return;
-                }
+                    (Address address, IWorldStateScopeProvider.IStorageTree tree, UInt256 slot) = jobs[s];
+                    StorageCell cell = new(address, in slot);
+                    if (!sink.StillNeeded(in cell))
+                    {
+                        Interlocked.Increment(ref skippedStorageFlat);
+                        return;
+                    }
 
-                byte[] value = tree.Get(in slot);
-                sink.OnStorageRead(in cell, value);
-            });
+                    byte[] value = tree.Get(in slot);
+                    sink.OnStorageRead(in cell, value);
+                });
+            }
+            catch (OperationCanceledException) { }
         }
 
         LogBalSkipRates(accountCount, skippedAccounts, totalSlots, skippedStorageFlat);
@@ -277,21 +316,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private FlatStorageTree CreateStorageTreeImpl(Address address)
     {
-        ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-        if (exists) return storage!;
+        // _storages is accessed concurrently — the HintBal/ReadBalAsync Task.Run may call
+        // CreateStorageTree from a worker thread while the main processing thread also
+        // reads/writes via scope.Get/WriteBatch paths. Dictionary is not thread-safe.
+        lock (_storagesLock)
+        {
+            ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+            if (exists) return storage!;
 
-        Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-        storage = new FlatStorageTree(
-            this,
-            _warmer,
-            _snapshotBundle,
-            _configuration,
-            _concurrencyQuota,
-            storageRoot,
-            address,
-            _logManager);
+            Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            storage = new FlatStorageTree(
+                this,
+                _warmer,
+                _snapshotBundle,
+                _configuration,
+                _concurrencyQuota,
+                storageRoot,
+                address,
+                _logManager);
 
-        return storage;
+            return storage;
+        }
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
@@ -300,6 +345,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Commit(long blockNumber)
     {
         _pausePrewarmer = true;
+        // Drain HintBal task before iterating _storages — Commit's foreach isn't locked
+        // and the task may otherwise be mid-CreateStorageTreeImpl when we start iterating.
+        CancelHintBal();
 
         using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
 
