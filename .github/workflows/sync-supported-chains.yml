@@ -406,7 +406,7 @@ jobs:
             -e PROMETHEUS_USERNAME="${{ secrets.PROMETHEUS_USERNAME }}" \
             -e PROMETHEUS_PASSWORD="${{ secrets.PROMETHEUS_PASSWORD }}" \
             grafana/alloy:latest \
-              run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+              run --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
 
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
