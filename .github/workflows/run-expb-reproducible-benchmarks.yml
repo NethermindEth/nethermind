@@ -570,9 +570,9 @@ jobs:
                   close(flags_file)
                 }
                 function flush_flags() {
-                  if (!injected && flags_count > 0 && ef_indent != "") {
+                  if (!injected && flags_count > 0) {
                     for (i = 1; i <= flags_count; i++) {
-                      print ef_indent "  - " flags[i]
+                      print item_prefix flags[i]
                     }
                     injected = 1
                   }
@@ -580,29 +580,28 @@ jobs:
                 }
                 {
                   if (in_extra_flags) {
-                    # Still inside the extra_flags block — items are indented deeper
                     if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) {
-                      # blank or comment line — keep inside block
                       print
                       next
+                    }
+                    # Detect item prefix from first real list item
+                    if (item_prefix == "" && match($0, /^[[:space:]]*- /)) {
+                      item_prefix = substr($0, RSTART, RLENGTH)
                     }
                     match($0, /^[[:space:]]*/);
-                    cur_indent = RLENGTH;
-                    if (cur_indent > ef_indent_len) {
-                      # deeper indent — still part of extra_flags block
+                    if (RLENGTH > ef_indent_len) {
                       print
                       next
                     }
-                    # same or less indent — block ended, inject before this line
                     flush_flags()
                     print
                     next
                   }
                   if (!injected && flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:/) {
                     match($0, /^[[:space:]]*/);
-                    ef_indent = substr($0, RSTART, RLENGTH);
                     ef_indent_len = RLENGTH;
-                    sub(/extra_flags:.*/, "extra_flags:", $0);
+                    item_prefix = substr($0, RSTART, RLENGTH) "  - "
+                    sub(/extra_flags:.*/, "extra_flags:", $0)
                     print
                     in_extra_flags = 1
                     next
@@ -1674,9 +1673,9 @@ jobs:
                   close(flags_file)
                 }
                 function flush_flags() {
-                  if (!injected && flags_count > 0 && ef_indent != "") {
+                  if (!injected && flags_count > 0) {
                     for (i = 1; i <= flags_count; i++) {
-                      print ef_indent "  - " flags[i]
+                      print item_prefix flags[i]
                     }
                     injected = 1
                   }
@@ -1684,29 +1683,28 @@ jobs:
                 }
                 {
                   if (in_extra_flags) {
-                    # Still inside the extra_flags block — items are indented deeper
                     if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) {
-                      # blank or comment line — keep inside block
                       print
                       next
+                    }
+                    # Detect item prefix from first real list item
+                    if (item_prefix == "" && match($0, /^[[:space:]]*- /)) {
+                      item_prefix = substr($0, RSTART, RLENGTH)
                     }
                     match($0, /^[[:space:]]*/);
-                    cur_indent = RLENGTH;
-                    if (cur_indent > ef_indent_len) {
-                      # deeper indent — still part of extra_flags block
+                    if (RLENGTH > ef_indent_len) {
                       print
                       next
                     }
-                    # same or less indent — block ended, inject before this line
                     flush_flags()
                     print
                     next
                   }
                   if (!injected && flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:/) {
                     match($0, /^[[:space:]]*/);
-                    ef_indent = substr($0, RSTART, RLENGTH);
                     ef_indent_len = RLENGTH;
-                    sub(/extra_flags:.*/, "extra_flags:", $0);
+                    item_prefix = substr($0, RSTART, RLENGTH) "  - "
+                    sub(/extra_flags:.*/, "extra_flags:", $0)
                     print
                     in_extra_flags = 1
                     next
