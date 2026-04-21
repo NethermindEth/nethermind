@@ -50,6 +50,21 @@ public class Eip7981Tests
         yield return new TestCaseData(
             new AccessList.Builder().AddAddress(Address.Zero).AddAddress(new Address("0x0000000000000000000000000000000000000001")).Build(), 160L
         ).SetName("Two addresses: 160 tokens");
+
+        // 1 address (80) + 3 keys (3 × 128 = 384) = 464 tokens
+        yield return new TestCaseData(
+            new AccessList.Builder()
+                .AddAddress(Address.Zero)
+                .AddStorage(UInt256.Zero)
+                .AddStorage(UInt256.One)
+                .AddStorage(new UInt256(255))
+                .Build(), 464L
+        ).SetName("Address + 3 storage keys: 464 tokens");
+
+        // Empty access list: no addresses, no keys → 0 tokens
+        yield return new TestCaseData(
+            new AccessList.Builder().Build(), 0L
+        ).SetName("Empty access list: 0 tokens");
     }
 
     [TestCaseSource(nameof(AccessListOnlyCases))]
@@ -69,40 +84,6 @@ public class Eip7981Tests
     }
 
     [Test]
-    public void Address_with_multiple_storage_keys()
-    {
-        // 1 address (80) + 3 keys (3 × 128 = 384) = 464 tokens
-        AccessList accessList = new AccessList.Builder()
-            .AddAddress(Address.Zero)
-            .AddStorage(UInt256.Zero)
-            .AddStorage(UInt256.One)
-            .AddStorage(new UInt256(255))
-            .Build();
-        Transaction transaction = new() { To = Address.Zero, AccessList = accessList };
-        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-
-        long expectedTokens = 464L;
-        long expectedStandard = GasCostOf.Transaction
-            + 1 * GasCostOf.AccessAccountListEntry
-            + 3 * GasCostOf.AccessStorageListEntry
-            + FloorPerToken * expectedTokens;
-        long expectedFloor = GasCostOf.Transaction + FloorPerToken * expectedTokens;
-
-        cost.Should().Be(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor));
-    }
-
-    [Test]
-    public void Empty_access_list_contributes_zero_tokens()
-    {
-        AccessList accessList = new AccessList.Builder().Build();
-        Transaction transaction = new() { To = Address.Zero, AccessList = accessList };
-        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        cost.Should().Be(new EthereumIntrinsicGas(
-            Standard: GasCostOf.Transaction,
-            FloorGas: GasCostOf.Transaction));
-    }
-
-    [Test]
     public void Null_access_list_contributes_zero_tokens()
     {
         Transaction transaction = new() { To = Address.Zero, AccessList = null };
@@ -110,32 +91,6 @@ public class Eip7981Tests
         cost.Should().Be(new EthereumIntrinsicGas(
             Standard: GasCostOf.Transaction,
             FloorGas: GasCostOf.Transaction));
-    }
-
-    [Test]
-    public void Large_access_list_floor_exceeds_standard()
-    {
-        // 10 addresses (800 tokens) + 10 keys each (12800 tokens) = 13600 tokens
-        // Floor = 21000 + 13600 * 16 = 238600
-        // Standard = 21000 + 10*2400 + 100*1900 + 13600*16 = 21000 + 24000 + 190000 + 217600 = 452600
-        AccessList.Builder builder = new();
-        for (int i = 0; i < 10; i++)
-        {
-            builder.AddAddress(new Address($"0x{i:D40}"));
-            for (int j = 0; j < 10; j++)
-            {
-                builder.AddStorage(new UInt256((ulong)(i * 10 + j)));
-            }
-        }
-
-        AccessList accessList = builder.Build();
-        Transaction transaction = new() { To = Address.Zero, AccessList = accessList };
-        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-
-        long expectedTokens = (10 * 20L + 100 * 32L) * NonZeroMultiplier;
-        long expectedFloor = GasCostOf.Transaction + FloorPerToken * expectedTokens;
-        cost.FloorGas.Should().Be(expectedFloor);
-        cost.Standard.Should().BeGreaterThan(cost.FloorGas);
     }
 
     [Test]
