@@ -128,8 +128,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
     private class StandardBlockValidationModule : Module, IBlockValidationModule
     {
         protected override void Load(ContainerBuilder builder) => builder
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
-            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>()
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>()
             .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
     }
 }
