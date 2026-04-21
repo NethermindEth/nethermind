@@ -238,12 +238,20 @@ namespace Nethermind.State
 
             return new Reactive.AnonymousDisposable(() =>
             {
-                Reset();
-                _stateProvider.SetScope(null);
-                _currentScope.Dispose();
-                _currentScope = null;
-                _isInScope = false;
-                if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
+                try
+                {
+                    Reset();
+                    _stateProvider.SetScope(null);
+                    _currentScope.Dispose();
+                }
+                finally
+                {
+                    // Cleared in finally so a dispose-time exception cannot leave the next
+                    // BranchProcessor.Process call stuck with IsInScope == true.
+                    _currentScope = null;
+                    _isInScope = false;
+                    if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
+                }
             });
         }
 
