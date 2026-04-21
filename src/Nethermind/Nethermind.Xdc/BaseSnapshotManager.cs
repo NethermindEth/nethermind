@@ -72,7 +72,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         return GetSnapshot(gapBlockHeader.Hash);
     }
 
-    protected TSnapshot GetSnapshot(Hash256 headerHash)
+    protected TSnapshot? GetSnapshot(Hash256 headerHash)
     {
         TSnapshot? snapshot = _snapshotCache.Get(headerHash);
         if (snapshot is not null)
