@@ -228,12 +228,11 @@ public partial class PatriciaTree
             }
 
             // Workers call BulkSetAndCommit recursively and commit descendants concurrently.
-            // CommitNode is called concurrently inside workers (for deep descendants).
-            // The 16 subtree roots are NOT committed here; they are committed serially below
-            // by the main thread after the join.
-            // Wrap the committer to serialize concurrent CommitNode calls, since IWriteBatch
-            // implementations (e.g. InMemoryWriteBatch) are not guaranteed to be thread-safe.
-            ICommitter closureCommitter = new SynchronizedCommitter(committer);
+            // CommitNode is called concurrently inside workers (for deep descendants); the 16 subtree
+            // roots are NOT committed here, they are committed serially below after the join.
+            // The supplied ICommitter MUST be concurrency-safe for CommitNode. Production TrieStore's
+            // BlockCommitter is; tests that use a non-thread-safe committer must wrap it themselves.
+            ICommitter closureCommitter = committer;
             Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
                 () =>
                 {
@@ -450,17 +449,6 @@ public partial class PatriciaTree
             path.TruncateMut(prev);
         }
         // Leaf: terminal, no children. Caller hashes/seals/commits.
-    }
-
-    private sealed class SynchronizedCommitter(ICommitter inner) : ICommitter
-    {
-        public void Dispose() => inner.Dispose();
-
-        public TrieNode CommitNode(ref TreePath path, TrieNode node)
-        {
-            lock (inner)
-                return inner.CommitNode(ref path, node);
-        }
     }
 
 }
