@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -330,7 +330,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     break;
                 }
 
-                Block block = SyncServer.Find(hashes[i]);
+                Block? block = SyncServer.Find(hashes[i]);
+                if (block is null)
+                {
+                    // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
+                    continue;
+                }
+
                 sizeEstimate += MessageSizeEstimator.EstimateSize(block);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
@@ -370,7 +376,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     break;
                 }
 
-                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
+                Hash256 blockHash = getReceiptsMessage.Hashes[i];
+                if (SyncServer.FindHeader(blockHash) is null)
+                {
+                    break;
+                }
+
+                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(blockHash);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)

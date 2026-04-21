@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -65,6 +64,7 @@ public class Eth70ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
+        _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
         _syncManager.LowestBlock.Returns(0);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
@@ -102,14 +102,14 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth70");
-        _handler.ProtocolVersion.Should().Be(70);
-        _handler.MessageIdSpaceSize.Should().Be(18);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth70"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
@@ -140,6 +140,17 @@ public class Eth70ProtocolHandlerTests
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
             m.EthMessage.TxReceipts.Count == 1 && m.EthMessage.TxReceipts[0].Length == 0 && !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_throw_when_receiving_GetReceipts_before_status()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+
+        Action action = () => HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        Assert.That(action, Throws.TypeOf<SubprotocolException>());
+        _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage70>());
     }
 
     [Test]
@@ -254,8 +265,8 @@ public class Eth70ProtocolHandlerTests
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
         using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-        result.Should().HaveCount(1);
-        result[0].Should().BeEquivalentTo(receipts);
+        Assert.That(result.Count, Is.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
     }
 
     [Test]
@@ -296,10 +307,10 @@ public class Eth70ProtocolHandlerTests
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-        result.Should().HaveCount(2);
-        result[0].Should().BeEquivalentTo(block1);
-        result[1].Should().BeEquivalentTo(block2);
-        seenOffsets.AsSpan().ToArray().Should().Equal(0, 2);
+        Assert.That(result.Count, Is.EqualTo(2));
+        AssertReceiptsEqual(result[0], block1);
+        AssertReceiptsEqual(result[1], block2);
+        Assert.That(seenOffsets.AsSpan().ToArray(), Is.EqualTo(new[] { 0L, 2L }));
     }
 
     [Test]
@@ -375,7 +386,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public async Task Should_reject_when_receipts_response_below_minimum_size()
+    public void Should_reject_when_receipts_response_below_minimum_size()
     {
         TxReceipt[] receipts =
         [
@@ -392,8 +403,8 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        await act.Should().ThrowAsync<SubprotocolException>()
-            .WithMessage("Received partial receipts response below minimum size*");
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Does.StartWith("Received partial receipts response below minimum size"));
     }
 
     [Test]
@@ -415,7 +426,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        act.Should().ThrowAsync<SubprotocolException>();
+        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
     }
 
     [Test]
@@ -440,7 +451,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        act.Should().ThrowAsync<SubprotocolException>();
+        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
     }
 
     [Test]
@@ -480,8 +491,8 @@ public class Eth70ProtocolHandlerTests
 
         // Handler should make only 1 request - not loop trying to get remaining 3 blocks
         // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
-        requestCount.Should().Be(1, "handler should not loop requesting more when peer returned fewer with incomplete=false");
-        result.Should().HaveCount(7, "should return what peer gave us without looping");
+        Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
+        Assert.That(result.Count, Is.EqualTo(7), "should return what peer gave us without looping");
     }
 
     [Test]
@@ -536,6 +547,45 @@ public class Eth70ProtocolHandlerTests
             m.EthMessage.TxReceipts[0].Length == 0 &&
             m.EthMessage.TxReceipts[1].Length == 1 &&
             !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_stop_receipts_response_at_first_unknown_block_hash()
+    {
+        TxReceipt[] block1Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakB).Returns(
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ]);
+
+        ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
+
+        Assert.That(response.EthMessage.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That(response.EthMessage.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
+        Assert.That(response.EthMessage.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
+        Assert.That(response.LastBlockIncomplete, Is.False);
+    }
+
+    [Test]
+    public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
+    {
+        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ]);
+
+        ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
+
+        Assert.That(response.EthMessage.TxReceipts, Is.Empty);
+        Assert.That(response.LastBlockIncomplete, Is.False);
     }
 
     [Test]
@@ -674,6 +724,9 @@ public class Eth70ProtocolHandlerTests
         public override void Dispose() { IsDisposed = true; base.Dispose(); }
     }
 
+    private static void AssertReceiptsEqual(TxReceipt[] actual, TxReceipt[] expected) =>
+        Assert.That(actual, Is.EqualTo(expected).UsingPropertiesComparer());
+
     public enum EmptyReceiptsPayloadScenario
     {
         FirstComplete,
@@ -719,5 +772,19 @@ public class Eth70ProtocolHandlerTests
         using DisposableByteBuffer packet = _svc!.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
         _handler!.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+    }
+
+    private ReceiptsMessage70 RequestReceipts(params Hash256[] hashes)
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, new(hashes.ToPooledList()));
+        ReceiptsMessage70? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
+            .Do(call => response = (ReceiptsMessage70)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        return response!;
     }
 }
