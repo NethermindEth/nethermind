@@ -29,7 +29,8 @@ public class BalTracingTransactionsExecutor(
         if (_balBuilder is not null && !_balBuilder.TracingEnabled)
         {
             _balBuilder.TracingEnabled = true;
-            _balBuilder.LoadSuggestedBlockAccessList(block.BlockAccessList ?? new(), block.GasUsed);
+            if (block.BlockAccessList is not null)
+                _balBuilder.LoadSuggestedBlockAccessList(block.BlockAccessList, block.GasUsed);
         }
         return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
     }
