@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       state_layout:
-        description: State layout mode
+        description: State layout mode (both = collect from flat then halfpath and merge)
         required: true
         type: choice
         options:
+          - both
           - flat
           - halfpath
-        default: flat
+        default: both
       payload_set:
         description: Payload set mode
         required: true
@@ -19,6 +20,14 @@ on:
           - realblocks
           - superblocks
         default: realblocks
+      warmup_blocks:
+        description: Number of warmup blocks to skip from profile (JIT tiering noise)
+        required: false
+        default: "500"
+      amount:
+        description: Total blocks to process (including warmup)
+        required: false
+        default: "5000"
   schedule:
     # Weekly on Sunday at 02:00 UTC
     - cron: "0 2 * * 0"
@@ -126,49 +135,95 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Resolve config file
+      - name: Resolve config files
         id: resolve
         shell: bash
         env:
-          STATE_LAYOUT: ${{ inputs.state_layout || 'flat' }}
+          STATE_LAYOUT: ${{ inputs.state_layout || 'both' }}
           PAYLOAD_SET: ${{ inputs.payload_set || 'realblocks' }}
+          WARMUP_BLOCKS: ${{ inputs.warmup_blocks || '500' }}
+          AMOUNT: ${{ inputs.amount || '5000' }}
         run: |
           set -euo pipefail
-          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
-            config_file="github-action-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet.yaml"
-          else
-            config_file="github-action-mainnet.yaml"
-          fi
-          echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
 
-      - name: Render benchmark config
+          resolve_config() {
+            local layout="$1" pset="$2"
+            if [[ "${layout}" == "flat" && "${pset}" == "superblocks" ]]; then
+              echo "github-action-compressed-mainnet-flat.yaml"
+            elif [[ "${layout}" == "flat" && "${pset}" == "realblocks" ]]; then
+              echo "github-action-mainnet-flat.yaml"
+            elif [[ "${layout}" == "halfpath" && "${pset}" == "superblocks" ]]; then
+              echo "github-action-compressed-mainnet.yaml"
+            else
+              echo "github-action-mainnet.yaml"
+            fi
+          }
+
+          # Build list of layouts to collect
+          if [[ "${STATE_LAYOUT}" == "both" ]]; then
+            layouts="flat halfpath"
+          else
+            layouts="${STATE_LAYOUT}"
+          fi
+
+          config_files=""
+          for layout in ${layouts}; do
+            cf=$(resolve_config "${layout}" "${PAYLOAD_SET}")
+            config_files="${config_files:+${config_files},}${layout}:${cf}"
+          done
+
+          echo "config_files=${config_files}" >> "${GITHUB_OUTPUT}"
+          echo "warmup_blocks=${WARMUP_BLOCKS}" >> "${GITHUB_OUTPUT}"
+          echo "amount=${AMOUNT}" >> "${GITHUB_OUTPUT}"
+          echo "Layouts to collect: ${layouts}"
+          echo "Config files: ${config_files}"
+
+      - name: Render benchmark configs
         id: render-config
         shell: bash
         env:
-          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
+          CONFIG_FILES: ${{ steps.resolve.outputs.config_files }}
+          AMOUNT: ${{ steps.resolve.outputs.amount }}
         run: |
           set -euo pipefail
-          rendered="${RUNNER_TEMP}/rendered-pgo-config.yaml"
-          sed \
-            -e 's#<<DOCKER_TAG>>#${{ env.PGO_TAG }}#g' \
-            -e 's#<<DELAY>>#0#g' \
-            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-collect:#g' \
-            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
-            > "${rendered}"
-          # Inject a writable pgo volume so EventPipe/PGO data survives container removal
-          # EXPB stores extra_volumes under {outputs_dir}/{scenario}/volumes/{name}/
-          sed -i '/^[[:space:]]*mode: r$/{
-            a\      pgo:
-            a\        bind: /nethermind/pgo
-            a\        mode: rw
-          }' "${rendered}"
-          echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
-          echo "Rendered config:"
-          cat "${rendered}"
+
+          if ! command -v yq >/dev/null 2>&1 || ! yq --version 2>&1 | grep -q mikefarah; then
+            echo "Installing yq..."
+            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o /usr/local/bin/yq
+            chmod +x /usr/local/bin/yq
+          fi
+
+          rendered_list=""
+          IFS=',' read -ra entries <<< "${CONFIG_FILES}"
+          for entry in "${entries[@]}"; do
+            layout="${entry%%:*}"
+            config_file="${entry#*:}"
+            rendered="${RUNNER_TEMP}/rendered-pgo-${layout}.yaml"
+
+            sed \
+              -e 's#<<DOCKER_TAG>>#${{ env.PGO_TAG }}#g' \
+              -e 's#<<DELAY>>#0#g' \
+              -e "s#<<AMOUNT>>#${AMOUNT}#g" \
+              -e "s#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-${layout}:#g" \
+              "${EXPB_DATA_DIR}/${config_file}" \
+              > "${rendered}"
+
+            # Set amount via yq if <<AMOUNT>> wasn't in the config
+            yq -i ".scenarios.\"nethermind-pgo-${layout}\".amount = ${AMOUNT}" "${rendered}"
+
+            # Inject writable pgo volume
+            sed -i '/^[[:space:]]*mode: r$/{
+              a\      pgo:
+              a\        bind: /nethermind/pgo
+              a\        mode: rw
+            }' "${rendered}"
+
+            rendered_list="${rendered_list:+${rendered_list},}${rendered}"
+            echo "Rendered config for ${layout}:"
+            cat "${rendered}"
+            echo "---"
+          done
+          echo "rendered_configs=${rendered_list}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
         shell: bash
@@ -178,7 +233,7 @@ jobs:
             echo "uv is required but not found in PATH."
             exit 1
           fi
-          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@56f83b112a93436a66468b863ed9e47bcd5feba6" expb
+          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Run EXPB for PGO collection
@@ -186,35 +241,32 @@ jobs:
         continue-on-error: true
         shell: bash
         working-directory: ${{ env.EXPB_DATA_DIR }}
+        env:
+          RENDERED_CONFIGS: ${{ steps.render-config.outputs.rendered_configs }}
         run: |
           set -euo pipefail
 
-          # Background: tail Nethermind container logs for visibility
-          log_tail_pid=""
-          (
-            sleep 5
-            for i in $(seq 1 60); do
-              cid=$(docker ps --filter "ancestor=nethermindeth/nethermind:${{ env.PGO_TAG }}" \
-                --format '{{.ID}}' 2>/dev/null | head -1)
-              if [[ -n "${cid}" ]]; then
-                echo "=== Tailing Nethermind container ${cid} logs ==="
-                exec docker logs -f "${cid}" 2>&1 | sed 's/^/[nethermind] /'
-              fi
-              sleep 2
-            done
-          ) &
-          log_tail_pid=$!
+          IFS=',' read -ra configs <<< "${RENDERED_CONFIGS}"
+          overall_exit=0
 
-          expb execute-scenarios \
-            --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
-            --per-payload-metrics \
-            --print-logs \
-            2>&1 | tee "${RUNNER_TEMP}/expb-pgo-run.log"
-          expb_exit=$?
+          for config in "${configs[@]}"; do
+            layout=$(basename "${config}" .yaml | sed 's/rendered-pgo-//')
+            echo "=== Running PGO collection for layout: ${layout} ==="
 
-          # Kill the entire process group to ensure docker logs is terminated
-          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
-          exit "${expb_exit}"
+            expb execute-scenarios \
+              --config-file "${config}" \
+              --per-payload-metrics \
+              --print-logs \
+              2>&1 | tee "${RUNNER_TEMP}/expb-pgo-${layout}.log"
+            exit_code=$?
+
+            if [[ "${exit_code}" -ne 0 ]]; then
+              echo "EXPB failed for layout ${layout} with exit code ${exit_code}"
+              overall_exit="${exit_code}"
+            fi
+          done
+
+          exit "${overall_exit}"
 
       - name: Extract PGO data from EXPB output
         if: always()
@@ -300,16 +352,7 @@ jobs:
             exit 1
           fi
 
-          # Step 1: Create .mibc from EventPipe trace (method-level hot/cold)
-          trace_file=$(find "${pgo_dir}" -name "*.nettrace" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
-          if [[ -z "${trace_file}" ]]; then
-            echo "No .nettrace file found under: ${pgo_dir}"
-            ls -laR "${pgo_dir}"
-            exit 1
-          fi
-
-          # Extract Nethermind assemblies from the PGO image so dotnet-pgo can resolve
-          # generic method signatures against R2R tables
+          # Extract Nethermind assemblies for dotnet-pgo reference resolution
           ref_dir="${RUNNER_TEMP}/nethermind-ref"
           cid=$(docker create "nethermindeth/nethermind:${{ env.PGO_TAG }}" --entrypoint /bin/true 2>/dev/null || true)
           if [[ -n "${cid}" ]]; then
@@ -317,20 +360,47 @@ jobs:
             docker rm "${cid}" >/dev/null 2>&1 || true
           fi
 
-          echo "Converting ${trace_file} to .mibc..."
-          trace_mibc="${RUNNER_TEMP}/trace.mibc"
-          create_mibc_args=(
-            --trace "${trace_file}"
-            --output "${trace_mibc}"
-          )
+          ref_args=()
           if [[ -d "${ref_dir}" ]]; then
             for dll in "${ref_dir}"/*.dll; do
-              create_mibc_args+=(--reference "${dll}")
+              ref_args+=(--reference "${dll}")
             done
           fi
-          dotnet-pgo create-mibc "${create_mibc_args[@]}"
 
-          cp "${trace_mibc}" "${mibc_file}"
+          # Convert each .nettrace to .mibc, then merge all
+          mapfile -t trace_files < <(find "${pgo_dir}" -name "*.nettrace" -type f 2>/dev/null | sort)
+          if [[ "${#trace_files[@]}" -eq 0 ]]; then
+            echo "No .nettrace files found under: ${pgo_dir}"
+            ls -laR "${pgo_dir}"
+            exit 1
+          fi
+
+          mibc_parts=()
+          for trace_file in "${trace_files[@]}"; do
+            part_name=$(basename "${trace_file}" .nettrace)
+            part_mibc="${RUNNER_TEMP}/${part_name}.mibc"
+            echo "Converting ${trace_file} to ${part_mibc}..."
+            dotnet-pgo create-mibc \
+              --trace "${trace_file}" \
+              --output "${part_mibc}" \
+              "${ref_args[@]}"
+            mibc_parts+=("${part_mibc}")
+          done
+
+          # Merge if multiple profiles (e.g. flat + halfpath)
+          if [[ "${#mibc_parts[@]}" -gt 1 ]]; then
+            echo "Merging ${#mibc_parts[@]} .mibc profiles..."
+            merge_args=()
+            for part in "${mibc_parts[@]}"; do
+              merge_args+=(--input "${part}")
+            done
+            dotnet-pgo merge \
+              "${merge_args[@]}" \
+              --output "${mibc_file}" \
+              "${ref_args[@]}"
+          else
+            cp "${mibc_parts[0]}" "${mibc_file}"
+          fi
 
           echo "Generated .mibc profile:"
           ls -lh "${mibc_file}"
@@ -427,7 +497,7 @@ jobs:
           ## Summary
           - Weekly automated update of the PGO (.mibc) profile used for R2R compilation
           - Updated edge/block profiling data (.jit.gz) for runtime branch optimization
-          - Generated from 5000 mainnet blocks via EventPipe profiling
+          - Profile collected from both flat and halfpath layouts, merged for cross-layout coverage
 
           ## Test plan
           - [ ] CI passes (R2R build uses the updated profile automatically)
