@@ -43,6 +43,7 @@ public class BlockTreeTests
     {
         _blocksDb?.Dispose();
         _headersDb?.Dispose();
+        _blocksInfosDb?.Dispose();
     }
 
     private BlockTree BuildBlockTree()
