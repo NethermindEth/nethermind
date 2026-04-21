@@ -27,7 +27,7 @@ internal sealed class SingleContractVisitor(
     private long _totalNodes;
     private long _valueNodes;
     private long _totalSize;
-    private readonly DepthCounter[] _depths = new DepthCounter[VisitorCounters.MaxTrackedDepth];
+    private DepthCounter16 _depths;
 
     public bool IsFullDbScan => true;
     public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
@@ -102,7 +102,7 @@ internal sealed class SingleContractVisitor(
             return null;
 
         TrieLevelStat[] levels = new TrieLevelStat[VisitorCounters.MaxTrackedDepth];
-        TrieLevelStat summary = LevelStatsBuilder.Fill(_depths, levels);
+        TrieLevelStat summary = LevelStatsBuilder.Fill(_depths[..], levels);
 
         return new TopContractEntry
         {

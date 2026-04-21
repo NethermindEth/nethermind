@@ -47,16 +47,17 @@ internal sealed class VisitorCounters(int topN = 20)
     /// Bucket = min(Length-1, floor(log2(slotCount+1))).
     /// Length is bound to <see cref="CumulativeTrieStats.SlotHistogramLength"/>
     /// so the producer and the snapshot decoder agree on wire length.
+    /// Backed inline: <see cref="Long16.Length"/> must match <see cref="CumulativeTrieStats.SlotHistogramLength"/>.
     /// </summary>
-    public readonly long[] SlotCountHistogram = new long[CumulativeTrieStats.SlotHistogramLength];
+    public Long16 SlotCountHistogram;
 
-    public readonly DepthCounter[] AccountDepths = new DepthCounter[MaxTrackedDepth];
-    public readonly DepthCounter[] StorageDepths = new DepthCounter[MaxTrackedDepth];
+    public DepthCounter16 AccountDepths;
+    public DepthCounter16 StorageDepths;
 
     /// <summary>Branch occupancy histogram: index i = count of account-trie branches with (i+1) children.</summary>
-    public readonly long[] BranchOccupancyHistogram = new long[MaxTrackedDepth];
+    public Long16 BranchOccupancyHistogram;
 
-    public readonly long[] StorageMaxDepthHistogram = new long[MaxTrackedDepth];
+    public Long16 StorageMaxDepthHistogram;
 
     /// <summary>
     /// Per-contract (owner → slot count) map for every contract-with-storage finalized
@@ -82,7 +83,7 @@ internal sealed class VisitorCounters(int topN = 20)
     private long _currentStorageTotalSize;
     private bool _hasActiveStorageTrie;
 
-    private readonly DepthCounter[] _currentStorageDepths = new DepthCounter[MaxTrackedDepth];
+    private DepthCounter16 _currentStorageDepths;
 
     private TrieLevelStat[]? _levelScratch;
 
@@ -101,7 +102,7 @@ internal sealed class VisitorCounters(int topN = 20)
         _currentStorageTotalSize = 0;
         _hasActiveStorageTrie = true;
 
-        Array.Clear(_currentStorageDepths);
+        _currentStorageDepths = default;
     }
 
     public void TrackStorageNode(int depth, int byteSize, bool isLeaf, bool isBranch)
@@ -167,7 +168,7 @@ internal sealed class VisitorCounters(int topN = 20)
     }
 
     private TrieLevelStat BuildCurrentStorageLevels(TrieLevelStat[] scratch) =>
-        LevelStatsBuilder.Fill(_currentStorageDepths.AsSpan(0, MaxTrackedDepth), scratch);
+        LevelStatsBuilder.Fill(_currentStorageDepths[..], scratch);
 
     private void RankCurrentContract(TopContractEntry candidate)
     {
@@ -207,6 +208,9 @@ internal sealed class VisitorCounters(int topN = 20)
 
         CodeBytes += other.CodeBytes;
 
+        // MaxTrackedDepth, Long16.Length, and CumulativeTrieStats.SlotHistogramLength
+        // are all 16 by construction — every inline-backed row has matching length,
+        // so a single unrolled loop merges them all.
         for (int i = 0; i < MaxTrackedDepth; i++)
         {
             AccountDepths[i].FullNodes += other.AccountDepths[i].FullNodes;
@@ -221,12 +225,8 @@ internal sealed class VisitorCounters(int topN = 20)
 
             StorageMaxDepthHistogram[i] += other.StorageMaxDepthHistogram[i];
             BranchOccupancyHistogram[i] += other.BranchOccupancyHistogram[i];
-        }
-
-        // Slot-count histogram length is bound to CumulativeTrieStats.SlotHistogramLength,
-        // not MaxTrackedDepth, so it needs its own loop.
-        for (int i = 0; i < SlotCountHistogram.Length; i++)
             SlotCountHistogram[i] += other.SlotCountHistogram[i];
+        }
 
         // Per-account slot counts: straight copy — each account is visited by
         // exactly one worker, so no owner can appear in two thread-local maps.

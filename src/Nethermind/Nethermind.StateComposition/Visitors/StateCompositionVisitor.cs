@@ -222,7 +222,7 @@ internal sealed class StateCompositionVisitor(
             StorageTrieValueNodes = agg.StorageValueNodes,
             EmptyAccounts = agg.EmptyAccounts,
             CodeBytesTotal = agg.CodeBytes,
-            SlotCountHistogram = ImmutableArray.Create(agg.SlotCountHistogram),
+            SlotCountHistogram = ImmutableArray.Create<long>(agg.SlotCountHistogram[..]),
             TopContractsByDepth = BuildSortedTopN(agg.TopN.TopByDepth, agg.TopN.TopByDepthCount, TopNTracker.CompareByDepth),
             TopContractsByNodes = BuildSortedTopN(agg.TopN.TopByNodes, agg.TopN.TopByNodesCount, TopNTracker.CompareByTotalNodes),
             TopContractsByValueNodes = BuildSortedTopN(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount, TopNTracker.CompareByValueNodes),
@@ -256,17 +256,17 @@ internal sealed class StateCompositionVisitor(
 
         return new TrieDepthDistribution
         {
-            AccountTrieLevels = LevelStatsBuilder.BuildCompact(agg.AccountDepths),
-            StorageTrieLevels = LevelStatsBuilder.BuildCompact(agg.StorageDepths),
-            AvgAccountPathDepth = CalcAvgDepth(agg.AccountDepths),
-            AvgStoragePathDepth = CalcAvgDepth(agg.StorageDepths),
-            MaxAccountDepth = CalcMaxDepth(agg.AccountDepths),
-            MaxStorageDepth = CalcMaxDepth(agg.StorageDepths),
+            AccountTrieLevels = LevelStatsBuilder.BuildCompact(agg.AccountDepths[..]),
+            StorageTrieLevels = LevelStatsBuilder.BuildCompact(agg.StorageDepths[..]),
+            AvgAccountPathDepth = CalcAvgDepth(agg.AccountDepths[..]),
+            AvgStoragePathDepth = CalcAvgDepth(agg.StorageDepths[..]),
+            MaxAccountDepth = CalcMaxDepth(agg.AccountDepths[..]),
+            MaxStorageDepth = CalcMaxDepth(agg.StorageDepths[..]),
             AvgBranchOccupancy = agg.TotalBranchNodes > 0
                 ? (double)agg.TotalBranchChildren / agg.TotalBranchNodes
                 : 0.0,
-            StorageMaxDepthHistogram = [.. agg.StorageMaxDepthHistogram],
-            BranchOccupancyDistribution = [.. agg.BranchOccupancyHistogram],
+            StorageMaxDepthHistogram = ImmutableArray.Create<long>(agg.StorageMaxDepthHistogram[..]),
+            BranchOccupancyDistribution = ImmutableArray.Create<long>(agg.BranchOccupancyHistogram[..]),
         };
     }
 
@@ -297,7 +297,7 @@ internal sealed class StateCompositionVisitor(
         return System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsImmutableArray(sorted);
     }
 
-    private static double CalcAvgDepth(DepthCounter[] depths)
+    private static double CalcAvgDepth(ReadOnlySpan<DepthCounter> depths)
     {
         long totalNodes = 0;
         long weightedSum = 0;
@@ -311,7 +311,7 @@ internal sealed class StateCompositionVisitor(
         return totalNodes > 0 ? (double)weightedSum / totalNodes : 0.0;
     }
 
-    private static int CalcMaxDepth(DepthCounter[] depths)
+    private static int CalcMaxDepth(ReadOnlySpan<DepthCounter> depths)
     {
         for (int i = depths.Length - 1; i >= 0; i--)
         {
