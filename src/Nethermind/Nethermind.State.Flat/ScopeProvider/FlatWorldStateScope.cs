@@ -198,7 +198,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (accountCount == 0)
             return Task.CompletedTask;
 
-        AccountChanges[] accountChangesList = new AccountChanges[accountCount];
+        using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
         int copyIdx = 0;
         foreach (AccountChanges ac in bal.AccountChanges)
             accountChangesList[copyIdx++] = ac;
@@ -206,7 +206,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ParallelOptions parallelOptions = new() { CancellationToken = cancellationToken };
 
         // Phase 1: parallel account fetch, gated by the sink
-        Account?[] accounts = new Account?[accountCount];
+        using ArrayPoolList<Account?> accounts = new(accountCount, accountCount);
         int skippedAccounts = 0;
         try
         {
@@ -243,8 +243,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int skippedStorageFlat = 0;
         if (totalSlots > 0)
         {
-            (Address Address, IWorldStateScopeProvider.IStorageTree Tree, UInt256 Slot)[] jobs =
-                new (Address, IWorldStateScopeProvider.IStorageTree, UInt256)[totalSlots];
+            using ArrayPoolList<(Address Address, IWorldStateScopeProvider.IStorageTree Tree, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
             int jobIdx = 0;
             for (int i = 0; i < accountCount; i++)
             {

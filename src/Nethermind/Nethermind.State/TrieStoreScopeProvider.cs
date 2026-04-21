@@ -79,7 +79,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             if (accountCount == 0)
                 return Task.CompletedTask;
 
-            AccountChanges[] accountChangesList = new AccountChanges[accountCount];
+            using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
             int copyIdx = 0;
             foreach (AccountChanges ac in bal.AccountChanges)
                 accountChangesList[copyIdx++] = ac;
@@ -90,7 +90,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             privateStateTree.RootHash = _backingStateTree.RootHash;
 
             ParallelOptions options = new() { CancellationToken = cancellationToken };
-            Account?[] accounts = new Account?[accountCount];
+            using ArrayPoolList<Account?> accounts = new(accountCount, accountCount);
             int skippedAccounts = 0;
 
             try
@@ -126,8 +126,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             int skippedSlots = 0;
             if (totalSlots > 0)
             {
-                (Address Address, StorageTree Tree, UInt256 Slot)[] jobs =
-                    new (Address, StorageTree, UInt256)[totalSlots];
+                using ArrayPoolList<(Address Address, StorageTree Tree, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
                 int jobIdx = 0;
                 for (int i = 0; i < accountCount; i++)
                 {
