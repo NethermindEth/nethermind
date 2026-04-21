@@ -59,7 +59,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public static byte Version => EthVersions.Eth66;
         public override byte ProtocolVersion => Version;
 
-        protected override void HandleMessageCore(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -67,23 +67,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             {
                 case Eth66MessageCode.GetBlockHeaders:
                     HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth66MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
-                    break;
+                    return true;
                 case Eth66MessageCode.GetBlockBodies:
                     HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth66MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
-                    break;
+                    return true;
                 case Eth66MessageCode.GetPooledTransactions:
                     HandleInBackground<GetPooledTransactionsMessage, PooledTransactionsMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
@@ -97,26 +97,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                         ReportIn(ignored, size);
                     }
 
-                    break;
+                    return true;
                 case Eth66MessageCode.GetReceipts:
                     HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth66MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
-                    break;
+                    return true;
                 case Eth66MessageCode.GetNodeData:
                     HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth66MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
-                    break;
+                    return true;
                 default:
-                    base.HandleMessageCore(message);
-                    break;
+                    return base.HandleMessageCore(message);
             }
         }
 
