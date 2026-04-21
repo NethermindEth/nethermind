@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -29,6 +30,7 @@ public static class BasePersistence
     public const int StoragePrefixPortion = 4;
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
+    private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
@@ -44,6 +46,36 @@ public static class BasePersistence
         BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
+    }
+
+    internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(LayoutKey);
+        return bytes is null || bytes.Length == 0 ? null : (FlatLayout)bytes[0];
+    }
+
+    internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
+    {
+        Span<byte> bytes = stackalloc byte[1];
+        bytes[0] = (byte)layout;
+        kv.PutSpan(LayoutKey, bytes);
+    }
+
+    /// <summary>
+    /// Validates that the configured <see cref="FlatLayout"/> matches the one previously persisted in the
+    /// flat DB's metadata column. Throws <see cref="InvalidConfigurationException"/> on mismatch. On a fresh
+    /// (or pre-feature legacy) DB nothing is written here — the layout is recorded on the first write batch.
+    /// </summary>
+    public static void EnsureLayout(IColumnsDb<FlatDbColumns> db, FlatLayout configured)
+    {
+        FlatLayout? stored = ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata));
+        if (stored is not null && stored != configured)
+        {
+            throw new InvalidConfigurationException(
+                $"Flat DB was previously synced with layout '{stored}', but the configured layout is '{configured}'. " +
+                $"Either set 'IFlatDbConfig.Layout' back to '{stored}', or wipe the flat DB and re-sync.",
+                -1);
+        }
     }
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
