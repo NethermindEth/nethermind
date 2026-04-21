@@ -18,9 +18,16 @@ namespace Nethermind.Consensus
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
 
-            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
             long newBlockNumber = parentHeader.Number + 1;
-            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temporary solution
+            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp);
+            IReleaseSpec parentSpec = _specProvider.GetSpec(parentHeader);
+
+            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
+            if (parentSpec.IsEip7782Enabled && targetGasLimit is not null)
+            {
+                targetGasLimit /= 2;
+            }
+
             if (targetGasLimit is not null)
             {
                 long maxGasLimitDifference = Math.Max(0, parentGasLimit / spec.GasLimitBoundDivisor - 1);
@@ -32,5 +39,6 @@ namespace Nethermind.Consensus
             gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);
             return Math.Max(gasLimit, spec.MinGasLimit);
         }
+
     }
 }

@@ -48,6 +48,22 @@ namespace Nethermind.Consensus.Test
             actualValue.Should().Be(expectedGasLimit);
         }
 
+        [TestCase(20_000_000, 60_000_000, 20_019_530)]
+        [TestCase(50_000_000, 60_000_000, 49_951_173)]
+        [TestCase(30_000_000, 60_000_000, 30_000_000)]
+        public void Is_target_halved_when_eip7782_enabled_steady_state(long currentGasLimit, long targetGasLimit, long expectedGasLimit)
+        {
+            OverridableReleaseSpec postForkSpec = new(Prague.Instance) { IsEip7782Enabled = true };
+            TestSpecProvider specProvider = new(postForkSpec);
+
+            TargetAdjustedGasLimitCalculator calculator = new(specProvider, new BlocksConfig { TargetBlockGasLimit = targetGasLimit });
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(currentGasLimit).TestObject;
+
+            long gasLimit = calculator.GetGasLimit(parent);
+
+            gasLimit.Should().Be(expectedGasLimit);
+        }
+
         [Test]
         public void DoesNot_go_below_minimum()
         {

@@ -13,6 +13,9 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO5.Instance)
         spec.Name = "Amsterdam";
         spec.IsEip7708Enabled = true;
         spec.IsEip7778Enabled = true;
+        spec.IsEip7782Enabled = true;
+        spec.TargetBlobCount = Eip7782Constants.TargetBlobCount;
+        spec.MaxBlobCount = Eip7782Constants.MaxBlobCount;
         spec.IsEip7843Enabled = true;
         spec.IsEip7928Enabled = true;
         spec.IsEip7954Enabled = true;

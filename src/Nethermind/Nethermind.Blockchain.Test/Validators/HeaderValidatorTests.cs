@@ -228,6 +228,35 @@ public class HeaderValidatorTests
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(30_000_000, 5, 15_000_000, true, TestName = "Activation_block_exact_half_is_valid")]
+    [TestCase(30_000_000, 5, 15_000_001, false, TestName = "Activation_block_above_half_is_invalid")]
+    [TestCase(30_000_000, 5, 14_999_999, false, TestName = "Activation_block_below_half_is_invalid")]
+    public void When_gaslimit_is_on_eip7782_activation(long parentGasLimit, long forkBlock, long gasLimit, bool expectedResult)
+    {
+        OverridableReleaseSpec preForkSpec = new(Byzantium.Instance) { IsEip7782Enabled = false };
+        OverridableReleaseSpec postForkSpec = new(Byzantium.Instance) { IsEip7782Enabled = true };
+        TestSpecProvider specProvider = new(preForkSpec);
+        specProvider.NextForkSpec = postForkSpec;
+        specProvider.ForkOnBlockNumber = forkBlock;
+
+        _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(new(_testLogger)));
+        _parentBlock = Build.A.Block.WithDifficulty(1)
+            .WithGasLimit(parentGasLimit)
+            .WithNumber(forkBlock - 1)
+            .TestObject;
+        _block = Build.A.Block.WithParent(_parentBlock)
+            .WithDifficulty(131072)
+            .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+            .WithGasLimit(gasLimit)
+            .WithNumber(forkBlock)
+            .WithNonce(0).TestObject;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+        Assert.That(result, Is.EqualTo(expectedResult));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_is_long_max_value()
     {
