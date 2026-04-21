@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -66,6 +66,7 @@ public class Eth69ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
+        _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
         _syncManager.LowestBlock.Returns(0);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
@@ -182,6 +183,42 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_stop_receipts_response_at_first_unknown_block_hash()
+    {
+        TxReceipt[] blockReceipts =
+        [
+            Build.A.Receipt.WithAllFieldsFilled.TestObject
+        ];
+
+        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(blockReceipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakB).Returns(
+        [
+            Build.A.Receipt.WithAllFieldsFilled.TestObject
+        ]);
+
+        IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
+
+        Assert.That(response, Has.Count.EqualTo(1));
+        Assert.That(response[0], Is.SameAs(blockReceipts));
+    }
+
+    [Test]
+    public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
+    {
+        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(
+        [
+            Build.A.Receipt.WithAllFieldsFilled.TestObject
+        ]);
+
+        IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
+
+        Assert.That(response, Is.Empty);
+    }
+
+    [Test]
     public void Should_throw_when_receiving_unrequested_receipts()
     {
         using ReceiptsMessage msg66 = new(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));
@@ -288,5 +325,19 @@ public class Eth69ProtocolHandlerTests
         using DisposableByteBuffer uOpsPacket = _svc!.ZeroSerialize(msg).AsDisposable();
         uOpsPacket.ReadByte();
         _handler!.HandleMessage(new ZeroPacket(uOpsPacket) { PacketType = (byte)messageCode });
+    }
+
+    private IOwnedReadOnlyList<TxReceipt[]?> RequestReceipts(params Hash256[] hashes)
+    {
+        using GetReceiptsMessage66 msg66 = new(1111, new(hashes.ToPooledList()));
+        ReceiptsMessage69? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call => response = (ReceiptsMessage69)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
+
+        Assert.That(response, Is.Not.Null);
+        return response!.EthMessage.TxReceipts;
     }
 }

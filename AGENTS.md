@@ -1,6 +1,6 @@
 # AGENTS instructions
 
-This guide helps to get started with the Nethermind Ethereum execution client repository. It covers the project structure, how to build and test the code, and follow the PR workflow.
+This guide helps to get started with the Nethermind Ethereum execution client repository, which targets `net10.0` and uses C# language version `14.0`. It covers the project structure, how to build and test the code, and follow the PR workflow.
 
 ## Repo structure
 

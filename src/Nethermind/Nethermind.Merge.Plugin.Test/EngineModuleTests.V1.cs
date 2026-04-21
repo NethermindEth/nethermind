@@ -1003,8 +1003,8 @@ public partial class EngineModuleTests
         }
 
         IReadOnlyList<ExecutionPayload> branch1 = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
-        // setHead: false — sibling production with head=safe=finalized=block per slot would
-        // regress finalized below branch1[9] (Casper FFG monotonicity, enforced by the handler).
+        // setHead: false - sibling production here only builds alternative payloads; the reorg
+        // assertions below exercise forkchoice updates explicitly.
         IReadOnlyList<ExecutionPayload> branch2 = await ProduceBranchV1(rpc, chain, 6, branch1[3], setHead: false, TestItem.KeccakC);
 
         await CanReorganizeToLastBlock(chain, branch1, branch2);
@@ -1512,24 +1512,60 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkchoiceUpdated_rejects_spec_ordering_violations()
+    public async Task forkchoiceUpdated_accepts_lower_finalized_than_previous_but_rejects_safe_before_finalized()
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
 
-        ForkchoiceStateV1 setup = new(headBlockHash: blocks[2].BlockHash, finalizedBlockHash: blocks[2].BlockHash, safeBlockHash: blocks[2].BlockHash);
-        (await rpc.engine_forkchoiceUpdatedV1(setup)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        ForkchoiceStateV1 higherFinalized = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[2].BlockHash, safeBlockHash: blocks[2].BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpc.engine_forkchoiceUpdatedV1(higherFinalized);
+        higherFinalizedResult.ErrorCode.Should().Be(0);
+        higherFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockFinalizationManager.LastFinalizedHash.Should().Be(blocks[2].BlockHash);
+        chain.BlockFinalizationManager.LastFinalizedBlockLevel.Should().Be(blocks[2].BlockNumber);
 
-        // Casper FFG monotonicity: new finalized below previously-accepted finalized.
-        ForkchoiceStateV1 monotonicity = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[0].BlockHash, safeBlockHash: blocks[0].BlockHash);
-        (await rpc.engine_forkchoiceUpdatedV1(monotonicity)).ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+        ForkchoiceStateV1 lowerFinalized = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[1].BlockHash, safeBlockHash: blocks[2].BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> lowerFinalizedResult = await rpc.engine_forkchoiceUpdatedV1(lowerFinalized);
+        lowerFinalizedResult.ErrorCode.Should().Be(0);
+        lowerFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockFinalizationManager.LastFinalizedHash.Should().Be(blocks[1].BlockHash);
+        chain.BlockFinalizationManager.LastFinalizedBlockLevel.Should().Be(blocks[1].BlockNumber);
 
-        // Spec ordering: safe must be at or after finalized.
+        // Request-local spec ordering: safe must be at or after finalized.
         ForkchoiceStateV1 ordering = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[2].BlockHash, safeBlockHash: blocks[1].BlockHash);
         (await rpc.engine_forkchoiceUpdatedV1(ordering)).ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_should_allow_lower_finalized_than_previous_when_building_payload()
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = blocks[3].Timestamp + 1,
+            PrevRandao = TestItem.KeccakB,
+            SuggestedFeeRecipient = TestItem.AddressC,
+        };
+
+        ForkchoiceStateV1 higherFinalized = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[2].BlockHash, safeBlockHash: blocks[2].BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpc.engine_forkchoiceUpdatedV1(higherFinalized);
+        higherFinalizedResult.ErrorCode.Should().Be(0);
+        higherFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        ForkchoiceStateV1 repeatedHead = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[1].BlockHash, safeBlockHash: blocks[2].BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeatedHead, payloadAttributes);
+
+        result.ErrorCode.Should().Be(0);
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.PayloadId.Should().NotBeNull();
     }
 
     [TestCase(false, TestName = "forkchoiceUpdated_rejects_repeated_finalized_when_head_on_sibling_branch")]
