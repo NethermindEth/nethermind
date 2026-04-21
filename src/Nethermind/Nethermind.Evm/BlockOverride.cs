@@ -40,5 +40,8 @@ public class BlockOverride
         }
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
         if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
+        if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
+        // BlobBaseFee is not a direct header field — it is derived from ExcessBlobGas via the
+        // EIP-4844 formula. The override is applied via SingleCallBlobBaseFeeCalculatorDecorator instead.
     }
 }
