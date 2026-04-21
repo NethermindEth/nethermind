@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade;
@@ -41,14 +42,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 BlockHeader clonedHeader = header.Clone();
+                clonedHeader.GasUsed = 0;
+                _blockOverride?.ApplyOverrides(clonedHeader);
 
+                // Re-zero baseFee after overrides when the caller omitted fee fields.
+                // Mirrors geth: api.go:769 / gasestimator.go:238 — if msg.GasPrice == 0,
+                // blockContext.BaseFee is zeroed so a blockOverride.baseFeePerGas cannot
+                // cause "feecap less than block basefee" for fee-less calls.
                 if (NoBaseFee)
                 {
                     clonedHeader.BaseFeePerGas = 0;
                 }
-
-                clonedHeader.GasUsed = 0;
-                _blockOverride?.ApplyOverrides(clonedHeader);
 
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
@@ -74,11 +78,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 // enforces gas cap
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
+                // Reject blob txs whose MaxFeePerBlobGas is below the overridden blob base fee.
+                // Mirrors geth: ethapi.go — ErrBlobFeeCapTooLow check before estimation.
+                if (_blockOverride?.BlobBaseFee is not null
+                    && transactionCall is BlobTransactionForRpc { MaxFeePerBlobGas: not null } blobTx
+                    && blobTx.MaxFeePerBlobGas < _blockOverride.BlobBaseFee)
+                {
+                    return ResultWrapper<TResult>.Fail(BlockErrorMessages.InsufficientMaxFeePerBlobGas, ErrorCodes.InvalidInput);
+                }
+
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
             {
+                if (blockOverride?.GasLimit > (ulong)long.MaxValue)
+                    return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {long.MaxValue}", ErrorCodes.InvalidInput);
                 _blockOverride = blockOverride;
                 return Execute(transactionCall, blockParameter, stateOverride);
             }

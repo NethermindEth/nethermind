@@ -292,6 +292,38 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_with_base_fee_opcode_and_fee_fields_should_return_header_base_fee()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string dataStr = BaseFeeReturnCode.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"type\": \"0x2\", \"maxFeePerGas\": \"0x100000000\", \"maxPriorityFeePerGas\": \"0x1\", \"data\": \"{dataStr}\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Bytes.FromHexString(JToken.Parse(serialized).Value<string>("result")!).ToUInt256()
+            .Should().Be(ctx.Test.BlockTree.FindHeadBlock()!.BaseFeePerGas);
+    }
+
+    [Test]
+    public async Task Eth_call_with_coinbase_opcode_should_return_block_override_fee_recipient()
+    {
+        using Context ctx = await Context.Create();
+
+        string dataStr = CoinbaseReturnCode.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{dataStr}\"}}");
+        object? blockOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"feeRecipient\":\"{TestItem.AddressC}\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        JToken.Parse(serialized).Value<string>("result")!
+            .Should().Be($"0x{new string('0', 24)}{TestItem.AddressC.Bytes.ToHexString()}");
+    }
+
+    [Test]
     public async Task Eth_call_with_value_transfer_without_from_address_should_throw()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
@@ -772,6 +804,13 @@ public partial class EthRpcModuleTests
         """{"gasLimit":"0x7E1200"}""",
         "0x00000000000000000000000000000000000000000000000000000000007e1200"
     )]
+    [TestCase(
+        "COINBASE opcode returns overridden fee recipient",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4160005260206000f3"}}""",
+        """{"feeRecipient":"0x1111111111111111111111111111111111111111"}""",
+        "0x0000000000000000000000001111111111111111111111111111111111111111"
+    )]
     public async Task Eth_call_with_block_override(string name, string txJson, string stateOverrideJson, string blockOverrideJson, string expectedResult)
     {
         object? transaction = JsonSerializer.Deserialize<object>(txJson);
@@ -783,5 +822,25 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 
         JToken.Parse(serialized)["result"]!.Value<string>().Should().Be(expectedResult);
+    }
+
+    [Test]
+    public async Task Eth_call_basefee_opcode_returns_block_override_baseFeePerGas()
+    {
+        // BASEFEE opcode (0x48) must reflect blockOverride.baseFeePerGas.
+        // The tx sets maxFeePerGas to a positive value so ShouldSetBaseFee() is true
+        // and the NoBaseFee guard does not zero the overridden base fee.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x4860005260206000f3"}}""");
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"0xc200000000000000000000000000000000000000\",\"gas\":\"0x30D40\",\"maxFeePerGas\":\"0x400\",\"maxPriorityFeePerGas\":\"0x0\"}}");
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x400"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        JToken.Parse(serialized)["result"]!.Value<string>()
+            .Should().Be("0x0000000000000000000000000000000000000000000000000000000000000400");
     }
 }
