@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
@@ -263,14 +264,17 @@ internal sealed class StateCompositionStateHolder
 
         if (change.HasCode)
         {
-            _codeHashRefcounts.TryGetValue(change.NewCodeHash, out int newRefcount);
-            if (newRefcount == 0)
+            // GetValueRefOrAddDefault replaces the TryGetValue + indexer-set pair
+            // with a single hash lookup. The `exists` flag doubles as the
+            // "first-reference" signal that previously keyed off newRefcount == 0.
+            ref int newRefcount = ref CollectionsMarshal.GetValueRefOrAddDefault(_codeHashRefcounts, change.NewCodeHash, out bool exists);
+            if (!exists)
             {
                 int size = codeSizeLookup(change.NewCodeHash);
                 _codeHashSizes[change.NewCodeHash] = size;
                 codeBytes += size;
             }
-            _codeHashRefcounts[change.NewCodeHash] = newRefcount + 1;
+            newRefcount++;
         }
     }
 
