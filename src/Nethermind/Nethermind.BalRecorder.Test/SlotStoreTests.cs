@@ -96,7 +96,7 @@ public class EraFlatStoreTests
     }
 
     [Test]
-    public void Write_OverwritesExistingSlot()
+    public void Write_DoesNotOverwriteExistingSlot()
     {
         string dir = TempDir();
         try
@@ -105,7 +105,7 @@ public class EraFlatStoreTests
             store.Write(42, [0xAA]);
             store.Write(42, [0xBB]);
 
-            TryReadBytes(store, 42).Should().Equal([0xBB]);
+            TryReadBytes(store, 42).Should().Equal([0xAA]);
         }
         finally { Directory.Delete(dir, true); }
     }

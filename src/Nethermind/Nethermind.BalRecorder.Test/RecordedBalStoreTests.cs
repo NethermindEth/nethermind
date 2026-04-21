@@ -126,7 +126,7 @@ public class RecordedBalStoreTests
     }
 
     [Test]
-    public void Insert_Overwrites_ExistingSlot()
+    public void Insert_DoesNotOverwrite_ExistingSlot()
     {
         string dir = TempDir();
         try
@@ -135,10 +135,10 @@ public class RecordedBalStoreTests
             Block block = Build.A.Block.WithNumber(42).TestObject;
 
             store.Insert(block, MakeBal(TestItem.AddressA));
-            store.Insert(block, MakeBal(TestItem.AddressB)); // overwrite
+            store.Insert(block, MakeBal(TestItem.AddressB)); // no-op
 
             BlockAccessList? result = store.Get(42, block.Hash!);
-            result!.GetAccountChanges(TestItem.AddressB).Should().NotBeNull();
+            result!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
         }
         finally { Directory.Delete(dir, true); }
     }

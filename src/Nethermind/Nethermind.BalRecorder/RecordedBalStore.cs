@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
-using DbMetrics = Nethermind.Db.Metrics;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 
@@ -14,9 +11,6 @@ namespace Nethermind.BalRecorder;
 
 public class RecordedBalStore(string directory, IBalRecorderConfig config) : IRecordedBalStore
 {
-    private static readonly PrewarmerGetTimeLabel ReadLabel = new("bal_replay_read", isPrewarmer: true);
-    private static readonly PrewarmerGetTimeLabel DecodeLabel = new("bal_decode", isPrewarmer: true);
-
     private readonly SlotStore _store = new(directory, "bal");
 
     public bool ReplayEnabled => config.ReplayEnabled;
@@ -32,27 +26,12 @@ public class RecordedBalStore(string directory, IBalRecorderConfig config) : IRe
 
     public BlockAccessList? Get(long blockNumber, Hash256 blockHash)
     {
-        ResultBox box = new();
-        bool measureMetric = DbMetrics.DetailedMetricsEnabled;
-        long swRead = Stopwatch.GetTimestamp();
-        _store.TryRead(blockNumber, static (data, state) =>
-        {
-            long swDecode = Stopwatch.GetTimestamp();
-            state.Result = BlockAccessListDecoder.Instance.Decode(data);
-            if (state.MeasureMetric)
-                DbMetrics.PrewarmerGetTime.Observe(Stopwatch.GetTimestamp() - swDecode, DecodeLabel);
-        }, box.With(measureMetric));
-        if (measureMetric)
-            DbMetrics.PrewarmerGetTime.Observe(Stopwatch.GetTimestamp() - swRead, ReadLabel);
-        return box.Result;
+        ResultRef resultRef = new();
+        _store.TryRead(blockNumber, static (data, state) => state.Value = BlockAccessListDecoder.Instance.Decode(data), resultRef);
+        return resultRef.Value;
     }
 
-    private sealed class ResultBox
-    {
-        public BlockAccessList? Result;
-        public bool MeasureMetric;
-        public ResultBox With(bool measureMetric) { MeasureMetric = measureMetric; return this; }
-    }
+    private sealed class ResultRef { public BlockAccessList? Value; }
 }
 
 public class NullRecordedBalStore : IRecordedBalStore

@@ -57,10 +57,12 @@ public sealed class SlotFile : IDisposable
         finally { ArrayPool<byte>.Shared.Return(rented); }
     }
 
-    public void Write(int slot, ReadOnlySpan<byte> data)
+    public bool TryWrite(int slot, ReadOnlySpan<byte> data)
     {
         lock (_writeLock)
         {
+            if (BinaryPrimitives.ReadUInt32BigEndian(_header.AsSpan(slot * 8, 8)) != 0) return false;
+
             uint offset = (uint)_length;
             RandomAccess.Write(_handle, data, offset);
             _length += data.Length;
@@ -69,6 +71,7 @@ public sealed class SlotFile : IDisposable
             BinaryPrimitives.WriteUInt32BigEndian(entry, offset);
             BinaryPrimitives.WriteUInt32BigEndian(entry[4..], (uint)data.Length);
             RandomAccess.Write(_handle, entry, slot * 8);
+            return true;
         }
     }
 
