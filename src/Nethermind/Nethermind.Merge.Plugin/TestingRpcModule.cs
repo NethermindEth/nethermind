@@ -21,6 +21,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using ILogger = Nethermind.Logging.ILogger;
@@ -116,7 +117,7 @@ public class TestingRpcModule(
             try
             {
                 string fileName = $"{processedBlock.Number}.json";
-                string jsonContent = JsonSerializer.Serialize(getPayloadV5Result);
+                string jsonContent = JsonSerializer.Serialize(getPayloadV5Result, EthereumJsonSerializer.JsonOptions);
                 await File.WriteAllTextAsync(fileName, jsonContent);
                 if (_logger.IsDebug) _logger.Debug($"Saved payload to {fileName}");
             }
