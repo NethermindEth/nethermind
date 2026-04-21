@@ -292,10 +292,14 @@ public abstract class BlockchainTestBase
             Assert.That(correctRlp[i].Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
 
             bool expectsException = correctRlp[i].ExpectedException is not null;
-            // Validate block structure first (mimics SyncServer validation)
+            // Validate block structure first (mimics SyncServer validation). Pre-validation is
+            // not authoritative for invalid-block fixtures: many EEST exceptions (state root,
+            // BAL hash, BAL gas-limit floor, etc.) are only detectable post-execution. So an
+            // expected-to-fail block may pass pre-validation here; rejection is then expected
+            // to come from the processor (synchronous InvalidBlockException) or from the
+            // end-of-test LastBlockHash check after the chain head is settled.
             if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError))
             {
-                Assert.That(!expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
                 try
                 {
                     // All validations passed, suggest the block
