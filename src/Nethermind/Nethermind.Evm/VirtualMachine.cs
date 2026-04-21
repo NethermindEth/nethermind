@@ -136,10 +136,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-#if !ZK_EVM
-    virtual
-#endif
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
 
         VmState<TGasPolicy> vmState,
         IWorldState worldState,
@@ -1105,10 +1102,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-#if !ZK_EVM
-    virtual
-#endif
-    protected CallResult RunByteCode<TTracingInst, TCancelable>(
+    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag

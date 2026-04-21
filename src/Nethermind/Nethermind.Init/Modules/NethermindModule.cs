@@ -53,6 +53,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
+            .AddModule(new DatabaseMigrationsModule())
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new Era1.EraModule())
             .AddModule(new EraE.EraEModule())
