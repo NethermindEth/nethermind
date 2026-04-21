@@ -235,11 +235,14 @@ namespace Nethermind.Xdc
             }
 
             if (_highestSignTxNumber < roundParent.Number
-                && IsMasternode(epochInfo, _signer.Address)
                 && ((roundParent.Number % spec.MergeSignRange == 0)))
             {
-                _highestSignTxNumber = roundParent.Number;
-                await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
+                Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(roundParent.Number, spec);
+                if (snapshot is not null && snapshot.NextEpochCandidates.AsSpan().IndexOf(_signer.Address) != -1)
+                {
+                    _highestSignTxNumber = roundParent.Number;
+                    await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
+                }
             }
 
             _writeRoundInfo = false;

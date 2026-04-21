@@ -52,6 +52,7 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _nethermindApi.Context.Resolve<ISpecProvider>(),
             blockProducer,
             _nethermindApi.Context.Resolve<IEpochSwitchManager>(),
+            _nethermindApi.Context.Resolve<ISnapshotManager>(),
             _nethermindApi.Context.Resolve<IMasternodesCalculator>(),
             _nethermindApi.Context.Resolve<IQuorumCertificateManager>(),
             _nethermindApi.Context.Resolve<IVotesManager>(),
