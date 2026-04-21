@@ -390,15 +390,15 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ProgressTracker>()
             .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<ISnapProvider, SnapProvider>()
-            .AddSingleton<SnapSyncFeed>()
-            .AddSingleton<SnapSyncDownloader>()
-            .AddSingleton<SnapSyncAllocationStrategyFactory>()
+            .AddSingleton<ISimpleSyncFeed<SnapSyncBatch>, SnapSyncFeed>()
+            .AddSingleton<ISyncDownloader<SnapSyncBatch>, SnapSyncDownloader>()
+            .AddSingleton<IPeerAllocationStrategyFactory<SnapSyncBatch>, SnapSyncAllocationStrategyFactory>()
             .AddSingleton<ISnapSyncRunner, SnapSyncRunner>();
 
-        serviceCollection.Register(static ctx => new SimpleDispatcher<SnapSyncBatch?>(
-            ctx.Resolve<SnapSyncFeed>(),
-            ctx.Resolve<SnapSyncDownloader>(),
-            ctx.Resolve<SnapSyncAllocationStrategyFactory>(),
+        serviceCollection.Register(static ctx => new SimpleDispatcher<SnapSyncBatch>(
+            ctx.Resolve<ISimpleSyncFeed<SnapSyncBatch>>(),
+            ctx.Resolve<ISyncDownloader<SnapSyncBatch>>(),
+            ctx.Resolve<IPeerAllocationStrategyFactory<SnapSyncBatch>>(),
             AllocationContexts.Snap,
             ctx.Resolve<ISyncPeerPool>(),
             ctx.Resolve<ISyncConfig>(),
@@ -437,15 +437,15 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IStateSyncPivot, StateSyncPivot>()
             .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
             .AddSingleton<ITreeSync, TreeSync>()
-            .AddSingleton<StateSyncFeed>()
-            .AddSingleton<StateSyncDownloader>()
-            .AddSingleton<StateSyncAllocationStrategyFactory>()
+            .AddSingleton<ISimpleSyncFeed<StateSyncBatch>, StateSyncFeed>()
+            .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()
+            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, StateSyncAllocationStrategyFactory>()
             .AddSingleton<IStateSyncRunner, StateSyncRunner>();
 
-        serviceCollection.Register(static ctx => new SimpleDispatcher<StateSyncBatch?>(
-            ctx.Resolve<StateSyncFeed>(),
-            ctx.Resolve<StateSyncDownloader>(),
-            ctx.Resolve<StateSyncAllocationStrategyFactory>(),
+        serviceCollection.Register(static ctx => new SimpleDispatcher<StateSyncBatch>(
+            ctx.Resolve<ISimpleSyncFeed<StateSyncBatch>>(),
+            ctx.Resolve<ISyncDownloader<StateSyncBatch>>(),
+            ctx.Resolve<IPeerAllocationStrategyFactory<StateSyncBatch>>(),
             AllocationContexts.State,
             ctx.Resolve<ISyncPeerPool>(),
             ctx.Resolve<ISyncConfig>(),

@@ -11,7 +11,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : ISimpleSyncFeed<SnapSyncBatch?>
+    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : ISimpleSyncFeed<SnapSyncBatch>
     {
         private readonly Lock _syncLock = new();
 
@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo? peer = null)
+        public SyncResponseHandlingResult HandleResponse(SnapSyncBatch batch, PeerInfo? peer = null)
         {
             if (batch is null)
             {

@@ -10,7 +10,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncFeed(TreeSync treeSync, ILogManager logManager) : ISimpleSyncFeed<StateSyncBatch?>
+    public class StateSyncFeed(TreeSync treeSync, ILogManager logManager) : ISimpleSyncFeed<StateSyncBatch>
     {
         private readonly ILogger _logger = logManager.GetClassLogger<StateSyncFeed>();
 
@@ -39,9 +39,9 @@ namespace Nethermind.Synchronization.FastSync
             return null;
         }
 
-        public SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo? peer = null)
+        public SyncResponseHandlingResult HandleResponse(StateSyncBatch batch, PeerInfo? peer = null)
         {
-            using StateSyncBatch? b = batch;
+            using StateSyncBatch b = batch;
             return treeSync.HandleResponse(b, peer);
         }
     }

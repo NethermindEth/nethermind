@@ -7,7 +7,7 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class SnapSyncRunner(SimpleDispatcher<SnapSyncBatch?> dispatcher) : ISnapSyncRunner
+public class SnapSyncRunner(SimpleDispatcher<SnapSyncBatch> dispatcher) : ISnapSyncRunner
 {
     public Task Run(CancellationToken token) => dispatcher.Run(token);
 }

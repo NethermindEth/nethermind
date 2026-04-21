@@ -28,7 +28,7 @@ public class SimpleDispatcher<T>(
     AllocationContexts contexts,
     ISyncPeerPool peerPool,
     ISyncConfig syncConfig,
-    ILogManager logManager)
+    ILogManager logManager) where T : class
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SimpleDispatcher<T>>();
     private readonly int _allocateTimeoutMs = syncConfig.SyncDispatcherAllocateTimeoutMs;

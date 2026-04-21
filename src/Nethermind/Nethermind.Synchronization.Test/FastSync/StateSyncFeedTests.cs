@@ -406,7 +406,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
             ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
-            StateSyncFeed feed = container.Resolve<StateSyncFeed>();
+            ISimpleSyncFeed<StateSyncBatch> feed = container.Resolve<ISimpleSyncFeed<StateSyncBatch>>();
 
             using StateSyncBatch? request = await feed.PrepareRequest(ctx.CancellationToken);
             request.Should().NotBeNull();
@@ -426,7 +426,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
             ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
-            StateSyncFeed feed = container.Resolve<StateSyncFeed>();
+            ISimpleSyncFeed<StateSyncBatch> feed = container.Resolve<ISimpleSyncFeed<StateSyncBatch>>();
 
             using StateSyncBatch? request = await feed.PrepareRequest(ctx.CancellationToken);
             request.Should().NotBeNull();
@@ -553,8 +553,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             await using IContainer container = PrepareDownloader(remote);
             SafeContext ctx = container.Resolve<SafeContext>();
             ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
-            StateSyncFeed feed = container.Resolve<StateSyncFeed>();
-            StateSyncDownloader downloader = container.Resolve<StateSyncDownloader>();
+            ISimpleSyncFeed<StateSyncBatch> feed = container.Resolve<ISimpleSyncFeed<StateSyncBatch>>();
+            ISyncDownloader<StateSyncBatch> downloader = container.Resolve<ISyncDownloader<StateSyncBatch>>();
 
             async Task<int> RunOneRequest()
             {

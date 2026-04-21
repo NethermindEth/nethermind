@@ -19,7 +19,7 @@ public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
     TreeSync treeSync,
     IStateSyncPivot stateSyncPivot,
-    SimpleDispatcher<StateSyncBatch?> stateSyncDispatcher,
+    SimpleDispatcher<StateSyncBatch> stateSyncDispatcher,
     ISyncConfig syncConfig,
     ISyncModeSelector syncModeSelector,
     ISyncProgressResolver syncProgressResolver,
