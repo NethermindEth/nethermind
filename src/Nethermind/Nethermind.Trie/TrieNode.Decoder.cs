@@ -52,11 +52,11 @@ namespace Nethermind.Trie
                 // Fast path: child was unresolved to a Hash256 (e.g. by pruning) — encode the hash directly
                 // without materializing a TrieNode via FindCachedOrUnknown + ResolveKey.
                 Hash256? childKeccak = item._nodeData[0] as Hash256;
-                CappedArray<byte> childFullRlp = default;
+                TrieNode? nodeRef = null;
                 if (childKeccak is null)
                 {
                     int previousLength = item.AppendChildPath(ref path, 0);
-                    TrieNode nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
+                    nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
                     Debug.Assert(nodeRef is not null,
                         "Extension child is null when encoding.");
 
@@ -64,10 +64,9 @@ namespace Nethermind.Trie
                     path.TruncateMut(previousLength);
 
                     childKeccak = nodeRef.Keccak;
-                    childFullRlp = nodeRef.FullRlp;
                 }
 
-                int contentLength = Rlp.LengthOf(keyBytes) + (childKeccak is null ? childFullRlp.Length : Rlp.LengthOfKeccakRlp);
+                int contentLength = Rlp.LengthOf(keyBytes) + (childKeccak is not null ? Rlp.LengthOfKeccakRlp : nodeRef!.FullRlp.Length);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRent(totalLength);
@@ -79,7 +78,11 @@ namespace Nethermind.Trie
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-                if (childKeccak is null)
+                if (childKeccak is not null)
+                {
+                    Rlp.Encode(destination, position, childKeccak);
+                }
+                else
                 {
                     // Inline child: happens with a short extension to a branch with a short extension as the only child
                     // so |
@@ -87,11 +90,7 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    childFullRlp.AsSpan().CopyTo(destination.Slice(position));
-                }
-                else
-                {
-                    Rlp.Encode(destination, position, childKeccak);
+                    nodeRef!.FullRlp.AsSpan().CopyTo(destination.Slice(position));
                 }
 
                 return data;
