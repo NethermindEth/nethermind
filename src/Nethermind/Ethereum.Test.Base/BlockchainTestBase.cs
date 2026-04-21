@@ -46,32 +46,9 @@ namespace Ethereum.Test.Base;
 
 public abstract class BlockchainTestBase
 {
-    private static readonly ILogger _logger;
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
-    private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
+    private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
-
-    static BlockchainTestBase()
-    {
-        DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logger = _logManager.GetClassLogger<BlockchainTestBase>();
-    }
-
-    private class DifficultyCalculatorWrapper : IDifficultyCalculator
-    {
-        public IDifficultyCalculator? Wrapped { get; set; }
-
-        public UInt256 Calculate(BlockHeader header, BlockHeader parent)
-        {
-            if (Wrapped is null)
-            {
-                throw new InvalidOperationException(
-                    $"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
-            }
-
-            return Wrapped.Calculate(header, parent);
-        }
-    }
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
@@ -107,13 +84,9 @@ public abstract class BlockchainTestBase
             await KzgPolynomialCommitments.InitializeAsync();
         }
 
-        // Per-test fresh instance instead of the shared static wrapper: tests run with
-        // [Parallelizable(ParallelScope.All)] and a shared Wrapped field is racy, which only
-        // matters once something actually consumes the calculator via DI (the difficulty-aware
-        // seal validator below). Keep the static wrapper field for backward compatibility, but
-        // hand the container a fresh instance bound to this test's specProvider.
+        // Per-test fresh instance bound to this test's specProvider. Tests run with
+        // [Parallelizable(ParallelScope.All)] so anything shared-mutable across tests would race.
         IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
-        DifficultyCalculator.Wrapped = difficultyCalculator;
         IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
         bool isPostMerge = test.Network != London.Instance &&
                            test.Network != Berlin.Instance &&
