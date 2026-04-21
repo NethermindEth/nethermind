@@ -122,11 +122,8 @@ public static class HexWriter
     /// Scalar: encode one byte to 2 hex chars via lookup table.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void EncodeByte(ref byte dest, int byteVal)
-    {
-        Unsafe.WriteUnaligned(ref dest,
+    internal static void EncodeByte(ref byte dest, int byteVal) => Unsafe.WriteUnaligned(ref dest,
             Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetReference(HexByteLookup), byteVal * 2)));
-    }
 
     /// <summary>
     /// Scalar: encode a ulong (big-endian byte order) to 16 hex chars.

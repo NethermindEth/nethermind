@@ -59,7 +59,7 @@ public class DiscoveryApp : IDiscoveryApp
         NodeFilter? inboundMessageFilter = null)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<DiscoveryApp>();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
@@ -154,10 +154,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     string IStoppableService.Description => "discv4";
 
-    public void AddNodeToDiscovery(Node node)
-    {
-        _discoveryManager.GetNodeLifecycleManager(node);
-    }
+    public void AddNodeToDiscovery(Node node) => _discoveryManager.GetNodeLifecycleManager(node);
 
     private void Initialize()
     {
@@ -385,7 +382,7 @@ public class DiscoveryApp : IDiscoveryApp
     {
         byte[] randomId = new byte[64];
         CancellationToken cancellationToken = _stopCts.Token;
-        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(10));
+        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(10));
 
         long lastTickMs = Environment.TickCount64;
         long waitTimeTimeMs = 10;
@@ -446,10 +443,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
-    private void OnNodeDiscovered(object? sender, NodeEventArgs e)
-    {
-        NodeAdded?.Invoke(this, e);
-    }
+    private void OnNodeDiscovered(object? sender, NodeEventArgs e) => NodeAdded?.Invoke(this, e);
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
 

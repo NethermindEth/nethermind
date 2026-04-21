@@ -286,12 +286,9 @@ namespace Nethermind.Core
 
         public bool Equals(AddressAsKey other) => _key == other._key;
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
-        public override string ToString()
-        {
-            return _key?.ToString() ?? "<null>";
-        }
+        public override string ToString() => _key?.ToString() ?? "<null>";
 
-        public long GetHashCode64() => _key is not null ? _key.GetHashCode64() : 0;
+        public long GetHashCode64() => _key?.GetHashCode64() ?? 0;
 
         public bool Equals(in AddressAsKey other) => _key == other._key;
     }

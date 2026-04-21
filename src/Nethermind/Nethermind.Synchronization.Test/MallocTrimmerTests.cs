@@ -21,7 +21,7 @@ public class MallocTrimmerTests
         MallocHelper helper = Substitute.For<MallocHelper>();
 
         ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-        var trimmer = new MallocTrimmer(syncModeSelector, TimeSpan.FromMilliseconds(1), NullLogManager.Instance, helper);
+        MallocTrimmer trimmer = new(syncModeSelector, TimeSpan.FromMilliseconds(1), NullLogManager.Instance, helper);
 
         syncModeSelector.Changed += Raise.EventWith(null,
             new SyncModeChangedEventArgs(SyncMode.FastSync, mode));

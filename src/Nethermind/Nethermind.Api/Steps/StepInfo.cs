@@ -36,10 +36,7 @@ namespace Nethermind.Api.Steps
         public Type[] Dependencies { get; }
         public Type[] Dependents { get; }
 
-        public override string ToString()
-        {
-            return $"{StepType.Name} : {StepBaseType.Name}";
-        }
+        public override string ToString() => $"{StepType.Name} : {StepBaseType.Name}";
 
         private static Type GetStepBaseType(Type type)
         {

@@ -189,6 +189,23 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         in UInt256 length, VmState<TSelf> vmState);
 
     /// <summary>
+    /// Calculates and deducts the gas cost for accessing a specific memory region.
+    /// Overload for call sites that already have a native-sized length.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="position">The starting position in memory.</param>
+    /// <param name="length">The length of the memory region.</param>
+    /// <param name="vmState">The current EVM state.</param>
+    /// <returns><c>true</c> if sufficient gas was available and deducted; otherwise, <c>false</c>.</returns>
+    static virtual bool UpdateMemoryCost(ref TSelf gas,
+        in UInt256 position,
+        ulong length, VmState<TSelf> vmState)
+    {
+        UInt256 uint256Length = new(length);
+        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, vmState);
+    }
+
+    /// <summary>
     /// Deducts a specified gas cost from the available gas.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
@@ -215,9 +232,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="stateGasCost">State gas component.</param>
     /// <param name="regularGasCost">Regular gas component.</param>
     /// <returns><c>true</c> if both deductions succeeded; otherwise, <c>false</c>.</returns>
-    static virtual bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, long regularGasCost) =>
-        (regularGasCost <= 0 || TSelf.UpdateGas(ref gas, regularGasCost)) &&
-        (stateGasCost <= 0 || TSelf.ConsumeStateGas(ref gas, stateGasCost));
+    static abstract bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, long regularGasCost);
 
     /// <summary>
     /// Refunds gas by adding the specified amount back to the available gas.
@@ -225,6 +240,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="refund">The gas amount to refund.</param>
     static abstract void UpdateGasUp(ref TSelf gas, long refund);
+
+    /// <summary>
+    /// Charges gas for SSTORE write operation (after cold/warm access cost).
+    /// Cost is calculated internally based on whether it's a slot creation or update.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="isSlotCreation">True if creating a new slot (original was zero).</param>
+    /// <param name="spec">The release specification for determining reset cost.</param>
+    /// <returns>True if sufficient gas available</returns>
+    static abstract bool ConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref TSelf gas, IReleaseSpec spec)
+        where TEip8037 : struct, IFlag
+        where TIsSlotCreation : struct, IFlag;
 
     /// <summary>
     /// Refunds state gas back to the state reservoir.
@@ -236,6 +263,16 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
 
     /// <summary>
+    /// Discards state gas from block-state accounting without refunding it back into the
+    /// usable gas budget. This is used for reverted state charges that should remain paid
+    /// by the transaction but must not contribute to committed state gas.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="amount">Discarded state gas amount.</param>
+    /// <param name="stateGasFloor">Minimum state gas used after discarding.</param>
+    static virtual void DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) { }
+
+    /// <summary>
     /// Returns the regular gas portion of EIP-7702 code insert refunds (for end-of-tx refund cap).
     /// Pre-EIP-8037: (NewAccount - PerAuthBaseCost) per refund. EIP-8037: zero (state refund only).
     /// </summary>
@@ -243,8 +280,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         codeInsertRefunds > 0 ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0;
 
     /// <summary>
-    /// Applies EIP-7702 code insert refunds: state refund to reservoir + returns regular refund amount.
-    /// Only call on success paths (state gas accounting must not be modified on error).
+    /// Applies EIP-7702 code insert refunds: EIP-8037 state refund to reservoir + regular refund amount.
+    /// For EIP-8037 this is applied before execution so later state charges can consume the refunded reservoir.
     /// </summary>
     /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas), for clamping refunds.</param>
     static virtual long ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor) =>
@@ -262,7 +299,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <returns>True if sufficient gas available</returns>
-    static abstract bool ConsumeNewAccountCreation(ref TSelf gas);
+    static abstract bool ConsumeNewAccountCreation<TEip8037>(ref TSelf gas) where TEip8037 : struct, IFlag;
 
     /// <summary>
     /// Charges gas for LOG emission with topic and data costs.

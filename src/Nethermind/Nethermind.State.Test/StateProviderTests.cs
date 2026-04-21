@@ -60,7 +60,7 @@ public class StateProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
         IWorldState frontierProvider = ctx.WorldState;
         BlockHeader baseBlock;
-        using (var _ = frontierProvider.BeginScope(IWorldState.PreGenesis))
+        using (IDisposable _ = frontierProvider.BeginScope(IWorldState.PreGenesis))
         {
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
@@ -69,7 +69,7 @@ public class StateProviderTests(bool useFlat)
         }
 
         IWorldState provider = frontierProvider;
-        using (var _ = provider.BeginScope(baseBlock))
+        using (IDisposable _ = provider.BeginScope(baseBlock))
         {
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
             provider.Commit(SpuriousDragon.Instance);
@@ -81,19 +81,18 @@ public class StateProviderTests(bool useFlat)
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
         using Context ctx = new(useFlat);
-        ParallelWorldState? parallelWorldState = ctx.WorldState as ParallelWorldState;
-        IWorldState provider = parallelWorldState is null ? ctx.WorldState : parallelWorldState.Inner;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
-        var systemUser = Address.SystemUser;
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        Address systemUser = Address.SystemUser;
 
         provider.CreateAccount(systemUser, 0);
         provider.Commit(Homestead.Instance);
 
-        var releaseSpec = new ReleaseSpec() { IsEip158Enabled = true };
+        ReleaseSpec releaseSpec = new() { IsEip158Enabled = true, Eip158IgnoredAccount = systemUser };
         provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
         provider.Commit(releaseSpec);
 
-        ((WorldState)provider).GetAccount(systemUser).Should().NotBeNull();
+        provider.AccountExists(systemUser).Should().BeTrue();
     }
 
     [Test]
@@ -101,7 +100,7 @@ public class StateProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
     }
@@ -111,7 +110,7 @@ public class StateProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether, Olympic.Instance));
     }
 
@@ -120,10 +119,10 @@ public class StateProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
-        bool isEmpty = !provider.TryGetAccount(_address1, out var account) || account.IsEmpty;
+        bool isEmpty = !provider.TryGetAccount(_address1, out AccountStruct account) || account.IsEmpty;
         isEmpty.Should().BeTrue();
     }
 
@@ -132,7 +131,7 @@ public class StateProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA)!;
         code.Should().BeEmpty();
     }
@@ -142,7 +141,7 @@ public class StateProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -170,7 +169,7 @@ public class StateProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         provider.GetBalance(_address1);
@@ -190,7 +189,7 @@ public class StateProviderTests(bool useFlat)
 
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.IncrementNonce(_address1);
@@ -226,7 +225,7 @@ public class StateProviderTests(bool useFlat)
 
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
-        using var _ = provider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
         provider.CreateAccount(_address1, 0);
         provider.TryGetAccount(_address1, out AccountStruct account);
@@ -247,7 +246,7 @@ public class StateProviderTests(bool useFlat)
         IWorldState provider = ctx.WorldState;
         Action action = () => { _ = provider.StateRoot; };
         {
-            using var _ = provider.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
             provider.CreateAccount(TestItem.AddressA, 5);
             provider.CommitTree(0);
 

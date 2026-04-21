@@ -25,7 +25,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -60,18 +59,12 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer()
-        {
-            return BlockProducerStarter!.BuildProducer();
-        }
+        public IBlockProducer InitBlockProducer() => BlockProducerStarter!.BuildProducer();
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            return new StandardBlockProducerRunner(
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
                 BlockProducerStarter.CreateTrigger(),
                 _nethermindApi.BlockTree,
                 blockProducer);
-        }
 
         public IModule Module => new AuRaModule(chainSpec);
 

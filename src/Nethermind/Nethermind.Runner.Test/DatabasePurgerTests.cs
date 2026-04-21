@@ -11,7 +11,7 @@ namespace Nethermind.Runner.Test;
 public class DatabasePurgerTests
 {
     private string _tempDir = null!;
-    private readonly ILogger _logger = LimboLogs.Instance.GetClassLogger();
+    private readonly ILogger _logger = LimboLogs.Instance.GetClassLogger<DatabasePurgerTests>();
 
     [SetUp]
     public void Setup()

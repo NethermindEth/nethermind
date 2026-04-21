@@ -5,14 +5,7 @@ using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies;
 
-public class CanServeByHashPeerAllocationStrategy : FilterPeerAllocationStrategy
+public class CanServeByHashPeerAllocationStrategy(IPeerAllocationStrategy strategy) : FilterPeerAllocationStrategy(strategy)
 {
-    public CanServeByHashPeerAllocationStrategy(IPeerAllocationStrategy strategy) : base(strategy)
-    {
-    }
-
-    protected override bool Filter(PeerInfo peerInfo)
-    {
-        return peerInfo.CanGetNodeData();
-    }
+    protected override bool Filter(PeerInfo peerInfo) => peerInfo.CanGetNodeData();
 }

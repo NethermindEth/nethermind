@@ -26,25 +26,22 @@ public class GnosisSpecProvider : ISpecProvider
 
     private GnosisSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber switch
     {
-        return forkActivation.BlockNumber switch
+        < ConstantinopleBlockNumber => GenesisSpec,
+        < ConstantinopleFixBlockNumber => Constantinople.Instance,
+        < IstanbulBlockNumber => ConstantinopleFix.Instance,
+        < BerlinBlockNumber => Istanbul.Instance,
+        < LondonBlockNumber => Berlin.Instance,
+        _ => forkActivation.Timestamp switch
         {
-            < ConstantinopleBlockNumber => GenesisSpec,
-            < ConstantinopleFixBlockNumber => Constantinople.Instance,
-            < IstanbulBlockNumber => ConstantinopleFix.Instance,
-            < BerlinBlockNumber => Istanbul.Instance,
-            < LondonBlockNumber => Berlin.Instance,
-            _ => forkActivation.Timestamp switch
-            {
-                null or < ShanghaiTimestamp => LondonGnosis.Instance,
-                < CancunTimestamp => ShanghaiGnosis.Instance,
-                < PragueTimestamp => CancunGnosis.Instance,
-                < OsakaTimestamp => PragueGnosis.Instance,
-                _ => OsakaGnosis.Instance
-            }
-        };
-    }
+            null or < ShanghaiTimestamp => LondonGnosis.Instance,
+            < CancunTimestamp => ShanghaiGnosis.Instance,
+            < PragueTimestamp => CancunGnosis.Instance,
+            < OsakaTimestamp => PragueGnosis.Instance,
+            _ => OsakaGnosis.Instance
+        }
+    };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {

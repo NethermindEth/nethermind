@@ -17,10 +17,7 @@ namespace Nethermind.Db.Test
     public class DbMetricsUpdaterTests
     {
         [TearDown]
-        public void TearDow()
-        {
-            Metrics.DbStats.Clear();
-        }
+        public void TearDow() => Metrics.DbStats.Clear();
 
 
         private static IEnumerable<TestCaseData> ProcessCompactionStatsTests
@@ -58,10 +55,7 @@ namespace Nethermind.Db.Test
         }
 
         [TestCaseSource(nameof(ProcessCompactionStatsTests))]
-        public void ProcessCompactionStats_DbCompactionStats_Correct(string metric, double expectedValue)
-        {
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, metric)], Is.EqualTo(expectedValue));
-        }
+        public void ProcessCompactionStats_DbCompactionStats_Correct(string metric, double expectedValue) => Assert.That(Metrics.DbCompactionStats[("TestDb", 0, metric)], Is.EqualTo(expectedValue));
 
         [Test]
         public void ProcessCompactionStats_DbStats_Correct()

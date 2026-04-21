@@ -78,7 +78,7 @@ namespace Nethermind.Network
             ArgumentNullException.ThrowIfNull(networkConfig);
             ArgumentNullException.ThrowIfNull(logManager);
 
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<PeerManager>();
             _rlpxHost = rlpxHost;
             _stats = stats;
             _networkConfig = networkConfig;
@@ -356,7 +356,7 @@ namespace Nethermind.Network
                     }
                     else
                     {
-                        await Task.Delay(1000);
+                        await Task.Delay(1000, _cancellationTokenSource.Token);
                     }
                 }
 
@@ -454,7 +454,7 @@ namespace Nethermind.Network
 
             // Delay to prevent high CPU use. There is a shortcut path for newly discovered peer, so having
             // a lower delay probably won't do much.
-            await Task.Delay(TimeSpan.FromSeconds(1));
+            await Task.Delay(TimeSpan.FromSeconds(1), _cancellationTokenSource.Token);
             return null;
         }
 
@@ -748,18 +748,11 @@ namespace Nethermind.Network
             Incompatible
         }
 
-        private readonly struct PeerStats
+        private readonly struct PeerStats(Peer peer, bool failedValidation, long currentReputation)
         {
-            public Peer Peer { get; }
-            public bool FailedValidation { get; }
-            public long CurrentReputation { get; }
-
-            public PeerStats(Peer peer, bool failedValidation, long currentReputation)
-            {
-                Peer = peer;
-                FailedValidation = failedValidation;
-                CurrentReputation = currentReputation;
-            }
+            public Peer Peer { get; } = peer;
+            public bool FailedValidation { get; } = failedValidation;
+            public long CurrentReputation { get; } = currentReputation;
         }
 
         private class PeerStatsComparer : IComparer<PeerStats>

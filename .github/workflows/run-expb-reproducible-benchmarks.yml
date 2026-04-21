@@ -854,7 +854,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all metrics artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/all-metrics
           pattern: expb-single-metrics-*
@@ -1024,7 +1024,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Publish PR comparison comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           COMMENT_BODY: ${{ steps.pr-comment.outputs.body }}
         with:
@@ -1585,7 +1585,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all metrics artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/all-metrics
           pattern: expb-metrics-*

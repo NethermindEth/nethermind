@@ -45,14 +45,11 @@ namespace Nethermind.Network.Test.P2P
         private readonly Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
 
-        private Packet CreatePacket<T>(T message) where T : P2PMessage
+        private Packet CreatePacket<T>(T message) where T : P2PMessage => new(new ZeroPacket(_serializer.ZeroSerialize(message))
         {
-            return new(new ZeroPacket(_serializer.ZeroSerialize(message))
-            {
-                Protocol = message.Protocol,
-                PacketType = (byte)message.PacketType,
-            });
-        }
+            Protocol = message.Protocol,
+            PacketType = (byte)message.PacketType,
+        });
 
         private const int ListenPort = 8003;
 
@@ -115,7 +112,7 @@ namespace Nethermind.Network.Test.P2P
             // to account for adaptive packet type
             data.ReadByte();
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -179,7 +176,7 @@ namespace Nethermind.Network.Test.P2P
             using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -226,7 +223,7 @@ namespace Nethermind.Network.Test.P2P
             using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,

@@ -20,9 +20,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
@@ -30,16 +28,11 @@ public static class NettyMemoryEstimator
 {
     private const uint PageSize = 8192;
 
-    public static void SetPageSize()
-    {
+    public static void SetPageSize() =>
         // For some reason needs to be half page size to get page size
         Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-    }
 
-    public static long Estimate(uint arenaCount, int arenaOrder)
-    {
-        return arenaCount * (1L << arenaOrder) * PageSize;
-    }
+    public static long Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1L << arenaOrder) * PageSize;
 }
 
 [RunnerStepDependencies(
@@ -48,6 +41,7 @@ public static class NettyMemoryEstimator
     typeof(ResolveIps),
     typeof(InitializePlugins),
     typeof(InitializeBlockchain))]
+#pragma warning disable IDE0290 // Primary constructor would shadow discard `_` used in fire-and-forget patterns
 public class InitializeNetwork : IStep
 {
     protected readonly IApiWithNetwork _api;
@@ -96,13 +90,10 @@ public class InitializeNetwork : IStep
         _syncConfig = syncConfig;
         _initConfig = initConfig;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
 
-    public virtual Task Execute(CancellationToken cancellationToken)
-    {
-        return Initialize(cancellationToken);
-    }
+    public virtual Task Execute(CancellationToken cancellationToken) => Initialize(cancellationToken);
 
     private async Task Initialize(CancellationToken cancellationToken)
     {
@@ -120,8 +111,6 @@ public class InitializeNetwork : IStep
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
-
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -291,9 +280,7 @@ public class InitializeNetwork : IStep
         }
     }
 
-    protected virtual IProtocolsManager CreateProtocolManager()
-    {
-        return new ProtocolsManager(
+    protected virtual IProtocolsManager CreateProtocolManager() => new ProtocolsManager(
             _api.SyncPeerPool!,
             _api.TxPool!,
             _discoveryApp,
@@ -303,5 +290,4 @@ public class InitializeNetwork : IStep
             _peerStorage,
             _protocolHandlerFactories,
             _api.LogManager);
-    }
 }

@@ -36,6 +36,8 @@ internal static partial class XdcExtensions
         IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
         if (spec is null)
             throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+        if (round == 0)
+            round = xdcBlockHeader.ExtraConsensusData?.BlockRound ?? 0;
         spec.ApplyV2Config(round);
         return spec;
     }
@@ -84,7 +86,7 @@ internal static partial class XdcExtensions
         ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
         if (sigBytes.Length != Signature.Size + 2)
             throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
-        Signature signature = new Signature(sigBytes.Slice(2, 64), sigBytes[66]);
+        Signature signature = new(sigBytes.Slice(2, 64), sigBytes[66]);
         decoderContext.SkipItem();
         return signature;
     }

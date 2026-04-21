@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -25,26 +25,18 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService : IJsonRpcService
+public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
     private readonly static Lock _reparseLock = new();
     private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
 
-    private readonly ILogger _logger;
-    private readonly IRpcModuleProvider _rpcModuleProvider;
-    private readonly HashSet<string> _methodsLoggingFiltering;
+    private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
+    private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
+    private readonly HashSet<string> _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
     private readonly Lock _propertyInfoModificationLock = new();
-    private readonly int _maxLoggedRequestParametersCharacters;
+    private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
     private Dictionary<TypeAsKey, PropertyInfo?> _propertyInfoCache = [];
-
-    public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
-    {
-        _logger = logManager.GetClassLogger<JsonRpcService>();
-        _rpcModuleProvider = rpcModuleProvider;
-        _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
-        _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
-    }
 
     public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -183,7 +175,7 @@ public sealed class JsonRpcService : IJsonRpcService
 
         if (_logger.IsTrace) LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
-        var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
+        int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
         int initialMissingParamsCount = missingParamsCount;
 
@@ -332,7 +324,7 @@ public sealed class JsonRpcService : IJsonRpcService
     {
         if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.Append("Executing JSON RPC call ");
             builder.Append(methodName);
             builder.Append(" with params [");
@@ -443,7 +435,7 @@ public sealed class JsonRpcService : IJsonRpcService
             reparseString = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
 
             // Copy-on-write: create a new dictionary so we don't mutate
-            Dictionary<TypeAsKey, bool> reparseReflectionCache = new Dictionary<TypeAsKey, bool>(_reparseReflectionCache)
+            Dictionary<TypeAsKey, bool> reparseReflectionCache = new(_reparseReflectionCache)
             {
                 [paramType] = reparseString
             };
@@ -461,21 +453,25 @@ public sealed class JsonRpcService : IJsonRpcService
         int missingParamsCount)
     {
         int totalLength = providedParametersLength + missingParamsCount;
-        if (totalLength == 0) return (Array.Empty<object>(), false);
+        if (totalLength == 0) return ([], false);
 
         object[] executionParameters = new object[totalLength];
 
         bool hasMissing = missingParamsCount != 0;
         int i = 0;
-        var enumerator = providedParameters.EnumerateArray();
-        while (enumerator.MoveNext())
-        {
-            ExpectedParameter expectedParameter = expectedParameters[i];
 
-            object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
-            executionParameters[i] = parameter;
-            hasMissing |= ReferenceEquals(parameter, Type.Missing);
-            i++;
+        if (providedParametersLength > 0)
+        {
+            JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+            while (enumerator.MoveNext())
+            {
+                ExpectedParameter expectedParameter = expectedParameters[i];
+
+                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
+                executionParameters[i] = parameter;
+                hasMissing |= ReferenceEquals(parameter, Type.Missing);
+                i++;
+            }
         }
 
         for (i = providedParametersLength; i < totalLength; i++)
@@ -551,18 +547,15 @@ public sealed class JsonRpcService : IJsonRpcService
         return GetErrorResult(methodName, context, result, module);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module)
+        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
         {
-            return result switch
-            {
-                ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"The method '{methodName}' is not supported."),
-                ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
-                    $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
-                ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
-                    $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
-                ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
-                _ => (null, null)
-            };
-        }
+            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"The method '{methodName}' is not supported."),
+            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
+                $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
+            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
+                $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
+            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
+            _ => (null, null)
+        };
     }
 }

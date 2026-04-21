@@ -35,7 +35,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
             .GetProperties(flag)
             .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() is null);
 
-        Dictionary<Type, PropertyInfo> availableTypes = new Dictionary<Type, PropertyInfo>();
+        Dictionary<Type, PropertyInfo> availableTypes = new();
 
         foreach (PropertyInfo propertyInfo in properties)
         {
@@ -47,10 +47,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
 
     public IEnumerable<IComponentRegistration> RegistrationsFor(Service service, Func<Service, IEnumerable<ServiceRegistration>> registrationAccessor)
     {
-        if (registrationAccessor is null)
-        {
-            throw new ArgumentNullException(nameof(registrationAccessor));
-        }
+        ArgumentNullException.ThrowIfNull(registrationAccessor);
 
         IServiceWithType? ts = service as IServiceWithType;
         if (ts is null || ts.ServiceType == typeof(string))

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Caching;
@@ -24,6 +25,7 @@ internal class XdcProtocolHandler(
     ITimeoutCertificateManager timeoutCertificateManager,
     IVotesManager votesManager,
     ISyncInfoManager syncInfoManager,
+    IBlockTree blockTree,
     ISession session,
     IMessageSerializationService serializer,
     INodeStatsManager nodeStatsManager,
@@ -37,8 +39,9 @@ internal class XdcProtocolHandler(
 {
     private readonly ITimeoutCertificateManager _timeoutCertificateManager = timeoutCertificateManager;
     private readonly IVotesManager _votesManager = votesManager;
-    private ClockKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
-    private ClockKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
+    private readonly IBlockTree _blockTree = blockTree;
+    private AssociativeKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
+    private AssociativeKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
 
     public override string Name => "xdpos2";
 
@@ -49,11 +52,18 @@ internal class XdcProtocolHandler(
 
     protected override TimeSpan InitTimeout => base.InitTimeout;
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override void HandleMessageCore(ZeroPacket message)
     {
-        var size = message.Content.ReadableBytes;
+        int size = message.Content.ReadableBytes;
 
         int packetType = message.PacketType;
+
+        (bool isSyncing, _, _) = _blockTree.IsSyncing();
+        if (isSyncing) // ignore XDC updates while syncing
+        {
+            base.HandleMessageCore(message);
+            return;
+        }
 
         switch (packetType)
         {
@@ -80,7 +90,7 @@ internal class XdcProtocolHandler(
                 }
             default:
                 {
-                    base.HandleMessage(message);
+                    base.HandleMessageCore(message);
                     break;
                 }
         }
@@ -91,14 +101,8 @@ internal class XdcProtocolHandler(
         // We do not want to add ForkId to status message in XDPoS
     }
 
-    private void Handle(VoteMsg voteMsg)
-    {
-        _ = _votesManager.OnReceiveVote(voteMsg.Vote);
-    }
-    private void Handle(TimeoutMsg timeoutMsg)
-    {
-        _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
-    }
+    private void Handle(VoteMsg voteMsg) => _ = _votesManager.OnReceiveVote(voteMsg.Vote);
+    private void Handle(TimeoutMsg timeoutMsg) => _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
         if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string error))
@@ -124,10 +128,7 @@ internal class XdcProtocolHandler(
         Send(new TimeoutMsg() { Timeout = timeout });
     }
 
-    public void SendSyncInfo(SyncInfo syncInfo)
-    {
-        Send(new SyncInfoMsg() { SyncInfo = syncInfo });
-    }
+    public void SendSyncInfo(SyncInfo syncInfo) => Send(new SyncInfoMsg() { SyncInfo = syncInfo });
 
     private bool ShouldNotifyVote(Vote vote)
     {

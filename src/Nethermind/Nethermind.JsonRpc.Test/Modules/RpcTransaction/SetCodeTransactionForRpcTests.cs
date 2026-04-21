@@ -104,7 +104,7 @@ public static class SetCodeTransactionForRpcTests
         json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
         json.GetProperty("maxPriorityFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("maxFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        var accessList = json.GetProperty("accessList").EnumerateArray();
+        JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
         if (accessList.Any())
         {
             accessList.Should().AllSatisfy(static item =>

@@ -43,7 +43,7 @@ public class AuthorizationTupleDecoderTests
         AuthorizationTupleDecoder sut = new();
         Assert.That(() =>
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data);
+            Rlp.ValueDecoderContext decoderContext = new(stream.Data);
             sut.Decode(ref decoderContext, RlpBehaviors.None);
         }
         , Throws.TypeOf<RlpException>());
@@ -145,7 +145,7 @@ public class AuthorizationTupleDecoderTests
             + Rlp.LengthOf(sig.RecoveryId)
             + Rlp.LengthOf(sig.R)
             + Rlp.LengthOf(sig.S);
-        RlpStream stream = new RlpStream(Rlp.LengthOfSequence(length));
+        RlpStream stream = new(Rlp.LengthOfSequence(length));
         stream.StartSequence(length);
         stream.Encode(1);
         stream.Encode(codeAddress);
@@ -166,7 +166,7 @@ public class AuthorizationTupleDecoderTests
             + Rlp.LengthOf(yParity)
             + Rlp.LengthOf(r)
             + Rlp.LengthOf(s);
-        RlpStream stream = new RlpStream(Rlp.LengthOfSequence(length));
+        RlpStream stream = new(Rlp.LengthOfSequence(length));
         stream.StartSequence(length);
         stream.Encode(chainId);
         stream.Encode(address);

@@ -13,32 +13,22 @@ namespace Nethermind.Xdc.Test.Helpers;
 
 internal class XdcTestDepositContract(CandidateContainer candidateContainer) : IMasternodeVotingContract
 {
-    public Address[] GetCandidatesByStake(BlockHeader blockHeader)
-    {
+    public Address[] GetCandidatesByStake(BlockHeader blockHeader) =>
         //We fake ordering by returning addresses instead of stake in descending order
-        return candidateContainer.MasternodeCandidates.Select(m => m.Address).OrderByDescending(a => a).ToArray();
-    }
+        candidateContainer.MasternodeCandidates.Select(m => m.Address).OrderByDescending(a => a).ToArray();
 
-    public Address[] GetCandidates(BlockHeader blockHeader)
-    {
-        return candidateContainer.MasternodeCandidates.Select(m => m.Address).ToArray();
-    }
+    public Address[] GetCandidates(BlockHeader blockHeader) =>
+        candidateContainer.MasternodeCandidates.Select(m => m.Address).ToArray();
 
-    public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
-    {
-        return 10_000_000.Ether;
-    }
+    public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate) =>
+        10_000_000.Ether;
 
-    public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
-    {
+    public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate) =>
         throw new System.NotImplementedException();
-    }
-    public Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
-    {
+
+    public Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate) =>
         throw new System.NotImplementedException();
-    }
-    public Address GetCandidateOwner(IWorldState worldState, Address candidate)
-    {
+
+    public Address GetCandidateOwner(IWorldState worldState, Address candidate) =>
         throw new System.NotImplementedException();
-    }
 }

@@ -15,8 +15,7 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
     public new XdcSubnetBlockHeader TestObject => (XdcSubnetBlockHeader)base.TestObject;
 
 
-    public XdcSubnetBlockHeaderBuilder()
-    {
+    public XdcSubnetBlockHeaderBuilder() =>
         TestObjectInternal = new XdcSubnetBlockHeader(
             Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
@@ -39,7 +38,6 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
             NextValidators = new byte[20 * 2],
             Penalties = Array.Empty<byte>(),
         };
-    }
     public XdcSubnetBlockHeaderBuilder WithNextValidators(byte[] nextValidators)
     {
         XdcTestObjectInternal.NextValidators = nextValidators;

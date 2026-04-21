@@ -60,7 +60,7 @@ public class Eth69ProtocolHandler(
 
     public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override void HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -84,7 +84,7 @@ public class Eth69ProtocolHandler(
                 Handle(blockRangeUpdateMsg);
                 break;
             default:
-                base.HandleMessage(message);
+                base.HandleMessageCore(message);
                 break;
         }
     }

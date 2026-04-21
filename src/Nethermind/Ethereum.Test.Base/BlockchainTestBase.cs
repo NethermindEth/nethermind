@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -32,10 +33,14 @@ using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using NUnit.Framework;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.TxPool;
+using Nethermind.Serialization.Json;
 using System.Reflection;
+using System.Text.Json;
 
 namespace Ethereum.Test.Base;
 
@@ -49,13 +54,7 @@ public abstract class BlockchainTestBase
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logManager ??= LimboLogs.Instance;
-        _logger = _logManager.GetClassLogger();
-    }
-
-    [SetUp]
-    public void Setup()
-    {
+        _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     }
 
     private class DifficultyCalculatorWrapper : IDifficultyCalculator
@@ -86,11 +85,12 @@ public abstract class BlockchainTestBase
 
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
-        // Post-merge pyspec blockchain_test_from_state_test fixtures expect genesis to be processed
-        // under the target fork rules when the fork requires it (e.g. EIP-7928 sets BlockAccessListHash).
+        // EIP-7928 introduces BlockAccessListHash in the block header, which must be computed
+        // during genesis processing. Without target fork rules at genesis, the hash field is missing
+        // and the genesis block header doesn't match the pyspec fixture expectation.
         bool genesisUsesTargetFork = test.Network.IsEip7928Enabled;
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = isEngineTest || genesisUsesTargetFork
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = genesisUsesTargetFork
             ? [((ForkActivation)0, test.Network)]
             : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
@@ -129,12 +129,21 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
+        IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
+        blocksConfig.PreWarmStateConcurrency = 0;
+        blocksConfig.PreWarmStateOnBlockProcessing = false;
+        if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
+        {
+            mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(1).TotalMilliseconds;
+        }
+
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator);
+            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            .AddSingleton<ITxPool>(NullTxPool.Instance);
 
         if (isEngineTest)
         {
@@ -150,7 +159,6 @@ public abstract class BlockchainTestBase
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         blockchainProcessor.Start();
 
-        // Register tracer if provided for blocktest tracing
         if (tracer is not null)
         {
             blockchainProcessor.Tracers.Add(tracer);
@@ -171,9 +179,8 @@ public abstract class BlockchainTestBase
                 Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
                 Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
-                ManualResetEvent genesisProcessed = new(false);
-
-                blockTree.NewHeadBlock += (_, args) =>
+                using ManualResetEvent genesisProcessed = new(false);
+                EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
                 {
                     if (args.Block.Number == 0)
                     {
@@ -181,8 +188,7 @@ public abstract class BlockchainTestBase
                         genesisProcessed.Set();
                     }
                 };
-
-                blockchainProcessor.BlockRemoved += (_, args) =>
+                EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
                 {
                     if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
                     {
@@ -191,11 +197,22 @@ public abstract class BlockchainTestBase
                     }
                 };
 
-                blockTree.SuggestBlock(genesisBlock);
-                genesisProcessed.WaitOne(_genesisProcessingTimeoutMs);
-                parentHeader = genesisBlock.Header;
+                blockTree.NewHeadBlock += onNewHeadBlock;
+                blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
 
-                // Dispose genesis block's AccountChanges
+                try
+                {
+                    blockTree.SuggestBlock(genesisBlock);
+                    Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
+                        "Timed out waiting for genesis block processing.");
+                    parentHeader = genesisBlock.Header;
+                }
+                finally
+                {
+                    blockTree.NewHeadBlock -= onNewHeadBlock;
+                    blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
+                }
+
                 genesisBlock.DisposeAccountChanges();
             }
 
@@ -206,9 +223,11 @@ public abstract class BlockchainTestBase
             }
             else if (test.EngineNewPayloads is not null)
             {
-                // engine test
-                IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
-                await RunNewPayloads(test.EngineNewPayloads, engineRpcModule);
+                // engine test — route through JsonRpcService for realistic deserialization
+                IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
+                JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
+                JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
+                await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
             }
             else
             {
@@ -311,37 +330,162 @@ public abstract class BlockchainTestBase
         return parentHeader;
     }
 
-    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
+    private static readonly Dictionary<int, int> NewPayloadParamCounts = Enumerable
+        .Range(1, EngineApiVersions.NewPayload.Latest)
+        .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
+            ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
+
+    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
-        (ExecutionPayloadV4, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+        if (newPayloads is null || newPayloads.Length == 0) return;
 
-        // blockchain test engine
-        foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, int newPayloadVersion, int fcuVersion) in payloads)
+        int initialFcuVersion = int.Parse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
+        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString()));
+
+        foreach (TestEngineNewPayloadsJson enginePayload in newPayloads)
         {
-            ResultWrapper<PayloadStatusV1> res;
-            byte[]?[] hashes = blobVersionedHashes is null ? [] : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+            int newPayloadVersion = int.Parse(enginePayload.NewPayloadVersion ?? EngineApiVersions.NewPayload.Latest.ToString());
+            int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
+            string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            MethodInfo newPayloadMethod = engineRpcModule.GetType().GetMethod($"engine_newPayloadV{newPayloadVersion}");
-            List<object?> newPayloadParams = [executionPayload];
-            if (newPayloadVersion >= 3)
+            int paramCount = NewPayloadParamCounts[newPayloadVersion];
+            string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
+
+            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
+
+            // RPC-level errors (e.g. wrong payload version) are valid for negative tests
+            if (npResponse is JsonRpcErrorResponse errorResponse)
             {
-                newPayloadParams.AddRange([hashes, executionPayload.ParentBeaconBlockRoot]);
+                AssertExpectedRpcError(errorResponse, validationError, newPayloadVersion);
             }
-            if (newPayloadVersion >= 4)
+            else
             {
-                newPayloadParams.Add(executionPayload.ExecutionRequests);
-            }
+                PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
 
-            res = await (Task<ResultWrapper<PayloadStatusV1>>)newPayloadMethod.Invoke(engineRpcModule, [.. newPayloadParams]);
-
-            if (res.Result.ResultType == ResultType.Success)
-            {
-                ForkchoiceStateV1 fcuState = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
-                MethodInfo fcuMethod = engineRpcModule.GetType().GetMethod($"engine_forkchoiceUpdatedV{fcuVersion}");
-                await (Task<ResultWrapper<ForkchoiceUpdatedV1Result>>)fcuMethod.Invoke(engineRpcModule, [fcuState, null]);
+                if (payloadStatus.Status == PayloadStatus.Valid)
+                {
+                    string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
+                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                }
             }
         }
     }
+
+    private static void AssertExpectedRpcError(JsonRpcErrorResponse errorResponse, string? validationError, int payloadVersion) =>
+        Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
+    {
+        string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
+        Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
+
+        if (expectedValidationError is not null)
+            AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
+    }
+
+    private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
+    {
+        Assert.That(actualError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} returned INVALID without validation error. Expected: {expectedError}");
+
+        string[] mapped = MapValidationErrorsToEestExceptions(actualError!);
+        string[] expected = expectedError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        bool matches = expected.Any(e => mapped.Contains(e) || actualError!.Contains(e, StringComparison.Ordinal));
+
+        Assert.That(matches, Is.True, $"engine_newPayloadV{payloadVersion} unexpected validation error. Actual: {actualError}. Mapped: {string.Join("|", mapped)}. Expected: {expectedError}");
+    }
+
+    // Mirrors execution-specs NethermindExceptionMapper: client validation text -> EEST exception ids.
+    private static readonly (string ExpectedError, string Substring)[] ValidationErrorSubstringMappings =
+    [
+        ("TransactionException.SENDER_NOT_EOA", "sender has deployed code"),
+        ("TransactionException.INTRINSIC_GAS_TOO_LOW", "intrinsic gas too low"),
+        ("TransactionException.INTRINSIC_GAS_BELOW_FLOOR_GAS_COST", "intrinsic gas too low"),
+        ("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS", "miner premium is negative"),
+        ("TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS", "InvalidMaxPriorityFeePerGas: Cannot be higher than maxFeePerGas"),
+        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "Block gas limit exceeded"),
+        ("TransactionException.NONCE_IS_MAX", "NonceTooHigh"),
+        ("TransactionException.INITCODE_SIZE_EXCEEDED", "max initcode size exceeded"),
+        ("TransactionException.NONCE_MISMATCH_TOO_LOW", "transaction nonce is too low"),
+        ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "transaction nonce is too high"),
+        ("TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS", "InsufficientMaxFeePerBlobGas: Not enough to cover blob gas fee"),
+        ("TransactionException.TYPE_1_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("TransactionException.TYPE_2_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("TransactionException.TYPE_3_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("TransactionException.TYPE_3_TX_ZERO_BLOBS", "blob transaction must have at least 1 blob"),
+        ("TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH", "InvalidBlobVersionedHashVersion: Blob version not supported"),
+        ("TransactionException.TYPE_3_TX_CONTRACT_CREATION", "blob transaction of type create"),
+        ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "MissingAuthorizationList: Must be set"),
+        ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "NotAllowedCreateTransaction: To must be set"),
+        ("TransactionException.TYPE_4_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch: Blob gas in header does not match calculated"),
+        ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch: Blob gas in header does not match calculated"),
+        ("BlockException.INVALID_REQUESTS", "InvalidRequestsHash: Requests hash mismatch in block"),
+        ("BlockException.INVALID_GAS_USED_ABOVE_LIMIT", "ExceededGasLimit: Gas used exceeds gas limit."),
+        ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit: Gas used exceeds gas limit."),
+        ("BlockException.RLP_BLOCK_LIMIT_EXCEEDED", "ExceededBlockSizeLimit: Exceeded block size limit"),
+        ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", "DepositsInvalid: Invalid deposit event layout:"),
+        ("BlockException.INVALID_BASEFEE_PER_GAS", "InvalidBaseFeePerGas: Does not match calculated"),
+        ("BlockException.INVALID_BLOCK_TIMESTAMP_OLDER_THAN_PARENT", "InvalidTimestamp: Timestamp in header cannot be lower than ancestor"),
+        ("BlockException.INVALID_BLOCK_NUMBER", "InvalidBlockNumber: Block number does not match the parent"),
+        ("BlockException.EXTRA_DATA_TOO_BIG", "InvalidExtraData: Extra data in header is not valid"),
+        ("BlockException.INVALID_GASLIMIT", "InvalidGasLimit: Gas limit is not correct"),
+        ("BlockException.INVALID_RECEIPTS_ROOT", "InvalidReceiptsRoot: Receipts root in header does not match"),
+        ("BlockException.INVALID_LOG_BLOOM", "InvalidLogsBloom: Logs bloom in header does not match"),
+        ("BlockException.INVALID_STATE_ROOT", "InvalidStateRoot: State root in header does not match"),
+        ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
+        ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
+        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
+    ];
+
+    private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
+
+    private static readonly (string ExpectedError, Regex Pattern)[] ValidationErrorRegexMappings =
+    [
+        ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
+        ("TransactionException.TYPE_3_TX_WITH_FULL_BLOBS", ValidationErrorRegex(@"Transaction \d+ is not valid")),
+        ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
+        ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),
+        ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", ValidationErrorRegex(@"TxGasLimitCapExceeded: Gas limit \d+ \w+ cap of \d+\.?")),
+        ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
+        ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
+        ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations)Empty: Contract is not deployed\.")),
+        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations)Failed: Contract execution failed\.")),
+        ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),
+        ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
+        ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
+        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
+        ("BlockException.INVALID_BAL_EXTRA_ACCOUNT", ValidationErrorRegex(@"Error decoding block access list:.*Account changes were in incorrect order")),
+        ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
+        ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
+        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
+    ];
+
+    private static string[] MapValidationErrorsToEestExceptions(string validationError) =>
+    [
+        .. ValidationErrorSubstringMappings
+            .Where(m => validationError.Contains(m.Substring, StringComparison.Ordinal))
+            .Select(m => m.ExpectedError)
+            .Concat(ValidationErrorRegexMappings
+                .Where(m => m.Pattern.IsMatch(validationError))
+                .Select(m => m.ExpectedError))
+            .Distinct()
+    ];
+
+    private static Regex ValidationErrorRegex(string pattern) => new(pattern, ValidationErrorRegexOptions);
+
+    private static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
+    {
+        using JsonDocument doc = JsonDocument.Parse(paramsJson);
+        JsonRpcRequest request = new() { JsonRpc = "2.0", Id = 1, Method = method, Params = doc.RootElement.Clone() };
+        return await rpcService.SendRequestAsync(request, context);
+    }
+
+    private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
+        SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
+
+    private static void AssertRpcSuccess(JsonRpcResponse response) =>
+        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {

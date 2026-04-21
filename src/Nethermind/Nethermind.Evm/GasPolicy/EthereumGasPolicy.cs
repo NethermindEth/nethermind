@@ -65,6 +65,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return true;
     }
 
+    public static bool TryConsumeStateAndRegularGas(ref EthereumGasPolicy gas, long stateGasCost, long regularGasCost) =>
+        (regularGasCost <= 0 || UpdateGas(ref gas, regularGasCost)) &&
+        (stateGasCost <= 0 || ConsumeStateGas(ref gas, stateGasCost));
+
     public static bool ConsumeSelfDestructGas(ref EthereumGasPolicy gas)
         => UpdateGas(ref gas, GasCostOf.SelfDestructEip150);
 
@@ -186,6 +190,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, VmState<EthereumGasPolicy> vmState)
+    {
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas(ref EthereumGasPolicy gas,
         long gasCost)
     {
@@ -197,17 +212,36 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateGasUp(ref EthereumGasPolicy gas,
-        long refund)
+    public static bool ConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref EthereumGasPolicy gas, IReleaseSpec spec)
+        where TEip8037 : struct, IFlag
+        where TIsSlotCreation : struct, IFlag
     {
-        gas.Value += refund;
+        if (!TIsSlotCreation.IsActive) return UpdateGas(ref gas, spec.GasCosts.SStoreResetCost);
+        return TEip8037.IsActive switch
+        {
+            // EIP-8037: charge the regular component first so an OOG halt does not
+            // spill state gas into gas_left and then restore it to the parent frame.
+            true => TryConsumeStateAndRegularGas(ref gas, GasCostOf.SSetState, GasCostOf.SSetRegular),
+            false => UpdateGas(ref gas, GasCostOf.SSet),
+        };
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void UpdateGasUp(ref EthereumGasPolicy gas,
+        long refund) => gas.Value += refund;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RefundStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
     {
         gas.StateReservoir += amount;
         long newFloor = Math.Max(0, stateGasFloor - amount);
+        gas.StateGasUsed = Math.Max(gas.StateGasUsed - amount, newFloor);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
+    {
+        long newFloor = Math.Max(0, stateGasFloor);
         gas.StateGasUsed = Math.Max(gas.StateGasUsed - amount, newFloor);
     }
 
@@ -221,7 +255,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor)
     {
         if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
-            RefundStateGas(ref gas, GasCostOf.NewAccountState * codeInsertRefunds, stateGasFloor);
+        {
+            long stateRefund = GasCostOf.NewAccountState * codeInsertRefunds;
+            long stateGasAboveFloor = Math.Max(0, gas.StateGasUsed - stateGasFloor);
+            long refundToReservoir = Math.Max(0, stateRefund - stateGasAboveFloor);
+            gas.StateReservoir += refundToReservoir;
+
+            long newFloor = Math.Max(0, stateGasFloor - stateRefund);
+            gas.StateGasUsed = Math.Max(gas.StateGasUsed - stateRefund, newFloor);
+        }
+
         return GetCodeInsertRegularRefund(codeInsertRefunds, spec);
     }
 
@@ -230,8 +273,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         => UpdateGas(ref gas, GasCostOf.CallValue);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeNewAccountCreation(ref EthereumGasPolicy gas)
-        => ConsumeStateGas(ref gas, GasCostOf.NewAccountState);
+    public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
+    {
+        true => ConsumeStateGas(ref gas, GasCostOf.NewAccountState),
+        false => UpdateGas(ref gas, GasCostOf.NewAccount)
+    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeLogEmission(ref EthereumGasPolicy gas, long topicCount, long dataSize)

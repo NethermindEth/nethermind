@@ -2,21 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Newtonsoft.Json.Linq;
@@ -38,9 +35,9 @@ public partial class DebugRpcModuleTests
             Blockchain = blockchain;
         }
 
-        public static async Task<Context> Create(bool isAura = false)
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, bool isAura = false)
         {
-            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build();
+            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
 
             IDebugRpcModule debugRpcModule = blockchain.DebugRpcModule;
 
@@ -111,8 +108,8 @@ public partial class DebugRpcModuleTests
     )]
     public async Task Debug_traceCall_with_state_override(string name, string transactionJson, string stateOverrideJson, string? expectedValue = null)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
@@ -138,7 +135,7 @@ public partial class DebugRpcModuleTests
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
         // Returns gas available at start of execution as a 32-byte uint256
-        var stateOverride = JsonSerializer.Deserialize<object>(
+        object? stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
         // Request 100K gas — should be capped to 50K by GasCap
@@ -174,12 +171,12 @@ public partial class DebugRpcModuleTests
     )]
     public async Task Debug_traceCall_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
-        var resultOverrideBefore = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
+        string resultOverrideBefore = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             stateOverrides = stateOverride,
             enableMemory = false,
@@ -189,7 +186,7 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        var resultNoOverride = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
+        string resultNoOverride = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             // configuration to minimize number of fields being compared
             enableMemory = false,
@@ -199,7 +196,7 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        var resultOverrideAfter = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
+        string resultOverrideAfter = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             stateOverrides = stateOverride,
             enableMemory = false,

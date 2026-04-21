@@ -31,22 +31,16 @@ namespace Nethermind.Network
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SessionMonitor>() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
             _pingInterval = TimeSpan.FromMilliseconds(_networkConfig.P2PPingInterval);
             _onDisconnected = OnDisconnected;
         }
 
-        public void Start()
-        {
-            StartPingTimer();
-        }
+        public void Start() => StartPingTimer();
 
-        public void Stop()
-        {
-            StopPingTimer();
-        }
+        public void Stop() => StopPingTimer();
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         public IEnumerable<ISession> Sessions => _sessions.Values;
@@ -73,7 +67,7 @@ namespace Nethermind.Network
 
         private async Task SendPingMessagesAsync()
         {
-            var token = _cancellationTokenSource.Token;
+            CancellationToken token = _cancellationTokenSource.Token;
             while (!token.IsCancellationRequested
                 && await _pingTimer.WaitForNextTickAsync(token))
             {
@@ -165,6 +159,7 @@ namespace Nethermind.Network
         {
             try
             {
+                _pingTimer.Dispose();
                 if (_logger.IsTrace) _logger.Trace("Stopping session monitor");
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }

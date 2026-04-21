@@ -30,7 +30,7 @@ internal sealed class InstructionDb
     public void Add(InstructionInfo info)
     {
         string key = info.Mnemonic.ToLowerInvariant();
-        if (!_instructions.TryGetValue(key, out var list))
+        if (!_instructions.TryGetValue(key, out List<InstructionInfo>? list))
         {
             list = [];
             _instructions[key] = list;
@@ -42,11 +42,11 @@ internal sealed class InstructionDb
 
     public InstructionInfo? Lookup(string mnemonic, string operandPattern)
     {
-        if (!_instructions.TryGetValue(mnemonic, out var forms))
+        if (!_instructions.TryGetValue(mnemonic, out List<InstructionInfo>? forms))
             return null;
 
         // Exact match
-        foreach (var form in forms)
+        foreach (InstructionInfo form in forms)
         {
             if (string.Equals(form.OperandPattern, operandPattern, StringComparison.OrdinalIgnoreCase))
                 return form;
@@ -54,7 +54,7 @@ internal sealed class InstructionDb
 
         // Relaxed match: ignore register width differences (r32 ≈ r64 for same instruction class)
         string relaxed = RelaxPattern(operandPattern);
-        foreach (var form in forms)
+        foreach (InstructionInfo form in forms)
         {
             if (string.Equals(RelaxPattern(form.OperandPattern), relaxed, StringComparison.OrdinalIgnoreCase))
                 return form;
@@ -63,7 +63,7 @@ internal sealed class InstructionDb
         // Mnemonic-only match for zero-operand instructions (ret, nop, etc.)
         if (operandPattern.Length == 0)
         {
-            foreach (var form in forms)
+            foreach (InstructionInfo form in forms)
             {
                 if (form.OperandPattern.Length == 0)
                     return form;
@@ -85,7 +85,7 @@ internal sealed class InstructionDb
 
     public void Save(string path)
     {
-        using var stream = File.Create(path);
+        using FileStream stream = File.Create(path);
         using var writer = new BinaryWriter(stream);
 
         // Header
@@ -98,9 +98,9 @@ internal sealed class InstructionDb
         writer.Write(entryCount);
 
         // Entries
-        foreach (var (_, forms) in _instructions)
+        foreach ((string _, List<InstructionInfo>? forms) in _instructions)
         {
-            foreach (var info in forms)
+            foreach (InstructionInfo info in forms)
             {
                 writer.Write(info.Mnemonic);
                 writer.Write(info.OperandPattern);
@@ -114,7 +114,7 @@ internal sealed class InstructionDb
 
     public static InstructionDb Load(string path)
     {
-        using var stream = File.OpenRead(path);
+        using FileStream stream = File.OpenRead(path);
         using var reader = new BinaryReader(stream);
 
         // Header

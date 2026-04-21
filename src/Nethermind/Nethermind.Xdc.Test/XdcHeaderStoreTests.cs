@@ -33,17 +33,15 @@ internal class XdcBlockAndHeaderStoreTests
     }
 
     [Test]
-    public void XdcHeaderStore_ShouldInheritFromHeaderStore()
-    {
+    public void XdcHeaderStore_ShouldInheritFromHeaderStore() =>
         Assert.That(_headerStore, Is.InstanceOf<HeaderStore>());
-    }
 
     [Test]
     public void XdcHeaderStore_InsertAndGetHeader_ShouldWorkCorrectly()
     {
         // Arrange
         XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData();
-        var header = headerBuilder.TestObject;
+        XdcBlockHeader header = headerBuilder.TestObject;
 
         // Act
         _headerStore.Insert(header);
@@ -57,9 +55,9 @@ internal class XdcBlockAndHeaderStoreTests
     {
         // Arrange
         XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData();
-        var header = headerBuilder.TestObject;
+        XdcBlockHeader header = headerBuilder.TestObject;
         BlockBuilder blockBuilder = Build.A.Block.WithHeader(header);
-        var block = blockBuilder.TestObject;
+        Block block = blockBuilder.TestObject;
         // Act
         _blockStore.Insert(block);
         Block? retrievedBlock = _blockStore.Get(block.Number, block.Hash!);

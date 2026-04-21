@@ -68,20 +68,11 @@ public class EncryptionHandshakeServiceTests
     private Packet _auth;
     private Packet _ack;
 
-    private void Auth(bool preEip8Format = false)
-    {
-        _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake, preEip8Format);
-    }
+    private void Auth(bool preEip8Format = false) => _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake, preEip8Format);
 
-    private void Ack()
-    {
-        _ack = _recipientService.Ack(_recipientHandshake, _auth);
-    }
+    private void Ack() => _ack = _recipientService.Ack(_recipientHandshake, _auth);
 
-    private void Agree()
-    {
-        _initiatorService.Agree(_initiatorHandshake, _ack);
-    }
+    private void Agree() => _initiatorService.Agree(_initiatorHandshake, _ack);
 
     private void InitializeRandom(bool preEip8Format = false)
     {

@@ -28,7 +28,7 @@ public class TaikoPayloadPreparationService(
     private const int _emptyBlockProcessingTimeout = 2000;
     private readonly SemaphoreSlim _worldStateLock = new(1);
 
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<TaikoPayloadPreparationService>();
 
     private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
 
@@ -175,10 +175,7 @@ public class TaikoPayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
-    public void CancelBlockProduction(string payloadId)
-    {
-        _ = GetPayload(payloadId);
-    }
+    public void CancelBlockProduction(string payloadId) => _ = GetPayload(payloadId);
 
 
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }

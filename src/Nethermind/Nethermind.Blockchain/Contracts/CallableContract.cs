@@ -13,21 +13,16 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Blockchain.Contracts
 {
-    public abstract class CallableContract : Contract
+    /// <summary>
+    /// Creates contract
+    /// </summary>
+    /// <param name="transactionProcessor">Transaction processor on which all <see cref="Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> should be run on.</param>
+    /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
+    /// <param name="contractAddress">Address where contract is deployed.</param>
+    public abstract class CallableContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : Contract(abiEncoder, contractAddress)
     {
-        private readonly ITransactionProcessor _transactionProcessor;
+        private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         public const long UnlimitedGas = long.MaxValue;
-
-        /// <summary>
-        /// Creates contract
-        /// </summary>
-        /// <param name="transactionProcessor">Transaction processor on which all <see cref="Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> should be run on.</param>
-        /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
-        /// <param name="contractAddress">Address where contract is deployed.</param>
-        protected CallableContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : base(abiEncoder, contractAddress)
-        {
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-        }
 
         private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction);
 
@@ -53,10 +48,10 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns>Deserialized return value of the <see cref="functionName"/> based on its definition.</returns>
         protected object[] Call(BlockHeader header, string functionName, Address sender, long gasLimit, params object[] arguments)
         {
-            var function = AbiDefinition.GetFunction(functionName);
-            var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
-            var result = Call(header, functionName, transaction);
-            var objects = DecodeData(function.GetReturnInfo(), result);
+            AbiFunctionDescription function = AbiDefinition.GetFunction(functionName);
+            Transaction transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
+            byte[] result = Call(header, functionName, transaction);
+            object[] objects = DecodeData(function.GetReturnInfo(), result);
             return objects;
         }
 
@@ -101,9 +96,9 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
         protected bool TryCall(BlockHeader header, string functionName, Address sender, long gasLimit, out object[] result, params object[] arguments)
         {
-            var function = AbiDefinition.GetFunction(functionName);
-            var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
-            if (TryCall(header, transaction, out var bytes))
+            AbiFunctionDescription function = AbiDefinition.GetFunction(functionName);
+            Transaction transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
+            if (TryCall(header, transaction, out byte[] bytes))
             {
                 result = DecodeData(function.GetReturnInfo(), bytes);
                 return true;

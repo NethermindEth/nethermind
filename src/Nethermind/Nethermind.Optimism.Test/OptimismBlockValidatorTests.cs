@@ -30,8 +30,8 @@ public class OptimismBlockValidatorTests(Fork fork)
 
     private (BlockHeader parentHeader, Block header) BuildBlock(Action<BlockBuilder>? postBuild = null)
     {
-        var parentBlock = Build.A.BlockHeader.TestObject;
-        var builder = Build.A.Block
+        BlockHeader parentBlock = Build.A.BlockHeader.TestObject;
+        BlockBuilder builder = Build.A.Block
             .WithWithdrawals(_timestamp >= Spec.IsthmusTimeStamp ? [] : null)
             .WithHeader(Build.A.BlockHeader
                 .WithParent(parentBlock)
@@ -67,7 +67,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithWithdrawalsRoot(withdrawalsRoot)
         );
 
-        var validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,
@@ -99,7 +99,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithWithdrawalsRoot(GetWithdrawalsRoot())
         );
 
-        var validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,
@@ -130,7 +130,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithBlobGasUsed((ulong?)blobGasUsed)
         );
 
-        var validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,
