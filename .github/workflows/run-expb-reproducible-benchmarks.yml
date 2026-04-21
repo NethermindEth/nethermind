@@ -557,10 +557,10 @@ jobs:
               ' \
             > "${flags_file}"
 
-          if ! command -v yq >/dev/null 2>&1; then
-            echo "Installing yq..."
-            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o /usr/local/bin/yq
-            chmod +x /usr/local/bin/yq
+          YQ="${RUNNER_TEMP}/yq"
+          if [[ ! -x "${YQ}" ]]; then
+            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
+            chmod +x "${YQ}"
           fi
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
@@ -574,7 +574,7 @@ jobs:
           scenario_key="${SCENARIO_NAME}"
           while IFS= read -r flag; do
             [[ -z "${flag}" ]] && continue
-            yq -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
@@ -1621,10 +1621,10 @@ jobs:
               ' \
             > "${flags_file}"
 
-          if ! command -v yq >/dev/null 2>&1; then
-            echo "Installing yq..."
-            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o /usr/local/bin/yq
-            chmod +x /usr/local/bin/yq
+          YQ="${RUNNER_TEMP}/yq"
+          if [[ ! -x "${YQ}" ]]; then
+            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
+            chmod +x "${YQ}"
           fi
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
@@ -1638,7 +1638,7 @@ jobs:
           scenario_key="${SCENARIO_NAME}"
           while IFS= read -r flag; do
             [[ -z "${flag}" ]] && continue
-            yq -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
