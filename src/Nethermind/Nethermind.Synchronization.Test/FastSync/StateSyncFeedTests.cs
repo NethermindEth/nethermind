@@ -20,7 +20,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
