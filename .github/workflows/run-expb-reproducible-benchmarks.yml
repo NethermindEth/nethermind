@@ -2154,7 +2154,8 @@ jobs:
   generate-dottrace-reports:
     needs: [resolve, benchmark, benchmark-multi]
     if: >-
-      needs.resolve.outputs.dottrace == 'true'
+      always()
+      && needs.resolve.outputs.dottrace == 'true'
       && needs.resolve.outputs.should_run == 'true'
       && (needs.benchmark.result == 'success' || needs.benchmark-multi.result == 'success')
     runs-on: windows-latest
