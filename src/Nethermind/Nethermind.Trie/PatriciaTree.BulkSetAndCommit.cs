@@ -95,15 +95,18 @@ public partial class PatriciaTree
     }
 
     /// <summary>
-    /// Seals, hashes, and optionally persists the root. Called at end of BulkSetAndCommit entrypoints.
-    /// At this point <paramref name="root"/> has been hashed (Keccak != null) by the recursion but is
-    /// not yet sealed. Caller is responsible for setting RootRef and SetRootHash after committer disposes.
+    /// Hashes, seals, and optionally persists the root. Called at end of BulkSetAndCommit entrypoints.
+    /// The recursion deliberately leaves <paramref name="root"/> un-hashed and un-sealed — Keccak is
+    /// computed here, right before Seal+CommitNode, so we don't hash intermediate nodes that
+    /// MaybeCombineNode might later discard. Caller is responsible for setting RootRef and
+    /// SetRootHash after the committer disposes.
     /// </summary>
     private void FinalizeRoot(ICommitter committer, ref TreePath path, TrieNode? root, bool skipRoot)
     {
         if (root is null || !root.IsDirty)
             return;
 
+        root.ResolveKey(TrieStore, ref path, _bufferPool, canBeParallel: path.Length == 0);
         root.Seal();
         if (!skipRoot && root.FullRlp.Length >= 32)
             committer.CommitNode(ref path, root);
@@ -259,10 +262,10 @@ public partial class PatriciaTree
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
-                // BulkSetAndCommit computes Keccak on returned nodes, so we cannot rely solely on
-                // ShouldUpdateChild's "Keccak is null" heuristic to detect in-place mutations.
-                // Also propagate when newChild is dirty (was created/mutated in this operation).
-                if (!ShouldUpdateChild(originalNode, child, newChild) && (newChild is null || !newChild.IsDirty)) continue;
+                // Check IsDirty first — it's the cheap/fast filter: any new-or-mutated node is dirty.
+                // ShouldUpdateChild's "Keccak is null" heuristic is insufficient because BulkSetAndCommit
+                // resolves Keccak on returned nodes, so a mutated node can still compare "clean" by Keccak.
+                if ((newChild is null || !newChild.IsDirty) && !ShouldUpdateChild(originalNode, child, newChild)) continue;
 
                 if (newChild is null)
                     hasRemove = true;
@@ -306,7 +309,7 @@ public partial class PatriciaTree
                         ref path, child, flipCount, flags);
                 }
 
-                if (!ShouldUpdateChild(originalNode, child, newChild) && (newChild is null || !newChild.IsDirty))
+                if ((newChild is null || !newChild.IsDirty) && !ShouldUpdateChild(originalNode, child, newChild))
                     continue;
 
                 if (newChild is null)
@@ -330,9 +333,10 @@ public partial class PatriciaTree
             node = MaybeCombineNode(ref path, node, originalNode);
 
         // Commit surviving dirty children (those from our recursion, identified by IsDirty).
+        // ResolveKey is called right before Seal+CommitNode — never earlier — so nodes discarded
+        // by MaybeCombineNode above never pay the hashing cost.
         // Pre-existing committed nodes are sealed (IsDirty == false) and skipped by TryGetDirtyChild.
         // Nodes dropped by MaybeCombineNode are no longer reachable — never committed. No orphan writes.
-        // Note: call ResolveKey before Seal — MakeFakeBranch children may not have Keccak computed yet.
         if (node is not null && node.IsDirty)
         {
             if (node.IsBranch)
@@ -372,18 +376,19 @@ public partial class PatriciaTree
                 path.TruncateMut(prev);
             }
             // Leaf: no children to commit.
-
-            // Hash self — caller seals and commits (invariant C).
-            node.ResolveKey(TrieStore, ref path, _bufferPool, canBeParallel: path.Length == 0);
         }
 
+        // Leave node un-hashed: caller's commit loop (or FinalizeRoot) calls ResolveKey immediately
+        // before sealing/committing, so if node gets absorbed by the caller's MaybeCombineNode the
+        // Keccak cost is avoided.
         return node;
     }
 
     /// <summary>
-    /// Walks a dirty subtree (e.g. from BulkSetOne / SetNew, or a pre-existing dirty root)
-    /// and commits all descendants bottom-up; hashes the top-level <paramref name="node"/> but
-    /// does NOT seal it. The caller seals and commits <paramref name="node"/>.
+    /// Walks a dirty subtree (e.g. from BulkSetOne / SetNew, or a pre-existing dirty root) and
+    /// commits every descendant bottom-up. Leaves <paramref name="node"/> itself un-hashed and
+    /// un-sealed — the caller calls ResolveKey right before Seal+CommitNode, so nodes absorbed
+    /// by a parent's MaybeCombineNode never pay the hashing cost.
     /// </summary>
     private void HashAndCommitDescendants(
         ICommitter committer, ref TreePath path,
@@ -401,6 +406,7 @@ public partial class PatriciaTree
                 {
                     path.SetLast(i);
                     HashAndCommitDescendants(committer, ref path, child, null);
+                    child.ResolveKey(TrieStore, ref path, _bufferPool, canBeParallel: false);
                     child.Seal();
                     if (child.FullRlp.Length >= 32)
                     {
@@ -418,6 +424,7 @@ public partial class PatriciaTree
             if (node.TryGetDirtyChild(0, out TrieNode? child))
             {
                 HashAndCommitDescendants(committer, ref path, child, null);
+                child.ResolveKey(TrieStore, ref path, _bufferPool, canBeParallel: false);
                 child.Seal();
                 if (child.FullRlp.Length >= 32)
                 {
@@ -428,10 +435,7 @@ public partial class PatriciaTree
             }
             path.TruncateMut(prev);
         }
-        // Leaf: terminal, no children.
-
-        // Hash self; caller seals and commits.
-        node.ResolveKey(TrieStore, ref path, _bufferPool, canBeParallel: path.Length == 0);
+        // Leaf: terminal, no children. Caller hashes/seals/commits.
     }
 
     private sealed class SynchronizedCommitter(ICommitter inner) : ICommitter
@@ -445,10 +449,13 @@ public partial class PatriciaTree
         }
     }
 
-    // Prevents pruning (TrieNode → Hash256 replacement) of nodes committed mid-recursion.
-    // Nodes are written to the in-flight write batch but the batch is not flushed until Dispose,
-    // so setting IsPersisted=true would cause GetChildWithChildPath to prune references that
-    // cannot yet be reloaded from the backing store.
+    // The fused descent commits nodes into the write batch while still walking the tree via
+    // GetChildWithChildPath (e.g. inside MaybeCombineNode). That walk has a pruning optimization
+    // (TrieNode.cs: "if (child?.IsPersisted == true && !keepChildRef && childPath.Length > 4 ...)
+    // UnresolveChild(...)") which drops the in-memory TrieNode, expecting the node to be
+    // reloadable from the backing store. But the write batch hasn't been flushed yet — ResolveNode
+    // would throw MissingTrieNodeException. Keep IsPersisted=false until the batch flushes on
+    // Dispose so the pruning branch doesn't fire for nodes committed in this same descent.
     private sealed class NonPruningCommitter(ICommitter inner) : ICommitter
     {
         public void Dispose() => inner.Dispose();
