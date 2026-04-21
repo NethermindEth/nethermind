@@ -384,7 +384,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
     {
         AccessList? accessList = transaction.AccessList;
@@ -440,11 +439,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         if (spec.IsEip7976Enabled)
         {
             long floorTokensInCallData = transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
-            return GasCostOf.Transaction + floorTokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7976;
+            return GasCostOf.Transaction + floorTokensInCallData * spec.GasCosts.TotalCostFloorPerToken;
         }
         else if (spec.IsEip7623Enabled)
         {
-            return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
+            return GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken;
         }
 
         return 0L;
