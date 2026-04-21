@@ -116,6 +116,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private readonly int _errorMargin = rpcConfig.EstimateErrorMargin;
 
+            public override ResultWrapper<UInt256?> Execute(
+                TransactionForRpc transactionCall,
+                BlockParameter? blockParameter,
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                SearchResult<BlockHeader>? searchResult = null)
+            {
+                // Match Geth: when no gas is specified, binary search is bounded by blockGasLimit (then
+                // capped at gasCap by EnsureDefaults). eth_call uses gasCap directly because it is a
+                // pure simulation; estimateGas is computing gas for a real transaction that must fit in a block.
+                if (transactionCall.Gas is null)
+                {
+                    searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+                    if (!searchResult.Value.IsError)
+                        transactionCall.Gas = searchResult.Value.Object!.GasLimit;
+                }
+                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
+            }
+
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
