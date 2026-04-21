@@ -15,15 +15,6 @@ namespace Nethermind.Xdc.TxPool;
 
 internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IBlockTree blockTree, ISpecProvider specProvider) : IIncomingTxFilter
 {
-    private (long, IXdcReleaseSpec) GetSpecAndHeader()
-    {
-        XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
-        long currentHeaderNumber = header.Number + 1;
-        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(currentHeaderNumber);
-
-        return (currentHeaderNumber, xdcSpec);
-    }
-
     private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
     {
         if (tx.Data.Length < XdcConstants.SignTransactionDataLength)
@@ -43,7 +34,12 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        (long headerNumber, IXdcReleaseSpec spec) = GetSpecAndHeader();
+        if (blockTree.Head is null)
+            return AcceptTxResult.Syncing;
+
+        XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
+        long headerNumber = header.Number + 1;
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(headerNumber);
 
         if (!tx.IsSpecialTransaction(spec))
         {
