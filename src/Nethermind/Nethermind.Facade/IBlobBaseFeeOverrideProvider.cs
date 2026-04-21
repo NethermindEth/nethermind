@@ -5,7 +5,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade;
 
-public class SingleCallRequestState : IBlobBaseFeeOverrideProvider
+public interface IBlobBaseFeeOverrideProvider
 {
-    public UInt256? BlobBaseFeeOverride { get; set; }
+    UInt256? BlobBaseFeeOverride { get; }
 }

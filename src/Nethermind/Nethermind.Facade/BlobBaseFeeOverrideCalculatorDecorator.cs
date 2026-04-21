@@ -8,9 +8,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade;
 
-public class SingleCallBlobBaseFeeCalculatorDecorator(
+public class BlobBaseFeeOverrideCalculatorDecorator(
     ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculatorBase,
-    SingleCallRequestState requestState) : ITransactionProcessor.IBlobBaseFeeCalculator
+    IBlobBaseFeeOverrideProvider overrideProvider) : ITransactionProcessor.IBlobBaseFeeCalculator
 {
     public bool TryCalculateBlobBaseFee(
         BlockHeader header,
@@ -18,11 +18,11 @@ public class SingleCallBlobBaseFeeCalculatorDecorator(
         UInt256 blobGasPriceUpdateFraction,
         out UInt256 blobBaseFee)
     {
-        if (requestState.BlobBaseFeeOverride is not null)
+        if (overrideProvider.BlobBaseFeeOverride is not null)
         {
             return !UInt256.MultiplyOverflow(
                 BlobGasCalculator.CalculateBlobGas(transaction),
-                requestState.BlobBaseFeeOverride.Value,
+                overrideProvider.BlobBaseFeeOverride.Value,
                 out blobBaseFee);
         }
 

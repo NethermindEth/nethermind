@@ -156,7 +156,7 @@ namespace Nethermind.Facade
 
             CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
-                callOutputTracer.WithCancellation(cancellationToken), blobBaseFeeOverride);
+                callOutputTracer.WithCancellation(cancellationToken));
 
             return new CallOutput
             {
@@ -196,7 +196,7 @@ namespace Nethermind.Facade
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
-                estimateGasTracer.WithCancellation(cancellationToken), blobBaseFeeOverride);
+                estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
 
@@ -232,7 +232,7 @@ namespace Nethermind.Facade
             components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
-                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken), blobBaseFeeOverride);
+                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput
             {
@@ -250,12 +250,11 @@ namespace Nethermind.Facade
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer,
-            UInt256? blobBaseFeeOverride = null)
+            ITxTracer tracer)
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components, blobBaseFeeOverride);
+                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components);
             }
             catch (InsufficientBalanceException)
             {
@@ -268,8 +267,7 @@ namespace Nethermind.Facade
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
-            BlockProcessingComponents components,
-            UInt256? blobBaseFeeOverride = null)
+            BlockProcessingComponents components)
         {
             transaction.SenderAddress ??= Address.Zero;
 
@@ -292,6 +290,7 @@ namespace Nethermind.Facade
                 : blockHeader.BaseFeePerGas;
 
             UInt256 blobBaseFee = UInt256.Zero;
+            UInt256? blobBaseFeeOverride = components.RequestState.BlobBaseFeeOverride;
 
             if (releaseSpec.IsEip4844Enabled)
             {
@@ -477,7 +476,8 @@ namespace Nethermind.Facade
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddModule(env)
                 .AddScoped<SingleCallRequestState>()
-                .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, SingleCallBlobBaseFeeCalculatorDecorator>()
+                .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
+                .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Split it out to isolate the world state and processing components
