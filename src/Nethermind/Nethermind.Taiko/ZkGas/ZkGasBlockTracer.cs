@@ -12,23 +12,11 @@ namespace Nethermind.Taiko.ZkGas;
 /// ZK gas metering via <see cref="ZkGasTxTracer"/> for every transaction.
 /// A fresh <see cref="ZkGasMeter"/> is created for each block.
 /// </summary>
-public sealed class ZkGasBlockTracer : IBlockTracer
+public sealed class ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null) : IBlockTracer
 {
-    private readonly IBlockTracer _inner;
-    private readonly ZkGasMeterHolder? _holder;
+    private readonly IBlockTracer _inner = inner;
+    private readonly ZkGasMeterHolder? _holder = holder;
     private ZkGasMeter _meter = new();
-
-    /// <summary>
-    /// Wraps <paramref name="inner"/> with ZK gas metering.
-    /// An optional <paramref name="holder"/> is updated with the current meter at the
-    /// start of each block so that the block-transactions executor can observe
-    /// <see cref="ZkGasMeter.IsLimitExceeded"/> between transactions.
-    /// </summary>
-    public ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null)
-    {
-        _inner = inner;
-        _holder = holder;
-    }
 
     /// <summary>The ZK gas meter for the current block.</summary>
     public ZkGasMeter Meter => _meter;

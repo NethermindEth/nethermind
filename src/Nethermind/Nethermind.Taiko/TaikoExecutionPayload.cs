@@ -40,10 +40,7 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     /// <summary>
     /// Creates a <see cref="TaikoExecutionPayload"/> from a <see cref="Block"/>.
     /// </summary>
-    public new static TaikoExecutionPayload Create(Block block)
-    {
-        return Create<TaikoExecutionPayload>(block);
-    }
+    public new static TaikoExecutionPayload Create(Block block) => Create<TaikoExecutionPayload>(block);
 
     public new byte[][]? Transactions
     {

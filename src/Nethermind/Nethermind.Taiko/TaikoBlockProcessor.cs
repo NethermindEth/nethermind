@@ -30,41 +30,33 @@ namespace Nethermind.Taiko;
 /// and recalculates the block hash. Rejects blocks (during validation) whose execution
 /// would exceed the ZK gas block limit.
 /// </summary>
-public class TaikoBlockProcessor : BlockProcessor
+public class TaikoBlockProcessor(
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IRewardCalculator rewardCalculator,
+    IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+    IWorldState stateProvider,
+    IReceiptStorage receiptStorage,
+    IBeaconBlockRootHandler beaconBlockRootHandler,
+    IBlockhashStore blockHashStore,
+    ILogManager logManager,
+    IWithdrawalProcessor withdrawalProcessor,
+    IExecutionRequestsProcessor executionRequestsProcessor,
+    ZkGasMeterHolder zkGasMeterHolder)
+    : BlockProcessor(
+        specProvider,
+        blockValidator,
+        rewardCalculator,
+        blockTransactionsExecutor,
+        stateProvider,
+        receiptStorage,
+        beaconBlockRootHandler,
+        blockHashStore,
+        logManager,
+        withdrawalProcessor,
+        executionRequestsProcessor)
 {
-    private readonly ZkGasMeterHolder _zkGasMeterHolder;
-
-    /// <summary>
-    /// Creates a new Taiko block processor with ZK gas metering.
-    /// </summary>
-    public TaikoBlockProcessor(
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        IRewardCalculator rewardCalculator,
-        IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-        IWorldState stateProvider,
-        IReceiptStorage receiptStorage,
-        IBeaconBlockRootHandler beaconBlockRootHandler,
-        IBlockhashStore blockHashStore,
-        ILogManager logManager,
-        IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor,
-        ZkGasMeterHolder zkGasMeterHolder)
-        : base(
-            specProvider,
-            blockValidator,
-            rewardCalculator,
-            blockTransactionsExecutor,
-            stateProvider,
-            receiptStorage,
-            beaconBlockRootHandler,
-            blockHashStore,
-            logManager,
-            withdrawalProcessor,
-            executionRequestsProcessor)
-    {
-        _zkGasMeterHolder = zkGasMeterHolder;
-    }
+    private readonly ZkGasMeterHolder _zkGasMeterHolder = zkGasMeterHolder;
 
     /// <summary>
     /// Wraps the incoming block tracer with ZK gas metering, delegates to

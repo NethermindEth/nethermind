@@ -245,7 +245,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        var taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
 
         if (taikoSpec.IsUzenEnabled)
         {
@@ -272,7 +272,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
     {
-        var taikoSpec = (ITaikoReleaseSpec)spec;
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
         if (taikoSpec.IsUzenEnabled)
         {
@@ -285,7 +285,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
     {
-        var taikoSpec = (ITaikoReleaseSpec)spec;
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
         if (taikoSpec.IsUzenEnabled)
         {

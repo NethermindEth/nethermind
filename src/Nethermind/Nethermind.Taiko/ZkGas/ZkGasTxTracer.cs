@@ -57,7 +57,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Captures the opcode and pre-execution gas for the current step.
     /// Flushes any previously deferred spawn opcode charge first.
     /// </summary>
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         FlushDeferredStep();
 

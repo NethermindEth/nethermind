@@ -25,10 +25,7 @@ public class ZkGasMeter
     public ulong TxZkGasUsed => _txZkGasUsed;
 
     /// <summary>Resets the in-flight ZK gas for the current transaction.</summary>
-    public void ResetTransaction()
-    {
-        _txZkGasUsed = 0;
-    }
+    public void ResetTransaction() => _txZkGasUsed = 0;
 
     /// <summary>
     /// Promotes the current transaction's ZK gas into the finalized block total.

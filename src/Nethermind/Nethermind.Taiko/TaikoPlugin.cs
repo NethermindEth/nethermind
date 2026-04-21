@@ -182,6 +182,7 @@ public class TaikoModule : Module
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
             .AddSingleton<IRlpValueDecoder<Transaction>>((_) => Rlp.GetValueDecoder<Transaction>()!)
+            .AddSingleton<IRlpStreamEncoder<Transaction>>((_) => TxDecoder.Instance)
             .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, ISpecProvider, IRlpValueDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
             .AddSingleton<IHealthHintService, IBlocksConfig>(blocksConfig =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))

@@ -137,7 +137,7 @@ public class TaikoPayloadPreparationService(
             TotalDifficulty = UInt256.Zero,
         };
 
-        var taikoSpec = (ITaikoReleaseSpec)specProvider.GetSpec(header);
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)specProvider.GetSpec(header);
         if (taikoSpec.IsUzenEnabled)
         {
             header.BlobGasUsed = 0;

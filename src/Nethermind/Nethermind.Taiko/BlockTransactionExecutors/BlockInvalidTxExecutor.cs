@@ -19,7 +19,7 @@ namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ZkGasMeterHolder? zkGasMeterHolder = null) : IBlockProcessor.IBlockTransactionsExecutor
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockInvalidTxExecutor>();
 
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)

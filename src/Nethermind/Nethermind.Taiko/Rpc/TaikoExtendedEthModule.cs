@@ -17,7 +17,7 @@ public class TaikoExtendedEthModule(
     IL1OriginStore l1OriginStore,
     IBlockFinder blockFinder) : ITaikoExtendedEthRpcModule
 {
-    private static readonly ResultWrapper<L1Origin?> L1OriginNotFound = ResultWrapper<L1Origin?>.Fail("not found");
+    internal static readonly ResultWrapper<L1Origin?> L1OriginNotFound = ResultWrapper<L1Origin?>.Fail("not found");
     private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
 
     public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(syncConfig switch
@@ -114,11 +114,9 @@ public class TaikoExtendedEthModule(
         return null;
     }
 
-    private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data)
-    {
-        return data.Length >= 4 && (AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4])
+    private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data) =>
+        data.Length >= 4 && (AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4])
             || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(data.Span[..4]));
-    }
 
     private static UInt256? ExtractAnchorV4ProposalId(ReadOnlyMemory<byte> data)
     {
@@ -133,7 +131,7 @@ public class TaikoExtendedEthModule(
         }
 
         ReadOnlySpan<byte> args = data.Span[selectorLength..];
-        var offset = new UInt256(args[..dataLength], true);
+        UInt256 offset = new(args[..dataLength], true);
 
         // Check if the offset is invalid
         if (offset > int.MaxValue || offset + dataLength > args.Length)

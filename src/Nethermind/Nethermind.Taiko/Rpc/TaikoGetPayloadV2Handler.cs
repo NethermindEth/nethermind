@@ -29,7 +29,7 @@ public class TaikoGetPayloadV2Handler(
     protected override GetPayloadV2Result GetPayloadResultFromBlock(IBlockProductionContext context)
     {
         Block block = context.CurrentBestBlock!;
-        var spec = (ITaikoReleaseSpec)_taikoSpecProvider.GetSpec(block.Header);
+        ITaikoReleaseSpec spec = (ITaikoReleaseSpec)_taikoSpecProvider.GetSpec(block.Header);
 
         // For Uzen, carry header difficulty through blockValue (matches alethia-reth behavior).
         // The driver reads blockValue from the standard ExecutionPayloadEnvelopeV2.
@@ -45,14 +45,9 @@ public class TaikoGetPayloadV2Handler(
 /// Header difficulty is carried solely through blockValue in the envelope,
 /// matching alethia-reth behavior.
 /// </summary>
-public class TaikoGetPayloadV2Result : GetPayloadV2Result
+public class TaikoGetPayloadV2Result(Block block, UInt256 blockFees) : GetPayloadV2Result(block, blockFees)
 {
-    public TaikoGetPayloadV2Result(Block block, UInt256 blockFees) : base(block, blockFees)
-    {
-        _taikoPayload = TaikoExecutionPayload.Create(block);
-    }
-
-    private readonly TaikoExecutionPayload _taikoPayload;
+    private readonly TaikoExecutionPayload _taikoPayload = TaikoExecutionPayload.Create(block);
 
     public override ExecutionPayload ExecutionPayload => _taikoPayload;
 
