@@ -50,6 +50,8 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
             return AcceptTxResult.Accepted;
         }
 
+        tx.IsServiceTransaction = true;
+
         if (tx.IsSignTransaction(spec))
         {
             AcceptTxResult result = ValidateSignTransaction(tx, headerNumber, spec);

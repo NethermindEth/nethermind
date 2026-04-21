@@ -45,7 +45,6 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
         transaction.GasPrice = 0;
         transaction.Data = inputData;
         transaction.SenderAddress = sender;
-        transaction.IsServiceTransaction =  true;
 
         transaction.Type = TxType.Legacy;
 

@@ -45,9 +45,7 @@ namespace Nethermind.Consensus.Producers
             long blockNumber = parent.Number + 1;
             IReleaseSpec spec = NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
-                _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
-                _transactionPool.GetPendingTransactionsBySender();
+            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = GetPendingTransactions(parent, filterSource, baseFee);
             IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
@@ -379,6 +377,11 @@ namespace Nethermind.Consensus.Producers
 
             return true;
         }
+
+        protected virtual IDictionary<AddressAsKey, Transaction[]> GetPendingTransactions(BlockHeader parent, bool filterSource, UInt256 baseFee) =>
+            filterSource
+                ? _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee)
+                : _transactionPool.GetPendingTransactionsBySender();
 
         protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
             Order(pendingTransactions, comparer, filter, gasLimit);
