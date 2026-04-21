@@ -3,7 +3,6 @@
 
 using System;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -115,9 +114,10 @@ public partial class PatriciaTree
     /// <summary>
     /// Fused recursive worker.
     ///
-    /// Invariant on return: all strict descendants of the returned node have been committed;
-    /// the returned node itself has its Keccak computed (ResolveKey called) but is NOT yet
-    /// sealed and NOT yet committed. The caller (or the public entrypoint) seals and commits it.
+    /// Invariant on return: all strict descendants of the returned node have been committed.
+    /// The returned node itself is left un-hashed, un-sealed, and un-committed — the caller's
+    /// commit loop (or FinalizeRoot) calls ResolveKey+Seal+CommitNode right before it's needed,
+    /// so nodes absorbed by a parent's MaybeCombineNode never pay the hashing cost.
     /// </summary>
     private TrieNode? BulkSetAndCommit(
         in Context ctx,
