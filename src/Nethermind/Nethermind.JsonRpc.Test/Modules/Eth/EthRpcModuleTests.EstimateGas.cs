@@ -567,47 +567,59 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Estimate_gas_block_override_gasLimit_bounds_estimation()
     {
-        // blockOverride.gasLimit=50000 caps the Gas default.
-        // The stateOverride deploys a contract with two cold SSTOREs (~40000 execution gas).
-        // Total needed ≈ 61000 (21000 intrinsic + 40000 execution) > 50000 cap,
-        // so estimation must return "gas required exceeds allowance (50000)".
+        // blockOverride.gasLimit=50000 caps the gas budget.
+        // Contract creation always costs at least 21000 (intrinsic) + 32000 (TxCreate) = 53000,
+        // which exceeds the 50000 cap.
         using Context ctx = await Context.Create();
 
-        // bytecode: PUSH1 1 PUSH1 0 SSTORE  PUSH1 2 PUSH1 1 SSTORE  STOP
-        // = 60 01 60 00 55 60 02 60 01 55 00 — two cold SSTOREs ≈ 40012 execution gas
-        const string contractAddress = "0xc200000000000000000000000000000000000001";
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            "{\"" + contractAddress + "\":{\"code\":\"0x600160005560026001550\"}}");
+        // Bytecode from the equivalent geth test: constructor that checks basefee/gasprice.
+        const string initBytecode = "0x6080604052348015600f57600080fd5b50483a1015601c57600080fd5b60003a111560315760004811603057600080fd5b5b603f80603e6000396000f3fe6080604052600080fdfea264697066735822122060729c2cee02b10748fae5200f1c9da4661963354973d9154c13a8e9ce9dee1564736f6c63430008130033";
         object? transaction = JsonSerializer.Deserialize<object>(
-            "{\"from\":\"" + TestItem.AddressA + "\",\"to\":\"" + contractAddress + "\"}");
+            "{\"from\":\"" + TestItem.AddressA + "\",\"data\":\"" + initBytecode + "\"}");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            "{\"" + TestItem.AddressA + "\":{\"balance\":\"0xde0b6b3a7640000\"}}"); // 1 ETH
         object? blockOverride = JsonSerializer.Deserialize<object>("""{"gasLimit":"0xC350"}"""); // 50000
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
         JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().StartWith("gas required exceeds allowance (50000)");
+            .Should().BeEquivalentTo("gas limit below intrinsic gas");
     }
 
     [Test]
     public async Task Estimate_gas_block_override_blobBaseFee_rejects_insufficient_maxFeePerBlobGas()
     {
-        // blockOverride.blobBaseFee=2 while the tx only offers MaxFeePerBlobGas=1.
-        // Estimation must be rejected with an InsufficientMaxFeePerBlobGas error.
-        using Context ctx = await Context.Create();
+        using Context ctx = await Context.CreateWithCancunEnabled();
 
+        // Valid blob versioned hash (must start with 0x01 for KZG)
         byte[] validHash = new byte[32];
-        validHash[0] = 0x01; // KZG version byte
+        validHash[0] = 0x01;
 
         object? transaction = JsonSerializer.Deserialize<object>(
-            "{\"from\":\"" + TestItem.AddressA + "\","
-            + "\"to\":\"" + TestItem.AddressB + "\","
+            "{"
+            + $"\"from\":\"{TestItem.AddressA}\","
+            + $"\"to\":\"{TestItem.AddressB}\","
             + "\"type\":\"0x03\","
             + "\"maxFeePerBlobGas\":\"0x1\","
-            + "\"blobVersionedHashes\":[\"0x" + validHash.ToHexString() + "\"]}");
-        object? blockOverride = JsonSerializer.Deserialize<object>("""{"blobBaseFee":"0x2"}""");
+            + $"\"blobVersionedHashes\":[\"0x{validHash.ToHexString()}\"]"
+            + "}");
 
-        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", null, blockOverride);
-        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().Contain("InsufficientMaxFeePerBlobGas");
+        // Force blob base fee higher than tx cap
+        object? blockOverride = JsonSerializer.Deserialize<object>(
+            """{"blobBaseFee":"0x2"}"""
+        );
+
+        string serialized = await ctx.Test.TestEthRpc(
+            "eth_estimateGas",
+            transaction,
+            "latest",
+            null,
+            blockOverride
+        );
+
+        string error = JToken.Parse(serialized)["error"]!["message"]!.Value<string>()!;
+
+
+        error.Should().Contain("MaxFeePerBlobGas");
     }
 
 }

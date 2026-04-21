@@ -149,13 +149,14 @@ namespace Nethermind.Facade
             return blockHash is not null ? receiptStorage.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
             CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
-                callOutputTracer.WithCancellation(cancellationToken));
+                callOutputTracer.WithCancellation(cancellationToken), blobBaseFeeOverride);
 
             return new CallOutput
             {
@@ -175,10 +176,11 @@ namespace Nethermind.Facade
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
+            components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
             // Cap tx.GasLimit to the sender's affordable allowance before the initial probe,
             // mirroring Geth's hi = min(hi, (balance - value) / gasFeeCap). This ensures BuyGas
@@ -194,7 +196,7 @@ namespace Nethermind.Facade
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
-                estimateGasTracer.WithCancellation(cancellationToken));
+                estimateGasTracer.WithCancellation(cancellationToken), blobBaseFeeOverride);
 
             GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
 
@@ -216,7 +218,7 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken, bool optimize)
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             AccessTxTracer accessTxTracer = optimize
                 ? new(tx.SenderAddress,
@@ -227,9 +229,10 @@ namespace Nethermind.Facade
 
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
+            components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
-                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
+                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken), blobBaseFeeOverride);
 
             return new CallOutput
             {
@@ -247,11 +250,12 @@ namespace Nethermind.Facade
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer)
+            ITxTracer tracer,
+            UInt256? blobBaseFeeOverride = null)
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components);
+                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components, blobBaseFeeOverride);
             }
             catch (InsufficientBalanceException)
             {
@@ -264,7 +268,8 @@ namespace Nethermind.Facade
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
-            BlockProcessingComponents components)
+            BlockProcessingComponents components,
+            UInt256? blobBaseFeeOverride = null)
         {
             transaction.SenderAddress ??= Address.Zero;
 
@@ -296,6 +301,9 @@ namespace Nethermind.Facade
                     : blockHeader.ExcessBlobGas;
 
                 BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+
+                if (blobBaseFeeOverride.HasValue)
+                    blobBaseFee = blobBaseFeeOverride.Value;
 
                 if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null)
                 {
@@ -446,7 +454,8 @@ namespace Nethermind.Facade
         public record BlockProcessingComponents(
             IStateReader StateReader,
             ITransactionProcessor TransactionProcessor,
-            IWorldState WorldState
+            IWorldState WorldState,
+            SingleCallRequestState RequestState
         );
     }
 
@@ -467,6 +476,8 @@ namespace Nethermind.Facade
 
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddModule(env)
+                .AddScoped<SingleCallRequestState>()
+                .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, SingleCallBlobBaseFeeCalculatorDecorator>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Split it out to isolate the world state and processing components

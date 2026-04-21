@@ -31,7 +31,13 @@ public class BlockOverride
         }
 
         if (Number is not null) result.Number = (long)Number.Value;
-        if (FeeRecipient is not null) result.Beneficiary = FeeRecipient;
+        if (FeeRecipient is not null)
+        {
+            // Set Author as well because GasBeneficiary = Author ?? Beneficiary.
+            // Mirrors geth: blockCtx.Coinbase = *o.FeeRecipient.
+            result.Author = FeeRecipient;
+            result.Beneficiary = FeeRecipient;
+        }
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
         if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
     }
