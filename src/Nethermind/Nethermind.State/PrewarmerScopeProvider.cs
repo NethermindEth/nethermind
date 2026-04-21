@@ -60,7 +60,11 @@ public class PrewarmerScopeProvider(
         private void CancelBal()
         {
             _balCts?.Cancel();
-            _balTask?.GetAwaiter().GetResult();
+            try
+            {
+                _balTask?.GetAwaiter().GetResult();
+            }
+            catch { }
             _balTask = null;
         }
 
@@ -181,7 +185,22 @@ public class PrewarmerScopeProvider(
             _balCts = new CancellationTokenSource();
             CacheSink cacheSink = new(preBlockCache, storageCache);
             CancellationToken token = _balCts.Token;
-            _balTask = Task.Run(() => baseScope.ReadBalAsync(bal, cacheSink, token));
+            _balTask = Task.Run(() =>
+            {
+                try
+                {
+                    baseScope.ReadBalAsync(bal, cacheSink, token);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(ex);
+                }
+            });
+
+            // Trie warmup runs alongside cache population — baseScope.HintBal spawns its own task
+            // on the flat scope and is a no-op on the trie scope.
+            baseScope.HintBal(bal);
         }
 
         public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
