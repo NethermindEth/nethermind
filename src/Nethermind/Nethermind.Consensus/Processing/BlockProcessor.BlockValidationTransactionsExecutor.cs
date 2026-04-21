@@ -53,20 +53,9 @@ public partial class BlockProcessor
             static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
         }
 
-        private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-            => ProcessTransaction(transactionProcessor, _stateProvider, block, currentTx, index, receiptsTracer, processingOptions, _transactionProcessedEventHandler);
-
-        protected virtual void ProcessTransaction(
-            ITransactionProcessorAdapter transactionProcessor,
-            IWorldState stateProvider,
-            Block block,
-            Transaction currentTx,
-            int index,
-            BlockReceiptsTracer receiptsTracer,
-            ProcessingOptions processingOptions,
-            ITransactionProcessedEventHandler? transactionProcessedEventHandler)
+        protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
-            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
             _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
         }
