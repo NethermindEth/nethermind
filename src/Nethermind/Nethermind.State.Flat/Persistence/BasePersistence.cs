@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -62,9 +63,31 @@ public static class BasePersistence
     }
 
     /// <summary>
+    /// Initializes a per-persistence "layout already persisted" flag from the current state of the
+    /// metadata column. Concrete persistences should pass the result to <see cref="RecordLayoutOnFirstBatch"/>
+    /// in their write-batch disposer to atomically record the layout alongside the first real batch.
+    /// </summary>
+    internal static int InitLayoutPersistedFlag(IColumnsDb<FlatDbColumns> db) =>
+        ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)) is null ? 0 : 1;
+
+    /// <summary>
+    /// Records the configured <see cref="FlatLayout"/> in the metadata column the first time a batch
+    /// reaches its disposer. The write happens against the supplied batch's metadata column, so it is
+    /// committed atomically with the rest of the batch.
+    /// </summary>
+    internal static void RecordLayoutOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, FlatLayout layout)
+    {
+        if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
+        {
+            SetLayout(metadataBatch, layout);
+        }
+    }
+
+    /// <summary>
     /// Validates that the configured <see cref="FlatLayout"/> matches the one previously persisted in the
     /// flat DB's metadata column. Throws <see cref="InvalidConfigurationException"/> on mismatch. On a fresh
-    /// (or pre-feature legacy) DB nothing is written here — the layout is recorded on the first write batch.
+    /// (or pre-feature legacy) DB nothing is written here — the layout is recorded on the first write batch
+    /// by the concrete persistence implementation.
     /// </summary>
     public static void EnsureLayout(IColumnsDb<FlatDbColumns> db, FlatLayout configured)
     {

@@ -98,8 +98,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
-                IColumnsDb<FlatDbColumns> flatDb = ctx.Resolve<IColumnsDb<FlatDbColumns>>();
-                BasePersistence.EnsureLayout(flatDb, flatDbConfig.Layout);
+                BasePersistence.EnsureLayout(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), flatDbConfig.Layout);
 
                 IPersistence persistence = flatDbConfig.Layout switch
                 {
@@ -108,8 +107,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.PreimageFlat => ctx.Resolve<PreimageRocksdbPersistence>(),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
-
-                persistence = new LayoutRecordingPersistence(persistence, flatDb, flatDbConfig.Layout);
 
                 if (flatDbConfig.EnablePreimageRecording)
                 {

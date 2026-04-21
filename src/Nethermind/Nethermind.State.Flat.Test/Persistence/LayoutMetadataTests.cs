@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Persistence;
@@ -76,44 +73,46 @@ public class LayoutMetadataTests
         ex.Message.Should().Contain(configured.ToString());
     }
 
-    [TestCase(FlatLayout.Flat)]
-    [TestCase(FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.PreimageFlat)]
-    public void LayoutRecordingPersistence_WritesLayout_OnFirstWriteBatch(FlatLayout layout)
+    [Test]
+    public void InitLayoutPersistedFlag_ReturnsZero_OnFreshDb()
     {
         using MemColumnsDb<FlatDbColumns> db = new();
-        IPersistence inner = Substitute.For<IPersistence>();
-        inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<WriteFlags>())
-            .Returns(Substitute.For<IPersistence.IWriteBatch>());
-
-        LayoutRecordingPersistence sut = new(inner, db, layout);
-
-        BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)).Should().BeNull();
-
-        using (sut.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), WriteFlags.None)) { }
-
-        BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)).Should().Be(layout);
+        BasePersistence.InitLayoutPersistedFlag(db).Should().Be(0);
     }
 
     [Test]
-    public void LayoutRecordingPersistence_DoesNotRewrite_OnSubsequentWriteBatches()
+    public void InitLayoutPersistedFlag_ReturnsOne_WhenLayoutAlreadyStored()
     {
         using MemColumnsDb<FlatDbColumns> db = new();
         BasePersistence.SetLayout(db.GetColumnDb(FlatDbColumns.Metadata), FlatLayout.Flat);
+        BasePersistence.InitLayoutPersistedFlag(db).Should().Be(1);
+    }
 
-        IPersistence inner = Substitute.For<IPersistence>();
-        inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<WriteFlags>())
-            .Returns(Substitute.For<IPersistence.IWriteBatch>());
+    [TestCase(FlatLayout.Flat)]
+    [TestCase(FlatLayout.FlatInTrie)]
+    [TestCase(FlatLayout.PreimageFlat)]
+    public void RecordLayoutOnFirstBatch_WritesAndFlipsFlag_WhenZero(FlatLayout layout)
+    {
+        using MemColumnsDb<FlatDbColumns> db = new();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        int flag = 0;
 
-        // constructor sees a stored layout and marks the flag as already persisted
-        LayoutRecordingPersistence sut = new(inner, db, FlatLayout.Flat);
+        BasePersistence.RecordLayoutOnFirstBatch(metadata, ref flag, layout);
 
-        // tamper with the stored layout to a different value, then run a batch:
-        // the decorator must NOT overwrite because it already saw a stored value.
-        BasePersistence.SetLayout(db.GetColumnDb(FlatDbColumns.Metadata), FlatLayout.FlatInTrie);
+        flag.Should().Be(1);
+        BasePersistence.ReadLayout(metadata).Should().Be(layout);
+    }
 
-        using (sut.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), WriteFlags.None)) { }
+    [Test]
+    public void RecordLayoutOnFirstBatch_DoesNothing_WhenFlagAlreadySet()
+    {
+        using MemColumnsDb<FlatDbColumns> db = new();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        int flag = 1;
 
-        BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)).Should().Be(FlatLayout.FlatInTrie);
+        BasePersistence.RecordLayoutOnFirstBatch(metadata, ref flag, FlatLayout.FlatInTrie);
+
+        flag.Should().Be(1);
+        BasePersistence.ReadLayout(metadata).Should().BeNull();
     }
 }
