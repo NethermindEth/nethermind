@@ -490,7 +490,29 @@ namespace Nethermind.Evm.TransactionProcessing
             long minGasRequired = spec.IsEip8037Enabled
                 ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
                 : TGasPolicy.GetRemainingGas(in minimal);
-            return ValidateGas(tx, header, spec, minGasRequired);
+
+            TransactionResult gasResult = ValidateGas(tx, header, spec, minGasRequired);
+            if (!gasResult) return gasResult;
+
+            if (validate)
+            {
+                long gasUsedForAllowance = spec switch
+                {
+                    { IsEip8037Enabled: true } => _blockCumulativeRegularGas,
+                    { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
+                    _ => header.GasUsed,
+                };
+
+                long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
+                if (tx.GasLimit > maxTransactionGasLimit)
+                {
+                    string limitDescription = $"{header.GasLimit} - {gasUsedForAllowance}";
+                    TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
+                    return TransactionResult.BlockGasLimitExceeded;
+                }
+            }
+
+            return TransactionResult.Ok;
         }
 
         protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired)
@@ -499,21 +521,6 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
                 return TransactionResult.GasLimitBelowIntrinsicGas;
-            }
-
-            long gasUsedForAllowance = spec switch
-            {
-                { IsEip8037Enabled: true } => _blockCumulativeRegularGas,
-                { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
-                _ => header.GasUsed,
-            };
-
-            long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
-            if (tx.GasLimit > maxTransactionGasLimit)
-            {
-                string limitDescription = $"{header.GasLimit} - {gasUsedForAllowance}";
-                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
-                return TransactionResult.BlockGasLimitExceeded;
             }
 
             return TransactionResult.Ok;

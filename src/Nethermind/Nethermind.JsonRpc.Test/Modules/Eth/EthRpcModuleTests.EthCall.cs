@@ -520,6 +520,45 @@ public partial class EthRpcModuleTests
         gasAvailable.Should().BeGreaterThan(0);
     }
 
+    /// <summary>
+    /// Regression test for: when no gas is specified, Nethermind must default to gasCap, not the block gas
+    /// limit. On chains where gasCap &gt; blockGasLimit (e.g. Gnosis: gasCap=600M, blockGasLimit=17M),
+    /// calls that need more gas than the block limit were silently under-executing and returning wrong values.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+
+        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
+        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
+        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
+        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+
+        long gasCap = blockGasLimit * 10;
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns the gas available at the start of execution as a uint256.
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
+
+        // No gas field — should default to gasCap, not blockGasLimit.
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            """{"to":"0xc200000000000000000000000000000000000000"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        string result = JToken.Parse(serialized).Value<string>("result")!;
+        long gasAvailable = (long)Bytes.FromHexString(result).ToUInt256();
+
+        // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
+        // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
+        gasAvailable.Should().BeGreaterThan(blockGasLimit,
+            "gas available ({0}) should reflect gasCap ({1}), not block gas limit ({2})",
+            gasAvailable, gasCap, blockGasLimit);
+    }
+
     [Test]
     public async Task Eth_call_ignores_invalid_nonce()
     {
@@ -746,6 +785,6 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"Block gas limit exceeded\"}},\"id\":67}}");
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\",\"data\":\"0x\"}},\"id\":67}}");
     }
 }

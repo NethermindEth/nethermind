@@ -59,15 +59,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
 
-                // default to previous block gas if unspecified
-                if (transactionCall.Gas is null)
-                {
-                    searchResult ??= _blockFinder.SearchForHeader(blockParameter);
-                    if (!searchResult.Value.IsError)
-                        transactionCall.Gas = searchResult.Value.Object!.GasLimit;
-                }
-
-                // enforces gas cap
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
