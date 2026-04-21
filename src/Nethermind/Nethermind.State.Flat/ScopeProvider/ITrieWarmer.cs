@@ -13,6 +13,16 @@ public interface ITrieWarmer
         in UInt256? index,
         int sequenceId);
 
+    /// <summary>
+    /// Like <see cref="PushSlotJob"/>, but safe to call from multiple producer threads.
+    /// Routes through the MPMC job buffer so background <c>HintBal</c> enqueuers do not violate the
+    /// single-producer invariant of the main-thread slot buffer.
+    /// </summary>
+    public void PushSlotJobMpmc(
+        IStorageWarmer storageTree,
+        in UInt256 index,
+        int sequenceId);
+
     public void PushAddressJob(
         IAddressWarmer scope,
         Address? path,
