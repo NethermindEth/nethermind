@@ -109,7 +109,31 @@ internal sealed class BlockCacheTrieStore(IScopedTrieStore inner, Dictionary<Tre
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => inner.GetStorageTrieNodeResolver(address);
     public INodeStorage.KeyScheme Scheme => inner.Scheme;
-    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => inner.BeginCommit(root, writeFlags);
+    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new QuotaCommitter(inner.BeginCommit(root, writeFlags));
+
+    /// <summary>
+    /// Mirrors <c>TrieStore.BlockCommitter</c>'s bounded concurrency quota so PatriciaTree's parallel
+    /// commit path actually dispatches work in benchmarks. The underlying <see cref="RawScopedTrieStore.Committer"/>
+    /// inherits the default <c>TryRequestConcurrentQuota() => false</c>, which would otherwise force a fully
+    /// serial descent regardless of <see cref="PatriciaTree.Flags.DoNotParallelize"/>.
+    /// </summary>
+    private sealed class QuotaCommitter(ICommitter inner) : ICommitter
+    {
+        private int _concurrency = Environment.ProcessorCount;
+
+        public void Dispose() => inner.Dispose();
+
+        public TrieNode CommitNode(ref TreePath path, TrieNode node) => inner.CommitNode(ref path, node);
+
+        public bool TryRequestConcurrentQuota()
+        {
+            if (Interlocked.Decrement(ref _concurrency) >= 0) return true;
+            Interlocked.Increment(ref _concurrency);
+            return false;
+        }
+
+        public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
+    }
 
     /// <summary>
     /// Walks the trie from <paramref name="root"/> and records each node's <see cref="TreePath"/> in visit order.
