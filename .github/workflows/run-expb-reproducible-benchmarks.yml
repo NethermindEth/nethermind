@@ -31,6 +31,10 @@ on:
         description: Value used to replace <<DELAY>> placeholder (integer)
         required: false
         default: "0"
+      amount:
+        description: Value used to replace <<AMOUNT>> placeholder (integer, number of payloads)
+        required: false
+        default: "0"
       additional_extra_flags:
         description: >-
           Optional extra Nethermind flags. Example (single): --Merge.SweepMemory=NoGC.
@@ -105,6 +109,7 @@ jobs:
       expb_branch: ${{ steps.resolve.outputs.expb_branch }}
       expb_data_dir: ${{ steps.resolve.outputs.expb_data_dir }}
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
+      amount: ${{ steps.resolve.outputs.amount }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
       scenario_name: ${{ steps.resolve.outputs.scenario_name }}
@@ -132,6 +137,7 @@ jobs:
           DISPATCH_EXPB_REPO: ${{ inputs.expb_repo }}
           DISPATCH_EXPB_BRANCH: ${{ inputs.expb_branch }}
           DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
+          DISPATCH_AMOUNT: ${{ inputs.amount }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
           DISPATCH_REBUILD_DOCKER: ${{ inputs.rebuild_docker }}
           DISPATCH_RUN_COUNT: ${{ inputs.run_count }}
@@ -153,6 +159,7 @@ jobs:
             expb_branch="${DISPATCH_EXPB_BRANCH}"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
+            amount="${DISPATCH_AMOUNT:-0}"
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
@@ -183,6 +190,7 @@ jobs:
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="0"
+            amount="0"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -197,6 +205,7 @@ jobs:
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="0"
+            amount="0"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -277,6 +286,7 @@ jobs:
             echo "expb_branch=${expb_branch}"
             echo "expb_data_dir=${expb_data_dir}"
             echo "delay_seconds=${delay_seconds}"
+            echo "amount=${amount}"
             echo "cleanup_grace_seconds=${cleanup_grace_seconds}"
             echo "mode=${mode}"
             echo "scenario_name=${scenario_name}"
@@ -507,6 +517,7 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
           DOCKER_TAG: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
@@ -567,6 +578,7 @@ jobs:
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
+            -e "s#<<AMOUNT>>#${AMOUNT}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
@@ -1575,6 +1587,7 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config-${{ matrix.tag }}-run${{ matrix.run }}.yaml
           DOCKER_TAG: ${{ matrix.tag }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
@@ -1631,6 +1644,7 @@ jobs:
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
+            -e "s#<<AMOUNT>>#${AMOUNT}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
