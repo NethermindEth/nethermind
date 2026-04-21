@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             return header is null && !allowNulls
-                ? new SearchResult<BlockHeader>(blockParameter.Type == BlockParameterType.BlockNumber ? $"block not found: 0x{blockParameter.BlockNumber:x}" : $"block not found: {blockParameter}", ErrorCodes.ResourceNotFound)
+                ? new SearchResult<BlockHeader>(FormatBlockNotFoundMessage(blockParameter), ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
 
@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules
                 if (!allowNulls)
                 {
                     return new SearchResult<Block>(
-                        blockParameter.Type == BlockParameterType.BlockNumber ? $"block not found: 0x{blockParameter.BlockNumber:x}" : $"block not found: {blockParameter}",
+                        FormatBlockNotFoundMessage(blockParameter),
                         ErrorCodes.ResourceNotFound);
                 }
             }
@@ -125,6 +125,17 @@ namespace Nethermind.JsonRpc.Modules
 
             }
 
+        }
+        private static string FormatBlockNotFoundMessage(BlockParameter blockParameter)
+        {
+            if (blockParameter.Type == BlockParameterType.BlockNumber)
+            {
+                return blockParameter.BlockNumber.HasValue
+                    ? $"block not found: 0x{blockParameter.BlockNumber.Value:x}"
+                    : "block not found";
+            }
+
+            return $"block not found: {blockParameter}";
         }
     }
 }
