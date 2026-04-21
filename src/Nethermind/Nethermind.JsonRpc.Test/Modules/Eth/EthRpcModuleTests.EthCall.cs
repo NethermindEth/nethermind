@@ -472,7 +472,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_uses_specified_gas_limit()
     {
         using Context ctx = await Context.Create();
-        await TestEthCallOutOfGas(ctx, 30000000, 30000000);
+        await TestEthCallOutOfGas(ctx, 30000000);
     }
 
     [Test]
@@ -480,7 +480,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.GasCap = 50000000;
-        await TestEthCallOutOfGas(ctx, 300000000, 50000000);
+        await TestEthCallOutOfGas(ctx, 300000000);
     }
 
     /// <summary>
@@ -545,11 +545,11 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         string result = JToken.Parse(serialized).Value<string>("result")!;
-        long gasAvailable = (long)Bytes.FromHexString(result).ToUInt256();
+        UInt256 gasAvailable = Bytes.FromHexString(result).ToUInt256();
 
         // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
         // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
-        gasAvailable.Should().BeGreaterThan(blockGasLimit,
+        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
             "gas available ({0}) should reflect gasCap ({1}), not block gas limit ({2})",
             gasAvailable, gasCap, blockGasLimit);
     }
@@ -772,7 +772,7 @@ public partial class EthRpcModuleTests
         JToken.Parse(serialized)["error"]!["code"]!.Value<int>().Should().Be(-32602);
     }
 
-    private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
+    private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(

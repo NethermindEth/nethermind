@@ -383,10 +383,17 @@ public partial class EthRpcModuleTests
     public async Task Estimate_gas_uses_gas_cap_when_not_specified()
     {
         using Context ctx = await Context.Create();
-        // Use a gasCap above the block gas limit (~4M) but small enough that the
-        // binary-search estimator doesn't timeout running the infinite-loop contract.
-        long gasCap = 5_000_000;
+
+        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
+        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
+        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
+        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+
+        // gasCap must exceed the block gas limit so the test is meaningful.
+        // Stay close to it so the binary-search estimator doesn't timeout on the infinite-loop contract.
+        long gasCap = blockGasLimit + 1_000_000;
         ctx.Test.RpcConfig.GasCap = gasCap;
+
         await TestEstimateGasOutOfGas(ctx, null, gasCap, $"gas required exceeds allowance ({gasCap})");
     }
 
