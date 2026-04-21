@@ -297,14 +297,22 @@ public struct EvmPooledMemory
         _memory![offset] = value;
     }
 
+    /// <summary>
+    /// Returns a reference to the first of 32 contiguous bytes at <paramref name="location"/> in memory,
+    /// expanding the buffer (and charging gas) as needed.
+    /// </summary>
+    /// <remarks>
+    /// The returned ref aliases the internal memory buffer. The caller MUST consume the ref before
+    /// performing any other operation that may re-rent or grow the underlying storage, otherwise the
+    /// ref becomes dangling.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal Word LoadWordAfterGas(in UInt256 location)
+    internal ref byte Load32BytesAfterGas(in UInt256 location)
     {
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + WordSize);
-        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
-        return Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref memory, offset));
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), offset);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
