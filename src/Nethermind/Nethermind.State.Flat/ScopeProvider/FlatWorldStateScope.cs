@@ -115,7 +115,50 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public void HintBal(BlockAccessList bal) { }
+    public void HintBal(BlockAccessList bal)
+    {
+        int snapshot = _hintSequenceId;
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                foreach (AccountChanges accountChanges in bal.AccountChanges)
+                {
+                    if (_hintSequenceId != snapshot || _pausePrewarmer) return;
+
+                    Address address = accountChanges.Address;
+                    _warmer.PushAddressJob(this, address, snapshot);
+
+                    int slotCount = accountChanges.StorageChanges.Count + accountChanges.StorageReads.Count;
+                    if (slotCount == 0) continue;
+
+                    Account? account = _snapshotBundle.GetAccount(address);
+                    Hash256 storageRoot = account?.StorageRoot ?? Keccak.EmptyTreeHash;
+                    if (storageRoot == Keccak.EmptyTreeHash) continue;
+
+                    // Non-cached per-warmup tree — the main thread's CreateStorageTreeImpl still
+                    // builds its own cached instance the first time it's asked.
+                    FlatStorageTree storageWarmer = new(
+                        this,
+                        _warmer,
+                        _snapshotBundle,
+                        _configuration,
+                        _concurrencyQuota,
+                        storageRoot,
+                        address,
+                        _logManager);
+
+                    foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+                        _warmer.PushSlotJobMpmc(storageWarmer, slotChanges.Slot, snapshot);
+
+                    foreach (StorageRead storageRead in accountChanges.StorageReads)
+                        _warmer.PushSlotJobMpmc(storageWarmer, storageRead.Key, snapshot);
+                }
+            }
+            catch (ObjectDisposedException) { }
+        });
+    }
 
     public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
     {
