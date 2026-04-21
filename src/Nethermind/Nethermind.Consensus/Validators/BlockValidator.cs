@@ -156,6 +156,25 @@ public class BlockValidator(
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
+        // EIP-7928: enforce the BAL item gas-limit floor against the BAL produced during
+        // execution. The pre-execution check in ValidateBlockLevelAccessList only fires when
+        // the suggested block carries a BAL (engine-API path); RLP-imported blocks have a
+        // null suggested BAL and the agreed gas limit must still be validated against the
+        // generated BAL here.
+        IReleaseSpec spec = _specProvider.GetSpec(suggestedBlock.Header);
+        if (spec.BlockLevelAccessListsEnabled
+            && suggestedBlock.BlockAccessList is null
+            && processedBlock.GeneratedBlockAccessList is not null)
+        {
+            int itemCount = processedBlock.GeneratedBlockAccessList.ItemCount();
+            if (itemCount * GasCostOf.BlockAccessListItem > suggestedBlock.Header.GasLimit)
+            {
+                error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, suggestedBlock.Header.GasLimit);
+                if (_logger.IsWarn) _logger.Warn($"BAL item count {itemCount} exceeds block gas limit bound in block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}.");
+                return false;
+            }
+        }
+
         if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
         {
             error = null;

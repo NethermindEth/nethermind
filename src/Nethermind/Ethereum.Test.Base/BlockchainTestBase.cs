@@ -498,6 +498,11 @@ public abstract class BlockchainTestBase
                 byte[] rlpBytes = Bytes.FromHexString(testBlockJson.Rlp!);
                 Block suggestedBlock = Rlp.Decode<Block>(rlpBytes);
 
+                // EEST omits blockHeader (and the parsed body fields) for invalid-block fixtures
+                // because there is no canonical header for a block that must be rejected. The
+                // hash/uncle assertions only make sense when the fixture provides a header, but
+                // the block itself must still be enrolled so that validation actually runs and
+                // ExpectException is honoured.
                 if (testBlockJson.BlockHeader is not null)
                 {
                     Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));
@@ -506,9 +511,9 @@ public abstract class BlockchainTestBase
                     {
                         Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders![uncleIndex].Hash)));
                     }
-
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectException));
                 }
+
+                correctRlp.Add((suggestedBlock, testBlockJson.ExpectException));
             }
             catch (Exception e)
             {
