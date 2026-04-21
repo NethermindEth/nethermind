@@ -3,9 +3,11 @@
 
 using Autofac;
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Logging;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.BalRecorder;
 
@@ -20,22 +22,11 @@ public class BalRecorderPlugin(IBalRecorderConfig config) : INethermindPlugin
 
 public class BalRecorderModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder.Register(ctx =>
-            {
-                IBalRecorderConfig config = ctx.Resolve<IBalRecorderConfig>();
-                if (!config.ReplayEnabled && !config.RecordingEnabled)
-                    return (IRecordedBalStore)NullRecordedBalStore.Instance;
-                string directory = config.Path.GetApplicationResourcePath(
-                    ctx.Resolve<IInitConfig>().BaseDbPath);
-                return (IRecordedBalStore)new RecordedBalStore(directory, config);
-            })
-            .As<IRecordedBalStore>()
-            .SingleInstance();
-        builder.RegisterType<BalRecorderSpecSwitch>().AsSelf().SingleInstance();
-        builder.RegisterDecorator<BalRecorderSpecProvider, Nethermind.Core.Specs.ISpecProvider>();
-        builder.RegisterDecorator<BalRecordingBlockValidator, Nethermind.Consensus.Validators.IBlockValidator>();
-        builder.RegisterDecorator<BalRecordingBlockProcessor, Nethermind.Consensus.Processing.IBlockProcessor>();
-    }
+    protected override void Load(ContainerBuilder builder) =>
+        builder
+            .AddSingleton<IRecordedBalStore, RecordedBalStore>()
+            .AddSingleton<BalRecorderSpecSwitch>()
+            .AddDecorator<ISpecProvider, BalRecorderSpecProvider>()
+            .AddDecorator<IBlockValidator, BalRecordingBlockValidator>()
+            .AddDecorator<IBlockProcessor, BalRecordingBlockProcessor>();
 }
