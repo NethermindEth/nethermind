@@ -162,6 +162,7 @@ namespace Nethermind.Benchmarks.Store
         private void DoBulkSetCommit(PatriciaTree.Flags flags)
         {
             if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
+            _blockCacheStore.DisableConcurrencyQuota = flags.HasFlag(PatriciaTree.Flags.DoNotParallelize);
 
             PatriciaTree tree = null;
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(BatchSize);
@@ -189,6 +190,7 @@ namespace Nethermind.Benchmarks.Store
         private void DoBulkSetUpdateRootCommit(PatriciaTree.Flags flags)
         {
             if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
+            _blockCacheStore.DisableConcurrencyQuota = flags.HasFlag(PatriciaTree.Flags.DoNotParallelize);
 
             PatriciaTree tree = null;
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(BatchSize);
@@ -218,6 +220,7 @@ namespace Nethermind.Benchmarks.Store
         private void DoBulkSetAndCommit(PatriciaTree.Flags flags)
         {
             if (PreSorted) flags |= PatriciaTree.Flags.WasSorted;
+            _blockCacheStore.DisableConcurrencyQuota = flags.HasFlag(PatriciaTree.Flags.DoNotParallelize);
 
             PatriciaTree tree = null;
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(BatchSize);
