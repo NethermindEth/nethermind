@@ -12,6 +12,13 @@ namespace Nethermind.Evm.Precompiles
         static virtual Address Address => Address.Zero;
         static virtual string Name => string.Empty;
         bool SupportsCaching => true;
+
+        /// <summary>
+        /// Returns the portion of <paramref name="inputData"/> that uniquely determines the precompile result, used as the cache key.
+        /// </summary>
+        /// <remarks>Precompiles that silently ignore trailing bytes should override this.</remarks>
+        ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) => inputData;
+
         long BaseGasCost(IReleaseSpec releaseSpec);
         long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 

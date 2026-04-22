@@ -418,6 +418,45 @@ public class PrecompileCachedCodeInfoRepositoryTests
         cache.Count.Should().Be(0); // Key difference from Sha256 test
     }
 
+    [Test]
+    public void CachedPrecompile_WithGetEffectiveInputOverride_DeduplicatesOversizedInputs()
+    {
+        // Precompile that only uses the first 4 bytes of input.
+        int runCount = 0;
+        TruncatingTestPrecompile precompile = new(effectiveLength: 4, onRun: () => runCount++);
+        Address precompileAddress = Address.FromNumber(100);
+
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [precompileAddress] = new(precompile)
+        }.ToFrozenDictionary();
+
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(precompiles);
+
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+
+        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+
+        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+
+        // Same first 4 bytes, different suffixes — both calls should map to the same cache key.
+        byte[] input1 = [1, 2, 3, 4, 0xAA, 0xBB];
+        byte[] input2 = [1, 2, 3, 4, 0xCC, 0xDD, 0xEE];
+
+        Result<byte[]> result1 = codeInfo.Precompile!.Run(input1, Prague.Instance);
+        Result<byte[]> result2 = codeInfo.Precompile!.Run(input2, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(1), "precompile should run only once; second call must hit cache");
+            Assert.That(cache.Count, Is.EqualTo(1));
+            Assert.That(result1.Data, Is.EqualTo(result2.Data));
+        }
+    }
+
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
     {
         public bool SupportsCaching => supportsCaching;
@@ -430,6 +469,26 @@ public class PrecompileCachedCodeInfoRepositoryTests
         {
             onRun?.Invoke();
             return fixedOutput ?? inputData.ToArray();
+        }
+    }
+
+    private class TruncatingTestPrecompile(int effectiveLength, Action? onRun = null) : IPrecompile
+    {
+        public bool SupportsCaching => true;
+
+        public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+            inputData.Length > effectiveLength ? inputData[..effectiveLength] : inputData;
+
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+
+        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            onRun?.Invoke();
+            return inputData.Length > effectiveLength
+                ? inputData[..effectiveLength].ToArray()
+                : inputData.ToArray();
         }
     }
 }

@@ -21,9 +21,14 @@ public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     public static string Name => "ECREC";
 
+    private const int InputLength = 128;
+
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
+
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length > InputLength ? inputData[..InputLength] : inputData;
 
     private readonly byte[] _zero31 = new byte[31];
 
@@ -37,9 +42,9 @@ public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     private Result<byte[]> RunInternal(ReadOnlyMemory<byte> inputData)
     {
-        Span<byte> inputDataSpan = stackalloc byte[128];
-        inputData.Span[..Math.Min(128, inputData.Length)]
-            .CopyTo(inputDataSpan[..Math.Min(128, inputData.Length)]);
+        Span<byte> inputDataSpan = stackalloc byte[InputLength];
+        inputData.Span[..Math.Min(InputLength, inputData.Length)]
+            .CopyTo(inputDataSpan[..Math.Min(InputLength, inputData.Length)]);
 
         return RunInternal(inputDataSpan);
     }
