@@ -177,6 +177,7 @@ public class TaikoModule : Module
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
             .AddSingleton<IMainProcessingModule, TaikoMainBlockProcessingModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
+            .AddScoped<ZkGasMeterHolder>()
             .AddScoped<IBlockProcessor, TaikoBlockProcessor>()
             .AddScoped<IExecutionRequestsProcessor, TaikoExecutionRequestsProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
