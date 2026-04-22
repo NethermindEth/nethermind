@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.State.Snap;
@@ -18,7 +19,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class StartingSyncPivotUpdater
+public class StartingSyncPivotUpdater : IDisposable
 {
     private const string Pivot = "pivot";
     private readonly IBlockTree _blockTree;
@@ -29,7 +30,7 @@ public class StartingSyncPivotUpdater
     protected readonly IBeaconSyncStrategy _beaconSyncStrategy;
     protected readonly ILogger _logger;
 
-    private readonly CancellationTokenSource _cancellation = new();
+    private CancellationTokenSource? _cancellation = new();
 
     private static int _maxAttempts;
     private int _attemptsLeft;
@@ -50,7 +51,7 @@ public class StartingSyncPivotUpdater
         _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<StartingSyncPivotUpdater>() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot; // Note: Blocktree would have set this to 0 if sync pivot is in DB
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
@@ -69,7 +70,7 @@ public class StartingSyncPivotUpdater
     {
         if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && Interlocked.CompareExchange(ref _updateInProgress, 1, 0) == 0)
         {
-            if (await TrySetFreshPivot(_cancellation.Token))
+            if (await TrySetFreshPivot(_cancellation!.Token))
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
             }
@@ -235,5 +236,11 @@ public class StartingSyncPivotUpdater
             if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}");
             _alreadyAnnouncedNewPivotHash = finalizedBlockHash;
         }
+    }
+
+    public void Dispose()
+    {
+        _syncModeSelector.Changed -= OnSyncModeChanged;
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellation);
     }
 }

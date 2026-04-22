@@ -1,0 +1,67 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+
+namespace Nethermind.Evm.Precompiles;
+
+public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
+{
+    public static readonly ECRecoverPrecompile Instance = new();
+    private static readonly Result<byte[]> Empty = Array.Empty<byte>();
+
+    private ECRecoverPrecompile() { }
+
+    public static Address Address { get; } = Address.FromNumber(1);
+
+    public static string Name => "ECREC";
+    // Excluded from fast path: the 3000-gas base cost makes frame allocation overhead
+    // negligible relative to the crypto work, so the fast path provides no meaningful benefit.
+    public bool SupportsFastPath => false;
+
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
+
+    private readonly byte[] _zero31 = new byte[31];
+
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    {
+#if !ZK_EVM
+        Metrics.ECRecoverPrecompile++;
+#endif
+        return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
+    }
+
+    private Result<byte[]> RunInternal(ReadOnlyMemory<byte> inputData)
+    {
+        Span<byte> inputDataSpan = stackalloc byte[128];
+        inputData.Span[..Math.Min(128, inputData.Length)]
+            .CopyTo(inputDataSpan[..Math.Min(128, inputData.Length)]);
+
+        return RunInternal(inputDataSpan);
+    }
+
+    private Result<byte[]> RunInternal(ReadOnlySpan<byte> inputDataSpan)
+    {
+        ReadOnlySpan<byte> vBytes = inputDataSpan.Slice(32, 32);
+
+        if (!Bytes.AreEqual(_zero31, vBytes[..31]))
+            return Empty;
+
+        byte v = vBytes[31];
+
+        if (v != 27 && v != 28)
+            return Empty;
+
+        ReadOnlySpan<byte> message = inputDataSpan[..32];
+        ReadOnlySpan<byte> signature = inputDataSpan.Slice(64, 64);
+        byte recoveryId = Signature.GetRecoveryId(v);
+
+        return Recover(signature, recoveryId, message);
+    }
+}

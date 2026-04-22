@@ -33,7 +33,7 @@ namespace Nethermind.Runner.Test.Ethereum
     {
         public static NethermindApi ContextWithMocks()
         {
-            NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
+            NethermindApi.Dependencies apiDependencies = new(
                 Substitute.For<IConfigProvider>(),
                 new EthereumJsonSerializer(),
                 LimboLogs.Instance,
@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .Build()
             );
 
-            var api = new NethermindApi(apiDependencies);
+            NethermindApi api = new(apiDependencies);
             MockOutNethermindApi(api);
             return api;
         }
@@ -62,15 +62,14 @@ namespace Nethermind.Runner.Test.Ethereum
                     return [];
                 }
 
-                IServiceWithType swt = service as IServiceWithType;
-                if (registrationAccessor(service).Any() || swt == null || !swt.ServiceType.IsInterface)
+                if (registrationAccessor(service).Any() || service is not IServiceWithType swt || !swt.ServiceType.IsInterface)
                 {
                     // It's not a request for the base handler type, so skip it.
                     return [];
                 }
 
                 // Dynamically resolve any interface with nsubstitute
-                ComponentRegistration registration = new ComponentRegistration(
+                ComponentRegistration registration = new(
                     Guid.NewGuid(),
                     new DelegateActivator(swt.ServiceType, (c, p) =>
                     {
@@ -97,7 +96,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.EngineSigner = Substitute.For<ISigner>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
-            api.ProtocolValidator = Substitute.For<IProtocolValidator>();
             api.TxSender = Substitute.For<ITxSender>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();

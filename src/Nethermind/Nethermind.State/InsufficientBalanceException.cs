@@ -5,10 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.State
 {
-    public class InsufficientBalanceException : StateException
+    public class InsufficientBalanceException(Address address) : StateException($"insufficient funds for transfer: address {address}")
     {
-        public InsufficientBalanceException(Address address)
-            : base($"insufficient funds for transfer: address {address}")
-        { }
     }
 }

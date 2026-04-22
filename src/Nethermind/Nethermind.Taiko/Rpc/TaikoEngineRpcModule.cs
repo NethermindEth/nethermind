@@ -40,6 +40,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
         IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
         IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
+        IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -48,6 +49,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -55,7 +58,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ITxPool txPool,
         IBlockFinder blockFinder,
         IShareableTxProcessorSource txProcessorSource,
-        IRlpStreamDecoder<Transaction> txDecoder,
+        IRlpStreamEncoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
         ISurgeConfig surgeConfig) :
             EngineRpcModule(getPayloadHandlerV1,
@@ -63,6 +66,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getPayloadHandlerV3,
                 getPayloadHandlerV4,
                 getPayloadHandlerV5,
+                getPayloadHandlerV6,
                 newPayloadV1Handler,
                 forkchoiceUpdatedV1Handler,
                 executionGetPayloadBodiesByHashV1Handler,
@@ -71,6 +75,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 capabilitiesHandler,
                 getBlobsHandler,
                 getBlobsHandlerV2,
+                getPayloadBodiesByHashV2Handler,
+                getPayloadBodiesByRangeV2Handler,
                 engineRequestsTracker,
                 specProvider,
                 gcKeeper,
@@ -81,35 +87,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
     private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded = ResultWrapper<UInt256?>.Fail("lookback limit exceeded");
 
-    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
-    {
-        return base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
-    }
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(TaikoExecutionPayload executionPayload)
-    {
-        return base.engine_newPayloadV1(executionPayload);
-    }
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(TaikoExecutionPayload executionPayload) => base.engine_newPayloadV1(executionPayload);
 
-    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
-    {
-        return base.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
-    }
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(TaikoExecutionPayload executionPayload)
-    {
-        return base.engine_newPayloadV2(executionPayload);
-    }
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(TaikoExecutionPayload executionPayload) => base.engine_newPayloadV2(executionPayload);
 
-    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
-    {
-        return base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
-    }
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
-    {
-        return base.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
-    }
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => base.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
 
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
          ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists) =>
@@ -270,7 +258,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamDecoder<Transaction> txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamEncoder<Transaction> txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
@@ -346,10 +334,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return (ulong)stream.Position;
         }
 
-        public readonly void Dispose()
-        {
-            Transactions.Dispose();
-        }
+        public readonly void Dispose() => Transactions.Dispose();
     }
 
     public ResultWrapper<UInt256> taikoAuth_setHeadL1Origin(UInt256 blockId)
@@ -421,6 +406,24 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return ResultWrapper<UInt256?>.Success(blockId);
     }
 
+    public ResultWrapper<UInt256?> taikoAuth_lastCertainBlockIDByBatchID(UInt256 batchId)
+    {
+        UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        return ResultWrapper<UInt256?>.Success(blockId);
+    }
+
+    public ResultWrapper<L1Origin?> taikoAuth_lastCertainL1OriginByBatchID(UInt256 batchId)
+    {
+        UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        if (blockId is null)
+        {
+            return ResultWrapper<L1Origin?>.Success(null);
+        }
+
+        L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
+        return ResultWrapper<L1Origin?>.Success(origin);
+    }
+
     /// <summary>
     /// Traverses the blockchain backwards to find the last Shasta block of the given batch ID.
     /// </summary>
@@ -473,10 +476,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return null;
     }
 
-    private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data)
-    {
-        return data.Length >= 4 && AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4]);
-    }
+    private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data) => data.Length >= 4 && (AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4])
+            || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(data.Span[..4]));
 
     /// <inheritdoc />
     public ResultWrapper<bool> taikoDebug_clearTxPoolForReorg()

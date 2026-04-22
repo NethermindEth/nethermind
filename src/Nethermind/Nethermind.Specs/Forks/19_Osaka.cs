@@ -1,27 +1,20 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using Nethermind.Core.Specs;
-
 namespace Nethermind.Specs.Forks;
 
-public class Osaka : Prague
+public class Osaka() : NamedReleaseSpec<Osaka>(Prague.Instance)
 {
-    private static IReleaseSpec _instance;
-
-    public Osaka()
+    public override void Apply(ReleaseSpec spec)
     {
-        Name = "Osaka";
-        IsEip7594Enabled = true;
-        IsEip7823Enabled = true;
-        IsEip7825Enabled = true;
-        IsEip7883Enabled = true;
-        IsEip7918Enabled = true;
-        IsEip7934Enabled = true;
-        IsEip7939Enabled = true;
-        IsEip7951Enabled = true;
+        spec.Name = "Osaka";
+        spec.IsEip7594Enabled = true;
+        spec.IsEip7823Enabled = true;
+        spec.IsEip7825Enabled = true;
+        spec.IsEip7883Enabled = true;
+        spec.IsEip7918Enabled = true;
+        spec.IsEip7934Enabled = true;
+        spec.IsEip7939Enabled = true;
+        spec.IsEip7951Enabled = true;
     }
-
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Osaka());
 }

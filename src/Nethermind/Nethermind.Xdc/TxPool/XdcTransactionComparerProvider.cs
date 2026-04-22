@@ -8,9 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool.Comparison;
 using Nethermind.Xdc.Spec;
-using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.TxPool;
 
@@ -45,20 +43,20 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
 
     public IComparer<Transaction> GetDefaultComparer()
     {
-        var defaultComparer = defaultComparerProvider.GetDefaultComparer();
+        IComparer<Transaction> defaultComparer = defaultComparerProvider.GetDefaultComparer();
 
-        var signerFilter = new CompareTxBySender(specProvider);
+        CompareTxBySender signerFilter = new(specProvider);
 
         return signerFilter.ThenBy(defaultComparer);
     }
 
     public IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext)
     {
-        var defaultComparer = defaultComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
+        IComparer<Transaction> defaultComparer = defaultComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        var currentSpec = specProvider.GetXdcSpec(blockPreparationContext.BlockNumber);
+        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(blockPreparationContext.BlockNumber);
 
-        var signerFilter = new CompareTxBySender(currentSpec);
+        CompareTxBySender signerFilter = new(currentSpec);
 
         return signerFilter.ThenBy(defaultComparer);
     }

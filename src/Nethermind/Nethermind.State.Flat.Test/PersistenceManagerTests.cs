@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -27,7 +25,7 @@ public class PersistenceManagerTests
     private SnapshotRepository _snapshotRepository = null!;
     private IPersistence _persistence = null!;
     private ResourcePool _resourcePool = null!;
-    private StateId Block0 = new StateId(0, Keccak.EmptyTreeHash);
+    private StateId Block0 = new(0, Keccak.EmptyTreeHash);
 
     [SetUp]
     public void SetUp()
@@ -301,7 +299,7 @@ public class PersistenceManagerTests
 
         // Add trie nodes
         TreePath path = TreePath.Empty;
-        TrieNode node = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        TrieNode node = new(NodeType.Leaf, Keccak.Zero);
         snapshot.Content.StateNodes[path] = node;
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();

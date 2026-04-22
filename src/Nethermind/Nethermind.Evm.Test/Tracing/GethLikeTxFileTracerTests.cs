@@ -15,7 +15,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_have_expected_file_tracing_flags()
     {
-        var tracer = new GethLikeTxFileTracer(static e => { }, GethTraceOptions.Default);
+        GethLikeTxFileTracer tracer = new(static e => { }, GethTraceOptions.Default);
 
         tracer.IsTracingMemory.Should().BeTrue();
         tracer.IsTracingOpLevelStorage.Should().BeFalse();
@@ -25,7 +25,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_gas_and_return_value_as_expected()
     {
-        var trace = ExecuteAndTraceToFile(static e => { }, GetBytecode(), GethTraceOptions.Default);
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(static e => { }, GetBytecode(), GethTraceOptions.Default);
 
         trace.Gas.Should().Be(24);
         trace.ReturnValue.Length.Should().Be(0);
@@ -34,8 +34,8 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_memory_size_with_memory_disabled()
     {
-        var entries = new List<GethTxFileTraceEntry>();
-        var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
+        List<GethTxFileTraceEntry> entries = new();
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
         entries[0].MemorySize.Should().Be(0);
         entries[1].MemorySize.Should().Be(0);
@@ -51,8 +51,8 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_memory_when_enabled()
     {
-        var entries = new List<GethTxFileTraceEntry>();
-        var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
+        List<GethTxFileTraceEntry> entries = new();
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
 
         entries[0].Memory.Length.Should().Be(0);
         entries[1].Memory.Length.Should().Be(0);
@@ -66,8 +66,8 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_stack_when_enabled()
     {
-        var entries = new List<GethTxFileTraceEntry>();
-        var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
+        List<GethTxFileTraceEntry> entries = new();
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
         entries[0].Stack.Length.Should().Be(0);
         entries[1].Stack.Length.Should().Be(1);
@@ -81,8 +81,8 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_not_return_stack_when_disabled()
     {
-        var entries = new List<GethTxFileTraceEntry>();
-        var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
+        List<GethTxFileTraceEntry> entries = new();
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
 
         entries.All(e => e.Stack is null).Should().BeTrue();
     }

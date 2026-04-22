@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -171,7 +170,7 @@ namespace Nethermind.Evm.Test
         {
             // EcRecover with all-zero 128-byte input: v=0 (not 27/28), returns empty data.
             byte[] code = Prepare.EvmCode
-                .CallWithInput(EcRecoverPrecompile.Address, 50000L, new byte[128])
+                .CallWithInput(ECRecoverPrecompile.Address, 50000L, new byte[128])
                 .PushData(100).Op(Instruction.ADD)
                 .PushData(0).Op(Instruction.SSTORE)
                 .Op(Instruction.RETURNDATASIZE)
@@ -190,7 +189,7 @@ namespace Nethermind.Evm.Test
         {
             // EcRecover needs 3000 gas; forward only 10.
             byte[] code = Prepare.EvmCode
-                .CallWithInput(EcRecoverPrecompile.Address, 10L, new byte[128])
+                .CallWithInput(ECRecoverPrecompile.Address, 10L, new byte[128])
                 .PushData(7).Op(Instruction.ADD)
                 .PushData(0).Op(Instruction.SSTORE)
                 .Done;
@@ -576,7 +575,7 @@ namespace Nethermind.Evm.Test
         {
             // Two zero (infinity) G1 points (2 × 128 = 256 bytes) → returns infinity point (128 bytes).
             byte[] code = Prepare.EvmCode
-                .CallWithInput(G1AddPrecompile.Address, 50000L, new byte[256])
+                .CallWithInput(Bls12381G1AddPrecompile.Address, 50000L, new byte[256])
                 .PushData(100).Op(Instruction.ADD)
                 .PushData(0).Op(Instruction.SSTORE)
                 .Op(Instruction.RETURNDATASIZE)
@@ -595,7 +594,7 @@ namespace Nethermind.Evm.Test
         {
             // G1Add expects exactly 256 bytes; 100 bytes → failure.
             byte[] code = Prepare.EvmCode
-                .CallWithInput(G1AddPrecompile.Address, 50000L, new byte[100])
+                .CallWithInput(Bls12381G1AddPrecompile.Address, 50000L, new byte[100])
                 .PushData(7).Op(Instruction.ADD)
                 .PushData(0).Op(Instruction.SSTORE)
                 .Done;
@@ -610,7 +609,7 @@ namespace Nethermind.Evm.Test
         {
             // G1Add needs 375 gas; forward only 10.
             byte[] code = Prepare.EvmCode
-                .CallWithInput(G1AddPrecompile.Address, 10L, new byte[256])
+                .CallWithInput(Bls12381G1AddPrecompile.Address, 10L, new byte[256])
                 .PushData(7).Op(Instruction.ADD)
                 .PushData(0).Op(Instruction.SSTORE)
                 .Done;
@@ -627,7 +626,7 @@ namespace Nethermind.Evm.Test
         {
             // Two zero (infinity) G2 points (2 × 256 = 512 bytes) → returns infinity point (256 bytes).
             byte[] code = Prepare.EvmCode
-                .CallWithInput(G2AddPrecompile.Address, 50000L, new byte[512])
+                .CallWithInput(Bls12381G2AddPrecompile.Address, 50000L, new byte[512])
                 .PushData(100).Op(Instruction.ADD)
                 .PushData(0).Op(Instruction.SSTORE)
                 .Op(Instruction.RETURNDATASIZE)
@@ -646,7 +645,7 @@ namespace Nethermind.Evm.Test
         {
             // G2Add needs 600 gas; forward only 10.
             byte[] code = Prepare.EvmCode
-                .CallWithInput(G2AddPrecompile.Address, 10L, new byte[512])
+                .CallWithInput(Bls12381G2AddPrecompile.Address, 10L, new byte[512])
                 .PushData(7).Op(Instruction.ADD)
                 .PushData(0).Op(Instruction.SSTORE)
                 .Done;
@@ -799,17 +798,15 @@ namespace Nethermind.Evm.Test
                 .SetName("blake2f_invalid_input");
 
             // BLS
-            yield return new TestCaseData(G1AddPrecompile.Address, 50000L, new byte[256])
+            yield return new TestCaseData(Bls12381G1AddPrecompile.Address, 50000L, new byte[256])
                 .SetName("bls_g1add");
-            yield return new TestCaseData(G2AddPrecompile.Address, 50000L, new byte[512])
+            yield return new TestCaseData(Bls12381G2AddPrecompile.Address, 50000L, new byte[512])
                 .SetName("bls_g2add");
         }
 
         [TestCaseSource(nameof(PrecompileParityCases))]
-        public void Fast_path_precompile_parity(Address precompileAddress, long forwardedGas, byte[] input)
-        {
+        public void Fast_path_precompile_parity(Address precompileAddress, long forwardedGas, byte[] input) =>
             AssertFastPathParity(precompileAddress, forwardedGas, input);
-        }
 
         [Test]
         public void Fast_path_parity_delegatecall_to_identity()

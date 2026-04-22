@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.Reporting
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SyncReport>() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
@@ -234,20 +234,11 @@ namespace Nethermind.Synchronization.Reporting
             if (_logger.IsTrace) _logger.Trace(builder.ToString());
         }
 
-        private void WriteStateNodesReport()
-        {
-            _logger.Info("Syncing state nodes");
-        }
+        private void WriteStateNodesReport() => _logger.Info("Syncing state nodes");
 
-        private void WriteDbSyncReport()
-        {
-            _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
-        }
+        private void WriteDbSyncReport() => _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
 
-        private void WriteNotStartedReport()
-        {
-            _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
-        }
+        private void WriteNotStartedReport() => _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
 
         private void WriteFullSyncReport()
         {
@@ -282,14 +273,8 @@ namespace Nethermind.Synchronization.Reporting
             }
         }
 
-        private void WriteBeaconSyncReport()
-        {
-            BeaconHeaders.LogProgress();
-        }
+        private void WriteBeaconSyncReport() => BeaconHeaders.LogProgress();
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

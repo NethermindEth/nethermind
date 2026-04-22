@@ -20,32 +20,23 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Contract
         }
 
-        public struct Destination : IEqualityComparer<Destination>
+        public struct Destination(
+            Address target,
+            byte[] fnSignature,
+            UInt256 value,
+TxPriorityContract.DestinationSource source = TxPriorityContract.DestinationSource.Contract,
+            long blockNumber = 0) : IEqualityComparer<Destination>
         {
             public static byte[] FnSignatureEmpty = new byte[4];
 
-            public Destination(
-                Address target,
-                byte[] fnSignature,
-                UInt256 value,
-                DestinationSource source = DestinationSource.Contract,
-                long blockNumber = 0)
-            {
-                Target = target;
-                FnSignature = fnSignature;
-                Value = value;
-                Source = source;
-                BlockNumber = blockNumber;
-            }
-
-            public Address Target { get; set; }
-            public byte[] FnSignature { get; set; }
-            public UInt256 Value { get; set; }
-            public long BlockNumber { get; set; }
-            public DestinationSource Source { get; set; }
+            public Address Target { get; set; } = target;
+            public byte[] FnSignature { get; set; } = fnSignature;
+            public UInt256 Value { get; set; } = value;
+            public long BlockNumber { get; set; } = blockNumber;
+            public DestinationSource Source { get; set; } = source;
 
             public static Destination FromAbiTuple(DestinationTuple tuple, long blockNumber) =>
-                new Destination(tuple.Item1, tuple.Item2, tuple.Item3, DestinationSource.Contract, blockNumber);
+                new(tuple.Item1, tuple.Item2, tuple.Item3, DestinationSource.Contract, blockNumber);
 
             public static implicit operator DestinationTuple(Destination destination) =>
                 (destination.Target, destination.FnSignature, destination.Value);
@@ -67,7 +58,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public class ValueDestinationMethodComparer : IComparer<Destination>
         {
-            public static readonly ValueDestinationMethodComparer Instance = new ValueDestinationMethodComparer();
+            public static readonly ValueDestinationMethodComparer Instance = new();
 
             public int Compare(Destination x, Destination y)
             {
@@ -86,7 +77,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public class DistinctDestinationMethodComparer : IComparer<Destination>, IEqualityComparer<Destination>
         {
-            public static readonly DistinctDestinationMethodComparer Instance = new DistinctDestinationMethodComparer();
+            public static readonly DistinctDestinationMethodComparer Instance = new();
 
             public int Compare(Destination x, Destination y)
             {

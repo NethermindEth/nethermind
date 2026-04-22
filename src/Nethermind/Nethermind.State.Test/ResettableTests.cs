@@ -9,12 +9,19 @@ namespace Nethermind.Store.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class ResettableTests
     {
+        private static (int[] array, int capacity, int currentPosition) CreateAtCapacity(
+            int positionMultiplier = 1)
+        {
+            int capacity = Resettable.StartCapacity;
+            int currentPosition = Resettable.StartCapacity * positionMultiplier;
+            int[] array = new int[Resettable.StartCapacity];
+            return (array, capacity, currentPosition);
+        }
+
         [Test]
         public void Can_resize_up()
         {
-            int capacity = Resettable.StartCapacity;
-            int currentPosition = Resettable.StartCapacity;
-            int[] array = new int[Resettable.StartCapacity];
+            (int[] array, int capacity, int currentPosition) = CreateAtCapacity();
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
 
             Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio));
@@ -23,9 +30,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Resets_on_position_reset()
         {
-            int capacity = Resettable.StartCapacity;
-            int currentPosition = Resettable.StartCapacity;
-            int[] array = new int[Resettable.StartCapacity];
+            (int[] array, int capacity, int currentPosition) = CreateAtCapacity();
             array[0] = 30;
 
             Resettable<int>.Reset(ref array, ref capacity, ref currentPosition);
@@ -37,9 +42,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_resize_down()
         {
-            int capacity = Resettable.StartCapacity;
-            int currentPosition = capacity;
-            int[] array = new int[Resettable.StartCapacity];
+            (int[] array, int capacity, int currentPosition) = CreateAtCapacity();
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
 
             Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio));
@@ -53,9 +56,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Does_not_resize_when_capacity_was_in_use()
         {
-            int capacity = Resettable.StartCapacity;
-            int currentPosition = Resettable.StartCapacity;
-            int[] array = new int[Resettable.StartCapacity];
+            (int[] array, int capacity, int currentPosition) = CreateAtCapacity();
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
 
             Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio));
@@ -68,9 +69,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Delays_downsizing()
         {
-            int capacity = Resettable.StartCapacity;
-            int currentPosition = Resettable.StartCapacity * Resettable.ResetRatio;
-            int[] array = new int[Resettable.StartCapacity];
+            (int[] array, int capacity, int currentPosition) = CreateAtCapacity(positionMultiplier: Resettable.ResetRatio);
 
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
             Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio));
@@ -85,9 +84,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Copies_values_on_resize_up()
         {
-            int capacity = Resettable.StartCapacity;
-            int currentPosition = capacity;
-            int[] array = new int[Resettable.StartCapacity];
+            (int[] array, int capacity, int currentPosition) = CreateAtCapacity();
             array[0] = 30;
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
 

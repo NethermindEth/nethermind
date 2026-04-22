@@ -14,12 +14,12 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    private readonly IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> _executionGetPayloadBodiesByHashV1Handler;
-    private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler;
-    private readonly IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadHandlerV2;
+    private readonly IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
+    private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler = executionGetPayloadBodiesByRangeV1Handler;
+    private readonly IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadHandlerV2 = getPayloadHandlerV2;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Shanghai);
+        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V2);
 
     public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId)
         => _getPayloadHandlerV2.HandleAsync(payloadId);
@@ -31,5 +31,5 @@ public partial class EngineRpcModule : IEngineRpcModule
         => _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)
-        => NewPayload(executionPayload, EngineApiVersions.Shanghai);
+        => NewPayload(executionPayload, EngineApiVersions.NewPayload.V2);
 }

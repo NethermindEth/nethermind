@@ -14,14 +14,11 @@ namespace Ethereum.Blockchain.Block.Test;
 public class BlockhashTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test)
-    {
-        Assert.That(RunTest(test).Pass, Is.True);
-    }
+    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Blockhash"));
+        TestsSourceLoader loader = new(new LoadGeneralStateTestsStrategy(), Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Blockhash"));
         return loader.LoadTests<GeneralStateTest>();
     }
 }

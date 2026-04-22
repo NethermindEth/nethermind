@@ -6,9 +6,11 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm;
 
@@ -22,73 +24,15 @@ public class VmState<TGasPolicy> : IDisposable
     private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
     private static readonly StackPool _stackPool = new();
 
-    /*
-    Type layout for 'EvmState'
-    Size: 176 bytes. Paddings: 5 bytes (%3 of empty space)
-    |=======================================================================|
-    | Object Header (8 bytes)                                               |
-    |-----------------------------------------------------------------------|
-    | Method Table Ptr (8 bytes)                                            |
-    |=======================================================================|
-    |   0-7: Byte[] DataStack (8 bytes)                                     |
-    |-----------------------------------------------------------------------|
-    |  8-15: ReturnState[] ReturnStack (8 bytes)                            |
-    |-----------------------------------------------------------------------|
-    | 16-23: Int64 <GasAvailable>k__BackingField (8 bytes)                  |
-    |-----------------------------------------------------------------------|
-    | 24-31: Int64 <OutputDestination>k__BackingField (8 bytes)             |
-    |-----------------------------------------------------------------------|
-    | 32-39: Int64 <OutputLength>k__BackingField (8 bytes)                  |
-    |-----------------------------------------------------------------------|
-    | 40-47: Int64 <Refund>k__BackingField (8 bytes)                        |
-    |-----------------------------------------------------------------------|
-    | 48-51: Int32 DataStackHead (4 bytes)                                  |
-    |-----------------------------------------------------------------------|
-    | 52-55: Int32 ReturnStackHead (4 bytes)                                |
-    |-----------------------------------------------------------------------|
-    | 56-59: Int32 <ProgramCounter>k__BackingField (4 bytes)                |
-    |-----------------------------------------------------------------------|
-    | 60-63: Int32 <FunctionIndex>k__BackingField (4 bytes)                 |
-    |-----------------------------------------------------------------------|
-    |    64: ExecutionType <ExecutionType>k__BackingField (1 byte)          |
-    |-----------------------------------------------------------------------|
-    |    65: Boolean <IsTopLevel>k__BackingField (1 byte)                   |
-    |-----------------------------------------------------------------------|
-    |    66: Boolean _canRestore (1 byte)                                   |
-    |-----------------------------------------------------------------------|
-    |    67: Boolean <IsStatic>k__BackingField (1 byte)                     |
-    |-----------------------------------------------------------------------|
-    |    68: Boolean <IsContinuation>k__BackingField (1 byte)               |
-    |-----------------------------------------------------------------------|
-    |    69: Boolean <IsCreateOnPreExistingAccount>k__BackingField (1 byte) |
-    |-----------------------------------------------------------------------|
-    |    70: Boolean _isDisposed (1 byte)                                   |
-    |-----------------------------------------------------------------------|
-    |    71: padding (1 byte)                                               |
-    |-----------------------------------------------------------------------|
-    | 72-103: EvmPooledMemory _memory (32 bytes)                            |
-    |-----------------------------------------------------------------------|
-    | 104-111: ExecutionEnvironment _env (8 bytes)                          |
-    |-----------------------------------------------------------------------|
-    | 112-143: StackAccessTracker _accessTracker (32 bytes)                 |
-    |-----------------------------------------------------------------------|
-    | 144-155: Snapshot _snapshot (12 bytes)                                |
-    |-----------------------------------------------------------------------|
-    | 156-159: padding (4 bytes)                                            |
-    |=======================================================================|
-     */
-
     public byte[]? DataStack;
-    public ReturnState[]? ReturnStack;
     public TGasPolicy Gas;
+    public long InitialStateReservoir;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
     public int DataStackHead;
-    public int ReturnStackHead;
     public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
-    public int FunctionIndex { get; set; }
     public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
     private bool _canRestore;
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
@@ -182,13 +126,12 @@ public class VmState<TGasPolicy> : IDisposable
         }
         _accessTracker.TakeSnapshot();
         Gas = gas;
+        InitialStateReservoir = TGasPolicy.GetStateReservoir(in gas);
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
         DataStackHead = 0;
-        ReturnStackHead = 0;
         ProgramCounter = 0;
-        FunctionIndex = 0;
         ExecutionType = executionType;
         IsTopLevel = isTopLevel;
         _canRestore = !isTopLevel;
@@ -206,10 +149,7 @@ public class VmState<TGasPolicy> : IDisposable
         _creationStackTrace = new StackTrace();
 #endif
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowIsInUse()
-        {
-            throw new InvalidOperationException("Already in use");
-        }
+        static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
 
     public Address From => ExecutionType switch
@@ -230,7 +170,6 @@ public class VmState<TGasPolicy> : IDisposable
 
     public void Dispose()
     {
-        Debug.Assert(!_isDisposed);
         if (_isDisposed)
         {
             return;
@@ -240,9 +179,8 @@ public class VmState<TGasPolicy> : IDisposable
         if (DataStack is not null)
         {
             // Only return if initialized
-            _stackPool.ReturnStacks(DataStack, ReturnStack!);
+            _stackPool.ReturnStacks(DataStack);
             DataStack = null;
-            ReturnStack = null;
         }
 
         if (_canRestore)
@@ -277,13 +215,64 @@ public class VmState<TGasPolicy> : IDisposable
     }
 #endif
 
-    public void InitializeStacks()
+    public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (DataStack is null)
+        byte[] dataStack = DataStack;
+        if (dataStack is null)
         {
-            (DataStack, ReturnStack) = _stackPool.RentStacks();
+            DataStack = dataStack = AllocateStacks();
         }
+
+        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan);
+    }
+
+    public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        byte[] dataStack = DataStack;
+        if (dataStack is null)
+        {
+            DataStack = dataStack = AllocateStacks();
+        }
+
+        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static byte[] AllocateStacks() => _stackPool.RentStacks();
+
+    private static ref byte As32AlignedRef(byte[] array)
+    {
+        nuint offset = GetAlignmentOffset32(array);
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), offset);
+    }
+
+    public Memory<byte> MemoryStacks(int count)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        byte[] dataStack = DataStack;
+        if (dataStack is null)
+        {
+            DataStack = dataStack = AllocateStacks();
+        }
+        return AsAligned32Memory(dataStack, size: count * EvmStack.WordSize);
+    }
+
+    private static Memory<byte> AsAligned32Memory(byte[] array, int size)
+    {
+        nuint offset = GetAlignmentOffset32(array);
+        return array.AsMemory((int)(uint)offset, size);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe static nuint GetAlignmentOffset32(byte[] array)
+    {
+        // The input array should be pinned and we are just using the Pointer to
+        // calculate alignment, not using data so not creating memory hole.
+        Debug.Assert(array is not null);
+        nint addr = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+        return (nuint)((-addr) & 31);
     }
 
     public void CommitToParent(VmState<TGasPolicy> parentState)
@@ -293,14 +282,3 @@ public class VmState<TGasPolicy> : IDisposable
         _canRestore = false; // we can't restore if we committed
     }
 }
-
-/// <summary>
-/// Return state for EVM call stack management.
-/// </summary>
-public struct ReturnState
-{
-    public int Index;
-    public int Offset;
-    public int Height;
-}
-

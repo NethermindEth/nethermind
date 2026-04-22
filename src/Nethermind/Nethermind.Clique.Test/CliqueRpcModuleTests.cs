@@ -47,7 +47,7 @@ namespace Nethermind.Clique.Test
 
             SnapshotManager snapshotManager = new(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
 
-            CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+            CliqueBlockProducerRunner producerRunner = new(
                 blockTree,
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),

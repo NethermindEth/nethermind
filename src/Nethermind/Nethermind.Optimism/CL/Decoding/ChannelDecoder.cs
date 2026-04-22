@@ -18,20 +18,20 @@ public class ChannelDecoder
         if ((data[0] & 0x0F) == 8 || (data[0] & 0x0F) == 15)
         {
             // zlib
-            var deflateStream = new DeflateStream(new MemoryStream(data[2..]), CompressionMode.Decompress);
+            using DeflateStream deflateStream = new(new MemoryStream(data[2..]), CompressionMode.Decompress);
             CopyDataWithLimit(deflateStream, memoryStream);
         }
         else if (data[0] == 1)
         {
             // brotli
-            BrotliStream stream = new BrotliStream(new MemoryStream(data[1..]), CompressionMode.Decompress);
+            using BrotliStream stream = new(new MemoryStream(data[1..]), CompressionMode.Decompress);
             CopyDataWithLimit(stream, memoryStream);
         }
         else
         {
             throw new Exception($"Unsupported compression algorithm {data[0]}");
         }
-        return memoryStream.GetBuffer();
+        return memoryStream.GetBuffer().AsMemory(0, (int)memoryStream.Length);
     }
 
     private static void CopyDataWithLimit(Stream input, Stream output)

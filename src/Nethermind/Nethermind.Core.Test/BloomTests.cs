@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -28,37 +29,28 @@ namespace Nethermind.Core.Test
         [TestCase(10, 1)]
         [TestCase(10, 10)]
         [TestCase(100, 1)]
-        public void matches_previously_added_item(int count, int topicMax)
-        {
-            MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => addedEntries, true);
-        }
+        public void matches_previously_added_item(int count, int topicMax) => MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => addedEntries, true);
 
         [TestCase(1, 1)]
         [TestCase(1, 10)]
         [TestCase(10, 1)]
         [TestCase(10, 10)]
         [TestCase(100, 1)]
-        public void does_not_match_not_added_item(int count, int topicMax)
-        {
-            MatchingTest(() => GetLogEntries(count, topicMax),
+        public void does_not_match_not_added_item(int count, int topicMax) => MatchingTest(() => GetLogEntries(count, topicMax),
                 addedEntries => GetLogEntries(count, topicMax,
                 addedEntries.Sum(a => a.Topics.Length)), false);
-        }
 
         [Test]
-        public void empty_does_not_match_any_item()
-        {
-            MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);
-        }
+        public void empty_does_not_match_any_item() => MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);
 
         public void MatchingTest(Func<LogEntry[]> addedEntries, Func<LogEntry[], LogEntry[]> testedEntries, bool isMatchExpectation)
         {
             Bloom bloom = new();
-            var entries = addedEntries();
+            LogEntry[] entries = addedEntries();
             bloom.Add(entries);
 
-            var testEntries = testedEntries(entries);
-            var results = testEntries.Select(e => bloom.Matches(e));
+            LogEntry[] testEntries = testedEntries(entries);
+            IEnumerable<bool> results = testEntries.Select(e => bloom.Matches(e));
             results.Should().AllBeEquivalentTo(isMatchExpectation);
         }
 
@@ -78,12 +70,12 @@ namespace Nethermind.Core.Test
 
         private static LogEntry[] GetLogEntries(int count, int topicsMax, int start = 0)
         {
-            var keccakGenerator = TestItem.Keccaks;
-            var entries = new LogEntry[count];
+            Hash256[] keccakGenerator = TestItem.Keccaks;
+            LogEntry[] entries = new LogEntry[count];
             for (int i = start; i < count + start; i++)
             {
                 int topicsCount = i % topicsMax + 1;
-                var topics = new Hash256[topicsCount];
+                Hash256[] topics = new Hash256[topicsCount];
                 for (int j = 0; j < topicsCount; j++)
                 {
                     topics[j] = keccakGenerator[i + j];

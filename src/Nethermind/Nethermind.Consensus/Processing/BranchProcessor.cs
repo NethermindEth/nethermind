@@ -13,8 +13,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -28,8 +26,7 @@ public class BranchProcessor(
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -44,7 +41,7 @@ public class BranchProcessor(
     private void PreCommitBlock(BlockHeader block)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {block.ToString(BlockHeader.Format.Short)} state root {block.StateRoot}");
-        _stateProvider.CommitTree(block.Number);
+        stateProvider.CommitTree(block.Number);
     }
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
@@ -75,6 +72,12 @@ public class BranchProcessor(
 
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
+
+        // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
+        // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
+        // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
+        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
+        blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         try
         {
@@ -117,14 +120,7 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                Block processedBlock;
-                TxReceipt[] receipts;
-
-                if (preWarmTask is not null)
-                {
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
-                }
-                else
+                if (preWarmTask is null)
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     CacheType result = preWarmer?.ClearCaches() ?? default;
@@ -132,10 +128,11 @@ public class BranchProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
-                // Block is processed, we can cancel background tasks
+                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
+                // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
@@ -146,7 +143,6 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = _stateProvider.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -169,7 +165,7 @@ public class BranchProcessor(
                 WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
-                _stateProvider.Reset();
+                stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
@@ -189,6 +185,7 @@ public class BranchProcessor(
         }
         finally
         {
+            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
             worldStateCloser?.Dispose();
         }
 
@@ -225,12 +222,10 @@ public class BranchProcessor(
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(Block suggestedBlock)
-        {
+        public static void CalculateInBackground(Block suggestedBlock) =>
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
             ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
-        }
 
         void IThreadPoolWorkItem.Execute()
         {

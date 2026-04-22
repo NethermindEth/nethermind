@@ -14,6 +14,7 @@ using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
+using Perfolizer.Mathematics.OutlierDetection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -87,7 +88,7 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly byte[] StopCode = [(byte)Instruction.STOP];
     private static readonly Instruction[] AllValidLegacyOpcodes = Enum
         .GetValues<Instruction>()
-        .Where(static opcode => opcode.IsValid(isEofContext: false) && opcode != Instruction.INVALID)
+        .Where(static opcode => Enum.IsDefined(opcode) && opcode != Instruction.INVALID)
         .ToArray();
     private static readonly Instruction[] PerRunRefreshedOpcodes =
     [
@@ -204,7 +205,7 @@ public unsafe class EvmOpcodesBenchmark
             _env,
             new StackAccessTracker(),
             Snapshot.Empty);
-        _vmState.InitializeStacks();
+        _vmState.InitializeStacks(bytecode, out _);
         InitializeKeccakMemoryLocations();
 
         _vm.SetVmState(_vmState);
@@ -244,7 +245,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), default);
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
         while (remaining > 0)
@@ -268,7 +269,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), default);
         EvmExceptionType result = EvmExceptionType.None;
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
         {
@@ -286,7 +287,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), default);
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
         while (remaining > 0)
@@ -313,7 +314,7 @@ public unsafe class EvmOpcodesBenchmark
     public void CleanupStack()
     {
         _stateProvider.Reset(resetBlockChanges: true);
-        CodeInfoRepository.Clear();
+        CacheCodeInfoRepository.Clear();
     }
 
     [IterationSetup]
@@ -414,15 +415,42 @@ public unsafe class EvmOpcodesBenchmark
         return Math.Clamp(maxRuns, 1, requestedRuns);
     }
 
-    private static (int InputCount, int OutputCount) GetStackIo(Instruction opcode)
+    private static (ushort InputCount, ushort OutputCount, ushort immediates) StackRequirements(Instruction instruction) => instruction switch
     {
-        return opcode switch
-        {
-            Instruction.CALL or Instruction.CALLCODE => (7, 1),
-            Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 1),
-            _ => (opcode.StackRequirements().InputCount, opcode.StackRequirements().OutputCount),
-        };
-    }
+        Instruction.STOP or Instruction.INVALID or Instruction.JUMPDEST => (0, 0, 0),
+        Instruction.POP or Instruction.SELFDESTRUCT or Instruction.JUMP => (1, 0, 0),
+        Instruction.ISZERO or Instruction.NOT or Instruction.CLZ or Instruction.BALANCE or Instruction.CALLDATALOAD
+            or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.BLOCKHASH or Instruction.MLOAD
+            or Instruction.SLOAD or Instruction.BLOBHASH or Instruction.TLOAD => (1, 1, 0),
+        Instruction.MSTORE or Instruction.MSTORE8 or Instruction.SSTORE or Instruction.LOG0 or Instruction.REVERT
+            or Instruction.TSTORE or Instruction.RETURN or Instruction.JUMPI => (2, 0, 0),
+        Instruction.CALLDATACOPY or Instruction.CODECOPY or Instruction.RETURNDATACOPY or Instruction.LOG1
+            or Instruction.MCOPY => (3, 0, 0),
+        Instruction.EXTCODECOPY or Instruction.LOG2 => (4, 0, 0),
+        Instruction.LOG3 => (5, 0, 0),
+        Instruction.LOG4 => (6, 0, 0),
+        Instruction.ADDMOD or Instruction.MULMOD or Instruction.CREATE => (3, 1, 0),
+        Instruction.CREATE2 => (4, 1, 0),
+        Instruction.ADDRESS or Instruction.ORIGIN or Instruction.CALLER or Instruction.CALLVALUE
+            or Instruction.CALLDATASIZE or Instruction.CODESIZE or Instruction.GASPRICE or Instruction.RETURNDATASIZE
+            or Instruction.COINBASE or Instruction.TIMESTAMP or Instruction.NUMBER or Instruction.PREVRANDAO
+            or Instruction.GASLIMIT or Instruction.CHAINID or Instruction.SELFBALANCE or Instruction.BASEFEE
+            or Instruction.MSIZE or Instruction.GAS or Instruction.PC or Instruction.BLOBBASEFEE
+            or Instruction.SLOTNUM => (0, 1, 0),
+        Instruction.CALL or Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALLCODE => (6, 1, 0),
+        >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, (ushort)(instruction - Instruction.PUSH0)),
+        >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
+        >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),
+        Instruction.SWAPN or Instruction.DUPN or Instruction.EXCHANGE => (0, 0, 1),
+        _ => Enum.IsDefined(instruction) ? ((ushort)2, (ushort)1, (ushort)0) : throw new NotImplementedException($"opcode {instruction} not implemented yet"),
+    };
+
+    private static (int InputCount, int OutputCount) GetStackIo(Instruction opcode) => opcode switch
+    {
+        Instruction.CALL or Instruction.CALLCODE => (7, 1),
+        Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 1),
+        _ => (StackRequirements(opcode).InputCount, StackRequirements(opcode).OutputCount),
+    };
 
     private int SetupStackForOpcode(Instruction opcode, int runs = 1)
     {
@@ -507,10 +535,7 @@ public unsafe class EvmOpcodesBenchmark
         return depth;
     }
 
-    private int SetupStackForBinaryRuns(int runs)
-    {
-        return SetupStackForBinaryRuns(runs, in ValueA, in ValueB);
-    }
+    private int SetupStackForBinaryRuns(int runs) => SetupStackForBinaryRuns(runs, in ValueA, in ValueB);
 
     private int SetupStackForTernaryRuns(int runs, in UInt256 first, in UInt256 second, in UInt256 modulus)
     {
@@ -556,7 +581,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private int SetupGenericStack(Instruction opcode)
     {
-        int inputCount = opcode.StackRequirements().InputCount;
+        int inputCount = StackRequirements(opcode).InputCount;
         for (int i = 0; i < inputCount; i++)
         {
             UInt256 value = new((ulong)(i + 1));
@@ -566,10 +591,7 @@ public unsafe class EvmOpcodesBenchmark
         return inputCount;
     }
 
-    private void SetupCallStack(bool hasValue)
-    {
-        SetupCallStack(hasValue, in CallTarget);
-    }
+    private void SetupCallStack(bool hasValue) => SetupCallStack(hasValue, in CallTarget);
 
     private void SetupCallStack(bool hasValue, in UInt256 target)
     {
@@ -602,7 +624,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private long ExecuteOpcodeOnceForGas()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, GetAlignedStackSpan());
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), default);
         if (RequiresPerRunLocationSetup(Opcode))
         {
             stack.Head = _stackDepth;
@@ -709,27 +731,18 @@ public unsafe class EvmOpcodesBenchmark
         }
     }
 
-    private static bool RequiresPerRunLocationSetup(Instruction opcode)
-    {
-        return PerRunRefreshedOpcodes.Contains(opcode);
-    }
+    private static bool RequiresPerRunLocationSetup(Instruction opcode) => PerRunRefreshedOpcodes.Contains(opcode);
 
-    private static bool IsCallOpcode(Instruction opcode)
-    {
-        return opcode is Instruction.CALL
+    private static bool IsCallOpcode(Instruction opcode) => opcode is Instruction.CALL
             or Instruction.CALLCODE
             or Instruction.DELEGATECALL
             or Instruction.STATICCALL;
-    }
 
-    private static bool RequiresIndependentBinaryInputs(Instruction opcode)
-    {
-        return opcode is Instruction.MUL
+    private static bool RequiresIndependentBinaryInputs(Instruction opcode) => opcode is Instruction.MUL
             or Instruction.DIV
             or Instruction.SDIV
             or Instruction.MOD
             or Instruction.SMOD;
-    }
 
     private int SetupStackForIndependentBinaryRuns(Instruction opcode, int runs)
     {
@@ -774,10 +787,8 @@ public unsafe class EvmOpcodesBenchmark
         }
     }
 
-    private static byte[] CreateDynamicCallCode(int index)
-    {
+    private static byte[] CreateDynamicCallCode(int index) =>
         // STOP halts immediately; trailing bytes make each code hash distinct.
-        return
         [
             (byte)Instruction.STOP,
             (byte)(index & 0xFF),
@@ -787,7 +798,6 @@ public unsafe class EvmOpcodesBenchmark
             (byte)Instruction.ADD,
             (byte)Instruction.POP,
         ];
-    }
 
     private void PreparePerRunLocationSetup(int runIndex)
     {
@@ -906,7 +916,7 @@ public unsafe class EvmOpcodesBenchmark
     {
         public EvmOpcodesBenchmarkConfig()
         {
-            // 3 process launches x 15 measurement iterations = 45 data points.
+            // 2 process launches x 15 measurement iterations = 30 data points.
             // GcForce ensures a GC collection between iterations to reduce allocation noise.
             // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
             // because the runner's DashboardConfig.AddJob is commented out.
@@ -917,9 +927,12 @@ public unsafe class EvmOpcodesBenchmark
                 .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithLaunchCount(3)
+                .WithLaunchCount(2)
                 .WithWarmupCount(15)
-                .WithIterationCount(15));
+                .WithIterationCount(15)
+                // Drop both sides of the distribution; stabilises the median/P90 against
+                // CI runner cold-start stalls and background-task interference.
+                .WithOutlierMode(OutlierMode.RemoveAll));
             HideColumns(Column.Method);
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);

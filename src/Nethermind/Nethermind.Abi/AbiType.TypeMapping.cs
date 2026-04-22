@@ -49,10 +49,7 @@ namespace Nethermind.Abi
             }
         }
 
-        protected static bool IsMappingRegistered<T>()
-        {
-            return _typeMappings.ContainsKey(typeof(T));
-        }
+        protected static bool IsMappingRegistered<T>() => _typeMappings.ContainsKey(typeof(T));
 
         protected static void RegisterMapping<T>(AbiType abiType)
         {

@@ -38,10 +38,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public long MigratedBlockNumber { get; set; } = 0;
 
-        public bool HasBlock(long blockNumber, Hash256 hash)
-        {
-            return false;
-        }
+        public bool HasBlock(long blockNumber, Hash256 hash) => false;
 
         public void EnsureCanonical(Block block)
         {

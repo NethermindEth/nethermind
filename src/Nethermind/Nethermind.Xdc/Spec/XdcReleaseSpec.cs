@@ -4,7 +4,9 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -22,7 +24,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinePeriod { get; set; }                  // Miner mine period to mine a block
     public int TimeoutSyncThreshold { get; set; }        // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }               // Duration in ms
-    public double CertThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
+    public double CertificateThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
     public double MasternodeReward { get; set; }         // Block reward per master node (core validator) - unit Ether
     public double ProtectorReward { get; set; }          // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }           // Block reward per observer - unit Ether
@@ -57,7 +59,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
         V2ConfigParams configParams = GetConfigAtRound(V2Configs, round);
         SwitchRound = configParams.SwitchRound;
         MaxMasternodes = configParams.MaxMasternodes;
-        CertThreshold = configParams.CertThreshold;
+        CertificateThreshold = configParams.CertificateThreshold;
         TimeoutSyncThreshold = configParams.TimeoutSyncThreshold;
         TimeoutPeriod = configParams.TimeoutPeriod;
         MinePeriod = configParams.MinePeriod;
@@ -78,15 +80,15 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 
     public static XdcReleaseSpec FromReleaseSpec(IReleaseSpec spec)
     {
-        var xdcSpec = new XdcReleaseSpec();
+        XdcReleaseSpec xdcSpec = new();
 
-        var baseType = typeof(ReleaseSpec);
-        var properties = baseType.GetProperties();
-        foreach (var property in properties)
+        Type baseType = typeof(ReleaseSpec);
+        PropertyInfo[] properties = baseType.GetProperties();
+        foreach (PropertyInfo property in properties)
         {
             if (property.CanRead && property.CanWrite)
             {
-                var value = property.GetValue(spec);
+                object value = property.GetValue(spec);
                 property.SetValue(xdcSpec, value);
             }
         }
@@ -109,7 +111,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MinePeriod { get; set; }              // Miner mine period to mine a block
     public int TimeoutSyncThreshold { get; set; }    // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }           // Duration in ms
-    public double CertThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
+    public double CertificateThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
     public double MasternodeReward { get; set; }     // Block reward per master node (core validator) - unit Ether
     public double ProtectorReward { get; set; }      // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }       // Block reward per observer - unit Ether

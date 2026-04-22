@@ -18,7 +18,7 @@ namespace Nethermind.Serialization.Ssz.Test
             byte[] bytes = new byte[32];
             bytes[1] = 44;
             Bytes32 hash = Bytes32.Wrap(bytes);
-            MerkleTreeNode merkleTreeNode = new MerkleTreeNode(hash, 5);
+            MerkleTreeNode merkleTreeNode = new(hash, 5);
             merkleTreeNode.Hash.Should().Be(hash);
             merkleTreeNode.Index.Should().Be(5);
         }

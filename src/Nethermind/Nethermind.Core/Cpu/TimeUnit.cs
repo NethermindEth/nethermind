@@ -11,19 +11,19 @@ namespace Nethermind.Core.Cpu;
 
 public class TimeUnit : IEquatable<TimeUnit>
 {
-    public static readonly TimeUnit Nanosecond = new TimeUnit("ns", "Nanosecond", 1L);
+    public static readonly TimeUnit Nanosecond = new("ns", "Nanosecond", 1L);
 
-    public static readonly TimeUnit Microsecond = new TimeUnit("μs", "Microsecond", 1000L);
+    public static readonly TimeUnit Microsecond = new("μs", "Microsecond", 1000L);
 
-    public static readonly TimeUnit Millisecond = new TimeUnit("ms", "Millisecond", 1000000L);
+    public static readonly TimeUnit Millisecond = new("ms", "Millisecond", 1000000L);
 
-    public static readonly TimeUnit Second = new TimeUnit("s", "Second", 1000000000L);
+    public static readonly TimeUnit Second = new("s", "Second", 1000000000L);
 
-    public static readonly TimeUnit Minute = new TimeUnit("m", "Minute", Second.NanosecondAmount * 60);
+    public static readonly TimeUnit Minute = new("m", "Minute", Second.NanosecondAmount * 60);
 
-    public static readonly TimeUnit Hour = new TimeUnit("h", "Hour", Minute.NanosecondAmount * 60);
+    public static readonly TimeUnit Hour = new("h", "Hour", Minute.NanosecondAmount * 60);
 
-    public static readonly TimeUnit Day = new TimeUnit("d", "Day", Hour.NanosecondAmount * 24);
+    public static readonly TimeUnit Day = new("d", "Day", Hour.NanosecondAmount * 24);
 
     public static readonly TimeUnit[] All = new TimeUnit[7] { Nanosecond, Microsecond, Millisecond, Second, Minute, Hour, Day };
 
@@ -40,10 +40,7 @@ public class TimeUnit : IEquatable<TimeUnit>
         NanosecondAmount = nanosecondAmount;
     }
 
-    public TimeInterval ToInterval(long value = 1L)
-    {
-        return new TimeInterval(value, this);
-    }
+    public TimeInterval ToInterval(long value = 1L) => new(value, this);
 
     public static TimeUnit GetBestTimeUnit(params double[] values)
     {
@@ -65,10 +62,7 @@ public class TimeUnit : IEquatable<TimeUnit>
         return All.Last();
     }
 
-    public static double Convert(double value, TimeUnit from, TimeUnit to)
-    {
-        return value * (double)from.NanosecondAmount / (double)(to ?? GetBestTimeUnit(value)).NanosecondAmount;
-    }
+    public static double Convert(double value, TimeUnit from, TimeUnit to) => value * (double)from.NanosecondAmount / (double)(to ?? GetBestTimeUnit(value)).NanosecondAmount;
 
     public bool Equals(TimeUnit? other)
     {
@@ -110,10 +104,7 @@ public class TimeUnit : IEquatable<TimeUnit>
         return Equals((TimeUnit)obj);
     }
 
-    public override int GetHashCode()
-    {
-        return (((((Name is not null) ? Name.GetHashCode() : 0) * 397) ^ ((Description is not null) ? Description.GetHashCode() : 0)) * 397) ^ NanosecondAmount.GetHashCode();
-    }
+    public override int GetHashCode() => (((((Name is not null) ? Name.GetHashCode() : 0) * 397) ^ ((Description is not null) ? Description.GetHashCode() : 0)) * 397) ^ NanosecondAmount.GetHashCode();
 
     public static bool operator ==(TimeUnit left, TimeUnit right)
     {

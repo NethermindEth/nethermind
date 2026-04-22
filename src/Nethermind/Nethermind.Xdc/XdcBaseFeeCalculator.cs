@@ -4,9 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc;
 
@@ -16,8 +13,5 @@ internal class XdcBaseFeeCalculator : IBaseFeeCalculator
     //https://github.com/XinFinOrg/XDPoSChain/blob/e324a78d9466c02a121d4931248f5dc9505b580a/consensus/misc/eip1559/eip1559.go#L56
     public const long BaseFee = 12500000000;
 
-    public UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
-    {
-        return BaseFee;
-    }
+    public UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559) => BaseFee;
 }

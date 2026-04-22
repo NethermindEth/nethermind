@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
 
 public class DbConfig : IDbConfig
 {
-    public static DbConfig Default = new DbConfig();
+    public static DbConfig Default = new();
 
-    public ulong SharedBlockCacheSize { get; set; } = (ulong)256.MiB();
+    public ulong SharedBlockCacheSize { get; set; } = (ulong)256.MiB;
     public bool SkipMemoryHintSetting { get; set; } = false;
 
     public bool WriteAheadLogSync { get; set; } = false;
@@ -20,7 +19,7 @@ public class DbConfig : IDbConfig
 
     public int? MaxOpenFiles { get; set; }
     public bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
-    public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
+    public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB;
 
     public string RocksDbOptions { get; set; } =
 
@@ -88,6 +87,8 @@ public class DbConfig : IDbConfig
     public string BadBlocksDbRocksDbOptions { get; set; } = "";
     public string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
 
+    public string BlockAccessListsDbRocksDbOptions { get; set; } = "";
+    public string? BlockAccessListsDbAdditionalRocksDbOptions { get; set; }
 
     public string BlobTransactionsDbRocksDbOptions { get; set; } =
         "block_based_table_factory.block_cache=32000000;";
@@ -133,7 +134,7 @@ public class DbConfig : IDbConfig
         "";
     public string? HeadersDbAdditionalRocksDbOptions { get; set; } = "";
 
-    public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
+    public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB;
     public string BlockNumbersDbRocksDbOptions { get; set; } =
         "write_buffer_size=8000000;" +
         "max_bytes_for_level_base=16000000;" +
@@ -158,7 +159,7 @@ public class DbConfig : IDbConfig
         "write_buffer_size=4000000;";
     public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
+    public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB;
     public string CodeDbRocksDbOptions { get; set; } =
         "write_buffer_size=16000000;" +
         "block_based_table_factory.block_cache=16000000;" +
@@ -181,7 +182,7 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_base=16000000;";
     public string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
+    public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB;
     public ulong StateDbWriteBufferNumber { get; set; } = 4;
     public bool? StateDbVerifyChecksum { get; set; } = true;
     public ulong? StateDbRowCacheSize { get; set; }
@@ -267,8 +268,8 @@ public class DbConfig : IDbConfig
         // slight adjustment to block size, for potentially better db size.
         "block_based_table_factory.block_size=64000;";
 
-    public ulong StateDbLargeMemoryWriteBufferSize { get; set; } = (ulong)128.MiB();
-    public ulong StateDbArchiveModeWriteBufferSize { get; set; } = (ulong)256.MiB();
+    public ulong StateDbLargeMemoryWriteBufferSize { get; set; } = (ulong)128.MiB;
+    public ulong StateDbArchiveModeWriteBufferSize { get; set; } = (ulong)256.MiB;
 
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 
@@ -406,12 +407,12 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 
-    public string? FlatFallbackNodesNodesDbRocksDbOptions { get; set; } =
+    public string? FlatFallbackNodesDbRocksDbOptions { get; set; } =
         FlatDbCommonTrieOptions +
         // Fallback nodes is tiny. Like KB level small. This is generous.
         "max_bytes_for_level_base=4000000;" +
         "";
-    public string? FlatFallbackNodesNodesDbAdditionalRocksDbOptions { get; set; }
+    public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }

@@ -103,24 +103,18 @@ namespace Nethermind.Evm.Test
             CancunInstructions.Union(
                 new Instruction[]
                 {
-                    Instruction.RJUMP,
-                    Instruction.RJUMPI,
-                    Instruction.RJUMPV,
-                    Instruction.CALLF,
-                    Instruction.RETF,
-                    Instruction.JUMPF,
-                    Instruction.EOFCREATE,
-                    Instruction.RETURNCODE,
-                    Instruction.DATASIZE,
-                    Instruction.DATACOPY,
-                    Instruction.DATALOAD,
-                    Instruction.DATALOADN,
+                    Instruction.CLZ,
+                }
+            ).ToArray();
+
+        private static readonly Instruction[] AmsterdamInstructions =
+            OsakaInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.SLOTNUM,
                     Instruction.SWAPN,
                     Instruction.DUPN,
                     Instruction.EXCHANGE,
-                    Instruction.EXTCALL,
-                    Instruction.EXTDELEGATECALL,
-                    Instruction.EXTSTATICCALL,
                 }
             ).ToArray();
 
@@ -141,7 +135,8 @@ namespace Nethermind.Evm.Test
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
                 {MainnetSpecProvider.PragueActivation, CancunInstructions},
                 {MainnetSpecProvider.OsakaActivation, OsakaInstructions},
-                {(long.MaxValue, ulong.MaxValue), OsakaInstructions}
+                {MainnetSpecProvider.AmsterdamActivation, AmsterdamInstructions},
+                {(long.MaxValue, ulong.MaxValue), AmsterdamInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -167,16 +162,22 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 4, MainnetSpecProvider.OsakaBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 10, MainnetSpecProvider.AmsterdamBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
-            ILogger logger = _logManager.GetClassLogger();
+            ILogger logger = _logManager.GetClassLogger<InvalidOpcodeTests>();
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
-                byte[] code = Prepare.EvmCode
-                    .Op((byte)i)
-                    .Done;
+                Instruction opcode = (Instruction)i;
+
+                // Provide an in-range EIP-8024 immediate so the test checks opcode validity rather
+                // than end-of-code immediate decoding or stack behavior.
+                byte[] code = opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE
+                    ? Prepare.EvmCode.Op((byte)i).Data(0x80).Done
+                    : Prepare.EvmCode.Op((byte)i).Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
                 TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);

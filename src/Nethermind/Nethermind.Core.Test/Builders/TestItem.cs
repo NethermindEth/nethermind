@@ -132,7 +132,7 @@ namespace Nethermind.Core.Test.Builders
 
         public static T CloneObject<T>(T value)
         {
-            var serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string data = serializer.Serialize(value);
             return serializer.Deserialize<T>(data);
         }

@@ -12,10 +12,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         private ISet<T> Items => _items ??= new HashSet<T>();
 
-        public void Clear()
-        {
-            Items.Clear();
-        }
+        public void Clear() => Items.Clear();
 
         public IEnumerable<T> GetSnapshot() => Items.ToHashSet();
 

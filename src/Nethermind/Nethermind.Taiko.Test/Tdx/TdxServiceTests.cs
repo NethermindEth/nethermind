@@ -47,10 +47,8 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void IsBootstrapped_returns_false_before_bootstrap()
-    {
+    public void IsBootstrapped_returns_false_before_bootstrap() =>
         _service.IsBootstrapped.Should().BeFalse();
-    }
 
     [Test]
     public void Bootstrap_generates_keys_and_quote()
@@ -75,10 +73,8 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void GetGuestInfo_returns_null_before_bootstrap()
-    {
+    public void GetGuestInfo_returns_null_before_bootstrap() =>
         _service.GetGuestInfo().Should().BeNull();
-    }
 
     [Test]
     public void GetGuestInfo_returns_info_after_bootstrap()
@@ -124,7 +120,7 @@ public class TdxServiceTests
     {
         TdxGuestInfo info1 = _service.Bootstrap();
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
 
         newService.IsBootstrapped.Should().BeTrue();
         TdxGuestInfo? info2 = newService.GetGuestInfo();
@@ -149,7 +145,7 @@ public class TdxServiceTests
     {
         TdxGuestInfo info1 = _service.Bootstrap();
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
         TdxGuestInfo info2 = newService.Bootstrap();
 
         info2.PublicKey.Should().Be(info1.PublicKey);
@@ -163,7 +159,7 @@ public class TdxServiceTests
         Block block = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
         TdxBlockHeaderSignature signature1 = _service.SignBlockHeader(block.Header);
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
         newService.Bootstrap();
         TdxBlockHeaderSignature signature2 = newService.SignBlockHeader(block.Header);
 

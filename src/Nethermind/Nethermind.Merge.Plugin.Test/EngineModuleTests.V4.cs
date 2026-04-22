@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -23,10 +24,10 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0x0b2e24d802b4664b6f64f87a3e9498566080b2e9f8adf6e00896f89e4cc8a83b",
-        "0xf0444d3c2e8d725d7884803ff71b62a680fe9f96765a9f01b9c4e47dacb2f3b0",
-        "0x73cecfc66bc1c8545aa3521e21be51c31bd2054badeeaa781f5fd5b871883f35",
-        "0xd814b750baa05a39")]
+        "0x32fc756d56a1897bf4d53ec72a854743786b5edbd8c0feec05b245e7cc124eea",
+        "0xc1ecac4884c36982061392807b9307fb0d701a05d9d9fd7dc7e82d2ec96cf9af",
+        "0x8ffb712de6b72f59def7b84f361e6c23519f7f8674d7e6552e23617a996d8ed3",
+        "0x0f0b18188ed90425")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -176,8 +177,8 @@ public partial class EngineModuleTests
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(0)
-          .WithMaxFeePerGas(9.GWei())
-          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithMaxFeePerGas(9.GWei)
+          .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(100_000)
           .WithAuthorizationCode(new JsonRpc.Test.Modules.Eth.EthRpcModuleTests.AllowNullAuthorizationTuple(0, null, 0, new Signature(new byte[65])))
           .WithTo(TestItem.AddressA)
@@ -194,7 +195,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(invalidBlock);
 
-        var response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
+        ResultWrapper<PayloadStatusV1> response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
 
         Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
     }
@@ -212,7 +213,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(TestBlock);
 
         // must reject if execution requests types are not in ascending order
-        var response = await rpc.engine_newPayloadV4(
+        ResultWrapper<PayloadStatusV1> response = await rpc.engine_newPayloadV4(
                 executionPayload,
                 [],
                 TestBlock.ParentBeaconBlockRoot,
@@ -259,7 +260,10 @@ public partial class EngineModuleTests
         last!.IsGenesis.Should().BeTrue();
 
         Block? head = chain.BlockTree.Head;
-        head!.ExecutionRequests!.Length.Should().Be(ExecutionRequestsProcessorMock.Requests.Length);
+        // ExecutionRequests is a transient property (not in RLP), so it may not survive
+        // cache round-trips. Verify via RequestsHash on the header instead, which IS persisted.
+        head!.Header.RequestsHash.Should().Be(
+            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests));
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
@@ -355,8 +359,8 @@ public partial class EngineModuleTests
             ? chain.WaitForImprovedBlock()
             : Task.CompletedTask;
 
-        ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
-        PayloadAttributes payloadAttributes = new PayloadAttributes
+        ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
+        PayloadAttributes payloadAttributes = new()
         {
             Timestamp = timestamp,
             PrevRandao = random,

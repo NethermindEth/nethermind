@@ -89,9 +89,8 @@ public class TxPoolContentListsTests
     {
         get
         {
-            static object[] MakeTestData(Dictionary<int, int[]> txs, int[] localAccounts, ulong blockGasLimit, ulong maxBytesPerTxList, int maxTransactionsLists)
-            {
-                return [
+            static object[] MakeTestData(Dictionary<int, int[]> txs, int[] localAccounts, ulong blockGasLimit, ulong maxBytesPerTxList, int maxTransactionsLists) =>
+                [
                     txs.ToDictionary(
                         static kv => (AddressAsKey)Build.An.Address.FromNumber(kv.Key).TestObject,
                         static kv => kv.Value.Select(static txId =>
@@ -102,7 +101,6 @@ public class TxPoolContentListsTests
                     maxBytesPerTxList,
                     maxTransactionsLists
                 ];
-            }
 
             yield return new TestCaseData(args: MakeTestData(new Dictionary<int, int[]> { { 1, [1] }, { 2, [2] }, { 3, [3] } }, [], 2 * Transaction.BaseTxGasCost, 1000, 2))
             {
@@ -190,6 +188,7 @@ public class TxPoolContentListsTests
             Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
             Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
             Substitute.For<IForkchoiceUpdatedHandler>(),
             Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
@@ -198,6 +197,8 @@ public class TxPoolContentListsTests
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
             Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
+            Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+            Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
             Substitute.For<IEngineRequestsTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,
