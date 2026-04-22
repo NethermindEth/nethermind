@@ -1,20 +1,39 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 public class BN254MulPrecompileTests : PrecompileTests<BN254MulPrecompile, BN254MulPrecompileTests>
 {
-    [TestCase("089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0bf982b98a2757878c051bfe7eee228b12bc69274b918f08d9fcb21e9184ddc10b17c77cbf3c19d5d27e18cbd4a8c336afb488d0e92c18d56e64dd4ea5c437e6", true)]
     [TestCase(
-        "089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" + "11223344",
-        "0bf982b98a2757878c051bfe7eee228b12bc69274b918f08d9fcb21e9184ddc10b17c77cbf3c19d5d27e18cbd4a8c336afb488d0e92c18d56e64dd4ea5c437e6",
-        true,
-        TestName = "Oversized input"
+        "089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        + "11"
     )]
+    [TestCase(
+        "25f8c89ea3437f44f8fc8b6bfbb6312074dc6f983809a5e809ff4e1d076dd5850b38c7ced6e4daef9c4347f370d6d8b58f4b1d8dc61a3c59d651a0644a2a27cfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        + "1122"
+    )]
+    [TestCase(
+        "23f16f1bcc31bd002746da6fa3825209af9a356ccd99cf79604a430dd592bcd90a03caeda9c5aa40cdc9e4166e083492885dad36c72714e3697e34a4bc72ccaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        + "112233"
+    )]
+    public void GetEffectiveInput_DoesntChangeOutput(string input)
+    {
+        ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input);
+        ReadOnlyMemory<byte> effInput = Instance.GetEffectiveInput(fullInput);
+
+        Assert.That(
+            Instance.Run(effInput, Prague.Instance),
+            Is.EqualTo(Instance.Run(fullInput, Prague.Instance)).Using(ResultComparer)
+        );
+    }
+
+    [TestCase("089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0bf982b98a2757878c051bfe7eee228b12bc69274b918f08d9fcb21e9184ddc10b17c77cbf3c19d5d27e18cbd4a8c336afb488d0e92c18d56e64dd4ea5c437e6", true)]
     [TestCase("25f8c89ea3437f44f8fc8b6bfbb6312074dc6f983809a5e809ff4e1d076dd5850b38c7ced6e4daef9c4347f370d6d8b58f4b1d8dc61a3c59d651a0644a2a27cfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "18a902ac147b2951531770c7c18a25e3dd87765e23f7e0c4e9d62b624a6e37450288473776e7e99b2aaa27e8f4656ea9ce5e634fd1ca1aab45315199ecaced2e", true)]
     [TestCase("23f16f1bcc31bd002746da6fa3825209af9a356ccd99cf79604a430dd592bcd90a03caeda9c5aa40cdc9e4166e083492885dad36c72714e3697e34a4bc72ccaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0c6a880ffdd0737c53bfec9b65c9098a3298747bd4e5fd07026661b4cb804331116aeec88e11f49753df224c60c4bd8b8bc0a98b8d50f24ce64475268d227f4c", true)]
     [TestCase("21315394462f1a39f87462dbceb92718b220e4f80af516f727ad85380fadefbc2e4f40ea7bbe2d4d71f13c84fd2ae24a4a24d9638dd78349d0dee8435a67cca6ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "1d7985d51e53cdfbd73b051e9a74ab6e621b6b664a7efed00e30c1264f5623d02808eee3baec187160d2499b4aedbc665a532d245212a1be61e0d4b9b36f3075", true)]

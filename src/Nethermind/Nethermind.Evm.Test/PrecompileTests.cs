@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -28,6 +27,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     private const string TestFilesDirectory = "PrecompileVectors";
 
     protected static readonly TPrecompile Instance = TPrecompile.Instance;
+    protected static readonly IEqualityComparer<Result<byte[]>> ResultComparer = new ResultEqComparer();
 
     private static IEnumerable<TestCaseData> TestSource()
     {
@@ -83,4 +83,24 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
             .Replace("!=", "_not_eq_")
             .Replace("=", "_eq_")
             .Replace(" ", string.Empty);
+
+    private class ResultEqComparer : IEqualityComparer<Result<byte[]>>
+    {
+        public bool Equals(Result<byte[]> x, Result<byte[]> y)
+        {
+            if (x.ResultType != y.ResultType) return false;
+            if (x.Data is null && y.Data is null) return true;
+            if (x.Data is null || y.Data is null) return false;
+            return x.Data.AsSpan().SequenceEqual(y.Data);
+        }
+
+        public int GetHashCode(Result<byte[]> obj)
+        {
+            HashCode hash = new();
+            hash.Add(obj.ResultType);
+            if (obj.Data is not null)
+                hash.AddBytes(obj.Data);
+            return hash.ToHashCode();
+        }
+    }
 }
