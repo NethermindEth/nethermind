@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
@@ -27,6 +28,7 @@ public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvid
 
     public ResultWrapper<TxPoolContentFrom> txpool_contentFrom(Address address)
     {
+        ArgumentNullException.ThrowIfNull(address);
         TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
         ulong chainId = specProvider.ChainId;
         return ResultWrapper<TxPoolContentFrom>.Success(new TxPoolContentFrom(poolInfo, address, chainId));
