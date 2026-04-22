@@ -33,6 +33,10 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.6-noble-chiseled@sha256:5472257bbea16e
 
 WORKDIR /nethermind
 
+# For large pages
+# ENV DOTNET_GCLargePages=1
+# ENV DOTNET_GCRegionRange=0x800000000
+
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
