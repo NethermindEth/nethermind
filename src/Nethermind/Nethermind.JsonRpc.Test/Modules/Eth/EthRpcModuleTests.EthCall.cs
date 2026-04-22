@@ -865,7 +865,6 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_blobBaseFeePerGas_override_test()
     {
         ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
-        using Context ctx = await Context.Create(specProvider);
         ulong? excessBlobGas = 1ul;
 
         Block[] blocks = [
@@ -874,8 +873,7 @@ public partial class EthRpcModuleTests
 
         BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
 
-
-        ctx.Test = await TestRpcBlockchain
+        using TestRpcBlockchain test = await TestRpcBlockchain
             .ForTest(SealEngineType.NethDev)
             .WithBlockFinder(blockTree)
             .Build(specProvider);
@@ -889,7 +887,7 @@ public partial class EthRpcModuleTests
         object? blockOverride = JsonSerializer.Deserialize<object>(
         """{"blobBaseFee":"0x02"}""");
 
-        string withOverride = await ctx.Test.TestEthRpc(
+        string withOverride = await test.TestEthRpc(
             "eth_call", transaction, "latest", stateOverride, blockOverride);
 
         JToken parsed = JToken.Parse(withOverride);
