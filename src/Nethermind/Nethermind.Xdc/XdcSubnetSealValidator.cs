@@ -70,4 +70,15 @@ internal sealed class XdcSubnetSealValidator(
         error = null;
         return true;
     }
+
+    protected override bool ValidateNonEpochFields(XdcBlockHeader xdcHeader, out string? error)
+    {
+        if (xdcHeader.Validators is not null && xdcHeader.Validators.Length != 0)
+        {
+            error = "Validators are not empty in non-epoch switch header.";
+            return false;
+        }
+        error = null;
+        return true;
+    }
 }

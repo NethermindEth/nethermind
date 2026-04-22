@@ -83,19 +83,8 @@ internal class XdcSealValidator(
         }
         else
         {
-            if (xdcHeader.Validators is not null &&
-                xdcHeader.Validators.Length != 0)
-            {
-                error = "Validators are not empty in non-epoch switch header.";
+            if (!ValidateNonEpochFields(xdcHeader, out error))
                 return false;
-            }
-            if (xdcHeader.Penalties is not null &&
-                xdcHeader.Penalties?.Length != 0)
-            {
-                error = "Penalties are not empty in non-epoch switch header.";
-                return false;
-            }
-            //TODO get masternodes from snapshot
             EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
             masternodes = epochSwitchInfo.Masternodes;
             if (masternodes is null || masternodes.Length == 0)
@@ -109,6 +98,23 @@ internal class XdcSealValidator(
             return false;
         }
 
+        error = null;
+        return true;
+    }
+
+    protected virtual bool ValidateNonEpochFields(XdcBlockHeader xdcHeader, out string? error)
+    {
+        if (xdcHeader.Validators is not null && xdcHeader.Validators.Length != 0)
+        {
+            error = "Validators are not empty in non-epoch switch header.";
+            return false;
+        }
+        if (xdcHeader.Penalties is not null &&
+            xdcHeader.Penalties?.Length != 0)
+        {
+            error = "Penalties are not empty in non-epoch switch header.";
+            return false;
+        }
         error = null;
         return true;
     }
