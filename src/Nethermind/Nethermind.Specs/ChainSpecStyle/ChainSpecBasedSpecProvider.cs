@@ -182,7 +182,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
-            releaseSpec.MaximumUncleCount = 2;
+            // EIP-3675: zero uncles post-merge. Runtime fallback is MergeHeaderValidator.
+            releaseSpec.MaximumUncleCount = IsPostMergeRelease(chainSpec, releaseStartBlock, releaseStartTimestamp) ? 0 : 2;
             releaseSpec.DifficultyBoundDivisor = 1;
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
@@ -341,6 +342,19 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
         }
+
+        // Shanghai (EIP-4895) is the first post-Paris timestamp-activated fork, so TTD-driven
+        // chains like mainnet cross into post-merge once they reach it - that's the only
+        // non-obvious branch below. TTD=0 covers PoS-from-genesis. TerminalPoWBlockNumber
+        // fires only when releaseStartBlock advances past it, which requires the chainspec to
+        // carry post-merge block-number transitions (TerminalPoWBlockNumber is excluded from
+        // AddTransitions above, so it creates no spec boundary of its own). Paris-era blocks
+        // on TTD-driven chains with no such later transitions are not detected here - runtime
+        // MergeHeaderValidator (UnclesHash == empty via PoSSwitcher) is the safety net.
+        private static bool IsPostMergeRelease(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp) =>
+            chainSpec.Parameters.TerminalTotalDifficulty?.IsZero == true
+            || releaseStartBlock > (chainSpec.Parameters.TerminalPoWBlockNumber ?? long.MaxValue)
+            || (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= (releaseStartTimestamp ?? 0);
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
