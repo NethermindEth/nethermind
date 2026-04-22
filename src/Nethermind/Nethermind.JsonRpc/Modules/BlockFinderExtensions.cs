@@ -126,16 +126,11 @@ namespace Nethermind.JsonRpc.Modules
             }
 
         }
-        private static string FormatBlockNotFoundMessage(BlockParameter blockParameter)
-        {
-            if (blockParameter.Type == BlockParameterType.BlockNumber)
-            {
-                return blockParameter.BlockNumber.HasValue
-                    ? $"block not found: 0x{blockParameter.BlockNumber.Value:x}"
-                    : "block not found";
-            }
 
-            return $"block not found: {blockParameter}";
-        }
+        private static string FormatBlockNotFoundMessage(BlockParameter blockParameter) =>
+            blockParameter.Type == BlockParameterType.BlockNumber &&
+            blockParameter.BlockNumber.HasValue
+                ? $"block not found: 0x{blockParameter.BlockNumber.Value:x}"
+                : $"block not found: {blockParameter}";
     }
 }

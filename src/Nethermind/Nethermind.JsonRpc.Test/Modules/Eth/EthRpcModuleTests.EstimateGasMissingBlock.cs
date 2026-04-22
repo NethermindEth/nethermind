@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using NUnit.Framework;
 using FluentAssertions;
@@ -26,7 +26,7 @@ public partial class EthRpcModuleTests
         JObject response = JObject.Parse(serialized);
         response.Should().ContainKey("error");
         response["error"]!["code"]!.Value<int>().Should().Be(-32000);
-        response["error"]!["message"]!.Value<string>().Should().Be($"block not found: {blockNumber.ToLowerInvariant()}");
+        response["error"]!["message"]!.Value<string>().Should().Be($"block not found: 0x{Convert.ToInt64(blockNumber, 16):x}");
     }
 
     [Test]
