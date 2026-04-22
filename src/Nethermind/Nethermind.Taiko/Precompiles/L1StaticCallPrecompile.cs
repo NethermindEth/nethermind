@@ -70,6 +70,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
     public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, long remainingGas)
     {
         L1PrecompileMetrics.L1StaticCallPrecompile++;
+        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: precompile called, input_len={inputData.Length}, remainingGas={remainingGas}");
 
         if (inputData.Length < L1PrecompileConstants.L1StaticCallMinInputLength)
         {
@@ -97,6 +98,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
         }
 
         long gasLimit = Math.Min(Math.Max(0, remainingGas), GasCap);
+        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: request contract={contractAddress}, block={blockNumber}, calldata_len={calldata.Length}, gasLimit={gasLimit}");
 
         L1CallResult result;
         try
