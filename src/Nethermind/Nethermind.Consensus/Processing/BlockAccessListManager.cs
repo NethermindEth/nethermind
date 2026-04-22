@@ -147,7 +147,7 @@ public class BlockAccessListManager(
 
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 
-                if (blockGasUsed is null && ex is not null)
+                if (ex is not null)
                     ExceptionDispatchInfo.Capture(ex).Throw();
 
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
