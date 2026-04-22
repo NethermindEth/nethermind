@@ -91,7 +91,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
             ParallelOptions options = new() { CancellationToken = cancellationToken };
             using ArrayPoolList<Account?> accounts = new(accountCount, accountCount);
-            int skippedAccounts = 0;
 
             try
             {
@@ -101,7 +100,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     if (!sink.StillNeeded(address, out Account? cached))
                     {
                         accounts[i] = cached;
-                        Interlocked.Increment(ref skippedAccounts);
                         return;
                     }
 
@@ -125,7 +123,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 totalSlots += accountChangesList[i].StorageChanges.Count + accountChangesList[i].StorageReads.Count;
             }
 
-            int skippedSlots = 0;
             if (totalSlots > 0)
             {
                 using ArrayPoolList<(Address Address, StorageTree Tree, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
@@ -156,10 +153,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                         (Address address, StorageTree tree, UInt256 slot) = jobs[s];
                         StorageCell cell = new(address, in slot);
                         if (!sink.StillNeeded(in cell))
-                        {
-                            Interlocked.Increment(ref skippedSlots);
                             return;
-                        }
 
                         byte[] value = tree.Get(in slot);
                         sink.OnStorageRead(in cell, value);
@@ -168,18 +162,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 catch (OperationCanceledException) { }
             }
 
-            LogBalTrieSkipRates(accountCount, skippedAccounts, totalSlots, skippedSlots);
             return Task.CompletedTask;
-        }
-
-        private void LogBalTrieSkipRates(int accountCount, int skippedAccounts, int totalSlots, int skippedSlots)
-        {
-            ILogger logger = _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>();
-            if (!logger.IsInfo) return;
-
-            double accountSkipPct = accountCount == 0 ? 0 : 100.0 * skippedAccounts / accountCount;
-            double slotSkipPct = totalSlots == 0 ? 0 : 100.0 * skippedSlots / totalSlots;
-            logger.Info($"[BAL trie] accounts={accountCount} skipped={skippedAccounts} ({accountSkipPct:F1}%) slots={totalSlots} skipped={skippedSlots} ({slotSkipPct:F1}%)");
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
