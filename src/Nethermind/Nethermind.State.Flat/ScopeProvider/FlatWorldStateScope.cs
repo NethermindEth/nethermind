@@ -327,8 +327,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-        new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+    public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
+    {
+        // Cancel HintBal background warmup — write batches are processor-intensive and already parallelized,
+        // so the warmer thread shouldn't compete for CPU or touch _storages while we mutate it.
+        CancelHintBal();
+        return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+    }
 
     public void Commit(long blockNumber)
     {
