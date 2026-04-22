@@ -345,9 +345,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         // Shanghai (EIP-4895) is the first post-Paris timestamp-activated fork, so TTD-driven
         // chains like mainnet cross into post-merge once they reach it - that's the only
-        // non-obvious branch below. TTD=0 covers PoS-from-genesis; TerminalPoWBlockNumber
-        // covers chainspecs that pin the boundary explicitly. The Paris-Shanghai window on
-        // TTD-driven chains with no explicit terminal block is not detectable here - runtime
+        // non-obvious branch below. TTD=0 covers PoS-from-genesis. TerminalPoWBlockNumber
+        // fires only when releaseStartBlock advances past it, which requires the chainspec to
+        // carry post-merge block-number transitions (TerminalPoWBlockNumber is excluded from
+        // AddTransitions above, so it creates no spec boundary of its own). Paris-era blocks
+        // on TTD-driven chains with no such later transitions are not detected here - runtime
         // MergeHeaderValidator (UnclesHash == empty via PoSSwitcher) is the safety net.
         private static bool IsPostMergeRelease(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp) =>
             chainSpec.Parameters.TerminalTotalDifficulty == UInt256.Zero
