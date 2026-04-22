@@ -18,7 +18,7 @@ public interface ITxPoolRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Returns tx pool content for a specific sender address.",
         IsImplemented = true,
-        ExampleResponse = "{\"pending\":{\"806\":{\"blockHash\":null,\"blockNumber\":null,\"from\":\"0x0216d5032f356960cd3749c31ab34eeff21b3395\",\"gas\":\"0x5208\",\"gasPrice\":\"0xba43b7400\",\"hash\":\"0xaf953a2d01f55cfe080c0c94150a60105e8ac3d51153058a1f03dd239dd08586\",\"nonce\":\"0x326\",\"to\":\"0x7f69a91a3cf4be60020fb58b893b7cbb65376db8\",\"transactionIndex\":null,\"value\":\"0x19a99f0cf456000\"}},\"queued\":{}}")]
+        ExampleResponse = "{\"pending\":{\"806\":{\"blockHash\":null,\"blockNumber\":null,\"blockTimestamp\":null,\"from\":\"0x0216d5032f356960cd3749c31ab34eeff21b3395\",\"gas\":\"0x5208\",\"gasPrice\":\"0xba43b7400\",\"hash\":\"0xaf953a2d01f55cfe080c0c94150a60105e8ac3d51153058a1f03dd239dd08586\",\"nonce\":\"0x326\",\"to\":\"0x7f69a91a3cf4be60020fb58b893b7cbb65376db8\",\"transactionIndex\":null,\"value\":\"0x19a99f0cf456000\"}},\"queued\":{}}")]
     ResultWrapper<TxPoolContentFrom> txpool_contentFrom(Address address);
 
     [JsonRpcMethod(Description = "Returns a detailed info on tx pool transactions.",
