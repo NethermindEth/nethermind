@@ -144,6 +144,9 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // No parent-relative block-number check at genesis (parent is null only when ValidateParent already accepted genesis).
+            if (parent is null) return true;
+
             if (header.Number != parent.Number + 1)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
@@ -256,6 +259,10 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
+            // ValidateParent (called earlier in the chain) accepts a null parent only for genesis.
+            // Gas-limit-vs-parent comparisons don't apply at genesis, so skip them.
+            if (parent is null) return true;
+
             long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
@@ -290,6 +297,9 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // No parent-relative timestamp check at genesis (parent is null only when ValidateParent already accepted genesis).
+            if (parent is null) return true;
+
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
             {
@@ -301,6 +311,13 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // Same class of null-parent exposure as ValidateBlockNumber/GasLimitRange/Timestamp:
+            // ValidateParent accepts null for genesis, but the non-zero-total-difficulty branch
+            // below dereferences parent. No current fixture triggers this (TotalDifficulty is
+            // typically null on uncle headers), but the guard keeps the method consistent with
+            // its siblings.
+            if (parent is null) return true;
+
             bool result = true;
 
             if (header.TotalDifficulty is not null)

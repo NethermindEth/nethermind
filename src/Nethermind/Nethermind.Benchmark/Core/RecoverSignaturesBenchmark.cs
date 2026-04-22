@@ -144,7 +144,7 @@ namespace Nethermind.Benchmarks.Core
             ResetSigs(_block10TxWith0AuthSigs);
             ResetSigs(_block3TxWith1AuthSigs);
 
-            void ResetSigs(Block block) => Parallel.ForEach(block.Transactions, (t) =>
+            static void ResetSigs(Block block) => Parallel.ForEach(block.Transactions, (t) =>
             {
                 t.SenderAddress = null;
                 t.Hash = null;
