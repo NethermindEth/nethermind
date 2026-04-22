@@ -142,7 +142,7 @@ public class BlockAccessListManager(
                 (long? blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
                 totalRegularGas += blockGasUsed ?? 0;
                 totalStateGas += blockStateGasUsed;
-                SpendGas(blockGasUsed.Value);
+                SpendGas(blockGasUsed ?? 0);
 
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 
