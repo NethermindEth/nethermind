@@ -7,6 +7,6 @@ namespace Nethermind.BalRecorder;
 
 public class BalRecorderSpecSwitch
 {
-    private readonly AsyncLocal<bool> _enabled = new();
-    public bool Enabled { get => _enabled.Value; set => _enabled.Value = value; }
+    private readonly AsyncLocal<bool?> _enabled = new();
+    public bool Enabled { get => _enabled.Value is true; set => _enabled.Value = value ? true : null; }
 }
