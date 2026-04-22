@@ -392,6 +392,7 @@ public abstract class BlockchainTestBase
         ("TransactionException.INTRINSIC_GAS_TOO_LOW", "intrinsic gas too low"),
         ("TransactionException.INTRINSIC_GAS_BELOW_FLOOR_GAS_COST", "intrinsic gas too low"),
         ("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS", "miner premium is negative"),
+        ("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS", "max fee per gas less than block base fee"),
         ("TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS", "InvalidMaxPriorityFeePerGas: Cannot be higher than maxFeePerGas"),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "Block gas limit exceeded"),
         ("TransactionException.NONCE_IS_MAX", "NonceTooHigh"),
