@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1737,6 +1738,95 @@ namespace Nethermind.Trie.Test.Pruning
             };
 
             commitBlock1.Should().NotThrow();
+        }
+    }
+
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class TreeStoreInternalBehaviorTests
+    {
+        [Test]
+        public void Dirty_node_record_merge_keeps_current_when_neither_persisted()
+        {
+            TrieNode currentNode = new(NodeType.Unknown, TestItem.KeccakA);
+            TrieNode candidateNode = new(NodeType.Unknown, TestItem.KeccakA);
+            currentNode.IsPersisted = false;
+            candidateNode.IsPersisted = false;
+            TrieStoreDirtyNodesCache.NodeRecord current = new(currentNode, 4);
+            TrieStoreDirtyNodesCache.NodeRecord candidate = new(candidateNode, 2);
+
+            TrieStoreDirtyNodesCache.MergeRecords(current, candidate).Should().Be(current);
+        }
+
+        [Test]
+        public void Dirty_node_record_merge_advances_last_commit_from_candidate()
+        {
+            TrieNode currentNode = new(NodeType.Unknown, TestItem.KeccakA);
+            TrieNode candidateNode = new(NodeType.Unknown, TestItem.KeccakA);
+            currentNode.IsPersisted = false;
+            candidateNode.IsPersisted = false;
+
+            TrieStoreDirtyNodesCache.NodeRecord merged = TrieStoreDirtyNodesCache.MergeRecords(
+                new TrieStoreDirtyNodesCache.NodeRecord(currentNode, 2),
+                new TrieStoreDirtyNodesCache.NodeRecord(candidateNode, 5));
+
+            merged.Node.Should().BeSameAs(currentNode);
+            merged.LastCommit.Should().Be(5);
+        }
+
+        [Test]
+        public void Dirty_node_record_merge_replaces_persisted_node_with_dirty_candidate()
+        {
+            TrieNode persistedNode = new(NodeType.Unknown, TestItem.KeccakA);
+            persistedNode.IsPersisted = true;
+            TrieNode candidateNode = new(NodeType.Unknown, TestItem.KeccakA);
+            candidateNode.IsPersisted = false;
+
+            TrieStoreDirtyNodesCache.NodeRecord merged = TrieStoreDirtyNodesCache.MergeRecords(
+                new TrieStoreDirtyNodesCache.NodeRecord(persistedNode, 1),
+                new TrieStoreDirtyNodesCache.NodeRecord(candidateNode, 3));
+
+            merged.Node.Should().BeSameAs(candidateNode);
+            merged.LastCommit.Should().Be(3);
+        }
+
+        [Test]
+        public void Dirty_node_record_merge_keeps_current_when_candidate_is_persisted()
+        {
+            TrieNode currentNode = new(NodeType.Unknown, TestItem.KeccakA);
+            currentNode.IsPersisted = false;
+            TrieNode persistedCandidateNode = new(NodeType.Unknown, TestItem.KeccakA);
+            persistedCandidateNode.IsPersisted = true;
+
+            TrieStoreDirtyNodesCache.NodeRecord merged = TrieStoreDirtyNodesCache.MergeRecords(
+                new TrieStoreDirtyNodesCache.NodeRecord(currentNode, 4),
+                new TrieStoreDirtyNodesCache.NodeRecord(persistedCandidateNode, 6));
+
+            merged.Node.Should().BeSameAs(currentNode);
+            merged.LastCommit.Should().Be(6);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Persisted_hash_recorder_handles_revisited_keys(bool deleteOldNodes)
+        {
+            ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes = new();
+            HashAndTinyPath key = new(TestItem.KeccakA, new TinyTreePath(TreePath.Empty));
+
+            TrieStore.RecordPersistedHash(persistedHashes, key, TestItem.KeccakB, deleteOldNodes);
+            TrieStore.RecordPersistedHash(persistedHashes, key, TestItem.KeccakC, deleteOldNodes);
+
+            if (deleteOldNodes)
+            {
+                TrieStore.RecordPersistedHash(persistedHashes, key, TestItem.KeccakD, deleteOldNodes);
+                persistedHashes[key].Should().BeNull();
+            }
+            else
+            {
+                persistedHashes[key].Should().Be(TestItem.KeccakB);
+            }
+
+            persistedHashes.Count.Should().Be(1);
         }
     }
 }
