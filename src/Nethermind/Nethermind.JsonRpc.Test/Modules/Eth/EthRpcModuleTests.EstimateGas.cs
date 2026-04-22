@@ -582,7 +582,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
         JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().BeEquivalentTo("gas limit below intrinsic gas");
+            .Should().BeEquivalentTo("gas required exceeds allowance (4000000)");
     }
 
 }

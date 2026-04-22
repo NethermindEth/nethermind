@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection.Metadata;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -24,6 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
+            private bool NoBaseFee { get; set; }
             private BlockOverride? _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
 
@@ -41,6 +43,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 BlockHeader clonedHeader = header.Clone();
+
+                if (NoBaseFee)
+                {
+                    clonedHeader.BaseFeePerGas = 0;
+                }
+
                 clonedHeader.GasUsed = 0;
                 _blockOverride?.ApplyOverrides(clonedHeader);
 
@@ -52,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 BlockParameter? blockParameter,
                 Dictionary<Address, AccountOverride>? stateOverride = null,
                 SearchResult<BlockHeader>? searchResult = null)
-            {
+            {                
                 // default to overridden or previous block gas limit if unspecified
                 if (transactionCall.Gas is null)
                 {
@@ -64,6 +72,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 // enforces gas cap
+                NoBaseFee = !transactionCall.ShouldSetBaseFee();
+
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
@@ -126,6 +136,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private readonly int _errorMargin = rpcConfig.EstimateErrorMargin;
 
+            public override ResultWrapper<UInt256?> Execute(
+                TransactionForRpc transactionCall,
+                BlockParameter? blockParameter,
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                SearchResult<BlockHeader>? searchResult = null)
+            {
+                // Match Geth: when no gas is specified, binary search is bounded by blockGasLimit (then
+                // capped at gasCap by EnsureDefaults). eth_call uses gasCap directly because it is a
+                // pure simulation; estimateGas is computing gas for a real transaction that must fit in a block.
+                if (transactionCall.Gas is null)
+                {
+                    searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+                    if (!searchResult.Value.IsError)
+                        transactionCall.Gas = searchResult.Value.Object!.GasLimit;
+                }
+                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
+            }
+
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, token);
@@ -139,7 +167,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
+                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize , BlobBaseFeeOverride, token);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),

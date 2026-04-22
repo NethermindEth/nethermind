@@ -798,4 +798,23 @@ public partial class EthRpcModuleTests
         JToken.Parse(serialized)["error"].Should().BeNull(because:
             "fee-less call must succeed even when blockOverride.baseFeePerGas > 0");
     }
+        public async Task Eth_call_blobBaseFeePerGas_override_test()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""");
+        object? transaction = JsonSerializer.Deserialize<object>(
+        """{"to":"0xc200000000000000000000000000000000000000"}""");
+
+        // Without override: opcode returns whatever the real blob base fee i.e 1
+        string withoutOverride = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        // With blobBaseFee=0x02 override: opcode must return 0x02
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"blobBaseFee":"0x02"}""");
+        string withOverride = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        UInt256 overriddenFee = Bytes.FromHexString(JToken.Parse(withOverride)["result"]!.Value<string>()!).ToUInt256();
+        overriddenFee.Should().Be((UInt256)0x02);
+    }
 }
