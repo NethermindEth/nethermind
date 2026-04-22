@@ -319,7 +319,7 @@ namespace Nethermind.Trie
                     committer.ReturnConcurrencyQuota();
                 }
             },
-            null,
+            state: null,
             CancellationToken.None,
             TaskCreationOptions.None,
             TaskScheduler.Default);
