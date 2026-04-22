@@ -5,10 +5,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Core.Specs;
-using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using System.Threading.Tasks;
 

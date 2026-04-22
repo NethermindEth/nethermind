@@ -36,7 +36,8 @@ internal class XdcSubnetBlockProducer(
 {
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
     {
-        XdcSubnetBlockHeader headerCandidate = (XdcSubnetBlockHeader)base.PrepareBlockHeader(parent, payloadAttributes);
+        if (base.PrepareBlockHeader(parent, payloadAttributes) is not XdcSubnetBlockHeader headerCandidate)
+            throw new InvalidOperationException("PrepareBlockHeader did not return XdcSubnetBlockHeader");
         //Penalties are not set on epoch switch, but on gap+1
         headerCandidate.Penalties = [];
 

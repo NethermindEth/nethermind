@@ -145,5 +145,4 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
 
     public EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCert) => GetEpochSwitchInfo(timeoutCert.Round);
-    public bool IsGapPlusOne(XdcBlockHeader header, IXdcReleaseSpec spec) => throw new NotImplementedException();
 }
