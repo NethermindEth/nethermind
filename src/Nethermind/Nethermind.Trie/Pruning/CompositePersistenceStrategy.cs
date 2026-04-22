@@ -10,10 +10,7 @@ public class CompositePersistenceStrategy : IPersistenceStrategy
 {
     private readonly List<IPersistenceStrategy> _strategies = new();
 
-    public CompositePersistenceStrategy(params IPersistenceStrategy[] strategies)
-    {
-        _strategies.AddRange(strategies);
-    }
+    public CompositePersistenceStrategy(params IPersistenceStrategy[] strategies) => _strategies.AddRange(strategies);
 
     public IPersistenceStrategy AddStrategy(IPersistenceStrategy strategy)
     {

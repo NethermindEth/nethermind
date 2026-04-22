@@ -69,7 +69,7 @@ internal static partial class StaticCtorDetector
                     // Check surrounding lines for type context
                     for (int j = Math.Max(0, i - 3); j <= Math.Min(lines.Length - 1, i + 3); j++)
                     {
-                        var typeMatch = TypeCommentPattern().Match(lines[j]);
+                        Match typeMatch = TypeCommentPattern().Match(lines[j]);
                         if (typeMatch.Success)
                         {
                             var typeName = NormalizeTypeName(typeMatch.Groups["type"].Value);
@@ -79,7 +79,7 @@ internal static partial class StaticCtorDetector
                             }
                         }
 
-                        var fieldMatch = StaticFieldAccessPattern().Match(lines[j]);
+                        Match fieldMatch = StaticFieldAccessPattern().Match(lines[j]);
                         if (fieldMatch.Success)
                         {
                             var typeName = NormalizeTypeName(fieldMatch.Groups["type"].Value);
@@ -107,7 +107,7 @@ internal static partial class StaticCtorDetector
                     // Check current line and continuation lines after bare "call" instructions
                     if (line.TrimStart().StartsWith("call") || (i > 0 && lines[i - 1].TrimEnd().EndsWith("call")))
                     {
-                        var callMatch = CallTargetTypePattern().Match(line);
+                        Match callMatch = CallTargetTypePattern().Match(line);
                         if (callMatch.Success)
                         {
                             var typeName = NormalizeTypeName(callMatch.Groups["type"].Value);

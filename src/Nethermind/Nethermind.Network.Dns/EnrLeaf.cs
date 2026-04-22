@@ -11,10 +11,7 @@ public class EnrLeaf : EnrTreeNode
 {
     public string NodeRecord { get; set; } = string.Empty;
 
-    public override string ToString()
-    {
-        return $"enr:{NodeRecord}";
-    }
+    public override string ToString() => $"enr:{NodeRecord}";
 
     public override string[] Links => [];
 

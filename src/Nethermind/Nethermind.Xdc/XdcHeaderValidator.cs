@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 
@@ -17,8 +18,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 {
     protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
     {
-        if (parent is null)
-            throw new ArgumentNullException(nameof(parent));
+        ArgumentNullException.ThrowIfNull(parent);
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
         if (parent is not XdcBlockHeader parentXdcHeader)
@@ -69,6 +69,14 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
         return true;
     }
 
+    protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+    {
+        //We ignore gas limit validation for genesis block
+        if (parent.Number == 0)
+            return true;
+        return base.ValidateGasLimitRange(header, parent, spec, ref error);
+    }
+
     protected override bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
     {
         if (!_sealValidator.ValidateSeal(header, false))
@@ -103,7 +111,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        var xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found
+        IXdcReleaseSpec xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found
 
         //TODO check if V2 header
         if (parent.Timestamp + (ulong)xdcSpec.MinePeriod > header.Timestamp)
@@ -114,4 +122,6 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 
         return true;
     }
+
+    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }

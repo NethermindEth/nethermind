@@ -101,10 +101,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare CallWithInput(Address address, long gasLimit, string input)
-        {
-            return CallWithInput(address, gasLimit, Bytes.FromHexString(input));
-        }
+        public Prepare CallWithInput(Address address, long gasLimit, string input) => CallWithInput(address, gasLimit, Bytes.FromHexString(input));
 
         public Prepare CallWithInput(Address address, long gasLimit, byte[]? input = null)
         {
@@ -252,15 +249,9 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare PushData(int data)
-        {
-            return PushData((UInt256)data);
-        }
+        public Prepare PushData(int data) => PushData((UInt256)data);
 
-        public Prepare PushData(long data)
-        {
-            return PushData((UInt256)data);
-        }
+        public Prepare PushData(long data) => PushData((UInt256)data);
 
         public Prepare PushData(in UInt256 data)
         {
@@ -322,10 +313,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare StoreDataInMemory(int position, string hexString)
-        {
-            return StoreDataInMemory(position, Bytes.FromHexString(hexString));
-        }
+        public Prepare StoreDataInMemory(int position, string hexString) => StoreDataInMemory(position, Bytes.FromHexString(hexString));
 
         public Prepare StoreDataInMemory(int position, byte[] data)
         {
@@ -405,6 +393,18 @@ namespace Nethermind.Evm
             PushData(32);
             PushData(0);
             Op(Instruction.RETURN);
+            return this;
+        }
+
+        public Prepare For(int count, Action<Prepare, int> action)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(count, 0);
+            for (int i = 0; i < count; i++)
+            {
+                action(this, i);
+            }
+
             return this;
         }
     }

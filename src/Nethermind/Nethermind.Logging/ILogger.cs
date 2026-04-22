@@ -11,18 +11,16 @@ namespace Nethermind.Logging;
 /// IsTrace, IsDebug, IsInfo, IsWarn, IsError so the guards are a fast check inline against
 /// the struct rather than being an interface call each time.
 /// </summary>
-#if DEBUG
-public struct ILogger : IEquatable<ILogger>
-#else
-public readonly struct ILogger : IEquatable<ILogger>
+#if !DEBUG
+readonly
 #endif
+public struct ILogger : IEquatable<ILogger>
 {
     private readonly InterfaceLogger _logger;
-#if DEBUG
-    private LogLevel _value;
-#else
-    private readonly LogLevel _value;
+#if !DEBUG
+    readonly
 #endif
+    private LogLevel _value;
 
     public ILogger(InterfaceLogger logger)
     {
@@ -52,8 +50,7 @@ public readonly struct ILogger : IEquatable<ILogger>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Debug(string text)
     {
-        if (IsDebug)
-            _logger.Debug(text);
+        if (IsDebug) _logger.Debug(text);
     }
 
     public bool Equals(ILogger other) => _logger == other._logger;
@@ -61,29 +58,119 @@ public readonly struct ILogger : IEquatable<ILogger>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Error(string text, Exception ex = null)
     {
-        if (IsError)
-            _logger.Error(text, ex);
+        if (IsError) _logger.Error(text, ex);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Info(string text)
     {
-        if (IsInfo)
-            _logger.Info(text);
+        if (IsInfo) _logger.Info(text);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Trace(string text)
     {
-        if (IsTrace)
-            _logger.Trace(text);
+        if (IsTrace) _logger.Trace(text);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Warn(string text)
     {
-        if (IsWarn)
-            _logger.Warn(text);
+        if (IsWarn) _logger.Warn(text);
+    }
+
+    /// <summary>
+    /// Logs at <see cref="InterfaceLogger.Error"/> severity, but only when <see cref="IsDebug"/> is true.
+    /// Replaces the manual <c>if (logger.IsDebug) logger.Error($"DEBUG/ERROR: ...")</c> idiom.
+    /// Interpolation of the message is skipped entirely when <see cref="IsDebug"/> is false,
+    /// so the callsite pays no allocation cost in the common (disabled) case.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void DebugError(
+        [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler,
+        Exception ex = null)
+    {
+        if (IsDebug) _logger.Error("DEBUG/ERROR: " + handler.ToStringAndClear(), LogEventKind.DebugError, ex);
+    }
+
+    /// <summary>
+    /// Plain-string overload of <see cref="DebugError(ref DebugInterpolatedStringHandler, Exception)"/>
+    /// for callers that pass a literal message with no interpolation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void DebugError(string text, Exception ex = null)
+    {
+        if (IsDebug) _logger.Error("DEBUG/ERROR: " + text, LogEventKind.DebugError, ex);
+    }
+
+    /// <summary>
+    /// Logs at <see cref="InterfaceLogger.Warn"/> severity, but only when <see cref="IsDebug"/> is true.
+    /// Replaces the manual <c>if (logger.IsDebug) logger.Warn($"DEBUG/WARN: ...")</c> idiom.
+    /// Interpolation of the message is skipped entirely when <see cref="IsDebug"/> is false,
+    /// so the callsite pays no allocation cost in the common (disabled) case.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void DebugWarn(
+        [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler)
+    {
+        if (IsDebug) _logger.Warn("DEBUG/WARN: " + handler.ToStringAndClear(), LogEventKind.DebugWarn);
+    }
+
+    /// <summary>
+    /// Plain-string overload of <see cref="DebugWarn(ref DebugInterpolatedStringHandler)"/>
+    /// for callers that pass a literal message with no interpolation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void DebugWarn(string text)
+    {
+        if (IsDebug) _logger.Warn("DEBUG/WARN: " + text, LogEventKind.DebugWarn);
+    }
+
+    /// <summary>
+    /// Logs at <see cref="InterfaceLogger.Error"/> severity, but only when <see cref="IsTrace"/> is true.
+    /// Replaces the manual <c>if (logger.IsTrace) logger.Error($"TRACE/ERROR: ...")</c> idiom.
+    /// Interpolation of the message is skipped entirely when <see cref="IsTrace"/> is false,
+    /// so the callsite pays no allocation cost in the common (disabled) case.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void TraceError(
+        [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler,
+        Exception ex = null)
+    {
+        if (IsTrace) _logger.Error("TRACE/ERROR: " + handler.ToStringAndClear(), LogEventKind.TraceError, ex);
+    }
+
+    /// <summary>
+    /// Plain-string overload of <see cref="TraceError(ref TraceInterpolatedStringHandler, Exception)"/>
+    /// for callers that pass a literal message with no interpolation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void TraceError(string text, Exception ex = null)
+    {
+        if (IsTrace) _logger.Error("TRACE/ERROR: " + text, LogEventKind.TraceError, ex);
+    }
+
+    /// <summary>
+    /// Logs at <see cref="InterfaceLogger.Warn"/> severity, but only when <see cref="IsTrace"/> is true.
+    /// Replaces the manual <c>if (logger.IsTrace) logger.Warn($"TRACE/WARN: ...")</c> idiom.
+    /// Interpolation of the message is skipped entirely when <see cref="IsTrace"/> is false,
+    /// so the callsite pays no allocation cost in the common (disabled) case.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void TraceWarn(
+        [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler)
+    {
+        if (IsTrace) _logger.Warn("TRACE/WARN: " + handler.ToStringAndClear(), LogEventKind.TraceWarn);
+    }
+
+    /// <summary>
+    /// Plain-string overload of <see cref="TraceWarn(ref TraceInterpolatedStringHandler)"/>
+    /// for callers that pass a literal message with no interpolation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void TraceWarn(string text)
+    {
+        if (IsTrace) _logger.Warn("TRACE/WARN: " + text, LogEventKind.TraceWarn);
     }
 
     [Flags]

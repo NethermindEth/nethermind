@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         public const int DefaultBlocksLimitMaxPriorityFeePerGas = 100; //Limit for how many blocks we check txs in to add to sortedTxList in case of calculating max priority fee per gas
         public const int TxLimitFromABlock = 3; //Maximum number of tx we can add to sortedTxList from one block
         public const int DefaultIgnoreUnder = 2; //Effective Gas Prices under this are ignored
-        public static readonly UInt256 MaxGasPrice = 500.GWei(); //Maximum gas price we can return
-        public static readonly UInt256 FallbackMaxPriorityFeePerGas = 200.GWei();
+        public static readonly UInt256 MaxGasPrice = 500.GWei; //Maximum gas price we can return
+        public static readonly UInt256 FallbackMaxPriorityFeePerGas = 200.GWei;
     }
 }

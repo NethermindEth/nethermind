@@ -22,8 +22,5 @@ public class BloomConverter : JsonConverter<Bloom>
     public override void Write(
         Utf8JsonWriter writer,
         Bloom bloom,
-        JsonSerializerOptions options)
-    {
-        ByteArrayConverter.Convert(writer, bloom.ReadOnlyBytes, skipLeadingZeros: false);
-    }
+        JsonSerializerOptions options) => ByteArrayConverter.Convert(writer, bloom.ReadOnlyBytes, skipLeadingZeros: false);
 }

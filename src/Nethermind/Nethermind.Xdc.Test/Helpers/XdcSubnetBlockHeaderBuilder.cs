@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc;
-using Nethermind.Xdc.RLP;
-using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Core.Test.Builders;
@@ -20,8 +15,7 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
     public new XdcSubnetBlockHeader TestObject => (XdcSubnetBlockHeader)base.TestObject;
 
 
-    public XdcSubnetBlockHeaderBuilder()
-    {
+    public XdcSubnetBlockHeaderBuilder() =>
         TestObjectInternal = new XdcSubnetBlockHeader(
             Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
@@ -44,7 +38,6 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
             NextValidators = new byte[20 * 2],
             Penalties = Array.Empty<byte>(),
         };
-    }
     public XdcSubnetBlockHeaderBuilder WithNextValidators(byte[] nextValidators)
     {
         XdcTestObjectInternal.NextValidators = nextValidators;

@@ -129,8 +129,8 @@ public class L1OriginStoreTests
 
         _store.WriteL1Origin(blockId, origin);
 
-        var testDb = (TestMemDb)_db;
-        var allKeys = testDb.Keys.ToArray();
+        TestMemDb testDb = (TestMemDb)_db;
+        byte[][] allKeys = testDb.Keys.ToArray();
         allKeys.Should().HaveCount(1);
         allKeys[0].Length.Should().Be(33, "Keys should be 33 bytes (1 prefix + 32 UInt256)");
         allKeys[0][0].Should().Be(0x00, "L1Origin keys should have prefix 0x00");
@@ -141,8 +141,8 @@ public class L1OriginStoreTests
     {
         _store.WriteBatchToLastBlockID(1, 100);
 
-        var testDb = (TestMemDb)_db;
-        var allKeys = testDb.Keys.ToArray();
+        TestMemDb testDb = (TestMemDb)_db;
+        byte[][] allKeys = testDb.Keys.ToArray();
         allKeys.Should().HaveCount(1);
         allKeys[0].Length.Should().Be(33);
         allKeys[0][0].Should().Be(0x01, "Batch keys should have prefix 0x01");
@@ -153,8 +153,8 @@ public class L1OriginStoreTests
     {
         _store.WriteHeadL1Origin(1);
 
-        var testDb = (TestMemDb)_db;
-        var allKeys = testDb.Keys.ToArray();
+        TestMemDb testDb = (TestMemDb)_db;
+        byte[][] allKeys = testDb.Keys.ToArray();
         allKeys.Should().HaveCount(1);
         allKeys[0].Length.Should().Be(1);
         allKeys[0][0].Should().Be(0xFF, "Head key should have prefix 0xFF");
@@ -164,7 +164,7 @@ public class L1OriginStoreTests
     public void Can_store_and_retrieve_signature()
     {
         UInt256 blockId = 123;
-        int[] signature = Enumerable.Range(0, 65).ToArray();
+        byte[] signature = Enumerable.Range(0, 65).Select(i => (byte)i).ToArray();
         L1Origin origin = new(blockId, Hash256.Zero, 456, Hash256.Zero, null) { Signature = signature };
 
         _store.WriteL1Origin(blockId, origin);
@@ -196,7 +196,7 @@ public class L1OriginStoreTests
     [TestCase(L1OriginDecoder.SignatureLength * 2)]
     public void Fails_for_invalid_length_signature(int signatureLength)
     {
-        int[] signature = Enumerable.Range(0, signatureLength).ToArray();
+        byte[] signature = Enumerable.Range(0, signatureLength).Select(i => (byte)i).ToArray();
         L1Origin origin = new(1, Hash256.Zero, 456, Hash256.Zero, null) { Signature = signature };
 
         Action act = () => _decoder.Encode(origin);
@@ -210,12 +210,12 @@ public class L1OriginStoreTests
         [Values(false, true)] bool withSignature)
     {
         int[]? buildPayloadArgsId = withBuildPayload ? Enumerable.Range(0, 8).ToArray() : null;
-        int[]? signature = withSignature ? Enumerable.Range(0, 65).ToArray() : null;
+        byte[]? signature = withSignature ? Enumerable.Range(0, 65).Select(i => (byte)i).ToArray() : null;
         L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
 
         Rlp encoded = _decoder.Encode(origin);
-        RlpStream stream = new(encoded.Bytes);
-        (int prefixLength, int contentLength) = stream.ReadPrefixAndContentLength();
+        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        (int prefixLength, int contentLength) = ctx.ReadPrefixAndContentLength();
 
         contentLength.Should().Be(encoded.Bytes.Length - prefixLength,
             "StartSequence must receive content length, not total length");

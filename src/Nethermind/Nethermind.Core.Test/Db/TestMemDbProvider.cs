@@ -15,14 +15,9 @@ namespace Nethermind.Core.Test.Db
 {
     public class TestMemDbProvider
     {
-        public static Task<IDbProvider> InitAsync()
-        {
-            return Task.FromResult(Init());
-        }
+        public static Task<IDbProvider> InitAsync() => Task.FromResult(Init());
 
-        public static IDbProvider Init()
-        {
-            return new ContainerBuilder()
+        public static IDbProvider Init() => new ContainerBuilder()
                 .AddModule(new DbModule(
                     new InitConfig() { DiagnosticMode = DiagnosticMode.MemDb },
                     new ReceiptConfig(),
@@ -31,7 +26,6 @@ namespace Nethermind.Core.Test.Db
                 .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
                 .Build()
                 .Resolve<IDbProvider>();
-        }
     }
 
     /// <summary>
@@ -40,9 +34,6 @@ namespace Nethermind.Core.Test.Db
     /// </summary>
     public class ContainerOwningDbProvider(ILifetimeScope ctx) : DbProvider(ctx), IDisposable
     {
-        public override void Dispose()
-        {
-            ctx.Dispose();
-        }
+        public override void Dispose() => ctx.Dispose();
     }
 }

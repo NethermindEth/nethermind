@@ -62,7 +62,7 @@ public class HealingTreeTests
         }
 
         TreePath path = TreePath.FromNibble([1, 2]);
-        Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
+        Hash256 fullPath = new("1200000000000000000000000000000000000000000000000000000000000000");
         recovery_works(successfullyRecovered, null, path, fullPath, CreateHealingStateTree);
     }
 
@@ -75,7 +75,7 @@ public class HealingTreeTests
                 _key, new Lazy<IPathRecovery>(recovery));
 
         TreePath path = TreePath.FromNibble([1, 2]);
-        Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
+        Hash256 fullPath = new("1200000000000000000000000000000000000000000000000000000000000000");
 
         recovery_works(successfullyRecovered, addressPath, path, fullPath, CreateHealingStorageTree);
     }
@@ -141,7 +141,7 @@ public class HealingTreeTests
 
         IContainer CreateNode()
         {
-            ConfigProvider configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.Full;
             configProvider.GetConfig<IInitConfig>().StateDbKeyScheme = keyScheme;
             return new ContainerBuilder()
@@ -156,15 +156,15 @@ public class HealingTreeTests
             IWorldState mainWorldState = server.Resolve<MainProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
 
-            using var _ = mainWorldState.BeginScope(blockTree.Head?.Header);
+            using IDisposable _ = mainWorldState.BeginScope(blockTree.Head?.Header);
 
             for (int i = 0; i < 100; i++)
             {
-                Address address = new Address(Keccak.Compute(i.ToString()));
+                Address address = new(Keccak.Compute(i.ToString()));
                 mainWorldState.CreateAccount(address, (UInt256)i, (UInt256)i);
             }
 
-            Address storageAddress = new Address(Keccak.Compute("storage"));
+            Address storageAddress = new(Keccak.Compute("storage"));
             mainWorldState.CreateAccount(storageAddress, 100, 100);
             for (int i = 1; i < 100; i++)
             {
@@ -190,13 +190,13 @@ public class HealingTreeTests
             IDb clientStateDb = client.ResolveNamed<IDb>(DbNames.State);
             IDb serverStateDb = server.ResolveNamed<IDb>(DbNames.State);
 
-            Random random = new Random(0);
+            Random random = new(0);
             using ArrayPoolList<KeyValuePair<byte[], byte[]?>> allValues = serverStateDb.GetAll().ToPooledList(10);
             // Sort for reproducibility
             allValues.AsSpan().Sort(((k1, k2) => ((IComparer<byte[]>)Bytes.Comparer).Compare(k1.Key, k2.Key)));
 
             // Copy from server to client, but randomly remove some of them.
-            foreach (var kv in allValues.AsSpan())
+            foreach (KeyValuePair<byte[], byte[]?> kv in allValues.AsSpan())
             {
                 if (random.NextDouble() < 0.9)
                 {
@@ -208,16 +208,16 @@ public class HealingTreeTests
         void AssertStorage(IContainer client)
         {
             IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
-            using var _ = mainWorldState.BeginScope(baseBlock);
+            using IDisposable _ = mainWorldState.BeginScope(baseBlock);
 
             for (int i = 0; i < 100; i++)
             {
-                Address address = new Address(Keccak.Compute(i.ToString()));
+                Address address = new(Keccak.Compute(i.ToString()));
                 mainWorldState.GetBalance(address).Should().Be((UInt256)i);
                 mainWorldState.GetNonce(address).Should().Be((UInt256)i);
             }
 
-            Address storageAddress = new Address(Keccak.Compute("storage"));
+            Address storageAddress = new(Keccak.Compute("storage"));
             mainWorldState.GetBalance(storageAddress).Should().Be((UInt256)100);
             mainWorldState.GetNonce(storageAddress).Should().Be((UInt256)100);
             for (int i = 1; i < 100; i++)

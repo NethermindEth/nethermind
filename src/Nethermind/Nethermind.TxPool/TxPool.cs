@@ -112,7 +112,7 @@ namespace Nethermind.TxPool
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
             bool thereIsPriorityContract = false)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
@@ -229,10 +229,7 @@ namespace Nethermind.TxPool
             byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
-        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
-        {
-            RemovePendingDelegations(args.Value);
-        }
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)
@@ -320,10 +317,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
-            {
-                return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
-            }
+            bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges) => accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -368,7 +362,7 @@ namespace Nethermind.TxPool
             using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
-            long notInMempoool = 0;
+            long notInMempool = 0;
             long eip1559Txs = 0;
             long eip7702Txs = 0;
             long blobTxs = 0;
@@ -419,7 +413,7 @@ namespace Nethermind.TxPool
 
                 if (!isKnown && !isPending)
                 {
-                    notInMempoool++;
+                    notInMempool++;
                 }
             }
 
@@ -437,8 +431,8 @@ namespace Nethermind.TxPool
                 Metrics.Eip7702TransactionsInBlock = eip7702Txs;
                 Metrics.BlobTransactionsInBlock = blobTxs;
                 Metrics.BlobsInBlock = blobs;
-                Metrics.TransactionsSourcedPrivateOrderFlow += notInMempoool;
-                Metrics.TransactionsSourcedMemPool += transactionsInBlock - notInMempoool;
+                Metrics.TransactionsSourcedPrivateOrderFlow += notInMempool;
+                Metrics.TransactionsSourcedMemPool += transactionsInBlock - notInMempool;
             }
         }
 
@@ -728,7 +722,7 @@ namespace Nethermind.TxPool
         {
             if (transaction.HasAuthorizationList)
             {
-                foreach (var auth in transaction.AuthorizationList)
+                foreach (AuthorizationTuple auth in transaction.AuthorizationList)
                 {
                     if (auth.Authority is not null)
                         _pendingDelegations.DecrementDelegationCount(auth.Authority!);
@@ -1042,7 +1036,7 @@ namespace Nethermind.TxPool
 
             public bool TryGetAccount(Address address, out AccountStruct account)
             {
-                var cache = _caches[GetCacheIndex(address)];
+                ClockCache<AddressAsKey, AccountStruct> cache = _caches[GetCacheIndex(address)];
                 if (!cache.TryGet(new AddressAsKey(address), out account))
                 {
                     if (!_provider.TryGetAccount(address, out account))
@@ -1060,9 +1054,7 @@ namespace Nethermind.TxPool
                 return true;
             }
 
-            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
-            {
-                Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
+            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address) => Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
                     n =>
                     {
                         ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
@@ -1072,7 +1064,6 @@ namespace Nethermind.TxPool
                         }
                     }
                 );
-            }
 
             private static int GetCacheIndex(Address address) => address.Bytes[^1] & 0xf;
 
@@ -1164,10 +1155,7 @@ Db usage:
         }
 
         // Cleanup ArrayPoolList AccountChanges as they are not used anywhere else
-        private static void DisposeBlockAccountChanges(Block block)
-        {
-            block.DisposeAccountChanges();
-        }
+        private static void DisposeBlockAccountChanges(Block block) => block.DisposeAccountChanges();
     }
 }
 

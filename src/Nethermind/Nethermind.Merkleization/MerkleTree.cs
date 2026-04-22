@@ -59,10 +59,7 @@ public abstract class MerkleTree : IMerkleList
         public uint IndexAtRow { get; }
         public ulong NodeIndex { get; }
 
-        internal bool IsLeftSibling()
-        {
-            return IndexAtRow % 2 == 0;
-        }
+        internal bool IsLeftSibling() => IndexAtRow % 2 == 0;
 
         internal Index Parent()
         {
@@ -84,15 +81,9 @@ public abstract class MerkleTree : IMerkleList
             return new Index(Row, IndexAtRow ^ 1);
         }
 
-        private static uint CalculateIndexAtRow(in uint row, in ulong nodeIndex)
-        {
-            return (uint)(nodeIndex - ((1ul << (int)row) - 1));
-        }
+        private static uint CalculateIndexAtRow(in uint row, in ulong nodeIndex) => (uint)(nodeIndex - ((1ul << (int)row) - 1));
 
-        private static ulong CalculateNodeIndex(in uint row, in uint indexAtRow)
-        {
-            return (1ul << (int)row) - 1u + indexAtRow;
-        }
+        private static ulong CalculateNodeIndex(in uint row, in uint indexAtRow) => (1ul << (int)row) - 1u + indexAtRow;
 
         private static uint CalculateRow(in ulong nodeIndex)
         {
@@ -125,10 +116,7 @@ public abstract class MerkleTree : IMerkleList
             }
         }
 
-        public override string ToString()
-        {
-            return $"{NodeIndex} | ({Row},{IndexAtRow})";
-        }
+        public override string ToString() => $"{NodeIndex} | ({Row},{IndexAtRow})";
     }
 
     static MerkleTree()
@@ -157,10 +145,7 @@ public abstract class MerkleTree : IMerkleList
         _keyValueStore[_countKey] = countBytes;
     }
 
-    private void SaveValue(in Index index, byte[] hashBytes)
-    {
-        _keyValueStore[index.NodeIndex] = hashBytes;
-    }
+    private void SaveValue(in Index index, byte[] hashBytes) => _keyValueStore[index.NodeIndex] = hashBytes;
 
     private Bytes32 LoadValue(in Index index)
     {
@@ -173,20 +158,11 @@ public abstract class MerkleTree : IMerkleList
         return Bytes32.Wrap(nodeHashBytes);
     }
 
-    internal static uint GetLeafIndex(in ulong nodeIndex)
-    {
-        return new Index(LeafRow, nodeIndex).IndexAtRow;
-    }
+    internal static uint GetLeafIndex(in ulong nodeIndex) => new Index(LeafRow, nodeIndex).IndexAtRow;
 
-    internal static ulong GetNodeIndex(in uint row, in uint indexAtRow)
-    {
-        return new Index(row, indexAtRow).NodeIndex;
-    }
+    internal static ulong GetNodeIndex(in uint row, in uint indexAtRow) => new Index(row, indexAtRow).NodeIndex;
 
-    internal static uint GetSiblingIndex(in uint row, in uint indexAtRow)
-    {
-        return new Index(row, indexAtRow).Sibling().IndexAtRow;
-    }
+    internal static uint GetSiblingIndex(in uint row, in uint indexAtRow) => new Index(row, indexAtRow).Sibling().IndexAtRow;
 
     internal static void ValidateNodeIndex(ulong nodeIndex)
     {
@@ -196,15 +172,9 @@ public abstract class MerkleTree : IMerkleList
         }
     }
 
-    private static ulong GetMinNodeIndex(in uint row)
-    {
-        return (1ul << (int)row) - 1;
-    }
+    private static ulong GetMinNodeIndex(in uint row) => (1ul << (int)row) - 1;
 
-    private static ulong GetMaxNodeIndex(in uint row)
-    {
-        return (1ul << (int)(row + 1u)) - 2;
-    }
+    private static ulong GetMaxNodeIndex(in uint row) => (1ul << (int)(row + 1u)) - 2;
 
     private static void ValidateNodeIndex(in uint row, in ulong nodeIndex)
     {
@@ -223,7 +193,7 @@ public abstract class MerkleTree : IMerkleList
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void Insert(Bytes32 leaf)
     {
-        Index index = new Index(LeafRow, Count);
+        Index index = new(LeafRow, Count);
         Index siblingIndex = index.Sibling();
         byte[] hash = leaf.Unwrap();
         Bytes32 siblingHash = LoadValue(siblingIndex);
@@ -274,7 +244,7 @@ public abstract class MerkleTree : IMerkleList
     /// </summary>
     public bool VerifyProof(Bytes32 leaf, IReadOnlyList<Bytes32> proof, in uint leafIndex)
     {
-        Index index = new Index(LeafRow, leafIndex);
+        Index index = new(LeafRow, leafIndex);
         byte[] value = leaf.Unwrap();
 
         for (int testDepth = 0; testDepth < TreeHeight; testDepth++)
@@ -304,7 +274,7 @@ public abstract class MerkleTree : IMerkleList
             throw new InvalidOperationException("Unexpected query for a proof for a value beyond Count");
         }
 
-        Index index = new Index(LeafRow, leafIndex);
+        Index index = new(LeafRow, leafIndex);
         Bytes32[] proof = new Bytes32[TreeHeight + 1];
 
         int i = 0;
@@ -325,7 +295,7 @@ public abstract class MerkleTree : IMerkleList
 
     public MerkleTreeNode GetLeaf(in uint leafIndex)
     {
-        Index index = new Index(LeafRow, leafIndex);
+        Index index = new(LeafRow, leafIndex);
         Bytes32 value = LoadValue(index);
         return new MerkleTreeNode(value, index.NodeIndex);
     }
@@ -341,20 +311,11 @@ public abstract class MerkleTree : IMerkleList
         return leaves;
     }
 
-    internal static uint GetIndexAtRow(in uint row, in ulong nodeIndex)
-    {
-        return new Index(row, nodeIndex).IndexAtRow;
-    }
+    internal static uint GetIndexAtRow(in uint row, in ulong nodeIndex) => new Index(row, nodeIndex).IndexAtRow;
 
-    internal static uint GetRow(in ulong nodeIndex)
-    {
-        return new Index(nodeIndex).Row;
-    }
+    internal static uint GetRow(in ulong nodeIndex) => new Index(nodeIndex).Row;
 
-    public static ulong GetParentIndex(in ulong nodeIndex)
-    {
-        return new Index(nodeIndex).Parent().NodeIndex;
-    }
+    public static ulong GetParentIndex(in ulong nodeIndex) => new Index(nodeIndex).Parent().NodeIndex;
 
     public Root? Root { get; set; }
 

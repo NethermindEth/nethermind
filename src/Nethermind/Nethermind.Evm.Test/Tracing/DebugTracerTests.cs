@@ -3,6 +3,8 @@
 
 #if DEBUG
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using System.Threading;
@@ -20,9 +22,15 @@ public class DebugTracerTests : VirtualMachineTestsBase
     private GethLikeTxMemoryTracer GethLikeTxTracer => new(Build.A.Transaction.TestObject, GethTraceOptions.Default);
 
     [SetUp]
-    public override void Setup()
+    public override void Setup() => base.Setup();
+
+    // Match VirtualMachine's AsAlignedSpan: the pinned DataStack array may not start
+    // at a 32-byte boundary, so the VM applies an alignment offset we must replicate.
+    private static unsafe Span<byte> AlignedStack(byte[] pinnedArray)
     {
-        base.Setup();
+        nuint addr = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(pinnedArray));
+        int offset = (int)((uint)(-(nint)addr) & (EvmStack.WordSize - 1u));
+        return pinnedArray.AsSpan(offset, StackPool.StackLength);
     }
 
     private void ExecuteSafe(DebugTracer tracer, byte[] bytecode)
@@ -44,7 +52,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             // we activate GoToNextBreakpoint mode (i.e : deactivate StepByStepMode)
             IsStepByStepModeOn = false,
@@ -54,7 +62,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
         // we set the break point to BREAK_POINT
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         // we run the bytecode for <confidenceLevelDesired> iteration and check how many times we stopped at BREAK_POINT
@@ -95,7 +103,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             // we activate GoToNextBreakpoint mode (i.e : deactivate StepByStepMode)
             IsStepByStepModeOn = false,
@@ -147,13 +155,13 @@ public class DebugTracerTests : VirtualMachineTestsBase
         // this bytecode is just a bunch of NOP/JUMPDEST; the idea is it will take as many bytes in the bytecode as steps to go through it
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             // we activate step by step mode in tracer
             IsStepByStepModeOn = true,
         };
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         int countBreaks = 0;
@@ -182,13 +190,13 @@ public class DebugTracerTests : VirtualMachineTestsBase
         // this bytecode is just a bunch of NOP/JUMPDEST; the idea is it will take as many bytes in the bytecode as steps to go through it
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             // we activate step by step mode in tracer
             IsStepByStepModeOn = true,
         };
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         int countBreaks = 0;
@@ -217,7 +225,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         (int depth, int pc) BREAKPOINT = (0, 5);
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             // we activate step by step mode in tracer
             IsStepByStepModeOn = false,
@@ -225,7 +233,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetBreakPoint(BREAKPOINT);
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         int countBreaks = -1; // not counting the post-run stop
@@ -254,14 +262,14 @@ public class DebugTracerTests : VirtualMachineTestsBase
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             IsStepByStepModeOn = true,
         };
 
         tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         while (vmThread.IsAlive)
@@ -276,7 +284,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
-        var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
+        GethLikeTxTrace resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
         Assert.That(resultTraces.Failed, Is.False);
     }
 
@@ -294,7 +302,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         while (vmThread.IsAlive)
@@ -302,7 +310,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we pop the condition and overwrite it with a false to force breaking out of the loop
-                EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, tracer.CurrentState.DataStack);
+                EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, ref MemoryMarshal.GetReference(AlignedStack(tracer.CurrentState.DataStack)), default);
                 if (!stack.PopLimbo()) throw new EvmStackUnderflowException();
                 stack.PushByte<OffFlag>(0x00);
 
@@ -313,7 +321,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
-        var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
+        GethLikeTxTrace resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
         Assert.That(resultTraces.Failed, Is.False);
     }
 
@@ -324,14 +332,14 @@ public class DebugTracerTests : VirtualMachineTestsBase
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         (int depth, int pc) MSTORE_OPCODE_PTR_BREAK_POINT = (0, 6);
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             IsStepByStepModeOn = false,
         };
 
         tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         while (vmThread.IsAlive)
@@ -348,7 +356,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
-        var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
+        GethLikeTxTrace resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
         Assert.That(resultTraces.ReturnValue[31] == 0, Is.True);
     }
 
@@ -364,7 +372,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             pc = MSTORE_OPCODE_PTR_BREAK_POINT.pc + 1
         };
 
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             IsStepByStepModeOn = false,
         };
@@ -372,7 +380,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
         tracer.SetBreakPoint(POST_MSTORE_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         long? gasAvailable_pre_MSTORE = null;
@@ -400,12 +408,12 @@ public class DebugTracerTests : VirtualMachineTestsBase
         // this bytecode fails on first opcode INVALID
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+        using DebugTracer tracer = new(GethLikeTxTracer)
         {
             IsStepByStepModeOn = true,
         };
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         while (vmThread.IsAlive)
@@ -419,7 +427,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
-        var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
+        GethLikeTxTrace resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
         Assert.That(resultTraces.Failed, Is.True);
     }
 
@@ -431,11 +439,11 @@ public class DebugTracerTests : VirtualMachineTestsBase
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         (int depth, int pc) TARGET_OPCODE_PTR_BREAK_POINT = (1, 0);
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer);
+        using DebugTracer tracer = new(GethLikeTxTracer);
 
         tracer.SetBreakPoint(TARGET_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         bool stoppedAtCorrectBreakpoint = false;
@@ -466,11 +474,11 @@ public class DebugTracerTests : VirtualMachineTestsBase
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         const int DATA_STACK_HEIGHT = 10;
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer);
+        using DebugTracer tracer = new(GethLikeTxTracer);
 
         tracer.SetCondition(state => state.DataStackHead == DATA_STACK_HEIGHT);
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         bool stoppedAtLeastOneTime = false;
@@ -494,11 +502,11 @@ public class DebugTracerTests : VirtualMachineTestsBase
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         (int depth, int pc) TARGET_OPCODE_PTR_BREAK_POINT = (1, 0);
-        using DebugTracer tracer = new DebugTracer(GethLikeTxTracer);
+        using DebugTracer tracer = new(GethLikeTxTracer);
 
         tracer.SetBreakPoint(TARGET_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         bool stoppedAtCorrectBreakpoint = false;

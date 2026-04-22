@@ -9,16 +9,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public sealed class TransactionPermissionContractV1 : TransactionPermissionContract
+    public sealed class TransactionPermissionContractV1(
+        IAbiEncoder abiEncoder,
+        Address contractAddress,
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : TransactionPermissionContract(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
     {
-        public TransactionPermissionContractV1(
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
-        {
-        }
-
         protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) => new object[] { tx.SenderAddress };
 
         protected override (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) =>

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -27,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetFeeHistory_BlocksToCheckLess1_ReturnsFailingWrapper()
         {
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
-            var expected = ResultWrapper<FeeHistoryResults>.Fail("blockCount: Value 0 is less than 1", ErrorCodes.InvalidParams);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("blockCount: Value 0 is less than 1", ErrorCodes.InvalidParams);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, BlockParameter.Latest);
             resultWrapper.Should().BeEquivalentTo(expected);
@@ -37,7 +38,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetFeeHistory_HashParameter_ReturnsFailingWrapper()
         {
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
-            var expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem.KeccakA));
             resultWrapper.Should().BeEquivalentTo(expected);
@@ -49,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock(Arg.Any<long>()).Returns((Block?)null);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
-            var expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long)0));
             resultWrapper.Should().BeEquivalentTo(expected);
@@ -64,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindPendingBlock().Returns(Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
-            var expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(lastBlockNumber));
 
@@ -135,8 +136,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, newestBlock);
 
-            var resultNextBaseFee = resultWrapper.Data.BaseFeePerGas[1];
-            var resultBaseFee = resultWrapper.Data.BaseFeePerGas[0];
+            UInt256 resultNextBaseFee = resultWrapper.Data.BaseFeePerGas[1];
+            UInt256 resultBaseFee = resultWrapper.Data.BaseFeePerGas[0];
 
             resultNextBaseFee.Should().Be((UInt256)expectedNextBaseFee);
             resultBaseFee.Should().Be((UInt256)baseFee);
@@ -314,25 +315,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
 
-        private static object[] GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
+        private static IEnumerable<TestCaseData> GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
         {
-            return
-            [
-                new object[]
-                {
-                    new double[][] {[ 20, 40, 60, 80.5 ], [10, 20, 30, 40 ]},
+            yield return new TestCaseData(
+                    new double[][] { [20, 40, 60, 80.5], [10, 20, 30, 40] },
                     new ulong[][] { [4, 10, 10, 22], [4, 4, 10, 10] },
                     3,
-                    15
-                },
-                new object[]
-                {
-                    new double[][] {[ 10, 20, 30, 40 ], [ 20, 40, 60, 80.5 ]},
-                    new ulong[][] {[ 4, 4, 10, 10 ], [ 4, 10, 10, 22 ]},
+                    15)
+                .SetName("High then low percentiles");
+            yield return new TestCaseData(
+                    new double[][] { [10, 20, 30, 40], [20, 40, 60, 80.5] },
+                    new ulong[][] { [4, 4, 10, 10], [4, 10, 10, 22] },
                     3,
-                    15
-                }
-            ];
+                    15)
+                .SetName("Low then high percentiles");
         }
 
         [TestCaseSource(nameof(GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases))]
@@ -344,10 +340,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlockParameter = new((long)0);
             blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
             IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, new long[] { 10, 20, 30, 40 });
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, cacheSize: cacheSize);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
             while (repetitions-- > 0)
             {
-                for (var i = 0; i < rewardPercentilesArray.Length; i++)
+                for (int i = 0; i < rewardPercentilesArray.Length; i++)
                 {
                     using ResultWrapper<FeeHistoryResults> resultWrapper =
                         feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentilesArray[i]);
@@ -364,9 +360,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
 
-            var txReceiptsArray = new TxReceipt[gasUsedArray.Length];
+            TxReceipt[] txReceiptsArray = new TxReceipt[gasUsedArray.Length];
             txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = gasUsedArray[0] };
-            for (var i = 1; i < gasUsedArray.Length; i++)
+            for (int i = 1; i < gasUsedArray.Length; i++)
             {
                 txReceiptsArray[i] = new TxReceipt()
                 {
@@ -380,7 +376,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private static Transaction[] GetTestTransactions()
         {
-            var transactions = new Transaction[]
+            Transaction[] transactions = new Transaction[]
             {
                 //Rewards:
                 Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(13)
@@ -463,7 +459,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree? blockTree = null,
             IReceiptStorage? receiptStorage = null,
             ISpecProvider? specProvider = null,
-            int? cacheSize = null,
             int? maxDistFromHead = null,
             IReleaseSpec? spec = null)
         {
@@ -474,7 +469,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             else
             {
-                provider = Substitute.For<ISpecProvider>();
+                provider = SpecProviderSubstitute.Create();
                 provider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
                 if (spec is not null)
                 {

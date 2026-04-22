@@ -43,6 +43,9 @@ public class WriteBufferAdjusterTests
     }
 
     [Test]
+    public void ColumnCount_MatchesEnumValueCount() => WriteBufferAdjuster.ColumnCount.Should().Be(Enum.GetValues<FlatDbColumns>().Length);
+
+    [Test]
     public void Wrap_WithDisableWAL_ReturnsRawBatch()
     {
         IWriteOnlyKeyValueStore result = _sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.DisableWAL);
@@ -63,13 +66,13 @@ public class WriteBufferAdjusterTests
     [TestCase(20 * 1024 * 1024, 21 * 1024 * 1024, 1)]
     public void OnBatchDisposed_AdjustsWriteBuffer(long firstWriteBytes, long secondWriteBytes, int expectedSetWriteBufferCallCount)
     {
-        var store = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        WriteBufferAdjuster.CountingWriteBatch store = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
         store.Set(new byte[firstWriteBytes], null);
         _sut.OnBatchDisposed();
 
         if (secondWriteBytes > 0)
         {
-            var store2 = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+            WriteBufferAdjuster.CountingWriteBatch store2 = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
             store2.Set(new byte[secondWriteBytes], null);
             _sut.OnBatchDisposed();
         }
