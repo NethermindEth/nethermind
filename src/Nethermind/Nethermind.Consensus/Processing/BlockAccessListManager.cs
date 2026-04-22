@@ -140,16 +140,16 @@ public class BlockAccessListManager(
             for (int j = chunkStart; j < chunkEnd; j++)
             {
                 (long? blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                if (ex is not null)
+                    ExceptionDispatchInfo.Capture(ex).Throw();
+
+                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
+
                 totalRegularGas += blockGasUsed.Value;
                 totalStateGas += blockStateGasUsed;
                 SpendGas(blockGasUsed.Value);
 
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
-
-                if (ex is not null)
-                    ExceptionDispatchInfo.Capture(ex).Throw();
-
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
                 bool validateStorageReads = j == chunkEnd - 1;
                 _txProcessorWithWorldStateManager.Get(j + 1).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
