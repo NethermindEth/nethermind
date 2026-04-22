@@ -39,12 +39,9 @@ public class SnapProtocolHandlerTests
         {
             get
             {
-                if (_messageSerializationService is null)
-                {
-                    _messageSerializationService = new MessageSerializationService(
-                        SerializerInfo.Create(new AccountRangeMessageSerializer())
-                    );
-                }
+                _messageSerializationService ??= new MessageSerializationService(
+                    SerializerInfo.Create(new AccountRangeMessageSerializer())
+                );
 
                 return _messageSerializationService;
             }

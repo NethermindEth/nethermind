@@ -304,6 +304,45 @@ public class TransactionProcessorFeeTests
         tracer.BurntFees.Should().Be(21000);
     }
 
+    [TestCase(TxType.EIP1559)]
+    [TestCase(TxType.Legacy)]
+    public void CallAndRestore_returns_descriptive_error_when_maxFeePerGas_below_baseFee(TxType txType)
+    {
+        UInt256 baseFee = 100;
+        UInt256 feeCap = 50;
+
+        Transaction tx = txType == TxType.EIP1559
+            ? Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(feeCap)
+                .WithMaxPriorityFeePerGas(feeCap)
+                .WithGasLimit(21000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject
+            : Build.A.Transaction
+                .WithType(TxType.Legacy)
+                .WithGasPrice(feeCap)
+                .WithGasLimit(21000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBaseFeePerGas(baseFee)
+            .WithTransactions(tx)
+            .WithGasLimit(21000)
+            .TestObject;
+
+        BlockExecutionContext blkCtx = new(block.Header, _spec);
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, blkCtx, NullTxTracer.Instance);
+
+        result.Error.Should().Be(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee);
+        result.ErrorDescription.Should().Contain($"maxFeePerGas: {feeCap}");
+        result.ErrorDescription.Should().Contain($"baseFee: {baseFee}");
+        result.ErrorDescription.Should().Contain(TestItem.AddressA.ToString());
+        result.ErrorDescription.Should().Contain("supplied gas 21000");
+    }
+
     private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
     {
         BlockReceiptsTracer tracer = new();

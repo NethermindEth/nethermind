@@ -14,6 +14,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const long ConstantinopleBlockNumber = 1_604_400;
     public const long ConstantinopleFixBlockNumber = 2_508_800;
     public const long IstanbulBlockNumber = 7_298_030;
+    public const long PosdaoTransitionBlockNumber = 9_186_425; // does not alter EVM specs, fork-id boundary only
     public const long BerlinBlockNumber = 16_101_500;
     public const long LondonBlockNumber = 19_040_000;
     public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
@@ -62,7 +63,20 @@ public class GnosisSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
     public string SealEngine => SealEngineType.AuRa;
-    public ForkActivation[] TransitionActivations { get; }
+    public ForkActivation[] TransitionActivations { get; } =
+    [
+        (ForkActivation)ConstantinopleBlockNumber,
+        (ForkActivation)ConstantinopleFixBlockNumber,
+        (ForkActivation)IstanbulBlockNumber,
+        (ForkActivation)PosdaoTransitionBlockNumber,
+        (ForkActivation)BerlinBlockNumber,
+        (ForkActivation)LondonBlockNumber,
+        (LondonBlockNumber, ShanghaiTimestamp),
+        (LondonBlockNumber, CancunTimestamp),
+        (LondonBlockNumber, PragueTimestamp),
+        (LondonBlockNumber, BalancerTimestamp),
+        (LondonBlockNumber, OsakaTimestamp),
+    ];
 
     public static GnosisSpecProvider Instance { get; } = new();
 }

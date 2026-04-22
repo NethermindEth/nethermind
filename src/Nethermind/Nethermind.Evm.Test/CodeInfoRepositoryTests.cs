@@ -96,8 +96,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        Address result;
-        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out result);
+        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address result);
 
         result.Should().Be(new Address(code.Slice(3, Address.Size)));
     }

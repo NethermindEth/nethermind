@@ -104,7 +104,7 @@ namespace Nethermind.Network
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"DEBUG/ERROR Error during send ping messages: {ex}");
+                    _logger.DebugError($"Error during send ping messages: {ex}");
                 }
             }
         }
@@ -165,7 +165,7 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during ping timer stop", e);
+                _logger.DebugError("Error during ping timer stop", e);
             }
         }
     }
