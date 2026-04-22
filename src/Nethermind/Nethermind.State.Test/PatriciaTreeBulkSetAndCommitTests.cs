@@ -94,7 +94,7 @@ public class PatriciaTreeBulkSetAndCommitTests
 
     private static void AssertDbEqual(TestMemDb expected, TestMemDb actual)
     {
-        Dictionary<string, string> ToHexDict(TestMemDb db) =>
+        static Dictionary<string, string> ToHexDict(TestMemDb db) =>
             db.GetAll().ToDictionary(
                 kv => Convert.ToHexString(kv.Key),
                 kv => kv.Value is null ? "" : Convert.ToHexString(kv.Value));
