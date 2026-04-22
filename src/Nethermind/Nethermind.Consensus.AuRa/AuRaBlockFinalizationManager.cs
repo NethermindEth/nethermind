@@ -46,6 +46,15 @@ namespace Nethermind.Consensus.AuRa
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _twoThirdsMajorityTransition = twoThirdsMajorityTransition;
+
+            // Must run eagerly: MultiValidator.SetFinalizationManager reads LastFinalizedBlockLevel
+            // during DI resolution (inside InitializeBlockchain, before SetMainBlockBranchProcessor
+            // runs) to pick the active validator. Reading the default 0 instead of -1 (the value
+            // the scan returns when nothing is finalized) selects a different validator on chains
+            // with a validator list configured from block 0, producing state-root divergence on
+            // archive sync once a contract-based transition is crossed. This scan reads only
+            // ChainLevelInfo metadata — no BlockHeader allocations.
+            LoadLastFinalizedBlockLevel();
         }
 
         public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
@@ -62,11 +71,18 @@ namespace Nethermind.Consensus.AuRa
             _branchProcessor.BlockProcessed += OnBlockProcessed;
             _branchProcessor.BlocksProcessing += OnBlocksProcessing;
 
-            Initialize();
+            // Catch up if processing was stopped between processing last block and running finalization logic.
+            // Deferred out of construction because on post-merge chains the walk from head iterates every
+            // un-finalized ancestor, allocating millions of BlockHeaders — see InitializeBlockchainAuRaMerge
+            // for the post-merge skip.
+            if (_blockTree.Head is not null)
+            {
+                FinalizeBlocks(_blockTree.Head.Header);
+            }
         }
 
 
-        private void Initialize()
+        private void LoadLastFinalizedBlockLevel()
         {
             var hasHead = _blockTree.Head is not null;
             var level = hasHead ? _blockTree.Head.Number + 1 : 0;
@@ -79,12 +95,6 @@ namespace Nethermind.Consensus.AuRa
             while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
 
             LastFinalizedBlockLevel = level;
-
-            // This is needed if processing was stopped between processing last block and running finalization logic
-            if (hasHead)
-            {
-                FinalizeBlocks(_blockTree.Head?.Header);
-            }
         }
 
         private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
