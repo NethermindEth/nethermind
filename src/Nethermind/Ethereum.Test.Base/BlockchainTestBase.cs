@@ -46,32 +46,9 @@ namespace Ethereum.Test.Base;
 
 public abstract class BlockchainTestBase
 {
-    private static readonly ILogger _logger;
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
-    private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
+    private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
-
-    static BlockchainTestBase()
-    {
-        DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logger = _logManager.GetClassLogger<BlockchainTestBase>();
-    }
-
-    private class DifficultyCalculatorWrapper : IDifficultyCalculator
-    {
-        public IDifficultyCalculator? Wrapped { get; set; }
-
-        public UInt256 Calculate(BlockHeader header, BlockHeader parent)
-        {
-            if (Wrapped is null)
-            {
-                throw new InvalidOperationException(
-                    $"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
-            }
-
-            return Wrapped.Calculate(header, parent);
-        }
-    }
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
@@ -107,7 +84,9 @@ public abstract class BlockchainTestBase
             await KzgPolynomialCommitments.InitializeAsync();
         }
 
-        DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
+        // Per-test fresh instance bound to this test's specProvider. Tests run with
+        // [Parallelizable(ParallelScope.All)] so anything shared-mutable across tests would race.
+        IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
         IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
         bool isPostMerge = test.Network != London.Instance &&
                            test.Network != Berlin.Instance &&
@@ -142,10 +121,17 @@ public abstract class BlockchainTestBase
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            .AddSingleton<IDifficultyCalculator>(difficultyCalculator)
+            // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty
+            // matching, so legacy invalid-block fixtures (wrongDifficulty_*) are actually rejected.
+            .AddSingleton<ISealValidator>(new DifficultyOnlySealValidator(difficultyCalculator))
             .AddSingleton<ITxPool>(NullTxPool.Instance);
 
-        if (isEngineTest)
+        // Wire in the merge module for any post-Merge test (engine API flow OR post-Paris
+        // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
+        // EIP-3675 post-Merge field rules (difficulty=0, nonce=0, empty UnclesHash) which the
+        // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
+        if (isEngineTest || isPostMerge)
         {
             containerBuilder.AddModule(new TestMergeModule(configProvider));
         }
@@ -292,10 +278,14 @@ public abstract class BlockchainTestBase
             Assert.That(correctRlp[i].Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
 
             bool expectsException = correctRlp[i].ExpectedException is not null;
-            // Validate block structure first (mimics SyncServer validation)
+            // Validate block structure first (mimics SyncServer validation). Pre-validation is
+            // not authoritative for invalid-block fixtures: many EEST exceptions (state root,
+            // BAL hash, BAL gas-limit floor, etc.) are only detectable post-execution. So an
+            // expected-to-fail block may pass pre-validation here; rejection is then expected
+            // to come from the processor (synchronous InvalidBlockException) or from the
+            // end-of-test LastBlockHash check after the chain head is settled.
             if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError))
             {
-                Assert.That(!expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
                 try
                 {
                     // All validations passed, suggest the block
@@ -498,6 +488,11 @@ public abstract class BlockchainTestBase
                 byte[] rlpBytes = Bytes.FromHexString(testBlockJson.Rlp!);
                 Block suggestedBlock = Rlp.Decode<Block>(rlpBytes);
 
+                // EEST omits blockHeader (and the parsed body fields) for invalid-block fixtures
+                // because there is no canonical header for a block that must be rejected. The
+                // hash/uncle assertions only make sense when the fixture provides a header, but
+                // the block itself must still be enrolled so that validation actually runs and
+                // ExpectException is honoured.
                 if (testBlockJson.BlockHeader is not null)
                 {
                     Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));
@@ -506,9 +501,9 @@ public abstract class BlockchainTestBase
                     {
                         Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders![uncleIndex].Hash)));
                     }
-
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectException));
                 }
+
+                correctRlp.Add((suggestedBlock, testBlockJson.ExpectException));
             }
             catch (Exception e)
             {
