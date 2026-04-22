@@ -36,6 +36,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static readonly ulong IterationCountMultiplierEip7883 = 16;
 
     public static readonly ModExpPrecompile Instance = new();
+    static ModExpPrecompile IPrecompile<ModExpPrecompile>.Instance => Instance;
 
     private ModExpPrecompile() { }
 

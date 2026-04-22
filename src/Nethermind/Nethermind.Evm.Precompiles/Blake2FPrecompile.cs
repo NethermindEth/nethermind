@@ -17,6 +17,7 @@ public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
     private const int RequiredInputLength = 213;
 
     public static readonly Blake2FPrecompile Instance = new();
+    static Blake2FPrecompile IPrecompile<Blake2FPrecompile>.Instance => Instance;
 
     private Blake2FPrecompile() { }
 

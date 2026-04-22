@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -21,8 +21,8 @@ namespace Nethermind.Evm.Precompiles
     }
 
 
-    public interface IPrecompile<TPrecompileTypeInstance> : IPrecompile
+    public interface IPrecompile<out TPrecompileTypeInstance> : IPrecompile
     {
-        static TPrecompileTypeInstance Instance { get; }
+        static abstract TPrecompileTypeInstance Instance { get; }
     }
 }

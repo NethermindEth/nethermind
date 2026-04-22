@@ -15,6 +15,7 @@ public partial class SecP256r1Precompile : IPrecompile<SecP256r1Precompile>
     private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
 
     public static readonly SecP256r1Precompile Instance = new();
+    static SecP256r1Precompile IPrecompile<SecP256r1Precompile>.Instance => Instance;
 
     public static Address Address { get; } = Address.FromNumber(0x100);
 

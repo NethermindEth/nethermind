@@ -10,6 +10,7 @@ namespace Nethermind.Evm.Precompiles;
 public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
 {
     public static readonly Sha256Precompile Instance = new();
+    static Sha256Precompile IPrecompile<Sha256Precompile>.Instance => Instance;
 
     private Sha256Precompile() { }
 

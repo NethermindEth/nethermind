@@ -15,6 +15,7 @@ public partial class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile
     private const int PairingMaxInputSizeGranite = 112_687;
 
     public static readonly BN254PairingPrecompile Instance = new();
+    static BN254PairingPrecompile IPrecompile<BN254PairingPrecompile>.Instance => Instance;
 
     public static Address Address { get; } = Address.FromNumber(8);
 
