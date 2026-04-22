@@ -294,4 +294,52 @@ public class BlockValidatorTests
             Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
         }
     }
+
+    [TestCase(30_000, true)]
+    [TestCase(29_999, false)]
+    public void ValidateProcessedBlock_Enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(long gasLimit, bool expectedValid)
+    {
+        // Hive eels/consume-rlp feeds blocks via RLP, which leaves Block.BlockAccessList null
+        // (BlockDecoder does not decode BAL). The pre-execution check in
+        // ValidateBlockLevelAccessList is gated on a non-null BAL and therefore skipped, so
+        // ValidateProcessedBlock must catch the floor against the BAL produced during execution.
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
+
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+
+        Block processedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+        processedBlock.GeneratedBlockAccessList = bal;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+        bool isValid = sut.ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid));
+        if (expectedValid)
+        {
+            Assert.That(error, Is.Null);
+        }
+        else
+        {
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
 }

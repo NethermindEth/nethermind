@@ -31,6 +31,10 @@ on:
         description: Value used to replace <<DELAY>> placeholder (integer)
         required: false
         default: "0"
+      amount:
+        description: Override payload amount (default 1000 for realblocks, 100 for superblocks)
+        required: false
+        default: ""
       additional_extra_flags:
         description: >-
           Optional extra Nethermind flags. Example (single): --Merge.SweepMemory=NoGC.
@@ -70,6 +74,11 @@ on:
         required: false
         type: number
         default: 10
+      dottrace:
+        description: Enable JetBrains dotTrace profiling (captures .dtp snapshot per run)
+        required: false
+        type: boolean
+        default: false
   pull_request:
     types: [labeled]
   push:
@@ -100,6 +109,7 @@ jobs:
       expb_branch: ${{ steps.resolve.outputs.expb_branch }}
       expb_data_dir: ${{ steps.resolve.outputs.expb_data_dir }}
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
+      amount: ${{ steps.resolve.outputs.amount }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
       scenario_name: ${{ steps.resolve.outputs.scenario_name }}
@@ -110,6 +120,7 @@ jobs:
       retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
+      dottrace: ${{ steps.resolve.outputs.dottrace }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -126,6 +137,7 @@ jobs:
           DISPATCH_EXPB_REPO: ${{ inputs.expb_repo }}
           DISPATCH_EXPB_BRANCH: ${{ inputs.expb_branch }}
           DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
+          DISPATCH_AMOUNT: ${{ inputs.amount }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
           DISPATCH_REBUILD_DOCKER: ${{ inputs.rebuild_docker }}
           DISPATCH_RUN_COUNT: ${{ inputs.run_count }}
@@ -133,6 +145,7 @@ jobs:
           DISPATCH_ENABLE_RETROSPECTIVE: ${{ inputs.enable_retrospective }}
           DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
+          DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
         run: |
           set -euo pipefail
 
@@ -146,6 +159,13 @@ jobs:
             expb_branch="${DISPATCH_EXPB_BRANCH}"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
+            if [[ -n "${DISPATCH_AMOUNT}" ]]; then
+              amount="${DISPATCH_AMOUNT}"
+            elif [[ "${payload_set}" == "realblocks" ]]; then
+              amount="1000"
+            else
+              amount="100"
+            fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
@@ -157,6 +177,7 @@ jobs:
             enable_retrospective="${DISPATCH_ENABLE_RETROSPECTIVE:-false}"
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
+            dottrace="${DISPATCH_DOTTRACE:-false}"
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -175,10 +196,12 @@ jobs:
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="0"
+            amount=""
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
             run_count="1"
+            dottrace="false"
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
@@ -188,10 +211,12 @@ jobs:
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
             delay_seconds="0"
+            amount=""
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
             run_count="1"
+            dottrace="false"
           fi
 
           branch="${branch#refs/heads/}"
@@ -267,6 +292,7 @@ jobs:
             echo "expb_branch=${expb_branch}"
             echo "expb_data_dir=${expb_data_dir}"
             echo "delay_seconds=${delay_seconds}"
+            echo "amount=${amount}"
             echo "cleanup_grace_seconds=${cleanup_grace_seconds}"
             echo "mode=${mode}"
             echo "scenario_name=${scenario_name}"
@@ -277,6 +303,7 @@ jobs:
             echo "retrospective_step=${retrospective_step:-10}"
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
+            echo "dottrace=${dottrace}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -432,6 +459,8 @@ jobs:
           PAYLOAD_SET: ${{ matrix.payload_set }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          RUN: ${{ matrix.run }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
         run: |
           set -euo pipefail
           if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
@@ -444,6 +473,9 @@ jobs:
             config_file="github-action-mainnet.yaml"
           fi
           scenario_name="nethermind-${STATE_LAYOUT}-${PAYLOAD_SET}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          if [[ "${RUN_COUNT}" -gt 1 ]]; then
+            scenario_name="${scenario_name}-run${RUN}"
+          fi
           echo "CONFIG_FILE=${config_file}" >> "${GITHUB_ENV}"
           echo "SCENARIO_NAME=${scenario_name}" >> "${GITHUB_ENV}"
           echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
@@ -468,9 +500,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v2-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v2-${{ matrix.payload_set }}-
+            expb-master-metrics-v3-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -491,6 +523,7 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
           DOCKER_TAG: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
@@ -541,29 +574,26 @@ jobs:
               ' \
             > "${flags_file}"
 
+          YQ="${RUNNER_TEMP}/yq"
+          if [[ ! -x "${YQ}" ]]; then
+            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
+            chmod +x "${YQ}"
+          fi
+
+          # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
+            ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
-            "${SOURCE_CONFIG_FILE}" \
-            | awk -v flags_file="${flags_file}" '
-                BEGIN {
-                  while ((getline flag < flags_file) > 0) {
-                    flags[++flags_count] = flag
-                  }
-                  close(flags_file)
-                }
-                {
-                  print
-                  if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
-                    match($0, /^[[:space:]]*/)
-                    indent = substr($0, RSTART, RLENGTH)
-                    for (i = 1; i <= flags_count; i++) {
-                      print indent "  - " flags[i]
-                    }
-                  }
-                }
-              ' > "${RENDERED_CONFIG_FILE}"
+            "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
+
+          # Append extra flags using yq (proper YAML handling)
+          scenario_key="${SCENARIO_NAME}"
+          while IFS= read -r flag; do
+            [[ -z "${flag}" ]] && continue
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
+          done < "${flags_file}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -599,6 +629,7 @@ jobs:
         working-directory: ${{ env.EXPB_DATA_DIR }}
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
         run: |
           set -euo pipefail
           expb_pid=""
@@ -624,42 +655,31 @@ jobs:
                 kill -KILL "${expb_pid}" 2>/dev/null || true
               fi
             fi
-
-            if [[ -f "${RAW_RUN_LOG}" ]]; then
-              cat "${RAW_RUN_LOG}"
-            fi
             exit 143
           }
 
           trap on_terminate TERM INT
 
-          # Save stdout fd before expb redirects it — container logs go here for live streaming
-          exec 3>&1
+          dottrace_flag=""
+          if [[ "${DOTTRACE}" == "true" ]]; then
+            dottrace_flag="--dottrace"
+          fi
 
-          # Background: tail Nethermind container logs for live visibility
-          (
-            sleep 5
-            for i in $(seq 1 60); do
-              cid=$(docker ps --filter "name=nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
-              if [[ -z "$cid" ]]; then
-                cid=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep nethermind | head -1 | cut -d' ' -f1)
-              fi
-              if [[ -n "$cid" ]]; then
-                echo "=== Tailing Nethermind container ${cid} logs ===" >&3
-                docker logs -f "$cid" 2>&1 | sed 's/^/[nethermind] /' >&3
-                break
-              fi
-              sleep 2
-            done
-          ) &
-          log_tail_pid=$!
+          # Marker for dottrace artifact collection — only files newer than this
+          touch "${RUNNER_TEMP}/.expb-run-marker"
+
+          fifo="${RUNNER_TEMP}/expb-pipe"
+          mkfifo "${fifo}"
+          tee "${RAW_RUN_LOG}" < "${fifo}" &
+          tee_pid=$!
 
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
-            > "${RAW_RUN_LOG}" 2>&1 &
+            ${dottrace_flag} \
+            > "${fifo}" 2>&1 &
           expb_pid=$!
 
           set +e
@@ -667,9 +687,9 @@ jobs:
           expb_exit_code=$?
           set -e
 
-          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
-          exec 3>&-
-          cat "${RAW_RUN_LOG}"
+          rm -f "${fifo}"
+          wait "${tee_pid}"
+
           exit "${expb_exit_code}"
 
       - name: Analyze benchmark output
@@ -711,72 +731,142 @@ jobs:
             head -n 40 "${invalid_block_lines}"
           fi
 
-          awk -F'|' '
-            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
-              value = $4
-              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                print value
+          # Flag additional severe runtime signals (warn, don't hard-fail)
+          for pattern in "Unhandled" "Fatal" "^.*ERROR.*$"; do
+            severe_lines=$(grep -in "${pattern}" "${clean_log}" | head -n 20) || true
+            if [[ -n "${severe_lines}" ]]; then
+              echo "::warning::Severe log pattern '${pattern}' detected in benchmark output"
+              echo "${severe_lines}"
+            fi
+          done
+
+          # Extract client-side processing times from SSE data feed (primary)
+          client_ms="${RUNNER_TEMP}/expb-client-ms.txt"
+          client_ms_sorted="${RUNNER_TEMP}/expb-client-ms-sorted.txt"
+          grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
+
+          # Fall back to K6 TTFB table if no client metrics available
+          if [[ -s "${client_ms}" ]]; then
+            echo "Using SSE client_metric data ($(wc -l < "${client_ms}") samples)."
+            cp "${client_ms}" "${processing_ms}"
+          else
+            echo "No SSE client_metric data found, falling back to K6 TTFB table."
+            awk -F'|' '
+              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                  print value
+                }
               }
-            }
-          ' "${clean_log}" > "${processing_ms}"
+            ' "${clean_log}" > "${processing_ms}"
+          fi
 
           count=$(wc -l < "${processing_ms}")
           count="${count//[[:space:]]/}"
           if [[ "${count}" -eq 0 ]]; then
-            echo "Could not extract per-payload processing_ms rows from benchmark output."
+            echo "Could not extract any processing_ms data from benchmark output."
             exit 1
           fi
 
-          sort -n "${processing_ms}" > "${processing_ms_sorted}"
+          compute_percentiles() {
+            local input_file="$1"
+            local prefix="$2"
+            local sorted_file="${input_file}.sorted"
+            local n
 
-          min=$(head -n 1 "${processing_ms_sorted}")
-          max=$(tail -n 1 "${processing_ms_sorted}")
-          avg=$(awk '{sum += $1} END {printf "%.6f", sum / NR}' "${processing_ms_sorted}")
-          if (( count % 2 == 1 )); then
-            median_index=$(( (count + 1) / 2 ))
-            median=$(sed -n "${median_index}p" "${processing_ms_sorted}")
-          else
-            lower_index=$(( count / 2 ))
-            upper_index=$(( lower_index + 1 ))
-            lower_value=$(sed -n "${lower_index}p" "${processing_ms_sorted}")
-            upper_value=$(sed -n "${upper_index}p" "${processing_ms_sorted}")
-            median=$(awk -v a="${lower_value}" -v b="${upper_value}" 'BEGIN {printf "%.6f", (a + b) / 2}')
+            sort -n "${input_file}" > "${sorted_file}"
+            n=$(wc -l < "${sorted_file}")
+            n="${n//[[:space:]]/}"
+
+            local min max avg median p90 p95 p99
+            min=$(head -n 1 "${sorted_file}")
+            max=$(tail -n 1 "${sorted_file}")
+            avg=$(awk '{sum += $1} END {printf "%.2f", sum / NR}' "${sorted_file}")
+
+            if (( n % 2 == 1 )); then
+              local mi=$(( (n + 1) / 2 ))
+              median=$(sed -n "${mi}p" "${sorted_file}")
+            else
+              local lo=$(( n / 2 ))
+              local hi=$(( lo + 1 ))
+              local lv hv
+              lv=$(sed -n "${lo}p" "${sorted_file}")
+              hv=$(sed -n "${hi}p" "${sorted_file}")
+              median=$(awk -v a="${lv}" -v b="${hv}" 'BEGIN {printf "%.2f", (a + b) / 2}')
+            fi
+
+            local p90i=$(( (90 * n + 99) / 100 ))
+            local p95i=$(( (95 * n + 99) / 100 ))
+            local p99i=$(( (99 * n + 99) / 100 ))
+            p90=$(sed -n "${p90i}p" "${sorted_file}")
+            p95=$(sed -n "${p95i}p" "${sorted_file}")
+            p99=$(sed -n "${p99i}p" "${sorted_file}")
+
+            echo "${prefix}COUNT=${n}"
+            echo "${prefix}AVG=${avg}"
+            echo "${prefix}MEDIAN=${median}"
+            echo "${prefix}P90=${p90}"
+            echo "${prefix}P95=${p95}"
+            echo "${prefix}P99=${p99}"
+            echo "${prefix}MIN=${min}"
+            echo "${prefix}MAX=${max}"
+          }
+
+          compute_percentiles "${processing_ms}" "" > "${metrics_file}"
+
+          # Also compute K6 TTFB metrics when client metrics were primary
+          if [[ -s "${client_ms}" ]]; then
+            ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms.txt"
+            awk -F'|' '
+              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                  print value
+                }
+              }
+            ' "${clean_log}" > "${ttfb_ms}"
+            if [[ -s "${ttfb_ms}" ]]; then
+              compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_file}"
+            fi
           fi
 
-          p90_index=$(( (90 * count + 99) / 100 ))
-          p95_index=$(( (95 * count + 99) / 100 ))
-          p99_index=$(( (99 * count + 99) / 100 ))
+          # Print human-readable summary
+          echo ""
+          echo "========================================="
+          if [[ -s "${client_ms}" ]]; then
+            echo "  Client Processing (SSE) Metrics"
+          else
+            echo "  Processing Metrics (K6 TTFB)"
+          fi
+          echo "========================================="
+          while IFS='=' read -r key val; do
+            printf "  %-10s %s ms\n" "${key}" "${val}"
+          done < "${metrics_file}"
+          if [[ -s "${client_ms}" ]] && grep -q "^TTFB_AVG=" "${metrics_file}" 2>/dev/null; then
+            echo "-----------------------------------------"
+            echo "  K6 TTFB (secondary)"
+            echo "-----------------------------------------"
+            grep "^TTFB_" "${metrics_file}" | while IFS='=' read -r key val; do
+              printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
+            done
+          fi
+          echo "========================================="
+          echo ""
 
-          p90=$(sed -n "${p90_index}p" "${processing_ms_sorted}")
-          p95=$(sed -n "${p95_index}p" "${processing_ms_sorted}")
-          p99=$(sed -n "${p99_index}p" "${processing_ms_sorted}")
-
-          {
-            echo "COUNT=${count}"
-            echo "AVG=${avg}"
-            echo "MEDIAN=${median}"
-            echo "P90=${p90}"
-            echo "P95=${p95}"
-            echo "P99=${p99}"
-            echo "MIN=${min}"
-            echo "MAX=${max}"
-          } > "${metrics_file}"
-
+          # Populate GITHUB_OUTPUT
           {
             echo "exception_found=${exception_found}"
             echo "exception_lines_file=${exception_lines}"
             echo "invalid_block_found=${invalid_block_found}"
             echo "invalid_block_lines_file=${invalid_block_lines}"
             echo "metrics_file=${metrics_file}"
-            echo "count=${count}"
-            echo "avg=${avg}"
-            echo "median=${median}"
-            echo "p90=${p90}"
-            echo "p95=${p95}"
-            echo "p99=${p99}"
-            echo "min=${min}"
-            echo "max=${max}"
+            while IFS= read -r line; do
+              key="${line%%=*}"
+              val="${line#*=}"
+              echo "${key,,}=${val}"
+            done < "${metrics_file}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Upload metrics artifact
@@ -800,7 +890,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v2-${{ matrix.payload_set }}-${{ github.run_id }}
+          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -828,6 +918,44 @@ jobs:
             fi
             exit 1
           fi
+
+      - name: Collect and upload dotTrace snapshots
+        if: always() && needs.resolve.outputs.dottrace == 'true'
+        shell: bash
+        env:
+          ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          MARKER: ${{ runner.temp }}/.expb-run-marker
+        run: |
+          set -euo pipefail
+
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
+            echo "No dottrace output directories found for this run."
+            exit 0
+          fi
+
+          echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
+          printf '  %s\n' "${dottrace_dirs[@]}"
+
+          file_count=0
+          for d in "${dottrace_dirs[@]}"; do
+            file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
+          done
+          if [[ "${file_count}" -eq 0 ]]; then
+            echo "Dottrace directories are empty, skipping zip."
+            exit 0
+          fi
+
+          zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
+
+      - name: Upload dotTrace artifact
+        if: always() && needs.resolve.outputs.dottrace == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Cleanup rendered config
         if: always()
@@ -865,9 +993,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v2-superblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v3-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v2-superblocks-
+            expb-master-metrics-v3-superblocks-
 
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
@@ -875,9 +1003,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v2-realblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v3-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v2-realblocks-
+            expb-master-metrics-v3-realblocks-
 
       - name: Build PR comparison comment
         id: pr-comment
@@ -936,6 +1064,38 @@ jobs:
             printf '\n' >> "${comment_file}"
           }
 
+          emit_metrics_section() {
+            local label="$1"
+            local current_metrics="$2"
+            local master_metrics="$3"
+            local prefix="$4"
+
+            local metrics=("AVG" "MEDIAN" "P90" "P95" "P99" "MIN" "MAX")
+
+            if [[ ! -f "${master_metrics}" ]] || ! grep -q "^${prefix}AVG=" "${master_metrics}" 2>/dev/null; then
+              append_line "| Metric | PR |"
+              append_line "|---|---:|"
+              for m in "${metrics[@]}"; do
+                local val
+                val="$(load_metric "${current_metrics}" "${prefix}${m}")"
+                if [[ -z "${val}" ]]; then val="$(load_metric_with_fallback "${current_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
+                append_line "| ${m} (ms) | ${val:-n/a} |"
+              done
+              return
+            fi
+
+            append_line "| Metric | PR | Master (cached) | Delta |"
+            append_line "|---|---:|---:|---:|"
+            for m in "${metrics[@]}"; do
+              local cv mv
+              cv="$(load_metric "${current_metrics}" "${prefix}${m}")"
+              if [[ -z "${cv}" ]]; then cv="$(load_metric_with_fallback "${current_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
+              mv="$(load_metric "${master_metrics}" "${prefix}${m}")"
+              if [[ -z "${mv}" ]]; then mv="$(load_metric_with_fallback "${master_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
+              append_line "| ${m} (ms) | ${cv:-n/a} | ${mv:-n/a} | $(percentage_delta "${cv}" "${mv}") |"
+            done
+          }
+
           build_table() {
             local payload_set="$1"
             local current_metrics="$2"
@@ -951,48 +1111,29 @@ jobs:
               return
             fi
 
+            append_line "Scenario: \`${scenario_name}\`"
+
             if [[ ! -f "${master_metrics}" ]]; then
               append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
-              append_blank
-              append_line "| Metric | PR |"
-              append_line "|---|---:|"
-              append_line "| AVG (ms) | $(load_metric "${current_metrics}" "AVG") |"
-              append_line "| MEDIAN (ms) | $(load_metric_with_fallback "${current_metrics}" "MEDIAN" "MEAN") |"
-              append_line "| P90 (ms) | $(load_metric "${current_metrics}" "P90") |"
-              append_line "| P95 (ms) | $(load_metric "${current_metrics}" "P95") |"
-              append_line "| P99 (ms) | $(load_metric "${current_metrics}" "P99") |"
-              append_line "| MIN (ms) | $(load_metric "${current_metrics}" "MIN") |"
-              append_line "| MAX (ms) | $(load_metric "${current_metrics}" "MAX") |"
-              return
             fi
 
-            current_avg="$(load_metric "${current_metrics}" "AVG")"
-            current_median="$(load_metric_with_fallback "${current_metrics}" "MEDIAN" "MEAN")"
-            current_p90="$(load_metric "${current_metrics}" "P90")"
-            current_p95="$(load_metric "${current_metrics}" "P95")"
-            current_p99="$(load_metric "${current_metrics}" "P99")"
-            current_min="$(load_metric "${current_metrics}" "MIN")"
-            current_max="$(load_metric "${current_metrics}" "MAX")"
-
-            master_avg="$(load_metric "${master_metrics}" "AVG")"
-            master_median="$(load_metric_with_fallback "${master_metrics}" "MEDIAN" "MEAN")"
-            master_p90="$(load_metric "${master_metrics}" "P90")"
-            master_p95="$(load_metric "${master_metrics}" "P95")"
-            master_p99="$(load_metric "${master_metrics}" "P99")"
-            master_min="$(load_metric "${master_metrics}" "MIN")"
-            master_max="$(load_metric "${master_metrics}" "MAX")"
-
-            append_line "Scenario: \`${scenario_name}\`"
+            # Primary: client-side (SSE) metrics or fallback
             append_blank
-            append_line "| Metric | PR | Master (cached) | Delta PR vs Master |"
-            append_line "|---|---:|---:|---:|"
-            append_line "| AVG (ms) | ${current_avg} | ${master_avg} | $(percentage_delta "${current_avg}" "${master_avg}") |"
-            append_line "| MEDIAN (ms) | ${current_median} | ${master_median} | $(percentage_delta "${current_median}" "${master_median}") |"
-            append_line "| P90 (ms) | ${current_p90} | ${master_p90} | $(percentage_delta "${current_p90}" "${master_p90}") |"
-            append_line "| P95 (ms) | ${current_p95} | ${master_p95} | $(percentage_delta "${current_p95}" "${master_p95}") |"
-            append_line "| P99 (ms) | ${current_p99} | ${master_p99} | $(percentage_delta "${current_p99}" "${master_p99}") |"
-            append_line "| MIN (ms) | ${current_min} | ${master_min} | $(percentage_delta "${current_min}" "${master_min}") |"
-            append_line "| MAX (ms) | ${current_max} | ${master_max} | $(percentage_delta "${current_max}" "${master_max}") |"
+            if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
+              append_line "**Client Processing (SSE)**"
+            fi
+            append_blank
+            emit_metrics_section "Processing" "${current_metrics}" "${master_metrics}" ""
+
+            # Secondary: K6 TTFB metrics (only shown when SSE data was primary)
+            if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
+              append_blank
+              append_line "<details><summary>K6 TTFB</summary>"
+              append_blank
+              emit_metrics_section "TTFB" "${current_metrics}" "${master_metrics}" "TTFB_"
+              append_blank
+              append_line "</details>"
+            fi
           }
 
           append_line "${marker}"
@@ -1060,6 +1201,201 @@ jobs:
                 body,
               });
             }
+
+  # ---------------------------------------------------------------------------
+  # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
+  # ---------------------------------------------------------------------------
+
+  single-summary:
+    needs: [resolve, benchmark]
+    if: always() && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all metrics artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/all-metrics
+          pattern: expb-single-metrics-*
+
+      - name: Build summary
+        shell: bash
+        env:
+          METRICS_DIR: ${{ runner.temp }}/all-metrics
+          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          summary_file="${RUNNER_TEMP}/single-summary.md"
+          run_count="${RUN_COUNT:-1}"
+
+          load_metric() {
+            local file="$1"
+            local key="$2"
+            if [[ -f "${file}" ]]; then
+              grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2- || true
+            fi
+          }
+
+          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+
+          {
+            echo "## EXPB Benchmark Results"
+            echo ""
+            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Delay: \`${DELAY_SECONDS}s\` | Runs: \`${run_count}\`"
+            echo ""
+            echo "Run: [View workflow run](${RUN_URL})"
+          } > "${summary_file}"
+
+          for ps in "${payload_sets[@]}"; do
+            scenario_name="nethermind-${STATE_LAYOUT}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+
+            {
+              echo ""
+              echo "### ${ps}"
+              echo ""
+              echo "Scenario: \`${scenario_name}\`"
+              echo ""
+            } >> "${summary_file}"
+
+            # Detect metrics source from first available run
+            source_label=""
+            for (( r=1; r<=run_count; r++ )); do
+              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              if [[ -f "${mf}" ]]; then
+                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
+                if [[ -n "${ttfb_check}" ]]; then
+                  source_label="SSE"
+                else
+                  source_label="TTFB"
+                fi
+                break
+              fi
+            done
+
+            if [[ "${run_count}" -gt 1 ]]; then
+              # Per-run table
+              {
+                echo "| Run | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) |"
+                echo "|---:|--------|----------|-------------|----------|----------|----------|----------|----------|"
+              } >> "${summary_file}"
+
+              avg_values=""
+              median_values=""
+              p90_values=""
+              p95_values=""
+              p99_values=""
+              min_values=""
+              max_values=""
+              valid_runs=0
+
+              for (( r=1; r<=run_count; r++ )); do
+                mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+                if [[ ! -f "${mf}" ]]; then
+                  echo "| ${r} | - | - | - | - | - | - | - | - |" >> "${summary_file}"
+                  continue
+                fi
+
+                src=""
+                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
+                if [[ -n "${ttfb_check}" ]]; then src="SSE"; else src="TTFB"; fi
+
+                avg=$(load_metric "${mf}" "AVG")
+                median=$(load_metric "${mf}" "MEDIAN")
+                p90=$(load_metric "${mf}" "P90")
+                p95=$(load_metric "${mf}" "P95")
+                p99=$(load_metric "${mf}" "P99")
+                min_val=$(load_metric "${mf}" "MIN")
+                max_val=$(load_metric "${mf}" "MAX")
+
+                echo "| ${r} | ${src} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} |" >> "${summary_file}"
+
+                if [[ -n "${avg}" ]]; then
+                  valid_runs=$(( valid_runs + 1 ))
+                  avg_values="${avg_values} ${avg}"
+                  median_values="${median_values} ${median}"
+                  p90_values="${p90_values} ${p90}"
+                  p95_values="${p95_values} ${p95}"
+                  p99_values="${p99_values} ${p99}"
+                  min_values="${min_values} ${min_val}"
+                  max_values="${max_values} ${max_val}"
+                fi
+              done
+
+              # Cross-run aggregate
+              if [[ "${valid_runs}" -gt 1 ]]; then
+                compute_mean() {
+                  echo "$@" | tr ' ' '\n' | awk 'NF {sum += $1; n++} END {if (n>0) printf "%.2f", sum/n; else print "n/a"}'
+                }
+                compute_min_of() {
+                  echo "$@" | tr ' ' '\n' | awk 'NF {if (min=="" || $1+0 < min+0) min=$1} END {print (min != "" ? min : "n/a")}'
+                }
+                compute_max_of() {
+                  echo "$@" | tr ' ' '\n' | awk 'NF {if (max=="" || $1+0 > max+0) max=$1} END {print (max != "" ? max : "n/a")}'
+                }
+
+                {
+                  echo ""
+                  echo "**Aggregate across ${valid_runs} runs:**"
+                  echo ""
+                  echo "| Stat | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) |"
+                  echo "|------|----------|-------------|----------|----------|----------|----------|----------|"
+                  echo "| Mean | $(compute_mean ${avg_values}) | $(compute_mean ${median_values}) | $(compute_mean ${p90_values}) | $(compute_mean ${p95_values}) | $(compute_mean ${p99_values}) | $(compute_mean ${min_values}) | $(compute_mean ${max_values}) |"
+                  echo "| Best | $(compute_min_of ${avg_values}) | $(compute_min_of ${median_values}) | $(compute_min_of ${p90_values}) | $(compute_min_of ${p95_values}) | $(compute_min_of ${p99_values}) | $(compute_min_of ${min_values}) | $(compute_min_of ${max_values}) |"
+                  echo "| Worst | $(compute_max_of ${avg_values}) | $(compute_max_of ${median_values}) | $(compute_max_of ${p90_values}) | $(compute_max_of ${p95_values}) | $(compute_max_of ${p99_values}) | $(compute_max_of ${min_values}) | $(compute_max_of ${max_values}) |"
+                } >> "${summary_file}"
+              fi
+            else
+              # Single run — simple table
+              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+              if [[ ! -f "${mf}" ]]; then
+                echo "No metrics were produced." >> "${summary_file}"
+              else
+                src=""
+                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
+                if [[ -n "${ttfb_check}" ]]; then src=" (SSE)"; fi
+
+                {
+                  echo "| Metric | Value${src} |"
+                  echo "|---|---:|"
+                  echo "| AVG (ms) | $(load_metric "${mf}" "AVG") |"
+                  echo "| Median (ms) | $(load_metric "${mf}" "MEDIAN") |"
+                  echo "| P90 (ms) | $(load_metric "${mf}" "P90") |"
+                  echo "| P95 (ms) | $(load_metric "${mf}" "P95") |"
+                  echo "| P99 (ms) | $(load_metric "${mf}" "P99") |"
+                  echo "| Min (ms) | $(load_metric "${mf}" "MIN") |"
+                  echo "| Max (ms) | $(load_metric "${mf}" "MAX") |"
+                } >> "${summary_file}"
+
+                if [[ -n "${ttfb_check}" ]]; then
+                  {
+                    echo ""
+                    echo "<details><summary>K6 TTFB</summary>"
+                    echo ""
+                    echo "| Metric | Value |"
+                    echo "|---|---:|"
+                    echo "| AVG (ms) | $(load_metric "${mf}" "TTFB_AVG") |"
+                    echo "| Median (ms) | $(load_metric "${mf}" "TTFB_MEDIAN") |"
+                    echo "| P90 (ms) | $(load_metric "${mf}" "TTFB_P90") |"
+                    echo "| P95 (ms) | $(load_metric "${mf}" "TTFB_P95") |"
+                    echo "| P99 (ms) | $(load_metric "${mf}" "TTFB_P99") |"
+                    echo "| Min (ms) | $(load_metric "${mf}" "TTFB_MIN") |"
+                    echo "| Max (ms) | $(load_metric "${mf}" "TTFB_MAX") |"
+                    echo ""
+                    echo "</details>"
+                  } >> "${summary_file}"
+                fi
+              fi
+            fi
+          done
+
+          echo "--- Single Benchmark Summary ---"
+          cat "${summary_file}"
+          cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
 
   # ---------------------------------------------------------------------------
   # Multi-image path: retrospective or explicit docker_images
@@ -1257,6 +1593,7 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config-${{ matrix.tag }}-run${{ matrix.run }}.yaml
           DOCKER_TAG: ${{ matrix.tag }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
@@ -1303,29 +1640,26 @@ jobs:
               ' \
             > "${flags_file}"
 
+          YQ="${RUNNER_TEMP}/yq"
+          if [[ ! -x "${YQ}" ]]; then
+            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
+            chmod +x "${YQ}"
+          fi
+
+          # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
+            ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
-            "${SOURCE_CONFIG_FILE}" \
-            | awk -v flags_file="${flags_file}" '
-                BEGIN {
-                  while ((getline flag < flags_file) > 0) {
-                    flags[++flags_count] = flag
-                  }
-                  close(flags_file)
-                }
-                {
-                  print
-                  if (flags_count > 0 && $0 ~ /^[[:space:]]*extra_flags:[[:space:]]*$/) {
-                    match($0, /^[[:space:]]*/)
-                    indent = substr($0, RSTART, RLENGTH)
-                    for (i = 1; i <= flags_count; i++) {
-                      print indent "  - " flags[i]
-                    }
-                  }
-                }
-              ' > "${RENDERED_CONFIG_FILE}"
+            "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
+
+          # Append extra flags using yq (proper YAML handling)
+          scenario_key="${SCENARIO_NAME}"
+          while IFS= read -r flag; do
+            [[ -z "${flag}" ]] && continue
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
+          done < "${flags_file}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -1358,6 +1692,7 @@ jobs:
         working-directory: ${{ env.EXPB_DATA_DIR }}
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
         run: |
           set -euo pipefail
           expb_pid=""
@@ -1381,41 +1716,31 @@ jobs:
                 kill -KILL "${expb_pid}" 2>/dev/null || true
               fi
             fi
-            if [[ -f "${RAW_RUN_LOG}" ]]; then
-              cat "${RAW_RUN_LOG}"
-            fi
             exit 143
           }
 
           trap on_terminate TERM INT
 
-          # Save stdout fd before expb redirects it — container logs go here for live streaming
-          exec 3>&1
+          dottrace_flag=""
+          if [[ "${DOTTRACE}" == "true" ]]; then
+            dottrace_flag="--dottrace"
+          fi
 
-          # Background: tail Nethermind container logs for live visibility
-          (
-            sleep 5
-            for i in $(seq 1 60); do
-              cid=$(docker ps --filter "name=nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
-              if [[ -z "$cid" ]]; then
-                cid=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep nethermind | head -1 | cut -d' ' -f1)
-              fi
-              if [[ -n "$cid" ]]; then
-                echo "=== Tailing Nethermind container ${cid} logs ===" >&3
-                docker logs -f "$cid" 2>&1 | sed 's/^/[nethermind] /' >&3
-                break
-              fi
-              sleep 2
-            done
-          ) &
-          log_tail_pid=$!
+          # Marker for dottrace artifact collection — only files newer than this
+          touch "${RUNNER_TEMP}/.expb-run-marker"
+
+          fifo="${RUNNER_TEMP}/expb-pipe"
+          mkfifo "${fifo}"
+          tee "${RAW_RUN_LOG}" < "${fifo}" &
+          tee_pid=$!
 
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
-            > "${RAW_RUN_LOG}" 2>&1 &
+            ${dottrace_flag} \
+            > "${fifo}" 2>&1 &
           expb_pid=$!
 
           set +e
@@ -1423,9 +1748,9 @@ jobs:
           expb_exit_code=$?
           set -e
 
-          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
-          exec 3>&-
-          cat "${RAW_RUN_LOG}"
+          rm -f "${fifo}"
+          wait "${tee_pid}"
+
           exit "${expb_exit_code}"
 
       - name: Analyze benchmark output
@@ -1477,21 +1802,41 @@ jobs:
             head -n 40 "${invalid_block_lines}"
           fi
 
-          awk -F'|' '
-            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
-              value = $4
-              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                print value
+          # Flag additional severe runtime signals (warn, don't hard-fail)
+          for pattern in "Unhandled" "Fatal" "^.*ERROR.*$"; do
+            severe_lines=$(grep -in "${pattern}" "${clean_log}" | head -n 20) || true
+            if [[ -n "${severe_lines}" ]]; then
+              echo "::warning::Severe log pattern '${pattern}' detected in benchmark output"
+              echo "${severe_lines}"
+            fi
+          done
+
+          # Extract client-side processing times from SSE data feed (primary)
+          client_ms="${RUNNER_TEMP}/expb-client-ms-${key}.txt"
+          grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
+
+          # Fall back to K6 TTFB table if no client metrics available
+          if [[ -s "${client_ms}" ]]; then
+            echo "Using SSE client_metric data ($(wc -l < "${client_ms}") samples)."
+            cp "${client_ms}" "${processing_ms}"
+          else
+            echo "No SSE client_metric data found, falling back to K6 TTFB table."
+            awk -F'|' '
+              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                  print value
+                }
               }
-            }
-          ' "${clean_log}" > "${processing_ms}"
+            ' "${clean_log}" > "${processing_ms}"
+          fi
 
           count=$(wc -l < "${processing_ms}")
           count="${count//[[:space:]]/}"
 
           if [[ "${count}" -eq 0 ]]; then
-            echo "Could not extract per-payload processing_ms rows from benchmark output."
+            echo "Could not extract any processing_ms data from benchmark output."
             {
               echo "TAG=${TAG}"
               echo "RUN=${RUN}"
@@ -1502,47 +1847,97 @@ jobs:
             exit 1
           fi
 
-          sort -n "${processing_ms}" > "${processing_ms_sorted}"
+          compute_percentiles() {
+            local input_file="$1"
+            local prefix="$2"
+            local sorted_file="${input_file}.sorted"
+            local n
 
-          min=$(head -n 1 "${processing_ms_sorted}")
-          max=$(tail -n 1 "${processing_ms_sorted}")
-          avg=$(awk '{sum += $1} END {printf "%.2f", sum / NR}' "${processing_ms_sorted}")
-          if (( count % 2 == 1 )); then
-            median_index=$(( (count + 1) / 2 ))
-            median=$(sed -n "${median_index}p" "${processing_ms_sorted}")
-          else
-            lower_index=$(( count / 2 ))
-            upper_index=$(( lower_index + 1 ))
-            lower_value=$(sed -n "${lower_index}p" "${processing_ms_sorted}")
-            upper_value=$(sed -n "${upper_index}p" "${processing_ms_sorted}")
-            median=$(awk -v a="${lower_value}" -v b="${upper_value}" 'BEGIN {printf "%.2f", (a + b) / 2}')
-          fi
+            sort -n "${input_file}" > "${sorted_file}"
+            n=$(wc -l < "${sorted_file}")
+            n="${n//[[:space:]]/}"
 
-          p90_index=$(( (90 * count + 99) / 100 ))
-          p95_index=$(( (95 * count + 99) / 100 ))
-          p99_index=$(( (99 * count + 99) / 100 ))
+            local min max avg median p90 p95 p99
+            min=$(head -n 1 "${sorted_file}")
+            max=$(tail -n 1 "${sorted_file}")
+            avg=$(awk '{sum += $1} END {printf "%.2f", sum / NR}' "${sorted_file}")
 
-          p90=$(sed -n "${p90_index}p" "${processing_ms_sorted}")
-          p95=$(sed -n "${p95_index}p" "${processing_ms_sorted}")
-          p99=$(sed -n "${p99_index}p" "${processing_ms_sorted}")
+            if (( n % 2 == 1 )); then
+              local mi=$(( (n + 1) / 2 ))
+              median=$(sed -n "${mi}p" "${sorted_file}")
+            else
+              local lo=$(( n / 2 ))
+              local hi=$(( lo + 1 ))
+              local lv hv
+              lv=$(sed -n "${lo}p" "${sorted_file}")
+              hv=$(sed -n "${hi}p" "${sorted_file}")
+              median=$(awk -v a="${lv}" -v b="${hv}" 'BEGIN {printf "%.2f", (a + b) / 2}')
+            fi
+
+            local p90i=$(( (90 * n + 99) / 100 ))
+            local p95i=$(( (95 * n + 99) / 100 ))
+            local p99i=$(( (99 * n + 99) / 100 ))
+            p90=$(sed -n "${p90i}p" "${sorted_file}")
+            p95=$(sed -n "${p95i}p" "${sorted_file}")
+            p99=$(sed -n "${p99i}p" "${sorted_file}")
+
+            echo "${prefix}COUNT=${n}"
+            echo "${prefix}AVG=${avg}"
+            echo "${prefix}MEDIAN=${median}"
+            echo "${prefix}P90=${p90}"
+            echo "${prefix}P95=${p95}"
+            echo "${prefix}P99=${p99}"
+            echo "${prefix}MIN=${min}"
+            echo "${prefix}MAX=${max}"
+          }
 
           {
             echo "TAG=${TAG}"
             echo "RUN=${RUN}"
             echo "EXCEPTION_FOUND=${exception_found}"
             echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
-            echo "COUNT=${count}"
-            echo "AVG=${avg}"
-            echo "MEDIAN=${median}"
-            echo "P90=${p90}"
-            echo "P95=${p95}"
-            echo "P99=${p99}"
-            echo "MIN=${min}"
-            echo "MAX=${max}"
           } > "${metrics_dir}/metrics.env"
+          compute_percentiles "${processing_ms}" "" >> "${metrics_dir}/metrics.env"
 
-          echo "Metrics for ${TAG} run ${RUN}:"
-          cat "${metrics_dir}/metrics.env"
+          # Also compute K6 TTFB metrics when client metrics were primary
+          if [[ -s "${client_ms}" ]]; then
+            ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms-${key}.txt"
+            awk -F'|' '
+              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                  print value
+                }
+              }
+            ' "${clean_log}" > "${ttfb_ms}"
+            if [[ -s "${ttfb_ms}" ]]; then
+              compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_dir}/metrics.env"
+            fi
+          fi
+
+          echo ""
+          echo "========================================="
+          echo "  Metrics for ${TAG} run ${RUN}"
+          if [[ -s "${client_ms}" ]]; then
+            echo "  Source: Client Processing (SSE)"
+          else
+            echo "  Source: K6 TTFB"
+          fi
+          echo "========================================="
+          grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+            printf "  %-10s %s ms\n" "${key}" "${val}"
+          done
+          if grep -q "^TTFB_AVG=" "${metrics_dir}/metrics.env" 2>/dev/null; then
+            echo "-----------------------------------------"
+            echo "  K6 TTFB (secondary)"
+            echo "-----------------------------------------"
+            grep "^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+              printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
+            done
+          fi
+          echo "========================================="
+          echo ""
 
       - name: Upload metrics artifact
         if: always()
@@ -1567,6 +1962,44 @@ jobs:
           if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
             echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
           fi
+
+      - name: Collect and upload dotTrace snapshots
+        if: always() && needs.resolve.outputs.dottrace == 'true'
+        shell: bash
+        env:
+          ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.tag }}-run${{ matrix.run }}.zip
+          MARKER: ${{ runner.temp }}/.expb-run-marker
+        run: |
+          set -euo pipefail
+
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
+            echo "No dottrace output directories found for this run."
+            exit 0
+          fi
+
+          echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
+          printf '  %s\n' "${dottrace_dirs[@]}"
+
+          file_count=0
+          for d in "${dottrace_dirs[@]}"; do
+            file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
+          done
+          if [[ "${file_count}" -eq 0 ]]; then
+            echo "Dottrace directories are empty, skipping zip."
+            exit 0
+          fi
+
+          zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
+
+      - name: Upload dotTrace artifact
+        if: always() && needs.resolve.outputs.dottrace == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dottrace-${{ matrix.tag }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/dottrace-${{ matrix.tag }}-run${{ matrix.run }}.zip
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Cleanup rendered config
         if: always()
@@ -1629,11 +2062,11 @@ jobs:
 
           # Build header — add Run column if run_count > 1
           if [[ "${run_count}" -gt 1 ]]; then
-            header="| # | Image Tag | Run | Date | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
-            separator="|---|-----------|-----|------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+            header="| # | Image Tag | Run | Date | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
+            separator="|---|-----------|-----|------|--------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
           else
-            header="| # | Image Tag | Date | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
-            separator="|---|-----------|------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+            header="| # | Image Tag | Date | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
+            separator="|---|-----------|------|--------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
           fi
 
           total_runs=$(( ${#tags[@]} * run_count ))
@@ -1665,7 +2098,7 @@ jobs:
               fi
 
               if [[ ! -f "${metrics_file}" ]]; then
-                echo "${prefix} | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
+                echo "${prefix} | - | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
                 continue
               fi
 
@@ -1680,8 +2113,16 @@ jobs:
                 if [[ "${invalid}" == "true" ]]; then
                   status="${status} :warning: invalid blocks"
                 fi
-                echo "${prefix} | - | - | - | - | - | - | - | ${status} |" >> "${summary_file}"
+                echo "${prefix} | - | - | - | - | - | - | - | - | ${status} |" >> "${summary_file}"
                 continue
+              fi
+
+              # Detect metrics source
+              ttfb_avg=$(load_metric "${metrics_file}" "TTFB_AVG")
+              if [[ -n "${ttfb_avg}" ]]; then
+                source="SSE"
+              else
+                source="TTFB"
               fi
 
               avg=$(load_metric "${metrics_file}" "AVG")
@@ -1708,13 +2149,15 @@ jobs:
                 warnings="${warnings} :no_entry:"
               fi
 
-              echo "${prefix} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} | ${delta}${warnings} |" >> "${summary_file}"
+              echo "${prefix} | ${source} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} | ${delta}${warnings} |" >> "${summary_file}"
             done
           done
 
           {
             echo ""
             echo "**Legend:** :warning: = exceptions detected, :no_entry: = invalid blocks detected"
+            echo ""
+            echo "**Source:** SSE = client-side processing time from Nethermind's SSE data feed, TTFB = K6 HTTP time-to-first-byte (fallback)"
             echo ""
             echo "**Delta vs First** shows the percentage change in AVG processing time compared to the first image in the list."
           } >> "${summary_file}"
@@ -1723,3 +2166,88 @@ jobs:
           cat "${summary_file}"
 
           cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
+
+  # ---------------------------------------------------------------------------
+  # dotTrace XML report generation (Windows-only Reporter.exe)
+  # ---------------------------------------------------------------------------
+
+  generate-dottrace-reports:
+    needs: [resolve, benchmark, benchmark-multi]
+    if: >-
+      always()
+      && needs.resolve.outputs.dottrace == 'true'
+      && needs.resolve.outputs.should_run == 'true'
+      && (needs.benchmark.result == 'success' || needs.benchmark-multi.result == 'success')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download snapshot artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dottrace-*
+          path: snapshots/
+          merge-multiple: true
+
+      - name: Install dotTrace Reporter
+        shell: pwsh
+        run: |
+          $url = 'https://www.nuget.org/api/v2/package/JetBrains.dotTrace.CommandLineTools.windows-x64/2026.1.0.1'
+          Write-Host "Downloading dotTrace CommandLineTools from NuGet..."
+          Invoke-WebRequest -Uri $url -OutFile dottrace-clt.zip
+          Expand-Archive -Path dottrace-clt.zip -DestinationPath dottrace-clt
+          $reporter = Get-ChildItem -Path dottrace-clt -Recurse -Filter 'Reporter.exe' | Select-Object -First 1
+          if (-not $reporter) {
+            Write-Error "Reporter.exe not found in package"
+            exit 1
+          }
+          Write-Host "Found Reporter.exe at $($reporter.FullName)"
+          echo "REPORTER=$($reporter.FullName)" >> $env:GITHUB_ENV
+
+      - name: Generate XML reports
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
+
+          # Pattern file: match all methods, include full call stacks
+          $patternFile = 'pattern.xml'
+          @'
+          <Patterns>
+            <Pattern PrintCallstacks="Full">.*</Pattern>
+          </Patterns>
+          '@ | Set-Content -Path $patternFile
+
+          # Extract all snapshot zips
+          Get-ChildItem -Path snapshots -Filter '*.zip' | ForEach-Object {
+            $dest = Join-Path extracted $_.BaseName
+            Write-Host "Extracting $($_.Name) -> $dest"
+            Expand-Archive -Path $_.FullName -DestinationPath $dest
+          }
+
+          # Find .dtp files (exact extension, not .dtp.0000 chunks)
+          $snapshots = Get-ChildItem -Path extracted -Recurse | Where-Object { $_.Extension -eq '.dtp' }
+
+          if ($snapshots.Count -eq 0) {
+            Write-Host "No .dtp snapshot files found after extraction."
+            exit 0
+          }
+
+          foreach ($dtp in $snapshots) {
+            $name = $dtp.BaseName
+            $outFile = "reports/${name}-report.xml"
+            Write-Host "::group::Generating report for $name"
+            Write-Host "  $($dtp.FullName) -> $outFile"
+            & $env:REPORTER report $dtp.FullName --pattern=$patternFile --save-to=$outFile
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Reporter failed for $name with exit code $LASTEXITCODE"
+            }
+            Write-Host "::endgroup::"
+          }
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dottrace-reports
+          path: reports/
+          retention-days: 30
+          if-no-files-found: ignore
