@@ -1,8 +1,28 @@
 <Project>
 
+  <!-- Disable R2R for test projects - they don't need it and composite R2R is slow -->
+  <PropertyGroup Condition="$(MSBuildProjectName.Contains('Test'))">
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
+    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+    <OptimizationPreference>Speed</OptimizationPreference>
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
+    <NethermindCallChainProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json</NethermindCallChainProfile>
     <PublishReadyToRunMibcPaths Condition="Exists('$(NethermindPgoProfile)')">$(NethermindPgoProfile)</PublishReadyToRunMibcPaths>
+    <!-- Inline framework methods (Dictionary, Span, Memory, etc.) into Nethermind R2R code.
+         Safe because Docker images pin the framework version via base image hash.
+         The * wildcard enables inlining from all referenced modules. -->
+    <!-- Split methods into hot/cold sections using SPGO block counts from .mibc.
+         Cold basic blocks (error paths, rare branches) go to .text.cold section,
+         keeping the hot working set smaller and improving I-cache density. -->
+    <!-- Use CallFrequency layout when call chain profile is available (directed caller-before-callee
+         placement). Falls back to PettisHansen when only .mibc is available. -->
+    <!-- Match file layout to method ordering so hot methods are on adjacent pages on disk. -->
+    <Crossgen2ExtraCommandLineArgs>$(Crossgen2ExtraCommandLineArgs);--opt-cross-module:*;--hot-cold-splitting;--file-layout:methodorder</Crossgen2ExtraCommandLineArgs>
+    <Crossgen2ExtraCommandLineArgs Condition="Exists('$(NethermindCallChainProfile)')">$(Crossgen2ExtraCommandLineArgs);--callchain-profile:$(NethermindCallChainProfile);--method-layout:callfrequency</Crossgen2ExtraCommandLineArgs>
+    <Crossgen2ExtraCommandLineArgs Condition="!Exists('$(NethermindCallChainProfile)')">$(Crossgen2ExtraCommandLineArgs);--method-layout:pettishansen</Crossgen2ExtraCommandLineArgs>
   </PropertyGroup>
 
 </Project>

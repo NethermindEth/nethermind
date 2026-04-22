@@ -73,5 +73,11 @@ jobs:
           dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj --locked-mode
           dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -r ${{ matrix.target.rid }} -p:PublishReadyToRun=true
 
+      - name: Decompress PGO callchain profile
+        run: |
+          gz="src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json.gz"
+          json="src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json"
+          if [ -f "$gz" ] && [ ! -f "$json" ]; then gzip -d -k "$gz"; fi
+
       - name: Publish Nethermind.Runner for ${{ matrix.target.rid }}
         run: dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c release -r ${{ matrix.target.rid }} --no-restore --no-self-contained

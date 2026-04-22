@@ -638,15 +638,15 @@ jobs:
 
           # Background: tail Nethermind container logs for live visibility
           (
-            sleep 5
-            for i in $(seq 1 60); do
-              cid=$(docker ps --filter "name=nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
+            sleep 10
+            for i in $(seq 1 120); do
+              cid=$(docker ps --filter "name=expb-executor" --filter "ancestor=nethermindeth/nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
               if [[ -z "$cid" ]]; then
                 cid=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep nethermind | head -1 | cut -d' ' -f1)
               fi
               if [[ -n "$cid" ]]; then
                 echo "=== Tailing Nethermind container ${cid} logs ===" >&3
-                docker logs -f "$cid" 2>&1 | sed 's/^/[nethermind] /' >&3
+                docker logs -f "$cid" 2>&1 | sed -u 's/^/[nethermind] /' >&3
                 break
               fi
               sleep 2
@@ -1394,15 +1394,15 @@ jobs:
 
           # Background: tail Nethermind container logs for live visibility
           (
-            sleep 5
-            for i in $(seq 1 60); do
-              cid=$(docker ps --filter "name=nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
+            sleep 10
+            for i in $(seq 1 120); do
+              cid=$(docker ps --filter "name=expb-executor" --filter "ancestor=nethermindeth/nethermind" --format '{{.ID}}' 2>/dev/null | head -1)
               if [[ -z "$cid" ]]; then
                 cid=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep nethermind | head -1 | cut -d' ' -f1)
               fi
               if [[ -n "$cid" ]]; then
                 echo "=== Tailing Nethermind container ${cid} logs ===" >&3
-                docker logs -f "$cid" 2>&1 | sed 's/^/[nethermind] /' >&3
+                docker logs -f "$cid" 2>&1 | sed -u 's/^/[nethermind] /' >&3
                 break
               fi
               sleep 2

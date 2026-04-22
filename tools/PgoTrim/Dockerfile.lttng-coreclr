@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+#
+# Builds libcoreclr.so + libcoreclrtraceptprovider.so with LTTng enabled.
+# The Microsoft .NET SDK ships a dummy event provider (no-op FireEtXplat*
+# functions). This image rebuilds coreclr with FEATURE_EVENTSOURCE_XPLAT=1
+# so the event dispatch code calls tracepoint() and perfcollect can capture
+# CLR events for SPGO profiling.
+#
+# Build & push (one-time, only needed when .NET version changes):
+#   docker buildx build --platform=linux/amd64 \
+#     -f tools/PgoTrim/Dockerfile.lttng-coreclr \
+#     -t nethermindeth/nethermind:lttng-coreclr-10.0.5 \
+#     --push .
+
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
+
+ARG DOTNET_RUNTIME_VERSION=10.0.5
+
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+    build-essential cmake clang llvm lld ninja-build \
+    python-is-python3 git curl \
+    libicu-dev liblttng-ust-dev libssl-dev libkrb5-dev && \
+  rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} \
+      https://github.com/dotnet/runtime.git /runtime
+
+# Build only the coreclr runtime subset.
+# Produces both libcoreclr.so (with LTTng event dispatch) and
+# libcoreclrtraceptprovider.so (with LTTng tracepoint definitions).
+RUN cd /runtime && \
+    ./build.sh clr.runtime -c Release -a x64
+
+WORKDIR /runtime/artifacts/bin/coreclr/linux.x64.Release

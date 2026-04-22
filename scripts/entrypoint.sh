@@ -66,10 +66,13 @@ if [[ -z "${DOTNET_GCLargePages:-}" ]]; then
   fi
 fi
 
-# Enable edge/block PGO if the trimmed profile exists
-if [[ -z "${DOTNET_ReadPGOData:-}" ]] && [[ -f "/nethermind/pgo/nethermind.jit" ]]; then
+# Enable edge/block PGO if the profile exists
+if [[ -z "${DOTNET_ReadPGOData:-}" ]] && [[ -s "/nethermind/pgo/nethermind.jit" ]]; then
   export DOTNET_ReadPGOData=1
   export DOTNET_PGODataPath=/nethermind/pgo/nethermind.jit
+  # Use profile-driven inlining: inline more aggressively at hot call sites,
+  # less at cold ones, based on the seeded PGO frequency data.
+  export DOTNET_JitInlinePolicyProfile=1
   echo "Edge/block PGO enabled: ${DOTNET_PGODataPath}"
 fi
 
