@@ -130,15 +130,9 @@ public class EraWriter : IDisposable
         return (root, _e2StoreWriter.FinalizeChecksum());
     }
 
-    private static void WriteInt64(Span<byte> destination, int off, long value)
-    {
-        BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
-    }
+    private static void WriteInt64(Span<byte> destination, int off, long value) => BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
 
-    private Task<int> WriteVersion()
-    {
-        return _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
-    }
+    private Task<int> WriteVersion() => _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
 
     public void Dispose()
     {

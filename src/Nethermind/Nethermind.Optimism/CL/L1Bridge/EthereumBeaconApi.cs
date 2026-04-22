@@ -26,7 +26,7 @@ public class EthereumBeaconApi : IBeaconApi
         _client = new HttpClient { BaseAddress = beaconApiUri };
         _jsonSerializer = jsonSerializer;
         _ecdsa = ecdsa;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<EthereumBeaconApi>();
     }
 
     public async Task<BlobSidecar[]> GetBlobSidecars(ulong slot, int indexFrom, int indexTo, CancellationToken cancellationToken)

@@ -66,10 +66,16 @@ namespace Nethermind.Evm.Benchmark;
 public class BlockProcessingBenchmark
 {
     /// <summary>
-    /// Repetitions per BDN invocation. With the fastest method (EmptyBlock ~21 us),
-    /// 5000 reps ≈ 105 ms per iteration — above BDN's 100 ms minimum.
+    /// Repetitions per BDN invocation. Used for low per-op benchmarks
+    /// (EmptyBlock ~21 us, SingleTransfer ~46 us, ContractDeploy_10 ~400 us)
+    /// where higher rep counts amortize OS scheduling noise and prewarmer
+    /// thread contention, keeping iteration time above BDN's 100 ms minimum.
     /// </summary>
-    private const int N = 5000;
+    private const int N_LARGE = 5000;
+
+    private const int N_SMALL = 200;
+
+    private const int N_MEDIUM = 500;
 
     /// <summary>
     /// 20 data points per benchmark (2 launches x 10 iterations, 2 warmup each).
@@ -80,12 +86,12 @@ public class BlockProcessingBenchmark
         public BlockProcessingConfig()
         {
             AddJob(Job.Default
-                .WithToolchain(InProcessNoEmitToolchain.Instance)
+                .WithToolchain(InProcessNoEmitToolchain.Default)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
                 .WithLaunchCount(2)
                 .WithWarmupCount(2)
-                .WithIterationCount(9)
+                .WithIterationCount(5)
                 .WithGcForce(true));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
@@ -154,7 +160,7 @@ public class BlockProcessingBenchmark
         _header = Build.A.BlockHeader
             .WithNumber(1)
             .WithGasLimit(30_000_000)
-            .WithBaseFee(1.GWei())
+            .WithBaseFee(1.GWei)
             .WithTimestamp(1)
             .TestObject;
 
@@ -207,7 +213,7 @@ public class BlockProcessingBenchmark
 
         using (stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            stateProvider.CreateAccount(_sender, 1_000_000.Ether());
+            stateProvider.CreateAccount(_sender, 1_000_000.Ether);
 
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
@@ -239,91 +245,91 @@ public class BlockProcessingBenchmark
 
     // ── Benchmarks ────────────────────────────────────────────────────────
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] EmptyBlock()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_LARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_emptyBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] SingleTransfer()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_LARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_MEDIUM)]
     public Block[] Transfers_50()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_MEDIUM; i++)
             result = _branchProcessor.Process(_parentHeader, [_transfers50Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(Baseline = true, OperationsPerInvoke = N)]
+    [Benchmark(Baseline = true, OperationsPerInvoke = N_SMALL)]
     public Block[] Transfers_200()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_transfers200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] Eip1559_200()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_MEDIUM)]
     public Block[] AccessList_50()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_MEDIUM; i++)
             result = _branchProcessor.Process(_parentHeader, [_accessList50Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_LARGE)]
     public Block[] ContractDeploy_10()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_LARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] ContractCall_200()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_contractCall200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] MixedBlock()
     {
         Block[] result = null!;
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_mixedBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
@@ -347,9 +353,9 @@ public class BlockProcessingBenchmark
             txs[i] = Build.A.Transaction
                 .WithNonce((UInt256)(startNonce + i))
                 .WithTo(TestItem.AddressC)
-                .WithValue(1.Wei())
+                .WithValue(1.Wei)
                 .WithGasLimit(21_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }
@@ -365,10 +371,10 @@ public class BlockProcessingBenchmark
                 .WithType(TxType.EIP1559)
                 .WithNonce((UInt256)(startNonce + i))
                 .WithTo(TestItem.AddressC)
-                .WithValue(1.Wei())
+                .WithValue(1.Wei)
                 .WithGasLimit(21_000)
-                .WithMaxFeePerGas(2.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(2.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }
@@ -384,9 +390,9 @@ public class BlockProcessingBenchmark
                 .WithType(TxType.AccessList)
                 .WithNonce((UInt256)(startNonce + i))
                 .WithTo(TestItem.AddressC)
-                .WithValue(1.Wei())
+                .WithValue(1.Wei)
                 .WithGasLimit(50_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .WithAccessList(SampleAccessList)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
@@ -404,7 +410,7 @@ public class BlockProcessingBenchmark
                 .WithTo(null)
                 .WithData(ContractCode)
                 .WithGasLimit(100_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }
@@ -420,7 +426,7 @@ public class BlockProcessingBenchmark
                 .WithNonce((UInt256)(startNonce + i))
                 .WithTo(TestItem.AddressB)
                 .WithGasLimit(50_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }

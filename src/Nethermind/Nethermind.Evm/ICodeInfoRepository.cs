@@ -37,8 +37,11 @@ public interface ICodeInfoRepository
 
 public static class CodeInfoRepositoryExtensions
 {
-    public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec)
-        => codeInfoRepository.GetCachedCodeInfo(codeSource, vmSpec, out _);
-    public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
-        => codeInfoRepository.GetCachedCodeInfo(codeSource, true, vmSpec, out delegationAddress);
+    extension(ICodeInfoRepository codeInfoRepository)
+    {
+        public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec vmSpec)
+            => codeInfoRepository.GetCachedCodeInfo(codeSource, vmSpec, out _);
+        public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+            => codeInfoRepository.GetCachedCodeInfo(codeSource, true, vmSpec, out delegationAddress);
+    }
 }

@@ -7,28 +7,39 @@ using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.GC;
 
-public class GCKeeper
+using Nethermind.Core.Extensions;
+
+public class GCKeeper : IDisposable
 {
     private static ulong _forcedGcCount = 0;
     private readonly Lock _lock = new();
     private readonly IGCStrategy _gcStrategy;
     private readonly int _postBlockDelayMs;
     private readonly ILogger _logger;
-    private static readonly long _defaultSize = 512.MB();
+    private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
+    private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
+    private CancellationTokenSource? _shutdownCts = new();
+
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
     {
         _gcStrategy = gcStrategy;
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
         _logger = logManager.GetClassLogger<GCKeeper>();
+        _tryStartNoGCRegionFunc = TryStartNoGCRegion;
     }
 
-    public IDisposable StartNoGCRegion()
+    public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
+
+    public IDisposable StartNoGCRegion() => TryStartNoGCRegion();
+
+    public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
+
+    private IDisposable TryStartNoGCRegion()
     {
         long size = _defaultSize;
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
@@ -160,7 +171,7 @@ public class GCKeeper
             }
             else
             {
-                await Task.Delay(postBlockDelayMs);
+                if (!await TaskExtensions.DelaySafe(postBlockDelayMs, _shutdownCts?.Token ?? CancellationToken.None)) return;
             }
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)

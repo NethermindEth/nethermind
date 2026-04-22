@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -36,7 +37,7 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             : transaction.MaxFeePerGas;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
     {
         if (validateUserInput)
         {
@@ -44,20 +45,20 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             if (GasPrice is not null && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
                 return RpcTransactionErrors.GasPriceInEip1559;
 
-            // Reject zero maxFeePerGas from user input
-            if (MaxFeePerGas?.IsZero == true)
-                return RpcTransactionErrors.ZeroMaxFeePerGas;
-
             if (MaxFeePerGas < MaxPriorityFeePerGas)
                 return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
         }
 
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;
-        tx.GasPrice = MaxPriorityFeePerGas ?? UInt256.Zero;
-        tx.DecodedMaxFeePerGas = MaxFeePerGas ?? UInt256.Zero;
+
+        if (tx.Supports1559)
+        {
+            tx.GasPrice = MaxPriorityFeePerGas ?? UInt256.Zero;
+            tx.DecodedMaxFeePerGas = MaxFeePerGas ?? UInt256.Zero;
+        }
 
         return tx;
     }

@@ -7,7 +7,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV5Result(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder) : GetPayloadV4Result(block, blockFees, null!, executionRequests, shouldOverrideBuilder)
+public class GetPayloadV5Result<TVersionedExecutionPayload>(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder)
+    : GetPayloadV4Result<TVersionedExecutionPayload>(block, blockFees, null!, executionRequests, shouldOverrideBuilder)
+    where TVersionedExecutionPayload : ExecutionPayloadV3, IExecutionPayloadParams, IExecutionPayloadFactory<TVersionedExecutionPayload>
 {
     public new BlobsBundleV2 BlobsBundle { get; } = blobsBundle;
 
@@ -16,3 +18,5 @@ public class GetPayloadV5Result(Block block, UInt256 blockFees, BlobsBundleV2 bl
 
     public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp).IsEip7594Enabled;
 }
+
+public class GetPayloadV5Result(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder) : GetPayloadV5Result<ExecutionPayloadV3>(block, blockFees, blobsBundle, executionRequests, shouldOverrideBuilder);

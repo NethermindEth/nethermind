@@ -35,10 +35,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
     {
         INodeStorage.IWriteBatch _writeBatch = nodeStorage.StartWriteBatch();
 
-        public void Dispose()
-        {
-            _writeBatch.Dispose();
-        }
+        public void Dispose() => _writeBatch.Dispose();
 
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
@@ -50,7 +47,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
                 }
 
                 node.IsPersisted = true;
-                _writeBatch.Set(address, path, node.Keccak, node.FullRlp.Span, writeFlags);
+                _writeBatch.Set(address, path, node.Keccak, node.FullRlp.AsSpan(), writeFlags);
             }
 
             return node;

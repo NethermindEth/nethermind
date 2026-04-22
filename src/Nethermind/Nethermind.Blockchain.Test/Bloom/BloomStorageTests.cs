@@ -167,50 +167,17 @@ public class BloomStorageTests
     [TestCase(ushort.MaxValue, Explicit = true)]
     [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
     [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
-    public void Can_safely_insert_concurrently(int maxBlock)
+    public void Can_safely_insert_concurrently(int maxBlock) => RunInsertAndVerify(maxBlock, (storage, count) =>
     {
-        BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
-        TempPath tempPath = TempPath.GetTempDirectory();
-        string basePath = tempPath.Path;
-        try
-        {
-            FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);
-            using BloomStorage storage = new(config, new MemDb(), fileStorageFactory);
-
-            Parallel.For(0, maxBlock + 1,
-                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 16 },
-                i =>
-                {
-                    Core.Bloom bloom = new();
-                    bloom.Set(i % Core.Bloom.BitLength);
-                    storage.Store(i, bloom);
-                });
-
-            IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
-            int j = 0;
-            foreach (Core.Bloom bloom in blooms)
+        Parallel.For(0, count,
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 16 },
+            i =>
             {
-                j++;
-                (long FromBlock, long ToBlock) = blooms.CurrentIndices;
-                int fromBlock = (int)(FromBlock % Core.Bloom.BitLength);
-                int toBlock = (int)(Math.Min(ToBlock, maxBlock) % Core.Bloom.BitLength);
-                Core.Bloom expectedBloom = new();
-                for (int i = fromBlock; i <= toBlock; i++)
-                {
-                    expectedBloom.Set(i);
-                }
-
-                bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
-                blooms.TryGetBlockNumber(out _);
-            }
-
-            TestContext.Out.WriteLine($"Checked {j} blooms");
-        }
-        finally
-        {
-            Directory.Delete(basePath, true);
-        }
-    }
+                Core.Bloom bloom = new();
+                bloom.Set(i % Core.Bloom.BitLength);
+                storage.Store(i, bloom);
+            });
+    });
 
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(byte.MaxValue)]
@@ -218,7 +185,19 @@ public class BloomStorageTests
     [TestCase(ushort.MaxValue, Explicit = true)]
     [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
     [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
-    public void Can_safely_insert_in_batch(int maxBlock)
+    public void Can_safely_insert_in_batch(int maxBlock) => RunInsertAndVerify(maxBlock, (storage, count) =>
+    {
+        using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            Core.Bloom bloom = new();
+            bloom.Set(i % Core.Bloom.BitLength);
+            bloomInsertions.Add((i, bloom));
+        }
+        storage.Store(bloomInsertions);
+    });
+
+    private static void RunInsertAndVerify(int maxBlock, Action<BloomStorage, int> insertAction)
     {
         BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
         TempPath tempPath = TempPath.GetTempDirectory();
@@ -228,14 +207,7 @@ public class BloomStorageTests
             FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);
             using BloomStorage storage = new(config, new MemDb(), fileStorageFactory);
 
-            using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(maxBlock);
-            for (int i = 0; i < maxBlock + 1; i++)
-            {
-                Core.Bloom bloom = new();
-                bloom.Set(i % Core.Bloom.BitLength);
-                bloomInsertions.Add((i, bloom));
-            }
-            storage.Store(bloomInsertions);
+            insertAction(storage, maxBlock + 1);
 
             IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
             int j = 0;

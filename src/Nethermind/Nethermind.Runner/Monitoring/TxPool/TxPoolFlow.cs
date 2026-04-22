@@ -128,8 +128,8 @@ internal class TxPoolFlow
 
             new Link(TxPoolStages.ValidationSucceeded, TxPoolStages.TransactionPool, addedToPool),
             new Link(TxPoolStages.TransactionPool, TxPoolStages.Evicted, pendingTransactionsEvicted),
-            new Link(TxPoolStages.TransactionPool, TxPoolStages.AddedToBlock, privateOrderFlow),
-            new Link(TxPoolStages.PrivateOrderFlow, TxPoolStages.AddedToBlock, memPoolFlow),
+            new Link(TxPoolStages.TransactionPool, TxPoolStages.AddedToBlock, memPoolFlow),
+            new Link(TxPoolStages.PrivateOrderFlow, TxPoolStages.AddedToBlock, privateOrderFlow),
             new Link(TxPoolStages.AddedToBlock, TxPoolStages.ReorgedOut, reorged),
             new Link(TxPoolStages.ReorgedIn, TxPoolStages.ReceivedTxs, reorged)
         ];

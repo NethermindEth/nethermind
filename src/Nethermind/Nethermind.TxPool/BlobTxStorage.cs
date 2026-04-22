@@ -127,8 +127,8 @@ public class BlobTxStorage : IBlobTxStorage
 
         if (bytes is not null)
         {
-            RlpStream rlpStream = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeArray(rlpStream, RlpBehaviors.InMempoolForm);
+            Rlp.ValueDecoderContext ctx = new(bytes);
+            blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
             return true;
         }
 
@@ -143,8 +143,7 @@ public class BlobTxStorage : IBlobTxStorage
     {
         if (txBytes is not null)
         {
-            RlpStream rlpStream = new(txBytes);
-            transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
+            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm);
             transaction.SenderAddress = sender;
             return true;
         }

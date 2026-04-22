@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.FullPruning
             _trieStore = trieStore;
             _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<FullPruner>();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
 
             if (_pruningConfig.FullPruningCompletionBehavior != FullPruningCompletionBehavior.None)
@@ -104,14 +104,13 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private Task WaitForMainChainChange(Func<OnUpdateMainChainArgs, bool> handler, CancellationToken cancellationToken)
-        {
-            return Wait.ForEventCondition<OnUpdateMainChainArgs>(
+        private Task WaitForMainChainChange(
+            Func<OnUpdateMainChainArgs, bool> handler, CancellationToken cancellationToken) =>
+            Wait.ForEventCondition<OnUpdateMainChainArgs>(
                 cancellationToken,
                 (h) => _blockTree.OnUpdateMainChain += h,
                 (h) => _blockTree.OnUpdateMainChain -= h,
                 (e) => e.WereProcessed && handler(e));
-        }
 
         protected virtual async Task RunFullPruning(CancellationToken cancellationToken)
         {
@@ -201,7 +200,7 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
-                        $"Not enough disk space to run full pruning. Required {required / 1.GB()} GB. Have {available / 1.GB()} GB");
+                        $"Not enough disk space to run full pruning. Required {required / 1.GB} GB. Have {available / 1.GB} GB");
                 return false;
             }
             return true;
@@ -259,7 +258,7 @@ namespace Nethermind.Blockchain.FullPruning
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
-                    FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
+                    FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB,
                 };
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
 

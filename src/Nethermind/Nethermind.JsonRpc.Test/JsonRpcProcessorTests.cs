@@ -176,7 +176,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchedResponses.Should().NotBeNull();
-        var resultList = await result[0].BatchedResponses!.ToListAsync();
+        List<JsonRpcResult.Entry> resultList = await result[0].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
         Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
@@ -263,14 +263,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append("[");
+        request.Append('[');
         for (int i = 0; i < maxBatchSize + 1; i++)
         {
-            if (i != 0) request.Append(",");
+            if (i != 0) request.Append(',');
             request.Append(
                 "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
-        request.Append("]");
+        request.Append(']');
 
         IList<JsonRpcResult> result = await ProcessAsync(request.ToString());
         result.Should().HaveCount(1);
@@ -283,14 +283,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append("[");
+        request.Append('[');
         for (int i = 0; i < maxBatchSize + 1; i++)
         {
-            if (i != 0) request.Append(",");
+            if (i != 0) request.Append(',');
             request.Append(
                 "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
-        request.Append("]");
+        request.Append(']');
 
         JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         JsonRpcContext context = new(RpcEndpoint.Http, url: url);
@@ -462,12 +462,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    public void Cannot_accept_null_file_system()
-    {
-        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
-            Substitute.For<IJsonRpcConfig>(),
-            null!, LimboLogs.Instance));
-    }
+    public void Cannot_accept_null_file_system() => Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
+                                                             Substitute.For<IJsonRpcConfig>(),
+                                                             null!, LimboLogs.Instance));
 
     [Test]
     public async Task Can_process_multiple_large_requests_arriving_in_chunks()

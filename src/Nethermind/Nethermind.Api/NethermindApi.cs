@@ -85,7 +85,7 @@ namespace Nethermind.Api
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
         public IProtocolsManager? ProtocolsManager { get; set; }
-        public IProtocolValidator? ProtocolValidator { get; set; }
+        public IProtocolValidator ProtocolValidator => Context.Resolve<IProtocolValidator>();
         public IReceiptStorage? ReceiptStorage => Context.Resolve<IReceiptStorage>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
@@ -133,7 +133,7 @@ namespace Nethermind.Api
         public IDisposableStack DisposeStack => Context.Resolve<IDisposableStack>();
         public IReadOnlyList<INethermindPlugin> Plugins => _dependencies.Plugins;
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
-        public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+
         public ILifetimeScope Context => _dependencies.Context;
     }
 }

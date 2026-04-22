@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -29,7 +30,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             // Special case for state db with pruning trie state.
             .AddKeyedSingleton<IDb>(DbNames.State, (ctx) =>
             {
-                DbSettings stateDbSettings = new DbSettings(GetTitleDbName(DbNames.State), DbNames.State);
+                DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
                 return new FullPruningDb(
@@ -73,6 +74,10 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
             // Most config actually done in factory. We just call `Build` and then get back components from its output.
             .AddSingleton<MainPruningTrieStoreFactory>() // This part is done separately so that triestore can be obtained in test.
+            .AddSingleton<IReadOnlyTrieStore>(ctx =>
+                ctx.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.AsReadOnly())
+            .AddSingleton<CompositePruningTrigger>()
+            .AddSingleton<IFullPrunerFactory, FullPrunerFactory>()
             .AddSingleton<PruningTrieStateFactory>()
             .AddSingleton<PruningTrieStateFactoryOutput>()
 

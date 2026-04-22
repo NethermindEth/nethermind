@@ -33,15 +33,12 @@ namespace Nethermind.ExternalSigner.Plugin
 
         public Address[] GetAccounts()
         {
-            var accounts = rpcClient.Post<string[]>("account_list").GetAwaiter().GetResult() ?? throw new InvalidOperationException("Remote signer 'account_list' response is invalid.");
+            string[] accounts = rpcClient.Post<string[]>("account_list").GetAwaiter().GetResult() ?? throw new InvalidOperationException("Remote signer 'account_list' response is invalid.");
             if (accounts.Length == 0) throw new InvalidOperationException("Remote signer has not been configured with any signers.");
             return accounts.Select(x => new Address(x)).ToArray();
         }
 
-        public void Import(byte[] keyData, SecureString passphrase)
-        {
-            ThrowNotSupportedException();
-        }
+        public void Import(byte[] keyData, SecureString passphrase) => ThrowNotSupportedException();
 
         public bool IsUnlocked(Address address)
         {
@@ -74,16 +71,13 @@ namespace Nethermind.ExternalSigner.Plugin
             return new Signature(bytes);
         }
 
-        public Signature Sign(Hash256 message, Address address)
-        {
-            return Sign(message, address, null);
-        }
+        public Signature Sign(Hash256 message, Address address) => Sign(message, address, null);
 
         public Signature Sign(BlockHeader header, Address address)
         {
             ArgumentNullException.ThrowIfNull(header);
 
-            using var rlpStream = _headerDecoder.EncodeToNewNettyStream(header, RlpBehaviors.None);
+            using NettyRlpStream rlpStream = _headerDecoder.EncodeToNewNettyStream(header, RlpBehaviors.None);
             string? signed = rpcClient.Post<string>(
                 "account_signData",
                 "application/x-clique-header",

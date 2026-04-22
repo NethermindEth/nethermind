@@ -25,7 +25,7 @@ internal static partial class DisassemblyParser
         }
 
         var result = new StringBuilder();
-        var matches = MethodHeaderPattern().Matches(jitOutput);
+        MatchCollection matches = MethodHeaderPattern().Matches(jitOutput);
 
         if (matches.Count == 0)
         {
@@ -43,7 +43,7 @@ internal static partial class DisassemblyParser
 
         for (int i = startIdx; i < matches.Count; i++)
         {
-            var match = matches[i];
+            Match match = matches[i];
             var startIndex = match.Index;
 
             // Find the end of this method's disassembly
@@ -53,7 +53,7 @@ internal static partial class DisassemblyParser
             var methodAsm = jitOutput[startIndex..endIndex].TrimEnd();
 
             // Find "Total bytes of code" line and include it
-            var totalBytesMatch = MethodEndPattern().Match(methodAsm);
+            Match totalBytesMatch = MethodEndPattern().Match(methodAsm);
             if (totalBytesMatch.Success)
             {
                 // Find end of line after "Total bytes of code"
@@ -84,11 +84,11 @@ internal static partial class DisassemblyParser
             yield break;
         }
 
-        var matches = MethodHeaderPattern().Matches(jitOutput);
+        MatchCollection matches = MethodHeaderPattern().Matches(jitOutput);
 
         for (int i = 0; i < matches.Count; i++)
         {
-            var match = matches[i];
+            Match match = matches[i];
             var methodName = match.Groups["method"].Value;
             var startIndex = match.Index;
 

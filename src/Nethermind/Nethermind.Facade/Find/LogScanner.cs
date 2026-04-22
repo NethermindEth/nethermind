@@ -16,7 +16,7 @@ namespace Nethermind.Facade.Find
     {
         private const long LogScanChunkSize = 16;
         private const int LogScanCutoffChunks = 128;
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger(typeof(LogScanner<>));
 
         public IEnumerable<T> ScanLogs(long headBlockNumber, Predicate<T> shouldStopScanning)
         {

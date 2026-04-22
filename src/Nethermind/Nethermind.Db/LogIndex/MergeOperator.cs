@@ -72,9 +72,9 @@ partial class LogIndexStorage
         // TODO: avoid array copying in case of a single value?
         private ArrayPoolList<byte>? Merge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, bool isPartial)
         {
-            var success = false;
+            bool success = false;
             ArrayPoolList<byte>? result = null;
-            var timestamp = Stopwatch.GetTimestamp();
+            long timestamp = Stopwatch.GetTimestamp();
 
             try
             {
@@ -85,8 +85,8 @@ partial class LogIndexStorage
                 bool isBackwards = UseBackwardSyncFor(key);
 
                 // Calculate total length
-                var resultLength = enumerator.GetExistingValue().Length;
-                for (var i = 0; i < enumerator.OperandsCount; i++)
+                int resultLength = enumerator.GetExistingValue().Length;
+                for (int i = 0; i < enumerator.OperandsCount; i++)
                 {
                     ReadOnlySpan<byte> operand = enumerator.GetOperand(i);
 
@@ -159,9 +159,9 @@ partial class LogIndexStorage
         private static int? Aggregate(MergeOp op, RocksDbMergeEnumerator enumerator, bool isBackwardSync)
         {
             int? result = null;
-            for (var i = 0; i < enumerator.OperandsCount; i++)
+            for (int i = 0; i < enumerator.OperandsCount; i++)
             {
-                if (!MergeOps.Is(op, enumerator.GetOperand(i), out var next))
+                if (!MergeOps.Is(op, enumerator.GetOperand(i), out int next))
                     continue;
 
                 if (result is null || (isBackwardSync && next < result) || (!isBackwardSync && next > result))

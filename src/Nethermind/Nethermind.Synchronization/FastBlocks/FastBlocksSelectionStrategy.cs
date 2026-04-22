@@ -10,22 +10,12 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class FastBlocksAllocationStrategy : IPeerAllocationStrategy
+    public class FastBlocksAllocationStrategy(TransferSpeedType speedType, long? minNumber, bool priority) : IPeerAllocationStrategy
     {
-        private readonly long? _minNumber;
-        private readonly bool _priority;
-
-        public FastBlocksAllocationStrategy(TransferSpeedType speedType, long? minNumber, bool priority)
-        {
-            _minNumber = minNumber;
-            _priority = priority;
-
-            _slowest = new BySpeedStrategy(speedType, false);
-            _fastest = new BySpeedStrategy(speedType, true);
-        }
-
-        private readonly IPeerAllocationStrategy _slowest;
-        private readonly IPeerAllocationStrategy _fastest;
+        private readonly long? _minNumber = minNumber;
+        private readonly bool _priority = priority;
+        private readonly IPeerAllocationStrategy _slowest = new BySpeedStrategy(speedType, false);
+        private readonly IPeerAllocationStrategy _fastest = new BySpeedStrategy(speedType, true);
 
         public PeerInfo? Allocate(
             PeerInfo? currentPeer,

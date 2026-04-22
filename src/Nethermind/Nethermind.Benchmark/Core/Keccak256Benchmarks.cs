@@ -27,34 +27,19 @@ namespace Nethermind.Benchmarks.Core
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _a = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _a = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public void MeadowHashSpan()
-        {
-            MeadowHashBenchmarks.ComputeHash(_a);
-        }
+        public void MeadowHashSpan() => MeadowHashBenchmarks.ComputeHash(_a);
 
         [Benchmark]
-        public byte[] MeadowHashBytes()
-        {
-            return MeadowHashBenchmarks.ComputeHashBytes(_a);
-        }
+        public byte[] MeadowHashBytes() => MeadowHashBenchmarks.ComputeHashBytes(_a);
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Keccak.Compute(_a).BytesToArray();
-        }
+        public byte[] Current() => Keccak.Compute(_a).BytesToArray();
 
         [Benchmark]
-        public Span<byte> ValueKeccak()
-        {
-            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan;
-        }
+        public Span<byte> ValueKeccak() => Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan;
 
         //[Benchmark]
         //public byte[] HashLib()

@@ -9,7 +9,7 @@ namespace Nethermind.Core
     public class Eip1559Constants
     {
 
-        public static readonly UInt256 DefaultForkBaseFee = 1.GWei();
+        public static readonly UInt256 DefaultForkBaseFee = 1.GWei;
 
         public static readonly UInt256 DefaultBaseFeeMaxChangeDenominator = 8;
 
