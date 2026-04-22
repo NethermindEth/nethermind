@@ -14,7 +14,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const long ConstantinopleBlockNumber = 1_604_400;
     public const long ConstantinopleFixBlockNumber = 2_508_800;
     public const long IstanbulBlockNumber = 7_298_030;
-    public const long PosdaoTransitionBlockNumber = 9_186_425;
+    public const long PosdaoTransitionBlockNumber = 9_186_425; // does not alter EVM specs, fork-id boundary only
     public const long BerlinBlockNumber = 16_101_500;
     public const long LondonBlockNumber = 19_040_000;
     public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
