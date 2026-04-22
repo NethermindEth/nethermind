@@ -70,7 +70,8 @@ namespace Nethermind.Merge.AuRa
                 _auraApi!.FinalizationManager ??
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
-                _poSSwitcher);
+                _poSSwitcher,
+                _api.BlockTree!);
         }
 
         public override IModule Module => new AuRaMergeModule();

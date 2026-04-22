@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin;
@@ -13,12 +14,14 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 {
     private readonly IAuRaBlockFinalizationManager _auRaBlockFinalizationManager;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IBlockTree _blockTree;
 
-    public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher)
+    public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher, IBlockTree blockTree)
         : base(manualBlockFinalizationManager, blockFinalizationManager, poSSwitcher)
     {
         _auRaBlockFinalizationManager = blockFinalizationManager;
         _poSSwitcher = poSSwitcher;
+        _blockTree = blockTree;
         _auRaBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
     }
 
@@ -34,9 +37,13 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
     {
-        // Skip forwarding post-merge so the inner manager never subscribes to block events
-        // nor runs the startup catch-up walk — AuRa finalization is not active post-merge.
-        if (_poSSwitcher.HasEverReachedTerminalBlock()) return;
+        // Skip forwarding only when the current head is already post-merge. We can't rely on
+        // IPoSSwitcher.HasEverReachedTerminalBlock() because it is true on a fresh archive DB as
+        // soon as Merge.FinalTotalDifficulty is set in config, even with head at genesis — skipping
+        // then would leave pre-merge AuRa finalization completely inert and break validator-set
+        // transitions (e.g. Gnosis block 1300).
+        BlockHeader? head = _blockTree.Head?.Header;
+        if (head is not null && _poSSwitcher.IsPostMerge(head)) return;
         _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
     }
 
