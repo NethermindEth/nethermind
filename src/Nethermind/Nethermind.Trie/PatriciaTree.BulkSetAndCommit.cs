@@ -141,9 +141,11 @@ public partial class PatriciaTree
         }
 
         bool newBranch = false;
-        // If MakeFakeBranch runs, it seeds the fakeBranch with one dirty child at the original
-        // key's first nibble — track that so the commit loop doesn't miss it when our entries
-        // don't also land on that nibble.
+        // MakeFakeBranch seeds the fake branch with a child at the original key's first
+        // nibble — sometimes dirty (fresh leaf / fresh shortened extension), sometimes clean
+        // (re-used child of a 1-nibble extension). The inline-commit state machine below
+        // treats a dirty seed as the "first dirty child" so the main loop's actual first
+        // dirty child becomes the second — triggering inline commits from that point.
         int makeFakeBranchNib = -1;
 
         if (node is null)
@@ -194,9 +196,71 @@ public partial class PatriciaTree
 
         bool hasRemove = false;
         int nonNullChildCount = 0;
-        // Preserved for the commit loop below — the main sort loops below consume nibMask.
-        // Include MakeFakeBranch's seeded slot too, since it can be dirty without appearing in nibMask.
-        int dirtyMask = nibMask | (makeFakeBranchNib >= 0 ? 1 << makeFakeBranchNib : 0);
+
+        // Inline-commit state machine.
+        //
+        // MaybeCombineNode can only transform a branch that has ≤ 1 non-null child, so as
+        // soon as we've seen a second distinct dirty child every dirty child is safe to
+        // commit immediately. Only the "first" dirty child has to stay buffered — and only
+        // until MaybeCombineNode runs — because it may still be absorbed or discarded.
+        //
+        // pendingChild + pendingNib: the one candidate we hold back from inline commit.
+        //   Pre-seeded from MakeFakeBranch's dirty seed so an untouched seed slot gets
+        //   committed through the same post-flush path as a main-loop first dirty.
+        TrieNode? pendingChild = null;
+        int pendingNib = -1;
+
+        if (makeFakeBranchNib >= 0 && node.TryGetDirtyChild(makeFakeBranchNib, out TrieNode? seed))
+        {
+            pendingChild = seed;
+            pendingNib = makeFakeBranchNib;
+        }
+
+        // Inline commit of a dirty child already placed at node[slot]. Precondition:
+        // caller has verified dc is the dirty child at slot and path points to it.
+        void CommitDirtyAt(int slot, TrieNode dc, ref TreePath p)
+        {
+            dc.ResolveKey(TrieStore, ref p, _bufferPool, canBeParallel: false);
+            dc.Seal();
+            if (dc.FullRlp.Length >= 32)
+            {
+                TrieNode committed = committer.CommitNode(ref p, dc);
+                if (!ReferenceEquals(dc, committed))
+                    node[slot] = committed;
+            }
+        }
+
+        // Per-slot decision, called after each SetChild in the main loop. `p` must point
+        // at slot `slot` (parent path + slot nibble). pendingChild stays buffered across
+        // the whole loop — no cross-slot flush — so the post-flush below commits exactly
+        // one dirty child if anything remains.
+        void MaybeCommitAt(ref TreePath p, int slot, TrieNode? newChild)
+        {
+            if (newChild is null || !newChild.IsDirty)
+            {
+                // SetChild just replaced the slot with null or a clean reference; any
+                // previously-buffered dirty reference at this slot is now stale.
+                if (pendingChild is not null && pendingNib == slot) pendingChild = null;
+                return;
+            }
+
+            if (pendingChild is null)
+            {
+                pendingChild = newChild;
+                pendingNib = slot;
+            }
+            else if (pendingNib == slot)
+            {
+                // Same slot rewritten — still one candidate, just update the reference.
+                pendingChild = newChild;
+            }
+            else
+            {
+                // Second-or-later distinct dirty slot — safe to commit inline. The buffered
+                // one stays, to be flushed after MaybeCombineNode.
+                CommitDirtyAt(slot, newChild, ref p);
+            }
+        }
 
         if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
@@ -264,6 +328,7 @@ public partial class PatriciaTree
                 s => _threadStaticTraverseStack = s
             );
 
+            path.AppendMut(0);
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 TrieNode? child = jobs[i].currentChild;
@@ -284,7 +349,11 @@ public partial class PatriciaTree
                     node = node.Clone();
 
                 node.SetChild(i, newChild);
+
+                path.SetLast(i);
+                MaybeCommitAt(ref path, i, newChild);
             }
+            path.TruncateOne();
         }
         else
         {
@@ -329,6 +398,8 @@ public partial class PatriciaTree
                     node = node.Clone();
 
                 node.SetChild(nib, newChild);
+
+                MaybeCommitAt(ref path, nib, newChild);
             }
 
             path.TruncateOne();
@@ -339,56 +410,42 @@ public partial class PatriciaTree
         if ((hasRemove || newBranch) && nonNullChildCount < 2)
             node = MaybeCombineNode(ref path, node, originalNode);
 
-        // Commit surviving dirty children (those from our recursion, identified by IsDirty).
-        // ResolveKey is called right before Seal+CommitNode — never earlier — so nodes discarded
-        // by MaybeCombineNode above never pay the hashing cost.
-        // Pre-existing committed nodes are sealed (IsDirty == false) and skipped by TryGetDirtyChild.
-        // Nodes dropped by MaybeCombineNode are no longer reachable — never committed. No orphan writes.
-        if (node is not null && node.IsDirty)
+        // Flush the buffered candidate.
+        //
+        // Branch — MaybeCombineNode didn't fold anything (either it didn't run, or it ran
+        // and its scan found ≥ 2 children and returned node unchanged). pendingChild is the
+        // sole uncommitted dirty child — commit it directly, no TryGetDirtyChild needed.
+        //
+        // Extension — MaybeCombineNode folded. Two sub-flavors to distinguish, and slot 0
+        // differs between them:
+        //   (a) Branch-only fold: pendingChild was a Branch, the surrounding Branch was
+        //       wrapped in a single-nibble Extension around it (Cases D, E). Slot 0 IS
+        //       pendingChild and is still dirty — commit.
+        //   (b) Branch + child fold: pendingChild was itself an Extension, absorbed into
+        //       a longer-key Extension (originalNode key-match Case F2, or the fallback
+        //       CloneWithChangedKey in Case H-extension). Slot 0 is pendingChild's own
+        //       child (a committed descendant) — must NOT commit.
+        //   Plus: originalNode-returned-unchanged (Cases C, F1) with slot 0 = original's
+        //       pre-existing clean child — must NOT commit.
+        // TryGetDirtyChild(0) returns true only in (a), false in the rest.
+        //
+        // Leaf / null — pendingChild was absorbed into a leaf clone (Case H-leaf / Case G)
+        // or the whole branch became empty — no commit.
+        if (pendingChild is not null && node is not null && node.IsDirty)
         {
             if (node.IsBranch)
             {
-                // Only the nibbles our entries touched can hold newly-dirty children — every other
-                // slot retains its pre-existing (sealed) value from the inherited branch. Iterate
-                // the saved nibMask instead of all 16.
-                path.AppendMut(0);
-                int mask = dirtyMask;
-                while (mask != 0)
-                {
-                    int i = BitOperations.TrailingZeroCount(mask);
-                    mask &= mask - 1;
-                    if (node.TryGetDirtyChild(i, out TrieNode? dirtyChild))
-                    {
-                        path.SetLast(i);
-                        dirtyChild.ResolveKey(TrieStore, ref path, _bufferPool, canBeParallel: false);
-                        dirtyChild.Seal();
-                        if (dirtyChild.FullRlp.Length >= 32)
-                        {
-                            TrieNode committed = committer.CommitNode(ref path, dirtyChild);
-                            if (!ReferenceEquals(dirtyChild, committed))
-                                node[i] = committed;
-                        }
-                    }
-                }
+                path.AppendMut(pendingNib);
+                CommitDirtyAt(pendingNib, pendingChild, ref path);
                 path.TruncateOne();
             }
             else if (node.NodeType == NodeType.Extension)
             {
                 int prev = node.AppendChildPath(ref path, 0);
-                if (node.TryGetDirtyChild(0, out TrieNode? dirtyChild))
-                {
-                    dirtyChild.ResolveKey(TrieStore, ref path, _bufferPool, canBeParallel: false);
-                    dirtyChild.Seal();
-                    if (dirtyChild.FullRlp.Length >= 32)
-                    {
-                        TrieNode committed = committer.CommitNode(ref path, dirtyChild);
-                        if (!ReferenceEquals(dirtyChild, committed))
-                            node[0] = committed;
-                    }
-                }
+                if (node.TryGetDirtyChild(0, out TrieNode? dc))
+                    CommitDirtyAt(0, dc, ref path);
                 path.TruncateMut(prev);
             }
-            // Leaf: no children to commit.
         }
 
         // Leave node un-hashed: caller's commit loop (or FinalizeRoot) calls ResolveKey immediately
