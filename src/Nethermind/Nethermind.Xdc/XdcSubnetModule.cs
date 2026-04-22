@@ -21,11 +21,12 @@ public class XdcSubnetModule : XdcModule
             .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
             .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()
             .Bind<IMasternodesCalculator, ISubnetMasternodesCalculator>()
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider, IPenaltyHandler>(CreateSnapshotManager)
+            .AddSingleton<ISubnetSnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider, IPenaltyHandler>(CreateSnapshotManager)
+            .Bind<ISnapshotManager, ISubnetSnapshotManager>()
             .AddSingleton<IPenaltyHandler, SubnetPenaltyHandler>();
 
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider, IPenaltyHandler penaltyHandler) =>
+    private ISubnetSnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider, IPenaltyHandler penaltyHandler) =>
         new SubnetSnapshotManager(db, blockTree, votingContract, specProvider, penaltyHandler);
 }
