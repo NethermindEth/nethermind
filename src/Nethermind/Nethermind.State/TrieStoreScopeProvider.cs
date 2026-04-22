@@ -110,7 +110,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     sink.OnAccountRead(address, account);
                 });
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { return Task.CompletedTask; }
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Phase 2: flat (address, private-tree, slot) jobs in one parallel pass
             int totalSlots = 0;
