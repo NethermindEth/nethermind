@@ -524,10 +524,18 @@ jobs:
           DOCKER_TAG: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           AMOUNT: ${{ needs.resolve.outputs.amount }}
+          PAYLOAD_SET: ${{ matrix.payload_set }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
           set -euo pipefail
+          if [[ -z "${AMOUNT}" ]]; then
+            if [[ "${PAYLOAD_SET}" == "realblocks" ]]; then
+              AMOUNT="1000"
+            else
+              AMOUNT="100"
+            fi
+          fi
           flags_file="$(mktemp)"
           printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" \
             | tr '\r' '\n' \
