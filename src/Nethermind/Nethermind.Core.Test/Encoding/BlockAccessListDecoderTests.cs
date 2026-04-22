@@ -185,6 +185,38 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void Seal_canonicalises_inner_slots_added_on_existing_account()
+    {
+        // Regression: on an already-sealed BAL, adding a new *lower-sorted* slot
+        // to an account that already exists does not unseal the outer flag, but
+        // the inner account's _storageChanges becomes unsorted. Seal() must still
+        // re-sort the child — otherwise encode emits a wire that the decoder
+        // rejects with "Storage changes were in incorrect order."
+        BlockAccessList bal = new();
+        bal.AddStorageChange(TestItem.AddressA, key: 5, before: 0, after: 10);
+        bal.Seal();
+        bal.AddStorageChange(TestItem.AddressA, key: 3, before: 0, after: 20);
+        bal.Seal();
+
+        byte[] encoded = Rlp.Encode(bal).Bytes;
+        Assert.DoesNotThrow(() => Rlp.Decode<BlockAccessList>(encoded));
+    }
+
+    [Test]
+    public void Seal_canonicalises_inner_storage_reads_added_on_existing_account()
+    {
+        // Regression, storage-reads variant: same invariant for _storageReads.
+        BlockAccessList bal = new();
+        bal.AddStorageRead(TestItem.AddressA, 5);
+        bal.Seal();
+        bal.AddStorageRead(TestItem.AddressA, 3);
+        bal.Seal();
+
+        byte[] encoded = Rlp.Encode(bal).Bytes;
+        Assert.DoesNotThrow(() => Rlp.Decode<BlockAccessList>(encoded));
+    }
+
+    [Test]
     public void Decoding_block_access_list_with_unsorted_account_changes_throws()
     {
         AccountChanges accountChangesA = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;

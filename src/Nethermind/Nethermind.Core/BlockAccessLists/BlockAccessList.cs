@@ -511,22 +511,25 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     }
 
     // Sort the unsorted build-time collections into the canonical order required
-    // by RLP encoding and BAL validation. Idempotent via _sealed; mutations that
-    // can grow _accountChanges clear the flag. Returns true when this call did
-    // work (was unsealed), false when it was already sealed.
-    //
-    // Invariant: outer sealed ⇒ every child sealed. All BAL-level entry points
-    // that mutate a child also unseal the outer, so this holds automatically.
-    // Callers that reach into a child AccountChanges directly (test helpers,
-    // decoder composition) must seal the child themselves.
+    // by RLP encoding and BAL validation. Returns true when the outer list was
+    // unsealed (this call did the outer sort), false when outer was already
+    // sealed. Regardless of the return value, the whole tree is guaranteed
+    // sealed on return — children are always swept through Parallel.For
+    // because a child can become unsealed without the outer flag changing
+    // (e.g. GetOrAddSlotChanges / AddStorageRead on an existing account grows
+    // the inner storage lists without growing _accountChanges). Each child's
+    // Seal() is an O(1) flag check when already sealed.
     public bool Seal()
     {
-        if (_sealed) return false;
-        _accountChanges.Sort(static (a, b) => a.Address.CompareTo(b.Address));
+        bool didOuterWork = !_sealed;
+        if (didOuterWork)
+        {
+            _accountChanges.Sort(static (a, b) => a.Address.CompareTo(b.Address));
+            _sealed = true;
+        }
         List<AccountChanges> accountChanges = _accountChanges;
         Parallel.For(0, accountChanges.Count, i => accountChanges[i].Seal());
-        _sealed = true;
-        return true;
+        return didOuterWork;
     }
 
     private enum ChangeType
