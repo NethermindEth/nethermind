@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -20,48 +17,7 @@ namespace Nethermind.Xdc.Test;
 public class XdcSubnetSealValidatorTests
 {
     private const int Epoch = 900;
-    private const int Gap = 450;
-
-    private static (IXdcReleaseSpec Spec, ISpecProvider SpecProvider) CreateSubnetSpec()
-    {
-        IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
-        releaseSpec.EpochLength.Returns(Epoch);
-        releaseSpec.Gap.Returns(Gap);
-        releaseSpec.MinePeriod.Returns(10);
-        releaseSpec.GasLimitBoundDivisor.Returns(1024);
-        releaseSpec.When(x => x.ApplyV2Config(Arg.Any<ulong>())).Do(_ => { });
-
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(releaseSpec);
-        return (releaseSpec, specProvider);
-    }
-
-    private static XdcSubnetSealValidator CreateValidator(
-        ISpecProvider specProvider,
-        ISnapshotManager? snapshotManager = null,
-        ISubnetMasternodesCalculator? masternodesCalculator = null)
-    {
-        return new XdcSubnetSealValidator(
-            masternodesCalculator ?? Substitute.For<ISubnetMasternodesCalculator>(),
-            Substitute.For<IEpochSwitchManager>(),
-            specProvider);
-    }
-
-    private static XdcSubnetBlockHeader BuildSubnetHeader(BlockHeader parent, long number, ulong timestamp, Action<XdcSubnetBlockHeaderBuilder>? configure = null)
-    {
-        XdcSubnetBlockHeaderBuilder b = Build.A.XdcSubnetBlockHeader();
-        b.WithParent(parent);
-        b.WithNumber(number);
-        b.WithTimestamp(timestamp);
-        b.WithGeneratedExtraConsensusData();
-        b.WithMixHash(Hash256.Zero);
-        b.WithValidators(Array.Empty<Address>());
-        b.WithPenalties(Array.Empty<byte>());
-        b.WithNextValidators(Array.Empty<byte>());
-        configure?.Invoke(b);
-        return b.TestObject;
-    }
+    private const int Gap = 450;    
 
     [Test]
     public void NonGapPlusOne_WithNextValidators_Invalid()
@@ -81,7 +37,7 @@ public class XdcSubnetSealValidatorTests
 
         XdcSubnetBlockHeader header = BuildSubnetHeader(parent, 902, 110, b => b.WithNextValidators([Address.FromNumber(1)]));
 
-        bool ok = validator.Validate(header, parent, false, out string? error);
+        bool ok = validator.ValidateParams(parent, header, out string? error);
 
         Assert.That(ok, Is.False);
         Assert.That(error, Does.Contain("NextValidators"));
@@ -116,7 +72,7 @@ public class XdcSubnetSealValidatorTests
             b.WithPenalties(penalties);
         });
 
-        bool ok = validator.Validate(header, parent, false, out string? error);
+        bool ok = validator.ValidateParams(parent, header, out string? error);
 
         Assert.That(ok, Is.False);
         Assert.That(error, Does.Contain("NextValidators"));
@@ -151,7 +107,7 @@ public class XdcSubnetSealValidatorTests
             b.WithPenalties([Address.FromNumber(99)]);
         });
 
-        bool ok = validator.Validate(header, parent, false, out string? error);
+        bool ok = validator.ValidateParams(parent, header, out string? error);
 
         Assert.That(ok, Is.False);
         Assert.That(error, Does.Contain("Penalties"));
@@ -186,7 +142,7 @@ public class XdcSubnetSealValidatorTests
             b.WithPenalties(penalties);
         });
 
-        bool ok = validator.Validate(header, parent, false, out string? error);
+        bool ok = validator.ValidateParams(parent, header, out string? error);
 
         Assert.That(ok, Is.True, error);
     }
@@ -195,7 +151,7 @@ public class XdcSubnetSealValidatorTests
     public void SubnetEpochSwitch_InvalidNonce_Invalid()
     {
         (IXdcReleaseSpec _, ISpecProvider specProvider) = CreateSubnetSpec();
-        IMasternodesCalculator calculator = Substitute.For<IMasternodesCalculator>();
+        ISubnetMasternodesCalculator calculator = Substitute.For<ISubnetMasternodesCalculator>();
         XdcSubnetSealValidator validator = CreateValidator(specProvider, masternodesCalculator: calculator);
 
         XdcSubnetBlockHeader parent = (XdcSubnetBlockHeader)Build.A.XdcSubnetBlockHeader()
@@ -214,7 +170,7 @@ public class XdcSubnetSealValidatorTests
             b.WithValidators(Array.Empty<Address>());
         });
 
-        bool ok = validator.Validate(header, parent, false, out string? error);
+        bool ok = validator.ValidateParams(parent, header, out string? error);
 
         Assert.That(ok, Is.False);
         Assert.That(error, Does.Contain("nonce").IgnoreCase);
@@ -243,9 +199,46 @@ public class XdcSubnetSealValidatorTests
             b.WithValidators(Array.Empty<Address>());
         });
 
-        bool ok = validator.Validate(header, parent, false, out string? error);
+        bool ok = validator.ValidateParams(parent, header, out string? error);
 
         Assert.That(ok, Is.False);
         Assert.That(error, Does.Contain("validators").IgnoreCase);
+    }
+
+    private static (IXdcReleaseSpec Spec, ISpecProvider SpecProvider) CreateSubnetSpec()
+    {
+        IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
+        releaseSpec.EpochLength.Returns(Epoch);
+        releaseSpec.Gap.Returns(Gap);
+        releaseSpec.MinePeriod.Returns(10);
+        releaseSpec.GasLimitBoundDivisor.Returns(1024);
+        releaseSpec.When(x => x.ApplyV2Config(Arg.Any<ulong>())).Do(_ => { });
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        return (releaseSpec, specProvider);
+    }
+
+    private static XdcSubnetSealValidator CreateValidator(
+        ISpecProvider specProvider,
+        ISnapshotManager? snapshotManager = null,
+        ISubnetMasternodesCalculator? masternodesCalculator = null) => new(
+            masternodesCalculator ?? Substitute.For<ISubnetMasternodesCalculator>(),
+            Substitute.For<IEpochSwitchManager>(),
+            specProvider);
+
+    private static XdcSubnetBlockHeader BuildSubnetHeader(BlockHeader parent, long number, ulong timestamp, Action<XdcSubnetBlockHeaderBuilder>? configure = null)
+    {
+        XdcSubnetBlockHeaderBuilder b = Build.A.XdcSubnetBlockHeader();
+        b.WithParent(parent);
+        b.WithNumber(number);
+        b.WithTimestamp(timestamp);
+        b.WithGeneratedExtraConsensusData();
+        b.WithMixHash(Hash256.Zero);
+        b.WithValidators(Array.Empty<Address>());
+        b.WithPenalties(Array.Empty<byte>());
+        b.WithNextValidators(Array.Empty<byte>());
+        configure?.Invoke(b);
+        return b.TestObject;
     }
 }

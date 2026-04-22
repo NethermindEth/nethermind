@@ -301,11 +301,4 @@ internal class EpochSwitchManager(
 
         return epochBlockInfo;
     }
-
-    public bool IsGapPlusOne(XdcBlockHeader header, IXdcReleaseSpec spec)
-    {
-        if (header.Number == 1)
-            return true;
-        return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
-    }
 }
