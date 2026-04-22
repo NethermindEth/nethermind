@@ -12,8 +12,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public abstract class PrecompileTests<TPrecompile, TTests>: IPrecompileTests
-    where TPrecompile: IPrecompile<TPrecompile>
+public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
+    where TPrecompile : IPrecompile<TPrecompile>
     where TTests : PrecompileTests<TPrecompile, TTests>, IPrecompileTests
 {
     public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
@@ -21,7 +21,8 @@ public abstract class PrecompileTests<TPrecompile, TTests>: IPrecompileTests
         public TestCase(string input, string output, bool status) : this(
             Convert.FromHexString(input), Convert.FromHexString(output),
             Name: input, Gas: null, ExpectedError: status ? null : "<error>"
-        ) { }
+        )
+        { }
     }
     private const string TestFilesDirectory = "PrecompileVectors";
 
