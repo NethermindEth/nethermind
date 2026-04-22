@@ -67,6 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int MallocTrimIntervalSec { get; set; } = 300;
         public bool? SnapServingEnabled { get; set; } = null;
         public int SnapServingMaxDepth { get; set; } = 128;
+        public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public int SyncDispatcherEmptyRequestDelayMs { get; set; } = 10;
         public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
@@ -83,16 +84,14 @@ namespace Nethermind.Blockchain.Synchronization
         /// </summary>
         public int HeaderStateDistance { get; set; } = 0;
 
-        public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB();
+        public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB;
         public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
-        public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB();
-        public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB();
+        public bool EnableSnapDoubleWriteCheck { get; set; } = false;
+        public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB;
+        public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB;
 
-        public override string ToString()
-        {
-            return
-                $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
-        }
+        public override string ToString() =>
+            $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
 
     }
 }

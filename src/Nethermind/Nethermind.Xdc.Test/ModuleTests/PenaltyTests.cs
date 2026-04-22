@@ -158,8 +158,7 @@ internal class PenaltyTests
         return new PenaltyHandler(chain.BlockTree, chain.SpecProvider, chain.EpochSwitchManager, signingTxCache);
     }
 
-    private static void ConfigureFastPenaltySpec(XdcTestBlockchain chain, bool activatePenaltyUpgrade = false)
-    {
+    private static void ConfigureFastPenaltySpec(XdcTestBlockchain chain, bool activatePenaltyUpgrade = false) =>
         chain.ChangeReleaseSpec(spec =>
         {
             spec.EpochLength = EpochLength;
@@ -167,16 +166,12 @@ internal class PenaltyTests
             spec.RangeReturnSigner = 150;
             spec.LimitPenaltyEpoch = 2;
         });
-    }
 
-    private static PrivateKey GetPenaltyHistorySigner(XdcTestBlockchain chain, Address penaltyAddress)
-    {
-        return chain.MasterNodeCandidates.First(k => k.Address == penaltyAddress);
-    }
+    private static PrivateKey GetPenaltyHistorySigner(XdcTestBlockchain chain, Address penaltyAddress) =>
+        chain.MasterNodeCandidates.First(k => k.Address == penaltyAddress);
 
-    private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0)
-    {
-        return Build.A.Transaction
+    private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0) =>
+        Build.A.Transaction
             .WithChainId(0)
             .WithNonce((UInt256)nonce)
             .WithGasLimit(200000)
@@ -184,7 +179,6 @@ internal class PenaltyTests
             .ToBlockSignerContract(spec)
             .SignedAndResolved(signer)
             .TestObject;
-    }
 
     private static MockedPenaltyContext CreateMockedPenaltyContext(
         long targetEpoch,
@@ -198,10 +192,10 @@ internal class PenaltyTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         int chainSize = (int)(targetEpoch + 1);
 
-        var blockHeaders = new XdcBlockHeader[chainSize];
-        var hashToHeader = new Dictionary<Hash256, XdcBlockHeader>();
-        var hashToBlock = new Dictionary<Hash256, Block>();
-        var blocks = new Block[chainSize];
+        XdcBlockHeader[] blockHeaders = new XdcBlockHeader[chainSize];
+        Dictionary<Hash256, XdcBlockHeader> hashToHeader = new();
+        Dictionary<Hash256, Block> hashToBlock = new();
+        Block[] blocks = new Block[chainSize];
 
         for (int i = 0; i < chainSize; i++)
         {

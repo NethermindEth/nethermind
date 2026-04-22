@@ -186,7 +186,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public bool IsBetterThanHead(BlockHeader? header)
         => throw new NotSupportedException();
 
-    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
+    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint)
         => throw new NotSupportedException();
 
     public void RecalculateTreeLevels()

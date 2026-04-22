@@ -65,10 +65,7 @@ public class BoundedModulePoolTests
     }
 
     [Test]
-    public async Task Ensure_concurrency()
-    {
-        await _modulePool.GetModule(false);
-    }
+    public async Task Ensure_concurrency() => await _modulePool.GetModule(false);
 
     [Test]
     public async Task Ensure_limited_exclusive()

@@ -8,15 +8,14 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.State.Snap
 {
     public readonly struct PathWithStorageSlot(in ValueHash256 keyHash, byte[] slotRlpValue)
-        : IEquatable<PathWithStorageSlot>, IEqualityOperators<PathWithStorageSlot, PathWithStorageSlot, bool>
+        : ISnapEntry, IEquatable<PathWithStorageSlot>, IEqualityOperators<PathWithStorageSlot, PathWithStorageSlot, bool>
     {
-        public readonly ValueHash256 Path = keyHash;
+        public ValueHash256 Path { get; } = keyHash;
         public byte[] SlotRlpValue { get; } = slotRlpValue;
 
-        public bool Equals(in PathWithStorageSlot other)
-        {
-            return Path == other.Path && SlotRlpValue.AsSpan().SequenceEqual(other.SlotRlpValue);
-        }
+        public byte[] ToRlpValue() => SlotRlpValue;
+
+        public bool Equals(in PathWithStorageSlot other) => Path == other.Path && SlotRlpValue.AsSpan().SequenceEqual(other.SlotRlpValue);
 
         public bool Equals(PathWithStorageSlot other) => Equals(in other);
 

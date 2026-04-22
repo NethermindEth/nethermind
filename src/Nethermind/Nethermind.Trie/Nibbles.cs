@@ -18,10 +18,7 @@ namespace Nethermind.Trie
             _nibble = hexChar < 'A' ? (byte)(hexChar - '0') : (byte)(10 + (hexChar - 'A'));
         }
 
-        public Nibble(byte nibble)
-        {
-            _nibble = nibble;
-        }
+        public Nibble(byte nibble) => _nibble = nibble;
 
         public static explicit operator byte(Nibble nibble)
         {

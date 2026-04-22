@@ -30,10 +30,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
-    {
-        _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
-    }
+        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager) => _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -58,9 +55,9 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         return TransactionResult.Ok;
     }
 
-    protected override IReleaseSpec GetSpec(BlockHeader header) => SystemTransactionReleaseSpec.GetReleaseSpec(base.GetSpec(header), _isAura, header.IsGenesis);
+    protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired) => TransactionResult.Ok;
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired, bool validate) => TransactionResult.Ok;
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 
@@ -82,7 +79,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
         Address? sender = tx.SenderAddress;
-        return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender)))
+        return (sender is null || (sender == spec.Eip158IgnoredAccount && !WorldState.AccountExists(sender)))
                && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
 

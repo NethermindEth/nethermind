@@ -4,8 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Xdc.Spec;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc;
 
@@ -27,7 +25,7 @@ internal static partial class XdcExtensions
 
     public static bool IsSigningTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        var targetIsSignContract = currentTx.To is not null && (currentTx.To == spec.BlockSignerContract);
+        bool targetIsSignContract = currentTx.To is not null && (currentTx.To == spec.BlockSignerContract);
         if (!targetIsSignContract) return false;
 
         if (currentTx.Data.Length != XdcConstants.SignTransactionDataLength) return false;

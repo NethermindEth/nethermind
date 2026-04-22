@@ -98,6 +98,20 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual ulong? ExcessBlobGas { get; set; }
 
     /// <summary>
+    /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-7928</see>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public virtual byte[]? BlockAccessList { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.SlotNumber"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public virtual ulong? SlotNumber { get; set; }
+
+    /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
@@ -141,7 +155,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
-            return new BlockDecodingResult(transactions.Error);
+            return new(transactions.Error);
         }
 
         BlockHeader header = new(
@@ -176,10 +190,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return new BlockDecodingResult(block);
     }
 
-    protected virtual Hash256? BuildWithdrawalsRoot()
-    {
-        return Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
-    }
+    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
 
     protected Transaction[]? _transactions = null;
 
@@ -191,7 +202,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return new TransactionDecodingResult(_transactions);
 
-        IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
+        IRlpValueDecoder<Transaction>? rlpDecoder = Rlp.GetValueDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
         int i = 0;
@@ -202,7 +213,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
             for (i = 0; i < transactions.Length; i++)
             {
-                transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
+                Rlp.ValueDecoderContext ctx = new(txData[i]);
+                transactions[i] = rlpDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 
             return new TransactionDecodingResult(_transactions = transactions);
@@ -255,7 +267,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected virtual int GetExecutionPayloadVersion() => this switch
     {
-        { ExecutionRequests: not null } => 4,
+        { BlockAccessList: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
         { Withdrawals: not null } => 2,
         _ => 1
@@ -270,15 +282,9 @@ public struct TransactionDecodingResult
     public readonly string? Error;
     public readonly Transaction[] Transactions = [];
 
-    public TransactionDecodingResult(Transaction[] transactions)
-    {
-        Transactions = transactions;
-    }
+    public TransactionDecodingResult(Transaction[] transactions) => Transactions = transactions;
 
-    public TransactionDecodingResult(string error)
-    {
-        Error = error;
-    }
+    public TransactionDecodingResult(string error) => Error = error;
 }
 
 public struct BlockDecodingResult
@@ -286,13 +292,7 @@ public struct BlockDecodingResult
     public readonly string? Error;
     public readonly Block? Block;
 
-    public BlockDecodingResult(Block block)
-    {
-        Block = block;
-    }
+    public BlockDecodingResult(Block block) => Block = block;
 
-    public BlockDecodingResult(string error)
-    {
-        Error = error;
-    }
+    public BlockDecodingResult(string error) => Error = error;
 }

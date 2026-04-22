@@ -29,9 +29,9 @@ public static class ProcessExtensions
         }
         else
         {
-            var children = new HashSet<int>();
+            HashSet<int> children = new();
             GetAllChildIdsUnix(process.Id, children, timeout);
-            foreach (var childId in children)
+            foreach (int childId in children)
             {
                 KillProcessUnix(childId, timeout);
             }
@@ -44,15 +44,15 @@ public static class ProcessExtensions
 
     private static void GetAllChildIdsUnix(int parentId, HashSet<int> children, TimeSpan timeout)
     {
-        var (exitCode, stdout) = RunProcessAndReadOutput("pgrep", $"-P {parentId}", timeout);
+        (int exitCode, string? stdout) = RunProcessAndReadOutput("pgrep", $"-P {parentId}", timeout);
 
         if (exitCode == 0 && !string.IsNullOrEmpty(stdout))
         {
-            using var reader = new StringReader(stdout);
+            using StringReader reader = new(stdout);
 
             while (true)
             {
-                var text = reader.ReadLine();
+                string? text = reader.ReadLine();
                 if (text is null)
                     return;
 
@@ -68,7 +68,7 @@ public static class ProcessExtensions
 
     private static (int exitCode, string output) RunProcessAndReadOutput(string fileName, string arguments, TimeSpan timeout)
     {
-        var startInfo = new ProcessStartInfo
+        ProcessStartInfo startInfo = new()
         {
             FileName = fileName,
             Arguments = arguments,
@@ -94,7 +94,7 @@ public static class ProcessExtensions
 
     private static int RunProcessAndIgnoreOutput(string fileName, string arguments, TimeSpan timeout)
     {
-        var startInfo = new ProcessStartInfo
+        ProcessStartInfo startInfo = new()
         {
             FileName = fileName,
             Arguments = arguments,
@@ -104,7 +104,7 @@ public static class ProcessExtensions
             CreateNoWindow = true
         };
 
-        using var process = Process.Start(startInfo);
+        using Process? process = Process.Start(startInfo);
 
         if (process is null) return 0;
 

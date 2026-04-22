@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -24,16 +25,15 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void EncodeDecode_RoundTrip_Matches_AllFields()
         {
-            var codec = new XdcSubnetHeaderDecoder();
-            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec);
+            XdcSubnetHeaderDecoder codec = new();
+            (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // Decode
-            var stream = new RlpStream(encodedBytes);
-            BlockHeader? decodedBase = codec.Decode(stream);
+            BlockHeader? decodedBase = codec.Decode((ReadOnlySpan<byte>)encodedBytes);
             Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
             Assert.That(decodedBase, Is.InstanceOf<XdcSubnetBlockHeader>(), "The decoded header should be an instance of XdcSubnetBlockHeader.");
 
-            var decoded = (XdcSubnetBlockHeader)decodedBase!;
+            XdcSubnetBlockHeader decoded = (XdcSubnetBlockHeader)decodedBase!;
 
             // Hash is excluded since decoder sets it from RLP, but original is often not set
             decoded.Should().BeEquivalentTo(original, options => options.Excluding(h => h.Hash));
@@ -42,8 +42,8 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void TotalLength_Equals_GetLength()
         {
-            var codec = new XdcSubnetHeaderDecoder();
-            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec);
+            XdcSubnetHeaderDecoder codec = new();
+            (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // compare to GetLength
             int expectedTotal = codec.GetLength(original, RlpBehaviors.None);
@@ -53,8 +53,8 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void TotalLength_Equals_GetLength_ForSealing()
         {
-            var codec = new XdcSubnetHeaderDecoder();
-            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec, true);
+            XdcSubnetHeaderDecoder codec = new();
+            (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec, true);
 
             // compare to GetLength
             int expectedTotal = codec.GetLength(original, RlpBehaviors.ForSealing);
@@ -65,11 +65,11 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void Encode_ForSealing_Omits_Validator_And_NextValidators()
         {
-            var decoder = new XdcSubnetHeaderDecoder();
-            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(decoder, true);
+            XdcSubnetHeaderDecoder decoder = new();
+            (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(decoder, true);
 
             // ForSealing encoding
-            XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode(new RlpStream(encodedBytes), RlpBehaviors.ForSealing)!;
+            XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode((ReadOnlySpan<byte>)encodedBytes, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null, "ForSealing encoding should not contain Validator field.");
             Assert.That(unencoded.NextValidators, Is.Null, "ForSealing encoding should not contain NextValidators field.");

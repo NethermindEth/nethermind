@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -167,6 +168,36 @@ public class SeqlockCacheTests
         byte[]? result = cache.GetOrAdd(in key, (in _) => factoryResult);
 
         result.Should().BeSameAs(factoryResult);
+    }
+
+    [Test]
+    public void GetOrAdd_with_state_returns_existing_value()
+    {
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageCell key = CreateKey(1);
+        byte[] expected = CreateValue(1);
+
+        cache.Set(in key, expected);
+        byte[]? result = cache.GetOrAdd(in key, 42, static (in StorageCell _, int _) => new byte[32]);
+
+        result.Should().BeSameAs(expected);
+    }
+
+    [Test]
+    public void GetOrAdd_with_state_calls_factory_on_miss()
+    {
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageCell key = CreateKey(1);
+        byte[] factoryResult = CreateValue(1);
+
+        byte[]? result = cache.GetOrAdd(in key, factoryResult, static (in StorageCell _, byte[] state) => state);
+
+        result.Should().BeSameAs(factoryResult);
+
+        // Value should now be cached
+        bool found = cache.TryGetValue(in key, out byte[]? cached);
+        found.Should().BeTrue();
+        cached.Should().BeSameAs(factoryResult);
     }
 
     [Test]
@@ -368,15 +399,30 @@ public class SeqlockCacheTests
     public void AddressAsKey_works_with_cache()
     {
         SeqlockCache<AddressAsKey, Account> cache = new();
-        Address address = new Address("0x1234567890123456789012345678901234567890");
+        Address address = new("0x1234567890123456789012345678901234567890");
         AddressAsKey key = address;
-        Account account = new Account(100, 1);
+        Account account = new(100, 1);
 
         cache.Set(in key, account);
         bool found = cache.TryGetValue(in key, out Account? result);
 
         found.Should().BeTrue();
         result.Should().BeSameAs(account);
+    }
+
+    [Test]
+    public void Hash256AsKey_works_with_cache()
+    {
+        SeqlockCache<Hash256AsKey, byte[]> cache = new();
+        Hash256 hash = new("0x1234567890123456789012345678901234567890123456789012345678901234");
+        Hash256AsKey key = hash;
+        byte[] value = CreateValue(3);
+
+        cache.Set(in key, value);
+        bool found = cache.TryGetValue(in key, out byte[]? result);
+
+        found.Should().BeTrue();
+        result.Should().BeSameAs(value);
     }
 
     [Test]

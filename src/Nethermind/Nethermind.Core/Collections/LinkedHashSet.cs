@@ -25,15 +25,9 @@ namespace Nethermind.Core.Collections
             _list = new LinkedList<T>();
         }
 
-        public LinkedHashSet(IEnumerable<T> enumerable) : this()
-        {
-            UnionWith(enumerable);
-        }
+        public LinkedHashSet(IEnumerable<T> enumerable) : this() => UnionWith(enumerable);
 
-        public LinkedHashSet(int initialCapacity, IEnumerable<T> enumerable) : this(initialCapacity)
-        {
-            UnionWith(enumerable);
-        }
+        public LinkedHashSet(int initialCapacity, IEnumerable<T> enumerable) : this(initialCapacity) => UnionWith(enumerable);
 
         public LinkedHashSet(IEqualityComparer<T> equalityComparer)
         {
@@ -202,10 +196,7 @@ namespace Nethermind.Core.Collections
 
         public bool IsReadOnly => false;
 
-        void ICollection<T>.Add(T item)
-        {
-            Add(item);
-        }
+        void ICollection<T>.Add(T item) => Add(item);
 
         public void Clear()
         {
@@ -215,10 +206,7 @@ namespace Nethermind.Core.Collections
 
         public bool Contains(T item) => _dict.ContainsKey(item);
 
-        public void CopyTo(T[] array, int arrayIndex)
-        {
-            _list.CopyTo(array, arrayIndex);
-        }
+        public void CopyTo(T[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
 
         public bool Remove(T item)
         {

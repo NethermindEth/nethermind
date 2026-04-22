@@ -24,10 +24,7 @@ public class JsonRpcBatchResultAsyncEnumerator : IAsyncEnumerator<JsonRpcResult.
 
     public JsonRpcBatchResultAsyncEnumerator(
         Func<JsonRpcBatchResultAsyncEnumerator, CancellationToken, IAsyncEnumerator<JsonRpcResult.Entry>> innerEnumeratorFactory,
-        CancellationToken cancellationToken = default)
-    {
-        _enumerator = innerEnumeratorFactory(this, cancellationToken);
-    }
+        CancellationToken cancellationToken = default) => _enumerator = innerEnumeratorFactory(this, cancellationToken);
 
     public bool IsStopped { get; set; }
 

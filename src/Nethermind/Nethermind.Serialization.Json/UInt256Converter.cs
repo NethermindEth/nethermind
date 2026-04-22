@@ -150,8 +150,5 @@ public class UInt256Converter : JsonConverter<UInt256>
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowJsonException()
-    {
-        throw new JsonException();
-    }
+    private static void ThrowJsonException() => throw new JsonException();
 }

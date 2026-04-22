@@ -158,7 +158,7 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
     {
-        var validatedPeers = _peerPool.ActivePeers
+        PeerInfo[] validatedPeers = _peerPool.ActivePeers
             .Where(p => IsValidatedPeer(p.Value))
             .Select(p => new PeerInfo(p.Value, includeDetails))
             .ToArray();
@@ -166,11 +166,8 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<PeerInfo[]>.Success(validatedPeers);
     }
 
-    private static bool IsValidatedPeer(Peer peer)
-    {
-        return peer.InSession?.IsNetworkIdMatched == true ||
+    private static bool IsValidatedPeer(Peer peer) => peer.InSession?.IsNetworkIdMatched == true ||
                peer.OutSession?.IsNetworkIdMatched == true;
-    }
 
     public ResultWrapper<NodeInfo> admin_nodeInfo()
     {
@@ -178,15 +175,9 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<NodeInfo>.Success(_nodeInfo);
     }
 
-    public ResultWrapper<string> admin_dataDir()
-    {
-        return ResultWrapper<string>.Success(_dataDir);
-    }
+    public ResultWrapper<string> admin_dataDir() => ResultWrapper<string>.Success(_dataDir);
 
-    public ResultWrapper<bool> admin_setSolc()
-    {
-        return ResultWrapper<bool>.Success(true);
-    }
+    public ResultWrapper<bool> admin_setSolc() => ResultWrapper<bool>.Success(true);
 
     public ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block)
     {

@@ -38,10 +38,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0x60016000556001600055", 212, 0, 1)]
         [TestCase("0x600160005560006000556001600055", 40118, 19900, 0)]
         [TestCase("0x600060005560016000556000600055", 5918, 17800, 1)]
-        public void Before_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue)
-        {
-            Test(codeHex, gasUsed, refund, originalValue, false);
-        }
+        public void Before_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue) => Test(codeHex, gasUsed, refund, originalValue, false);
 
         [TestCase("0x60006000556000600055", 212, 0, 0)]
         [TestCase("0x60006000556001600055", 20112, 0, 0)]
@@ -60,26 +57,23 @@ namespace Nethermind.Evm.Test
         [TestCase("0x60016000556001600055", 212, 0, 1)]
         [TestCase("0x600160005560006000556001600055", 40118, 19900, 0)]
         [TestCase("0x600060005560016000556000600055", 5918, 7600, 1)]
-        public void After_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue)
-        {
-            Test(codeHex, gasUsed, refund, originalValue, true);
-        }
+        public void After_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue) => Test(codeHex, gasUsed, refund, originalValue, true);
 
         private void Test(string codeHex, long gasUsed, long refund, byte originalValue, bool eip3529Enabled)
         {
-            // the account value = 1.Ether() here because you cannot set a storageRoot for an empty account.
+            // the account value = 1.Ether here because you cannot set a storageRoot for an empty account.
             // EmptyAccount => Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString
             // earlier it used to work - because the cache mapping address:storageTree was never cleared on account of
             // Storage.CommitTrees() not being called. But now the WorldState.CommitTrees is called inside PrepareTx,
             // which also calls Storage.CommitTrees, clearing the cache.
-            TestState.CreateAccount(Recipient, 1.Ether());
+            TestState.CreateAccount(Recipient, 1.Ether);
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
             _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, Bytes.FromHexString(codeHex));
 
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
@@ -91,7 +85,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false)]
         public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -163,7 +157,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header));
+            BlockExecutionContext blCtx = new(block.Header, SpecProvider.GetSpec(block.Header));
             _processor.Execute(tx0, blCtx, tracer0);
 
             TestAllTracerWithOutput tracer = CreateTracer();

@@ -147,10 +147,7 @@ public class ShutterApi : IShutterApi
         TxSource.LoadTransactions(head, parentHeader, keys.Value);
     }
 
-    protected virtual void InitP2P(IPAddress ip)
-    {
-        P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ip);
-    }
+    protected virtual void InitP2P(IPAddress ip) => P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ip);
 
     protected virtual IShutterEon InitEon()
         => new ShutterEon(_readOnlyBlockTree, _txProcessorSource, _abiEncoder, _cfg, _logManager);

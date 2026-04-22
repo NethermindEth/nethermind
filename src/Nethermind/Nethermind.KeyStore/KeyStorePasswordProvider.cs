@@ -30,7 +30,7 @@ namespace Nethermind.KeyStore
             int keyStoreConfigPasswordIndex = _keyStoreConfig.FindUnlockAccountIndex(address);
             if (keyStoreConfigPasswordIndex >= 0)
             {
-                var passwordFile = GetNthOrLast(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
+                string passwordFile = GetNthOrLast(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
                 result = passwordFile ?? string.Empty;
             }
 

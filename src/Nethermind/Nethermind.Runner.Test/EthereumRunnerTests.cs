@@ -7,7 +7,6 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Abstractions;
 using System.Net;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -67,6 +66,7 @@ using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Runner.Test;
@@ -77,7 +77,7 @@ public class EthereumRunnerTests
     static EthereumRunnerTests()
     {
         // Trigger plugins loading early to ensure TypeDiscovery caches plugin's types
-        PluginLoader pluginLoader = new("plugins", new FileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
         pluginLoader.Load();
 
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
@@ -94,19 +94,19 @@ public class EthereumRunnerTests
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            var configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             configProvider.AddSource(new JsonConfigSource(configFile));
             configProvider.Initialize();
             resultQueue.Enqueue((configFile, configProvider));
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
-        List<(string, ConfigProvider)> result = new List<(string, ConfigProvider)>(resultQueue);
+        List<(string, ConfigProvider)> result = new(resultQueue);
         result.Sort();
 
         {
             // Special case for verify trie on state sync finished
-            var configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
@@ -115,7 +115,7 @@ public class EthereumRunnerTests
 
         {
             // Flashbots
-            var configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
             configProvider.Initialize();
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
@@ -191,7 +191,7 @@ public class EthereumRunnerTests
 
         PluginLoader pluginLoader = new(
             "plugins",
-            new FileSystem(),
+            new RealFileSystem(),
             NullLogger.Instance,
             NethermindPlugins.EmbeddedPlugins
         );
@@ -240,9 +240,9 @@ public class EthereumRunnerTests
 
                 if (propertyInfo.GetSetMethod() is not null)
                 {
-                    if (runner.LifetimeScope.ComponentRegistry.TryGetRegistration(new TypedService(propertyInfo.PropertyType), out var registration))
+                    if (runner.LifetimeScope.ComponentRegistry.TryGetRegistration(new TypedService(propertyInfo.PropertyType), out IComponentRegistration? registration))
                     {
-                        var isFallback = registration.Metadata.ContainsKey(FallbackToFieldFromApi<INethermindApi>.FallbackMetadata);
+                        bool isFallback = registration.Metadata.ContainsKey(FallbackToFieldFromApi<INethermindApi>.FallbackMetadata);
                         if (!isFallback)
                         {
                             Assert.Fail($"A setter in {nameof(INethermindApi)} of type {propertyInfo.PropertyType} also has a container registration that is not a fallback to api. This is likely a bug.");
@@ -272,7 +272,7 @@ public class EthereumRunnerTests
             api.Context.Resolve<IUnclesValidator>();
             api.Context.Resolve<ITxValidator>();
             api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
-            api.Context.Resolve<IBlockProducerEnvFactory>().Create();
+            api.Context.Resolve<IBlockProducerEnvFactory>().CreatePersistent();
 
             // A root registration should not have both keyed and unkeyed registration. This is confusing and may
             // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,
@@ -321,7 +321,7 @@ public class EthereumRunnerTests
                         {
                             Assert.Fail($"{typedService.ServiceType} has a root registration. This is likely a bug.");
                         }
-                        if (keyedTypes.TryGetValue(typedService.ServiceType, out var key))
+                        if (keyedTypes.TryGetValue(typedService.ServiceType, out object? key))
                         {
                             Assert.Fail($"{typedService.ServiceType} has an unkeyed and keyed ({key}) root registration at the same time. This is likely a bug.");
                         }
@@ -339,7 +339,7 @@ public class EthereumRunnerTests
     {
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
-        var tempPath = TempPath.GetTempDirectory();
+        TempPath tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);
 
         Exception? exception = null;
@@ -358,13 +358,13 @@ public class EthereumRunnerTests
 
             PluginLoader pluginLoader = new(
                 "plugins",
-                new FileSystem(),
+                new RealFileSystem(),
                 NullLogger.Instance,
                 NethermindPlugins.EmbeddedPlugins
             );
             pluginLoader.Load();
 
-            ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+            ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             plugins.Add(new RunnerTestPlugin());
             EthereumRunner runner = builder.CreateEthereumRunner(plugins);

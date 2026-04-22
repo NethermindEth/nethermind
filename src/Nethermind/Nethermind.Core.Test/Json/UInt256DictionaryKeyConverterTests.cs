@@ -36,7 +36,7 @@ public class UInt256DictionaryKeyConverterTests
         }
         """;
 
-        var result = JsonSerializer.Deserialize<
+        Dictionary<string, List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>>>? result = JsonSerializer.Deserialize<
             Dictionary<string, List<
                 Dictionary<string,
                     Dictionary<UInt256,
@@ -48,11 +48,11 @@ public class UInt256DictionaryKeyConverterTests
             >>
         >(json, Options);
 
-        var expectedState = new Dictionary<UInt256, Hash256>
+        Dictionary<UInt256, Hash256> expectedState = new()
         {
             { new UInt256(0), new Hash256("0x1200000000000000000000000000000000000000000000000000000000000000") }
         };
-        var expectedStateOverrides = new Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>
+        Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>> expectedStateOverrides = new()
         {
             {
                 new UInt256(Bytes.FromHexString("0xc100000000000000000000000000000000000000")),
@@ -62,14 +62,14 @@ public class UInt256DictionaryKeyConverterTests
                 }
             }
         };
-        var expectedBlockStateCalls = new List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>>
+        List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>> expectedBlockStateCalls = new()
         {
             new()
             {
                 {"stateOverrides", expectedStateOverrides}
             }
         };
-        var expected = new Dictionary<string, List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>>>
+        Dictionary<string, List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>>> expected = new()
         {
             {"blockStateCalls", expectedBlockStateCalls}
         };
@@ -97,12 +97,12 @@ public class UInt256DictionaryKeyConverterTests
     [Test]
     public void WriteJson_Dictionary_SerializeAndDeserialize()
     {
-        var dictionary = new Dictionary<UInt256, Hash256>
+        Dictionary<UInt256, Hash256> dictionary = new()
         {
             { new UInt256(1), new Hash256("0x0000000000000000000000000000000000000000000000000000000000000002") }
         };
-        var serialised = JsonSerializer.Serialize(dictionary, Options);
-        var deserialised = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>(serialised, Options);
+        string serialised = JsonSerializer.Serialize(dictionary, Options);
+        Dictionary<UInt256, Hash256>? deserialised = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>(serialised, Options);
 
         deserialised.Should().BeEquivalentTo(dictionary);
     }
@@ -110,7 +110,7 @@ public class UInt256DictionaryKeyConverterTests
     [Test]
     public void WriteJson_Dictionary_SerializedCorrectly()
     {
-        var dictionary = new Dictionary<UInt256, UInt256>
+        Dictionary<UInt256, UInt256> dictionary = new()
         {
             { new UInt256(1), new UInt256(12345) }
         };

@@ -36,7 +36,7 @@ internal sealed class MethodResolver(Assembly assembly)
         if (typeName is not null)
         {
             // Search specific type
-            var type = ResolveType(typeName);
+            Type? type = ResolveType(typeName);
             if (type is null)
             {
                 return null;
@@ -52,13 +52,13 @@ internal sealed class MethodResolver(Assembly assembly)
                 }
             }
 
-            var methods = FindMethods(type, methodName);
+            IEnumerable<MethodInfo> methods = FindMethods(type, methodName);
             candidates.AddRange(methods.Select(m => (type, m)));
 
             // Also search base types if no methods found (for inherited methods)
             if (candidates.Count == 0)
             {
-                var baseType = type.BaseType;
+                Type? baseType = type.BaseType;
                 while (baseType is not null && candidates.Count == 0)
                 {
                     methods = FindMethods(baseType, methodName, includeInherited: true);
@@ -70,9 +70,9 @@ internal sealed class MethodResolver(Assembly assembly)
         else
         {
             // Search all types
-            foreach (var type in assembly.GetTypes())
+            foreach (Type type in assembly.GetTypes())
             {
-                var searchType = type;
+                Type searchType = type;
 
                 // If the type is a generic type definition and we have class type params, try to construct it
                 if (type.IsGenericTypeDefinition && classTypeParams is not null)
@@ -80,7 +80,7 @@ internal sealed class MethodResolver(Assembly assembly)
                     var typeParamCount = classTypeParams.Split(',').Length;
                     if (type.GetGenericArguments().Length == typeParamCount)
                     {
-                        var constructed = MakeGenericType(type, classTypeParams);
+                        Type? constructed = MakeGenericType(type, classTypeParams);
                         if (constructed is not null)
                         {
                             searchType = constructed;
@@ -88,7 +88,7 @@ internal sealed class MethodResolver(Assembly assembly)
                     }
                 }
 
-                var methods = FindMethods(searchType, methodName);
+                IEnumerable<MethodInfo> methods = FindMethods(searchType, methodName);
                 candidates.AddRange(methods.Select(m => (searchType, m)));
             }
         }
@@ -102,7 +102,7 @@ internal sealed class MethodResolver(Assembly assembly)
         if (verbose)
         {
             Console.Error.WriteLine($"[DEBUG] Candidates before filtering: {candidates.Count}");
-            foreach (var c in candidates)
+            foreach ((Type Type, MethodInfo Method) c in candidates)
             {
                 Console.Error.WriteLine($"[DEBUG]   Method: {c.Method.Name}, IsGenericMethodDefinition: {c.Method.IsGenericMethodDefinition}, GenericArgCount: {c.Method.GetGenericArguments().Length}");
             }
@@ -165,7 +165,7 @@ internal sealed class MethodResolver(Assembly assembly)
 
         for (int i = 0; i < typeNames.Length; i++)
         {
-            var resolved = ResolveTypeParam(typeNames[i]);
+            Type? resolved = ResolveTypeParam(typeNames[i]);
             if (resolved is null)
             {
                 if (verbose)
@@ -179,7 +179,7 @@ internal sealed class MethodResolver(Assembly assembly)
 
         try
         {
-            var result = genericTypeDefinition.MakeGenericType(types);
+            Type result = genericTypeDefinition.MakeGenericType(types);
             if (verbose)
                 Console.Error.WriteLine($"[DEBUG] Constructed generic type: {result.FullName}");
             return result;
@@ -195,11 +195,11 @@ internal sealed class MethodResolver(Assembly assembly)
     private Type? ResolveType(string typeName)
     {
         // Try direct lookup
-        var type = assembly.GetType(typeName);
+        Type? type = assembly.GetType(typeName);
         if (type is not null) return type;
 
         // Try with assembly name prefix removed if present
-        var types = assembly.GetTypes();
+        Type[] types = assembly.GetTypes();
 
         // Try exact match on FullName
         type = types.FirstOrDefault(t => t.FullName == typeName);
@@ -224,18 +224,18 @@ internal sealed class MethodResolver(Assembly assembly)
         }
 
         // Try nested types
-        foreach (var t in types)
+        foreach (Type t in types)
         {
             if (t.FullName is not null && typeName.StartsWith(t.FullName + "+"))
             {
                 var nestedName = typeName[(t.FullName.Length + 1)..];
-                var nested = t.GetNestedType(nestedName, BindingFlags.Public | BindingFlags.NonPublic);
+                Type? nested = t.GetNestedType(nestedName, BindingFlags.Public | BindingFlags.NonPublic);
                 if (nested is not null) return nested;
             }
         }
 
         // Search referenced assemblies for cross-assembly types
-        foreach (var refName in assembly.GetReferencedAssemblies())
+        foreach (AssemblyName refName in assembly.GetReferencedAssemblies())
         {
             try
             {
@@ -266,7 +266,7 @@ internal sealed class MethodResolver(Assembly assembly)
 
     private static IEnumerable<MethodInfo> FindMethods(Type type, string methodName, bool includeInherited = false)
     {
-        var flags = BindingFlags.Public | BindingFlags.NonPublic |
+        BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
                     BindingFlags.Instance | BindingFlags.Static;
 
         if (!includeInherited)
@@ -282,7 +282,7 @@ internal sealed class MethodResolver(Assembly assembly)
             if (methods.Count == 0)
             {
                 // List some methods to help debug
-                var allMethods = type.GetMethods(flags).Where(m => m.Name.Contains("Evm") || m.Name.Contains("Execute")).Take(10);
+                IEnumerable<MethodInfo> allMethods = type.GetMethods(flags).Where(m => m.Name.Contains("Evm") || m.Name.Contains("Execute")).Take(10);
                 Console.Error.WriteLine($"[DEBUG] Sample methods containing 'Evm' or 'Execute': {string.Join(", ", allMethods.Select(m => m.Name))}");
             }
         }
@@ -309,7 +309,7 @@ internal sealed class MethodResolver(Assembly assembly)
 
         for (int i = 0; i < typeNames.Length; i++)
         {
-            var resolved = ResolveTypeParam(typeNames[i]);
+            Type? resolved = ResolveTypeParam(typeNames[i]);
             if (resolved is null)
             {
                 if (verbose)
@@ -323,7 +323,7 @@ internal sealed class MethodResolver(Assembly assembly)
 
         try
         {
-            var result = method.MakeGenericMethod(types);
+            MethodInfo result = method.MakeGenericMethod(types);
             if (verbose)
                 Console.Error.WriteLine($"[DEBUG] MakeGenericIfNeeded: success, created {result}");
             return result;
@@ -339,17 +339,17 @@ internal sealed class MethodResolver(Assembly assembly)
     private Type? ResolveTypeParam(string typeName)
     {
         // Check aliases first
-        if (TypeAliases.TryGetValue(typeName, out var aliasType))
+        if (TypeAliases.TryGetValue(typeName, out Type? aliasType))
         {
             return aliasType;
         }
 
         // Try the target assembly
-        var type = ResolveType(typeName);
+        Type? type = ResolveType(typeName);
         if (type is not null) return type;
 
         // Try referenced assemblies
-        foreach (var refName in assembly.GetReferencedAssemblies())
+        foreach (AssemblyName refName in assembly.GetReferencedAssemblies())
         {
             try
             {
@@ -375,7 +375,7 @@ internal sealed class MethodResolver(Assembly assembly)
     {
         if (typeName is not null)
         {
-            var type = ResolveType(typeName);
+            Type? type = ResolveType(typeName);
             if (type is not null)
             {
                 return FindMethods(type, methodName);
@@ -384,7 +384,7 @@ internal sealed class MethodResolver(Assembly assembly)
         }
 
         var results = new List<MethodInfo>();
-        foreach (var type in assembly.GetTypes())
+        foreach (Type type in assembly.GetTypes())
         {
             results.AddRange(FindMethods(type, methodName));
         }

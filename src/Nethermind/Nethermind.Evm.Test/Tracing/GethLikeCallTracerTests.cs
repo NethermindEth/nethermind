@@ -551,7 +551,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             .Log(0, 0, [TestItem.KeccakA, TestItem.KeccakB]);
         byte[] createCode = revertCreateCall ? createCodePrepare.Revert(0, 0).Done : createCodePrepare.STOP().Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
         Prepare callCodePrepare = Prepare.EvmCode
             .CallWithInput(TestItem.AddressC, 50000, SampleHexData1)

@@ -40,8 +40,8 @@ public static unsafe class KeccakCache
     private const int InputLengthOfAddress = Address.Size;
     private const int CacheLineSizeBytes = 64;
 
-#if ZKVM
-    // NativeAOT/ZKVM: avoid NativeMemory.AlignedAlloc (can fault in some environments). Use managed pinned storage instead.
+#if ZK_EVM
+    // zkEVM: avoid NativeMemory.AlignedAlloc (can fault in some environments). Use managed pinned storage instead.
     private static readonly byte[] ManagedBuffer;
     private static readonly GCHandle ManagedHandle;
 #endif
@@ -51,7 +51,7 @@ public static unsafe class KeccakCache
     {
         const nuint size = Count * Entry.Size;
 
-#if ZKVM
+#if ZK_EVM
         ManagedBuffer = GC.AllocateArray<byte>((int)size, pinned: true);
         ManagedHandle = GCHandle.Alloc(ManagedBuffer, GCHandleType.Pinned);
         Memory = (Entry*)ManagedHandle.AddrOfPinnedObject();
@@ -113,7 +113,7 @@ public static unsafe class KeccakCache
                 // ARM memory barrier: ensure speculative reads complete before seq2.
                 // On x86/x64 (TSO), loads are never reordered - JIT eliminates this entirely.
                 if (!Sse.IsSupported)
-                    Thread.MemoryBarrier();
+                    Interlocked.MemoryBarrier();
 
                 // Re-read sequence - if changed, a write occurred during our reads
                 if (seq1 == Volatile.Read(ref e.Combined) &&
@@ -132,7 +132,7 @@ public static unsafe class KeccakCache
 
                 // ARM memory barrier (see above)
                 if (!Sse.IsSupported)
-                    Thread.MemoryBarrier();
+                    Interlocked.MemoryBarrier();
 
                 ref byte inputRef = ref MemoryMarshal.GetReference(input);
                 // Re-read sequence and compare
@@ -152,7 +152,7 @@ public static unsafe class KeccakCache
 
                 // ARM memory barrier (see above)
                 if (!Sse.IsSupported)
-                    Thread.MemoryBarrier();
+                    Interlocked.MemoryBarrier();
 
                 if (seq1 == Volatile.Read(ref e.Combined) &&
                     MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))

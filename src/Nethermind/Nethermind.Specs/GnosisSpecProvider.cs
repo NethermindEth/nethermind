@@ -14,6 +14,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const long ConstantinopleBlockNumber = 1_604_400;
     public const long ConstantinopleFixBlockNumber = 2_508_800;
     public const long IstanbulBlockNumber = 7_298_030;
+    public const long PosdaoTransitionBlockNumber = 9_186_425; // does not alter EVM specs, fork-id boundary only
     public const long BerlinBlockNumber = 16_101_500;
     public const long LondonBlockNumber = 19_040_000;
     public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
@@ -21,28 +22,27 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong CancunTimestamp = 0x65ef4dbc;
     public const ulong PragueTimestamp = 0x68122dbc;
     public const ulong BalancerTimestamp = 0x69496dbc; // does not alter specs
+    public const ulong OsakaTimestamp = 0x69de2dbc;
     public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     private GnosisSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber switch
     {
-        return forkActivation.BlockNumber switch
+        < ConstantinopleBlockNumber => GenesisSpec,
+        < ConstantinopleFixBlockNumber => Constantinople.Instance,
+        < IstanbulBlockNumber => ConstantinopleFix.Instance,
+        < BerlinBlockNumber => Istanbul.Instance,
+        < LondonBlockNumber => Berlin.Instance,
+        _ => forkActivation.Timestamp switch
         {
-            < ConstantinopleBlockNumber => GenesisSpec,
-            < ConstantinopleFixBlockNumber => Constantinople.Instance,
-            < IstanbulBlockNumber => ConstantinopleFix.Instance,
-            < BerlinBlockNumber => Istanbul.Instance,
-            < LondonBlockNumber => Berlin.Instance,
-            _ => forkActivation.Timestamp switch
-            {
-                null or < ShanghaiTimestamp => LondonGnosis.Instance,
-                < CancunTimestamp => ShanghaiGnosis.Instance,
-                < PragueTimestamp => CancunGnosis.Instance,
-                _ => PragueGnosis.Instance
-            }
-        };
-    }
+            null or < ShanghaiTimestamp => LondonGnosis.Instance,
+            < CancunTimestamp => ShanghaiGnosis.Instance,
+            < PragueTimestamp => CancunGnosis.Instance,
+            < OsakaTimestamp => PragueGnosis.Instance,
+            _ => OsakaGnosis.Instance
+        }
+    };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
@@ -63,7 +63,20 @@ public class GnosisSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
     public string SealEngine => SealEngineType.AuRa;
-    public ForkActivation[] TransitionActivations { get; }
+    public ForkActivation[] TransitionActivations { get; } =
+    [
+        (ForkActivation)ConstantinopleBlockNumber,
+        (ForkActivation)ConstantinopleFixBlockNumber,
+        (ForkActivation)IstanbulBlockNumber,
+        (ForkActivation)PosdaoTransitionBlockNumber,
+        (ForkActivation)BerlinBlockNumber,
+        (ForkActivation)LondonBlockNumber,
+        (LondonBlockNumber, ShanghaiTimestamp),
+        (LondonBlockNumber, CancunTimestamp),
+        (LondonBlockNumber, PragueTimestamp),
+        (LondonBlockNumber, BalancerTimestamp),
+        (LondonBlockNumber, OsakaTimestamp),
+    ];
 
     public static GnosisSpecProvider Instance { get; } = new();
 }
