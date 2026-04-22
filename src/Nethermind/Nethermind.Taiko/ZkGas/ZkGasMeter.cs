@@ -88,6 +88,24 @@ public class ZkGasMeter
         return ChargeAmount(gasUsed, multiplier);
     }
 
+    /// <summary>
+    /// Charges <paramref name="rawGas"/> * <paramref name="multiplier"/> ZK gas against the
+    /// current transaction budget. Returns <c>true</c> on success; returns <c>false</c> and sets
+    /// <see cref="IsLimitExceeded"/> when any overflow or limit check fails.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>Invariant – do not call <see cref="CommitTransaction"/> while
+    /// <see cref="IsLimitExceeded"/> is <c>true</c>.</strong>
+    /// When this method returns <c>false</c>, <c>_txZkGasUsed</c> is intentionally <em>not</em>
+    /// updated. The opcode has already executed inside the EVM (the tracer charges after
+    /// execution), so its ZK cost was consumed but is not reflected in the tracked total.
+    /// At that point <c>_txZkGasUsed</c> understates the true ZK cost of the transaction.
+    /// Committing an under-counted transaction would produce a block that exceeds the ZK
+    /// prover budget and cannot be proven. The caller must cancel the transaction instead
+    /// (via <see cref="CancelTransaction"/>).
+    /// </para>
+    /// </remarks>
     private bool ChargeAmount(ulong rawGas, ulong multiplier)
     {
         // Compute charge = rawGas * multiplier with overflow check

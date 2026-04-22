@@ -34,7 +34,9 @@ public class TaikoBlockValidator(
     private const long AnchorGasLimit = 250_000;
     private const long AnchorV3V4GasLimit = 1_000_000;
 
-    protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error) => true; // No blob transactions are expected, covered by ValidateTransactions also
+    // Blob transactions are explicitly rejected in ValidateTransactions below; no extra EIP-4844 field
+    // validation is needed on Taiko L2.
+    protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error) => true;
 
     protected override bool ValidateTransactions(Block block, IReleaseSpec spec, ref string? errorMessage)
     {
@@ -46,6 +48,17 @@ public class TaikoBlockValidator(
         if (block.Transactions.Length is not 0 && !ValidateAnchorTransaction(block.Transactions[0], block, (ITaikoReleaseSpec)spec, out errorMessage))
         {
             return false;
+        }
+
+        // Blob transactions are never valid on Taiko L2. The base TxValidator is initialised
+        // with an Always.Valid validator (see TaikoPlugin), so we must enforce this explicitly.
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type == TxType.Blob)
+            {
+                errorMessage = "Blob transactions are not supported on Taiko L2";
+                return false;
+            }
         }
 
         // TaikoPlugin initializes the TxValidator with an Always.Valid validator
