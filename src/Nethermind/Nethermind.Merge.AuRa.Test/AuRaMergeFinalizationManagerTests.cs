@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.Processing;
 using Nethermind.Merge.Plugin;
 using NSubstitute;
 using NUnit.Framework;
@@ -47,6 +48,19 @@ public class AuRaMergeFinalizationManagerTests
         }
 
         _auRaFinalizationManager.Received(1).Dispose();
+    }
+
+    [TestCase(true, 0, Description = "Post-merge: skipped so the inner never subscribes or walks")]
+    [TestCase(false, 1, Description = "Pre-merge: forwarded so the inner initializes normally")]
+    public void SetMainBlockBranchProcessor_forwards_only_pre_merge(bool alreadyPostMerge, int expectedForwards)
+    {
+        _poSSwitcher.HasEverReachedTerminalBlock().Returns(alreadyPostMerge);
+        AuRaMergeFinalizationManager wrapper = new(_manualFinalizationManager, _auRaFinalizationManager, _poSSwitcher);
+
+        IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
+        wrapper.SetMainBlockBranchProcessor(branchProcessor);
+
+        _auRaFinalizationManager.Received(expectedForwards).SetMainBlockBranchProcessor(branchProcessor);
     }
 
     [Test]

@@ -45,8 +45,13 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     public long? GetFinalizationLevel(long level) => _auRaBlockFinalizationManager.GetFinalizationLevel(level);
 
-    public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor) =>
-        _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
+    public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
+    {
+        // Skip forwarding post-merge so the inner manager never subscribes to block events
+        // nor runs the startup catch-up walk — AuRa finalization is not active post-merge.
+        if (!_poSSwitcher.HasEverReachedTerminalBlock())
+            _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
+    }
 
     public override long LastFinalizedBlockLevel => IsPostMerge
         ? _manualBlockFinalizationManager.LastFinalizedBlockLevel

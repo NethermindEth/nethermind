@@ -17,38 +17,35 @@ using Nito.Collections;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockFinalizationManager : IAuRaBlockFinalizationManager
+    public class AuRaBlockFinalizationManager(
+        IBlockTree blockTree,
+        IChainLevelInfoRepository chainLevelInfoRepository,
+        IValidatorStore validatorStore,
+        ILogManager logManager,
+        long twoThirdsMajorityTransition = long.MaxValue) : IAuRaBlockFinalizationManager
     {
         private static readonly List<BlockHeader> Empty = new();
-        private readonly IBlockTree _blockTree;
-        private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-        private readonly ILogger _logger;
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+        private readonly ILogger _logger = logManager?.GetClassLogger<AuRaBlockFinalizationManager>() ?? throw new ArgumentNullException(nameof(logManager));
         private IBranchProcessor? _branchProcessor;
-        private readonly IValidatorStore _validatorStore;
-        private readonly long _twoThirdsMajorityTransition;
+        private readonly IValidatorStore _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
+        private bool _initialized;
         private Hash256 _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new();
 
-        public AuRaBlockFinalizationManager(
-            IBlockTree blockTree,
-            IChainLevelInfoRepository chainLevelInfoRepository,
-            IValidatorStore validatorStore,
-            ILogManager logManager,
-            long twoThirdsMajorityTransition = long.MaxValue)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _logger = logManager?.GetClassLogger<AuRaBlockFinalizationManager>() ?? throw new ArgumentNullException(nameof(logManager));
-            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
-            _twoThirdsMajorityTransition = twoThirdsMajorityTransition;
-            Initialize();
-        }
-
         public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
         {
-            _branchProcessor = branchProcessor;
-            _branchProcessor.BlockProcessed += OnBlockProcessed;
-            _branchProcessor.BlocksProcessing += OnBlocksProcessing;
+            if (!_initialized)
+            {
+                _initialized = true;
+
+                _branchProcessor = branchProcessor;
+                _branchProcessor.BlockProcessed += OnBlockProcessed;
+                _branchProcessor.BlocksProcessing += OnBlocksProcessing;
+
+                Initialize();
+            }
         }
 
 
@@ -128,9 +125,9 @@ namespace Nethermind.Consensus.AuRa
 
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
-            if (block.Number == _twoThirdsMajorityTransition)
+            if (block.Number == twoThirdsMajorityTransition)
             {
-                if (_logger.IsInfo) _logger.Info($"Block {_twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
+                if (_logger.IsInfo) _logger.Info($"Block {twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
             }
 
             int minSealersForFinalization = GetMinSealersForFinalization(block.Number);
@@ -335,7 +332,7 @@ namespace Nethermind.Consensus.AuRa
         private int GetMinSealersForFinalization(long blockNumber) =>
             blockNumber == 0
                 ? 1
-                : _validatorStore.GetValidators(blockNumber).MinSealersForFinalization(blockNumber >= _twoThirdsMajorityTransition);
+                : _validatorStore.GetValidators(blockNumber).MinSealersForFinalization(blockNumber >= twoThirdsMajorityTransition);
 
         public long LastFinalizedBlockLevel
         {

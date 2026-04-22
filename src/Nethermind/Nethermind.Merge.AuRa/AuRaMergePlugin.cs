@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
@@ -94,6 +95,10 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
+
+                // Merge-aware override: skips wiring the branch processor on post-merge chains so
+                // the AuRa finalization manager's startup catch-up walk never runs.
+                .AddStep(typeof(InitializeBlockchainAuRaMerge))
                 ;
     }
 }
