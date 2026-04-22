@@ -26,6 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private bool NoBaseFee { get; set; }
             private BlockOverride? _blockOverride;
+            protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
 
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
@@ -60,13 +61,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Dictionary<Address, AccountOverride>? stateOverride = null,
                 SearchResult<BlockHeader>? searchResult = null)
             {                
-
-                if (transactionCall.Gas is null && _blockOverride?.GasLimit is not null)
-                {
-                    searchResult ??= _blockFinder.SearchForHeader(blockParameter);
-                    if (!searchResult.Value.IsError)
-                        transactionCall.Gas = (long)_blockOverride.GasLimit.Value;
-                }
 
                 // enforces gas cap
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
@@ -144,9 +138,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 // pure simulation; estimateGas is computing gas for a real transaction that must fit in a block.
                 if (transactionCall.Gas is null)
                 {
-                    searchResult ??= _blockFinder.SearchForHeader(blockParameter);
-                    if (!searchResult.Value.IsError)
-                        transactionCall.Gas = searchResult.Value.Object!.GasLimit;
+                    if (BlockOverride?.GasLimit is not null)
+                    {
+                        transactionCall.Gas = (long)BlockOverride.GasLimit.Value;
+                    }
+                    else
+                    {
+                        searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+                        if (!searchResult.Value.IsError)
+                            transactionCall.Gas = searchResult.Value.Object!.GasLimit;
+                    }
                 }
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }

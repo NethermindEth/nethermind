@@ -22,6 +22,8 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Int256;
+using Nethermind.Core.Specs;
+using Nethermind.Blockchain;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
@@ -263,6 +265,32 @@ public partial class EthRpcModuleTests
             $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"type\": \"0x2\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_with_base_fee_opcode_should_return_0()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string dataStr = BaseFeeReturnCode.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_with_base_fee_opcode_without_from_address_should_return_0()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string dataStr = BaseFeeReturnCode.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
     }
 
     [Test]
@@ -831,6 +859,48 @@ public partial class EthRpcModuleTests
 
         JToken.Parse(serialized)["error"].Should().BeNull(because:
             "fee-less call must succeed even when blockOverride.baseFeePerGas > 0");
+    }
+
+    [Test]
+    public async Task Eth_call_blobBaseFeePerGas_override_test()
+    {
+        ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
+        using Context ctx = await Context.Create(specProvider);
+        ulong? excessBlobGas = 1ul;
+
+        Block[] blocks = [
+            Build.A.Block.WithNumber(0).WithExcessBlobGas(excessBlobGas).TestObject,
+        ];
+
+        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+
+
+        ctx.Test = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockTree)
+            .Build(specProvider);
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""");
+
+        object? transaction = JsonSerializer.Deserialize<object>(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000"}""");
+
+        object? blockOverride = JsonSerializer.Deserialize<object>(
+        """{"blobBaseFee":"0x02"}""");
+
+        string withOverride = await ctx.Test.TestEthRpc(
+            "eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        JToken parsed = JToken.Parse(withOverride);
+
+        parsed["error"]?.Should().BeNull("opcode must be valid under Cancun");
+
+        string? resultHex = parsed["result"]?.Value<string>();
+        resultHex.Should().NotBeNull();
+
+        UInt256 overriddenFee = Bytes.FromHexString(resultHex!).ToUInt256();
+        overriddenFee.Should().Be((UInt256)0x02);
     }
 
 }
