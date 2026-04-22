@@ -5,5 +5,10 @@ namespace Nethermind.Specs.Forks;
 
 public class Paris() : NamedReleaseSpec<Paris>(GrayGlacier.Instance)
 {
-    public override void Apply(ReleaseSpec spec) => spec.Name = "Paris";
+    public override void Apply(ReleaseSpec spec)
+    {
+        spec.Name = "Paris";
+        // EIP-3675: uncles are forbidden from the merge onwards.
+        spec.MaximumUncleCount = 0;
+    }
 }

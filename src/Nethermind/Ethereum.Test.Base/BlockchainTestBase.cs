@@ -269,8 +269,7 @@ public abstract class BlockchainTestBase
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
         for (int i = 0; i < correctRlp.Count; i++)
         {
-            // Mimic the actual behaviour where block goes through validating sync manager
-            correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
+            // IsPostMerge is set by MergeProcessingRecoveryStep / PoSSwitcher during the pipeline.
 
             // For tests with reorgs, find the actual parent header from block tree
             parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;

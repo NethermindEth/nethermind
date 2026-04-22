@@ -182,7 +182,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
-            releaseSpec.MaximumUncleCount = 2;
+            // EIP-3675: zero uncles post-merge. Runtime fallback is MergeHeaderValidator.
+            releaseSpec.MaximumUncleCount = IsPostMergeRelease(chainSpec, releaseStartBlock, releaseStartTimestamp) ? 0 : 2;
             releaseSpec.DifficultyBoundDivisor = 1;
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
@@ -341,6 +342,15 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
         }
+
+        // Shanghai (EIP-4895) is the first post-Paris timestamp-activated fork, so TTD-driven
+        // chains like mainnet cross into post-merge once they reach it - that's the only
+        // non-obvious branch below. TTD=0 covers PoS-from-genesis; TerminalPoWBlockNumber
+        // covers chainspecs that pin the boundary explicitly.
+        private static bool IsPostMergeRelease(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp) =>
+            chainSpec.Parameters.TerminalTotalDifficulty == UInt256.Zero
+            || releaseStartBlock > (chainSpec.Parameters.TerminalPoWBlockNumber ?? long.MaxValue)
+            || (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= (releaseStartTimestamp ?? 0);
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
