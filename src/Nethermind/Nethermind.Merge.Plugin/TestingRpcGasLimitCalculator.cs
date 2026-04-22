@@ -21,8 +21,8 @@ public interface ITestingRpcGasLimitCalculator : IGasLimitCalculator;
 /// </summary>
 public class TestingRpcGasLimitCalculator(ISpecProvider specProvider, IBlocksConfig blocksConfig) : ITestingRpcGasLimitCalculator
 {
-    // Matches the current mainnet gas limit target.
-    internal const long DefaultGasLimit = 60_000_000;
+    // Default gas limit target when not configured.
+    public const long DefaultGasLimit = 60_000_000;
 
     private readonly TargetAdjustedGasLimitCalculator _inner = new(
         specProvider, new BlocksConfig { TargetBlockGasLimit = blocksConfig.TargetBlockGasLimit ?? DefaultGasLimit });
