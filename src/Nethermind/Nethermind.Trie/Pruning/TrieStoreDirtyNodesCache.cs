@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
@@ -39,7 +40,9 @@ internal class TrieStoreDirtyNodesCache
 
     internal static void GetDictionarySizing(out int concurrencyLevel, out int initialBuckets)
     {
-        concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
+        // Core.Cpu.RuntimeInformation.ProcessorCount floors to 1 where Environment.ProcessorCount
+        // can report 0 (zk-evm). ConcurrentDictionary requires concurrencyLevel >= 1.
+        concurrencyLevel = Math.Min(RuntimeInformation.ProcessorCount * 4, 32);
         initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
     }
 
