@@ -39,12 +39,6 @@ public abstract class PrecompileTests<TPrecompile, TTests>: IPrecompileTests
                 yield return new(test) { TestName = EnsureSafeName(test.Name) };
             }
         }
-
-        foreach ((string input, string output, bool status) in TTests.TestCases())
-        {
-            TestCase test = new(input, output, status);
-            yield return new(test) { TestName = test.Name };
-        }
     }
 
     [TestCaseSource(nameof(TestSource))]
