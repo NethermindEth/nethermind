@@ -140,13 +140,14 @@ public class BlockAccessListManager(
             for (int j = chunkStart; j < chunkEnd; j++)
             {
                 (long? blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
-                totalRegularGas += blockGasUsed ?? 0;
+                blockGasUsed ??= block.Transactions[j].GasLimit;
+                totalRegularGas += blockGasUsed.Value;
                 totalStateGas += blockStateGasUsed;
-                SpendGas(blockGasUsed ?? 0);
+                SpendGas(blockGasUsed.Value);
 
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 
-                if (ex is not null)
+                if (blockGasUsed is null && ex is not null)
                     ExceptionDispatchInfo.Capture(ex).Throw();
 
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
