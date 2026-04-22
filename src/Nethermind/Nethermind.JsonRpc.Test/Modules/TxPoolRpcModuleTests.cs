@@ -61,8 +61,8 @@ public class TxPoolRpcModuleTests
 
         TxPoolContent txpoolContent = txPoolRpcModule.txpool_content().Data;
 
-        LegacyTransactionForRpc? rpcTxA = txpoolContent.Pending[new AddressAsKey(TestItem.AddressA)][1] as LegacyTransactionForRpc;
-        AccessListTransactionForRpc? rpcTxB = txpoolContent.Queued[new AddressAsKey(TestItem.AddressB)][2] as AccessListTransactionForRpc;
+        LegacyTransactionForRpc? rpcTxA = txpoolContent.Pending[TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true)][1] as LegacyTransactionForRpc;
+        AccessListTransactionForRpc? rpcTxB = txpoolContent.Queued[TestItem.AddressB.ToString(withZeroX: true, withEip55Checksum: true)][2] as AccessListTransactionForRpc;
 
         rpcTxA!.ChainId.Should().BeNull("legacy txs without chainId must not have one injected");
         rpcTxB!.ChainId.Should().Be(SomeChainId, "EIP-2930 txs without chainId should inherit it from the spec provider");
