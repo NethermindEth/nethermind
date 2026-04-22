@@ -36,18 +36,20 @@ namespace Nethermind.Consensus.AuRa
 
         public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
         {
-            if (!_initialized)
+            if (_initialized)
             {
-                _initialized = true;
-
-                _branchProcessor = branchProcessor;
-                _branchProcessor.BlockProcessed += OnBlockProcessed;
-                _branchProcessor.BlocksProcessing += OnBlocksProcessing;
-
-                Initialize();
+                if (!ReferenceEquals(_branchProcessor, branchProcessor))
+                    throw new InvalidOperationException($"{nameof(SetMainBlockBranchProcessor)} called with a different {nameof(IBranchProcessor)} instance after initialization.");
+                return;
             }
-        }
 
+            _initialized = true;
+            _branchProcessor = branchProcessor;
+            _branchProcessor.BlockProcessed += OnBlockProcessed;
+            _branchProcessor.BlocksProcessing += OnBlocksProcessing;
+
+            Initialize();
+        }
 
         private void Initialize()
         {
