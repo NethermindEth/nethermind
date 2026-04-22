@@ -272,6 +272,8 @@ public class TxPoolRpcModuleTests
         json.Should().Contain("\"transactionIndex\":null", "pending transactions have no block context");
         json.Should().Contain("\"from\":\"" + TestItem.AddressA.ToString().ToLowerInvariant() + "\"",
             "the spec requires 'from' to be present on every pending transaction");
+        json.Should().Contain("\"" + TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true) + "\":{",
+            "address map keys must use EIP-55 checksum format to match the spec");
     }
 
     [Test]

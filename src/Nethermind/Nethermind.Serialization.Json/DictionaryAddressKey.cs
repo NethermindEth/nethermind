@@ -112,9 +112,7 @@ namespace Nethermind.Serialization.Json
                         (Address)(AddressAsKey)(object)key :
                         (Address)(object)key;
 
-                    string propertyName = address.ToString();
-                    writer.WritePropertyName
-                        (options.PropertyNamingPolicy?.ConvertName(propertyName) ?? propertyName);
+                    writer.WritePropertyName(address.ToString(withZeroX: true, withEip55Checksum: true));
 
                     _valueConverter.Write(writer, value, options);
                 }
