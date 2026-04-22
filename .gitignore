@@ -440,7 +440,9 @@ FodyWeavers.xsd
 .DS_Store
 
 # AI
-.claude/
+.claude/*
+!.claude/skills
+!.claude/skills/**
 .gemini/
 
 # Worktrees
@@ -452,3 +454,4 @@ keystore/
 
 # Worktrees
 .worktrees/
+/.dotnet-cli

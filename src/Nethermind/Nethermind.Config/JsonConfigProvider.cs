@@ -9,30 +9,15 @@ namespace Nethermind.Config
     {
         private readonly ConfigProvider _provider = new();
 
-        public JsonConfigProvider(string jsonConfigFile)
-        {
-            _provider.AddSource(new JsonConfigSource(jsonConfigFile));
-        }
+        public JsonConfigProvider(string jsonConfigFile) => _provider.AddSource(new JsonConfigSource(jsonConfigFile));
 
-        public T GetConfig<T>() where T : IConfig
-        {
-            return _provider.GetConfig<T>();
-        }
+        public T GetConfig<T>() where T : IConfig => _provider.GetConfig<T>();
 
-        public IConfig GetConfig(Type configType)
-        {
-            return _provider.GetConfig(configType);
-        }
+        public IConfig GetConfig(Type configType) => _provider.GetConfig(configType);
 
-        public object GetRawValue(string category, string name)
-        {
-            return _provider.GetRawValue(category, name);
-        }
+        public object GetRawValue(string category, string name) => _provider.GetRawValue(category, name);
 
-        public void AddSource(IConfigSource configSource)
-        {
-            _provider.AddSource(configSource);
-        }
+        public void AddSource(IConfigSource configSource) => _provider.AddSource(configSource);
 
         /// <summary>
         /// AFAIK only used in tests and categories and not registered
@@ -40,9 +25,6 @@ namespace Nethermind.Config
         /// <param name="category"></param>
         /// <param name="configType"></param>
         /// <exception cref="NotSupportedException"></exception>
-        public void RegisterCategory(string category, Type configType)
-        {
-            throw new NotSupportedException();
-        }
+        public void RegisterCategory(string category, Type configType) => throw new NotSupportedException();
     }
 }

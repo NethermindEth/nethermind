@@ -8,53 +8,10 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class BlockInfoDecoder : RlpValueDecoder<BlockInfo>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockInfoDecoder))]
+    public sealed class BlockInfoDecoder() : RlpValueDecoder<BlockInfo>
     {
         public static BlockInfoDecoder Instance { get; } = new();
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockInfoDecoder))]
-        public BlockInfoDecoder() { }
-
-        protected override BlockInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (rlpStream.IsNextItemEmptyList())
-            {
-                rlpStream.ReadByte();
-                return null;
-            }
-
-            int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
-
-            Hash256? blockHash = rlpStream.DecodeKeccak();
-
-            bool wasProcessed = rlpStream.DecodeBool();
-            UInt256 totalDifficulty = rlpStream.DecodeUInt256();
-
-            BlockMetadata metadata = BlockMetadata.None;
-            // if we hadn't reached the end of the stream, assume we have metadata to decode
-            if (rlpStream.Position != lastCheck)
-            {
-                metadata = (BlockMetadata)rlpStream.DecodeInt();
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            {
-                rlpStream.Check(lastCheck);
-            }
-
-            if (blockHash is null)
-            {
-                return null;
-            }
-
-            BlockInfo blockInfo = new(blockHash, totalDifficulty)
-            {
-                WasProcessed = wasProcessed,
-                Metadata = metadata,
-            };
-
-            return blockInfo;
-        }
 
         public override void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -93,10 +50,7 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            return item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-        }
+        public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
         protected override BlockInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

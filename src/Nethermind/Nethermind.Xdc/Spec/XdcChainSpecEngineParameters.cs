@@ -12,7 +12,7 @@ namespace Nethermind.Xdc.Spec;
 public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public string EngineName => SealEngineType;
-    public string SealEngineType => Core.SealEngineType.XDPoS;
+    public string SealEngineType => XdcConstants.XDPoS;
     public int Epoch { get; set; }
     public int Gap { get; set; }
     public int Period { get; set; }
@@ -68,10 +68,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
-    {
-        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
-    }
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp) => spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
@@ -86,7 +83,7 @@ public sealed class V2ConfigParams
 {
     public ulong SwitchRound { get; init; }
     public int MaxMasternodes { get; init; }
-    public double CertThreshold { get; init; }
+    public double CertificateThreshold { get; init; }
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
     public int MinePeriod { get; init; }

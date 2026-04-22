@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,10 +24,10 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
 
         await signer.Sign(transaction);
 
-        bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+        AcceptTxResult added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
-            logger.Info("Failed to add signed transaction to the pool.");
+            logger.Warn($"Failed to add signed transaction to the pool: {added} {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         }
     }
 
@@ -36,7 +35,7 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
     {
         byte[] inputData = [.. XdcConstants.SignMethod, .. number.PaddedBytes(32), .. hash.Bytes.PadLeft(32)];
 
-        var transaction = new Transaction();
+        Transaction transaction = new();
         transaction.Nonce = nonce;
         transaction.To = blockSignersAddress;
         transaction.Value = 0;

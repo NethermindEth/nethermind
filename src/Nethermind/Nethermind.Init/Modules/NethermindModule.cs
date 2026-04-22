@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Abi;
@@ -18,14 +17,15 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
-using Nethermind.Era1;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.TxPool;
+using Testably.Abstractions;
 
 namespace Nethermind.Init.Modules;
 
@@ -53,8 +53,10 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
+            .AddModule(new DatabaseMigrationsModule())
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
-            .AddModule(new EraModule())
+            .AddModule(new Era1.EraModule())
+            .AddModule(new EraE.EraEModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
@@ -70,14 +72,15 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .Bind<IEcdsa, IEthereumEcdsa>()
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
-            .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
+            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider, IBlockTree, IStateReader>(
+                (specProvider, blockTree, stateReader) => new ChainHeadInfoProvider(specProvider, blockTree, stateReader))
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
 
             .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
             .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
-            .AddSingleton<IFileSystem>(_ => new FileSystem())
+            .AddSingleton<IFileSystem>(_ => new RealFileSystem())
             ;
 
         if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())

@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
 
@@ -42,10 +41,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ResetExtCodeCache()
-    {
-        // Cache is keyed by address, with code hash validation to remain correct when code changes mid-transaction.
-        _extCodeCache?.Clear();
-    }
+        => _extCodeCache?.Clear();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ResetExtCodeCacheForBlock()
@@ -89,7 +85,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ExtCodeCacheEntry CreateExtCodeCacheEntry(in ValueHash256 codeHash, CodeInfo codeInfo)
     {
-        uint codeSize = codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
+        uint codeSize = (uint)codeInfo.CodeSpan.Length;
         return new ExtCodeCacheEntry(codeHash, codeSize, codeInfo);
     }
 

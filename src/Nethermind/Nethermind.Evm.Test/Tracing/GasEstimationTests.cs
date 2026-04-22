@@ -26,14 +26,9 @@ namespace Nethermind.Evm.Test.Tracing
     [TestFixture(true)]
     [TestFixture(false)]
     [Parallelizable(ParallelScope.All)]
-    public class GasEstimationTests
+    public class GasEstimationTests(bool useCreates)
     {
-        private readonly ExecutionType _executionType;
-
-        public GasEstimationTests(bool useCreates)
-        {
-            _executionType = useCreates ? ExecutionType.CREATE : ExecutionType.CALL;
-        }
+        private readonly ExecutionType _executionType = useCreates ? ExecutionType.CREATE : ExecutionType.CALL;
 
         [Test]
         public void Does_not_take_into_account_precompiles()
@@ -51,7 +46,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
-            Assert.That(err, Is.EqualTo("Transaction execution fails"));
+            Assert.That(err, Is.EqualTo("insufficient funds for transfer"));
         }
 
         [Test]
@@ -81,7 +76,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
-            Assert.That(err, Is.EqualTo("Transaction execution fails"));
+            Assert.That(err, Is.EqualTo("insufficient funds for transfer"));
         }
 
         [Test]
@@ -273,7 +268,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, 1, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -297,7 +292,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -333,7 +328,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -358,7 +353,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -442,7 +437,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(100000)
                 .WithSenderAddress(Address.Zero)
-                .WithValue(1.Ether()) // Value transfer with zero balance
+                .WithValue(1.Ether) // Value transfer with zero balance
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -463,7 +458,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(100000)
                 .WithSenderAddress(Address.Zero)
-                .WithValue(1.Ether())
+                .WithValue(1.Ether)
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -485,7 +480,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(100000)
                 .WithSenderAddress(Address.Zero)
-                .WithValue(1.Ether())
+                .WithValue(1.Ether)
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -587,7 +582,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             TestEnvironment testEnvironment = new();
             Address contractAddress = TestItem.AddressB;
-            var check = 1_000_000;
+            int check = 1_000_000;
             byte[] contractCode = Bytes.FromHexString($"0x62{check:x6}5a10600f576001600055005b6000806000fd");
             testEnvironment.InsertContract(contractAddress, contractCode);
 
@@ -912,7 +907,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             // Use the existing pattern from Should_estimate_gas_for_explicit_gas_check_and_revert
             // Bytecode: PUSH3 <threshold>, GAS, LT, PUSH1 <revert_pc>, JUMPI, PUSH1 1, PUSH1 0, SSTORE, STOP, JUMPDEST, PUSH1 0, PUSH1 0, REVERT
-            var check = gasThreshold;
+            long check = gasThreshold;
             byte[] contractCode = Bytes.FromHexString($"0x62{check:x6}5a10600f576001600055005b6000806000fd");
             testEnvironment.InsertContract(contractAddress, contractCode);
 
@@ -1276,7 +1271,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _specProvider = MainnetSpecProvider.Instance;
                 _stateProvider = TestWorldStateFactory.CreateForTest();
                 _closer = _stateProvider.BeginScope(IWorldState.PreGenesis);
-                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
 
@@ -1298,10 +1293,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.CommitTree(0);
             }
 
-            public void Dispose()
-            {
-                _closer.Dispose();
-            }
+            public void Dispose() => _closer.Dispose();
         }
     }
 }

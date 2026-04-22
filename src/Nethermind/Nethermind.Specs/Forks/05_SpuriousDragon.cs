@@ -1,26 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 
-namespace Nethermind.Specs.Forks
+namespace Nethermind.Specs.Forks;
+
+public class SpuriousDragon() : NamedReleaseSpec<SpuriousDragon>(TangerineWhistle.Instance)
 {
-    public class SpuriousDragon : TangerineWhistle
+    public override void Apply(ReleaseSpec spec)
     {
-        private static IReleaseSpec _instance;
-
-        protected SpuriousDragon()
-        {
-            Name = "Spurious Dragon";
-            MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
-            IsEip155Enabled = true;
-            IsEip158Enabled = true;
-            IsEip160Enabled = true;
-            IsEip170Enabled = true;
-        }
-
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new SpuriousDragon());
+        spec.Name = "Spurious Dragon";
+        spec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
+        spec.IsEip155Enabled = true;
+        spec.IsEip158Enabled = true;
+        spec.IsEip160Enabled = true;
+        spec.IsEip170Enabled = true;
     }
 }

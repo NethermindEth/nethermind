@@ -30,7 +30,7 @@ internal class XdcTransactionProcessorTests
     private IMasternodeVotingContract _masternodeVotingContract;
     private TestXdcTransactionProcessor? _transactionProcessor;
 
-    private static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether;
 
     [SetUp]
     public void Setup()
@@ -61,10 +61,8 @@ internal class XdcTransactionProcessorTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         _worldStateCloser.Dispose();
-    }
 
     [TestCase(false, false)]
     [TestCase(true, false)]
@@ -85,7 +83,7 @@ internal class XdcTransactionProcessorTests
         _stateProvider!.CreateAccount(beneficiaryAddress, AccountBalance);
         _stateProvider.CreateAccount(ownerAddress, UInt256.Zero);
 
-        _masternodeVotingContract.GetCandidateOwnerDuringProcessing(Arg.Any<XdcTransactionProcessor>(), Arg.Any<XdcBlockHeader>(), beneficiaryAddress)
+        _masternodeVotingContract.GetCandidateOwner(Arg.Any<IWorldState>(), beneficiaryAddress)
             .Returns(ownerAddress);
 
         Transaction tx = Build.A.Transaction
@@ -131,20 +129,15 @@ internal class XdcTransactionProcessorTests
         }
     }
 
-    private class TestXdcTransactionProcessor : XdcTransactionProcessor
+    private class TestXdcTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager,
+        IMasternodeVotingContract masternodeVotingContract) : XdcTransactionProcessor(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, masternodeVotingContract)
     {
-        public TestXdcTransactionProcessor(
-            ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-            ISpecProvider? specProvider,
-            IWorldState? worldState,
-            IVirtualMachine? virtualMachine,
-            ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager,
-            IMasternodeVotingContract masternodeVotingContract)
-            : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, masternodeVotingContract)
-        {
-        }
-
         public void TestPayFees(
             Transaction tx,
             XdcBlockHeader header,
@@ -154,10 +147,8 @@ internal class XdcTransactionProcessorTests
             long spentGas,
             in UInt256 premiumPerGas,
             in UInt256 blobBaseFee,
-            int statusCode)
-        {
+            int statusCode) =>
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
-        }
     }
 }
 

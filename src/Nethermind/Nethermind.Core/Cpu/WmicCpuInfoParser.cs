@@ -12,18 +12,18 @@ internal static class WmicCpuInfoParser
 {
     internal static CpuInfo ParseOutput(string? content)
     {
-        var processors = SectionsHelper.ParseSections(content, '=');
+        List<Dictionary<string, string>> processors = SectionsHelper.ParseSections(content, '=');
 
-        var processorModelNames = new HashSet<string>();
+        HashSet<string> processorModelNames = new();
         int physicalCoreCount = 0;
         int logicalCoreCount = 0;
         int processorsCount = 0;
 
-        var currentClockSpeed = Frequency.Zero;
-        var maxClockSpeed = Frequency.Zero;
-        var minClockSpeed = Frequency.Zero;
+        Frequency currentClockSpeed = Frequency.Zero;
+        Frequency maxClockSpeed = Frequency.Zero;
+        Frequency minClockSpeed = Frequency.Zero;
 
-        foreach (var processor in processors)
+        foreach (Dictionary<string, string> processor in processors)
         {
             if (processor.TryGetValue(WmicCpuInfoKeyNames.NumberOfCores, out string? numberOfCoresValue) &&
                 int.TryParse(numberOfCoresValue, out int numberOfCores) &&

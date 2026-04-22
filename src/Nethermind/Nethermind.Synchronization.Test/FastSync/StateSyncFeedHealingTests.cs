@@ -6,13 +6,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
-using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
@@ -33,7 +33,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Hash256 rootHash = remote.StateTree.RootHash;
 
         await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 2000);
-        var local = container.Resolve<IStateSyncTestOperation>();
+        IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         ProcessAccountRange(remote.StateTree, snapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
@@ -63,7 +63,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             byte[] key = new byte[32];
             // Snap can't actually use GetTrieNodes where the path is exactly 64 nibble. So *255.
             ((UInt256)(i * 255)).ToBigEndian(key);
-            Hash256 keccak = new Hash256(key);
+            Hash256 keccak = new(key);
             pathPool[i] = keccak;
         }
 
@@ -128,7 +128,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Hash256 finalRootHash = remote.StateTree.RootHash;
 
         await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 1000);
-        var local = container.Resolve<IStateSyncTestOperation>();
+        IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         int startingHashIndex = 0;
@@ -194,6 +194,6 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
         byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
 
-        _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
+        _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
     }
 }

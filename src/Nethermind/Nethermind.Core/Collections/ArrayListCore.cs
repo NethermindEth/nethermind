@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -124,11 +125,8 @@ internal static class ArrayPoolListCore<T>
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowOnlyReduce(int newCount, int oldCount)
-        {
-            throw new ArgumentException($"Count can only be reduced. {newCount} is larger than {oldCount}",
+        static void ThrowOnlyReduce(int newCount, int oldCount) => throw new ArgumentException($"Count can only be reduced. {newCount} is larger than {oldCount}",
                 nameof(count));
-        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -139,10 +137,14 @@ internal static class ArrayPoolListCore<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Reverse(T[] array, int count)
+    public static void Sort<TComparer>(T[] array, int count, TComparer comparer)
+        where TComparer : IComparer<T>
     {
-        array.AsSpan(0, count).Reverse();
+        if (count > 1) array.AsSpan(0, count).Sort(comparer);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Reverse(T[] array, int count) => array.AsSpan(0, count).Reverse();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool Contains(T[] array, T item, int count) => IndexOf(array, count, item) >= 0;
@@ -155,10 +157,7 @@ internal static class ArrayPoolListCore<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void CopyTo(T[] array, int count, T[] destination, int index)
-    {
-        array.AsMemory(0, count).CopyTo(destination.AsMemory(index));
-    }
+    public static void CopyTo(T[] array, int count, T[] destination, int index) => array.AsMemory(0, count).CopyTo(destination.AsMemory(index));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool GuardIndex(int index, int count, bool shouldThrow = true, bool allowEqualToCount = false)
@@ -173,10 +172,7 @@ internal static class ArrayPoolListCore<T>
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowArgumentOutOfRangeException()
-        {
-            throw new ArgumentOutOfRangeException(nameof(index));
-        }
+        static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException(nameof(index));
     }
 
     public static T? RemoveLast(T[] array, ref int count)

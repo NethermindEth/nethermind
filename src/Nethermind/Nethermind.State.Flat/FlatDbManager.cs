@@ -5,8 +5,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -45,7 +43,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
+    // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
+    private readonly Task _clearBundleCacheTask;
+
     private readonly int _compactSize;
+    private readonly TimeSpan _compactorStallTimeout;
 
     // For debugging. Do the compaction synchronously
     private readonly bool _inlineCompaction;
@@ -63,6 +65,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
         IFlatDbConfig config,
+        IBlocksConfig blocksConfig,
         ILogManager logManager,
         bool enableDetailedMetrics)
     {
@@ -75,6 +78,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _enableDetailedMetrics = enableDetailedMetrics;
 
         _compactSize = config.CompactSize;
+
+        // We assume that the state must be able to be persisted in half the slot time at the very
+        // least. If block processing is stalled for longer than this, persistence is simply too slow
+        // for the network. The timeout is 0.5 * blockTime * compactSize because persistence persists
+        // compactSize blocks at a time.
+        _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
@@ -86,6 +95,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
         _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
+        _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -204,10 +214,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _ = Task.Run(async () =>
         {
             long sw = Stopwatch.GetTimestamp();
+            using CancellationTokenSource cts = new();
             while (true)
             {
-                Task delayTask = Task.Delay(slowTime);
-                if (await Task.WhenAny(jobTask, delayTask) == jobTask) break;
+                Task delayTask = Task.Delay(slowTime, cts.Token);
+                if (await Task.WhenAny(jobTask, delayTask) == jobTask)
+                {
+                    await cts.CancelAsync();
+                    break;
+                }
                 if (_logger.IsWarn) _logger.Warn($"Slow task \"{name}\". Took {Stopwatch.GetElapsedTime(sw)}");
             }
         });
@@ -345,20 +360,50 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
 
-                if (_logger.IsWarn) _logger.Warn("Compactor job stall! Insufficient reorg depth or too slow persistence!");
-                _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
+                // This wait only occurs after several blocks have already entered the queue without blocking,
+                // so attempting to not block here to avoid blocking block processing is redundant.
+                TimeSpan delay = _compactorStallTimeout;
+
+                while (true)
+                {
+                    using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancelTokenSource.Token);
+                    cts.CancelAfter(delay);
+
+                    try
+                    {
+                        _compactorJobs.Writer.WriteAsync(endBlock, cts.Token).AsTask().Wait();
+                        break;
+                    }
+                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException && !_cancelTokenSource.Token.IsCancellationRequested)
+                    {
+                        delay = TimeSpan.FromSeconds(5);
+                        if (_logger.IsWarn) _logger.Warn("Compactor job stall! Persistence is too slow for the network.");
+                    }
+                }
             }
+        }
+    }
+
+    private async Task RunClearBundleCache(CancellationToken cancellationToken)
+    {
+        using PeriodicTimer timer = new(TimeSpan.FromSeconds(15));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                ClearReadOnlyBundleCache();
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
     private void ClearReadOnlyBundleCache()
     {
-        using ArrayPoolListRef<StateId> statesToRemove = new();
-        statesToRemove.AddRange(_readonlySnapshotBundleCache.Keys);
-
-        foreach (StateId stateId in statesToRemove)
+        foreach (KeyValuePair<StateId, ReadOnlySnapshotBundle> entry in _readonlySnapshotBundleCache)
         {
-            if (_readonlySnapshotBundleCache.TryRemove(stateId, out ReadOnlySnapshotBundle? bundle))
+            if (_readonlySnapshotBundleCache.TryRemove(entry.Key, out ReadOnlySnapshotBundle? bundle))
             {
                 bundle.Dispose();
             }
@@ -372,6 +417,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId persistedState = _persistenceManager.FlushToPersistence();
 
         if (cancellationToken.IsCancellationRequested) return;
+        if (persistedState.BlockNumber < 0) return;
 
         _snapshotRepository.RemoveStatesUntil(persistedState);
 
@@ -402,6 +448,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await _compactorTask;
         await _populateTrieNodeCacheTask;
         await _persistenceTask;
+        await _clearBundleCacheTask;
 
         _cancelTokenSource.Dispose();
     }

@@ -63,14 +63,11 @@ namespace Nethermind.Merge.AuRa
                 _blocksConfig,
                 _api.LogManager);
 
-        protected override IBlockFinalizationManager InitializeMergeFinalizationManager()
-        {
-            return new AuRaMergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(),
+        protected override IBlockFinalizationManager InitializeMergeFinalizationManager() => new AuRaMergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(),
                 _auraApi!.FinalizationManager ??
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
                 _poSSwitcher);
-        }
 
         public override IModule Module => new AuRaMergeModule();
     }
@@ -82,9 +79,7 @@ namespace Nethermind.Merge.AuRa
     /// </summary>
     public class AuRaMergeModule : Module
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder
+        protected override void Load(ContainerBuilder builder) => builder
                 .AddModule(new BaseMergePluginModule())
 
                 // Aura (non merge) use `BlockProducerStarter` directly.
@@ -100,6 +95,5 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
                 ;
-        }
     }
 }

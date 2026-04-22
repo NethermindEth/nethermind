@@ -14,15 +14,9 @@ namespace Nethermind.Network.Benchmarks
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Old()
-        {
-            return Bytes.Empty;
-        }
+        public byte[] Old() => Bytes.Empty;
 
         [Benchmark]
-        public byte[] New()
-        {
-            return Bytes.Empty;
-        }
+        public byte[] New() => Bytes.Empty;
     }
 }

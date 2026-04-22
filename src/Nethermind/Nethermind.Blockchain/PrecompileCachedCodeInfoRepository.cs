@@ -1,0 +1,103 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
+
+namespace Nethermind.Blockchain;
+
+public class PrecompileCachedCodeInfoRepository(
+    IPrecompileProvider precompileProvider,
+    ICodeInfoRepository baseCodeInfoRepository,
+    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
+{
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCache is null
+        ? precompileProvider.GetPrecompiles()
+        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
+        out Address? delegationAddress)
+    {
+        if (TryGetCachedPrecompile(codeSource, vmSpec, out CodeInfo cachedCodeInfo))
+        {
+            delegationAddress = null;
+            return cachedCodeInfo;
+        }
+        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+    }
+
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec) =>
+        TryGetCachedPrecompile(codeSource, vmSpec, out CodeInfo cachedCodeInfo)
+            ? cachedCodeInfo
+            : baseCodeInfoRepository.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
+
+    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
+        baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
+
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
+
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
+        baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
+
+    public bool TryGetDelegation(Address address, IReleaseSpec spec,
+        [NotNullWhen(true)] out Address? delegatedAddress) =>
+        baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+
+    private bool TryGetCachedPrecompile(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? cachedCodeInfo)
+    {
+        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo precompileCodeInfo))
+        {
+            cachedCodeInfo = precompileCodeInfo;
+            return true;
+        }
+
+        cachedCodeInfo = null;
+        return false;
+    }
+
+    private static CodeInfo CreateCachedPrecompile(
+        in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache)
+    {
+        IPrecompile precompile = originalPrecompile.Value.Precompile!;
+
+        return !precompile.SupportsCaching
+            ? originalPrecompile.Value
+            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
+    }
+
+    private class CachedPrecompile(
+        Address address,
+        IPrecompile precompile,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
+    {
+        public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
+
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
+
+        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
+            if (!cache.TryGetValue(key, out Result<byte[]> result))
+            {
+                result = precompile.Run(inputData, releaseSpec);
+                // we need to rebuild the key with data copy as the data can be changed by VM processing
+                key = new PreBlockCaches.PrecompileCacheKey(address, inputData.ToArray());
+                cache.TryAdd(key, result);
+            }
+
+            return result;
+        }
+    }
+}

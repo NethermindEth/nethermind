@@ -44,7 +44,7 @@ public class ParityStyleTracerTests
             .TestObject;
 
         ChainSpec cp = Build.A.ChainSpec
-            .WithAllocation(new Address("0xdea60e4f8ea50d5ed92b0a5b15ae9d24aeba0bee"), 1.Ether())
+            .WithAllocation(new Address("0xdea60e4f8ea50d5ed92b0a5b15ae9d24aeba0bee"), 1.Ether)
             .TestObject;
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
@@ -62,10 +62,7 @@ public class ParityStyleTracerTests
     }
 
     [TearDown]
-    public async Task TearDownAsync()
-    {
-        await _container.DisposeAsync();
-    }
+    public async Task TearDownAsync() => await _container.DisposeAsync();
 
     [Test]
     public void Can_trace_raw_parity_style()

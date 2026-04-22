@@ -3,39 +3,17 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using System;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class LogEntryDecoder : RlpValueDecoder<LogEntry>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(LogEntryDecoder))]
+    public sealed class LogEntryDecoder() : RlpValueDecoder<LogEntry>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static LogEntryDecoder Instance { get; } = new();
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(LogEntryDecoder))]
-        public LogEntryDecoder() { }
-
-        protected override LogEntry? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (rlpStream.IsNextItemEmptyList())
-            {
-                rlpStream.ReadByte();
-                return null;
-            }
-
-            rlpStream.ReadSequenceLength();
-            Address? address = rlpStream.DecodeAddress();
-            long sequenceLength = rlpStream.ReadSequenceLength();
-            Hash256[] topics = new Hash256[sequenceLength / 33];
-            for (int i = 0; i < topics.Length; i++)
-            {
-                topics[i] = rlpStream.DecodeKeccak();
-            }
-
-            byte[] data = rlpStream.DecodeByteArray();
-
-            return new LogEntry(address, data, topics);
-        }
 
         protected override LogEntry? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -45,16 +23,23 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            decoderContext.ReadSequenceLength();
+            int logEntryLength = decoderContext.ReadSequenceLength();
+            decoderContext.GuardLimit(logEntryLength, RlpLimit);
+            int logEntryCheck = decoderContext.Position + logEntryLength;
             Address? address = decoderContext.DecodeAddress();
-            long sequenceLength = decoderContext.ReadSequenceLength();
-            Hash256[] topics = new Hash256[sequenceLength / 33];
+            int topicsLength = decoderContext.ReadSequenceLength();
+            int topicsCheck = decoderContext.Position + topicsLength;
+            int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
+            decoderContext.GuardLimit(topicCount, RlpLimit.L4);
+            Hash256[] topics = new Hash256[topicCount];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = decoderContext.DecodeKeccak();
             }
+            decoderContext.Check(topicsCheck);
 
             byte[] data = decoderContext.DecodeByteArray();
+            decoderContext.Check(logEntryCheck);
 
             return new LogEntry(address, data, topics);
         }
@@ -79,13 +64,13 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            var (total, topics) = GetContentLength(item);
+            (int total, int topics) = GetContentLength(item);
             rlpStream.StartSequence(total);
 
             rlpStream.Encode(item.Address);
             rlpStream.StartSequence(topics);
 
-            for (var i = 0; i < item.Topics.Length; i++)
+            for (int i = 0; i < item.Topics.Length; i++)
             {
                 rlpStream.Encode(item.Topics[i]);
             }
@@ -105,7 +90,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static (int Total, int Topics) GetContentLength(LogEntry? item)
         {
-            var contentLength = 0;
+            int contentLength = 0;
             if (item is null)
             {
                 return (contentLength, 0);
@@ -145,13 +130,15 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            decoderContext.ReadSequenceLength();
-            decoderContext.DecodeAddressStructRef(out var address);
-            var (prefixLength, contentLength) = decoderContext.PeekPrefixAndContentLength();
+            int logEntryLength = decoderContext.ReadSequenceLength();
+            int logEntryCheck = decoderContext.Position + logEntryLength;
+            decoderContext.DecodeAddressStructRef(out AddressStructRef address);
+            (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
             int sequenceLength = prefixLength + contentLength;
             ReadOnlySpan<byte> topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
             decoderContext.SkipItem();
             ReadOnlySpan<byte> data = decoderContext.DecodeByteArraySpan();
+            decoderContext.Check(logEntryCheck);
 
             item = new LogEntryStructRef(address, data, topics);
         }

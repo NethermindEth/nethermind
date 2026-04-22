@@ -23,28 +23,7 @@ internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
         if (hashBytes.Length > Hash256.Size)
             throw new RlpException($"Hash length {hashBytes.Length} is longer than max size of 32.");
         ulong round = decoderContext.DecodeULong();
-        long number = decoderContext.DecodeLong();
-
-        return new BlockRoundInfo(new Hash256(hashBytes), round, number);
-
-    }
-
-    protected override BlockRoundInfo DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        byte[] hashBytes = rlpStream.DecodeByteArray();
-        if (hashBytes.Length > Hash256.Size)
-            throw new RlpException($"Hash length {hashBytes.Length} is longer than max size of 32.");
-        ulong round = rlpStream.DecodeULong();
-        long number = rlpStream.DecodeLong();
+        long number = decoderContext.DecodePositiveLong();
 
         return new BlockRoundInfo(new Hash256(hashBytes), round, number);
     }
@@ -62,10 +41,7 @@ internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
         stream.Encode(item.BlockNumber);
     }
 
-    public override int GetLength(BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     private static int GetContentLength(BlockRoundInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

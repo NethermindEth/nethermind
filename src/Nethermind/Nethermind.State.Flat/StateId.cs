@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 
 namespace Nethermind.State.Flat;
 
@@ -15,6 +13,7 @@ public readonly record struct StateId(long BlockNumber, in ValueHash256 StateRoo
     }
 
     public static readonly StateId PreGenesis = new(-1, Keccak.EmptyTreeHash);
+    public static readonly StateId Sync = new(long.MinValue, Keccak.EmptyTreeHash);
 
     public int CompareTo(StateId other)
     {

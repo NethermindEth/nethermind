@@ -1,0 +1,18 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "dotnet-format",
+      "pattern": [
+        {
+          "regexp": "^\\s*(\\S.*)\\((\\d+),(\\d+)\\):\\s+(warning|error)\\s+(\\S+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        }
+      ]
+    }
+  ]
+}

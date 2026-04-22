@@ -15,19 +15,16 @@ namespace Nethermind.Core.Test.Builders
 {
     public class TransactionBuilder<T> : BuilderBase<T> where T : Transaction, new()
     {
-        public TransactionBuilder()
+        public TransactionBuilder() => TestObjectInternal = new T
         {
-            TestObjectInternal = new T
-            {
-                GasPrice = 1,
-                GasLimit = Transaction.BaseTxGasCost,
-                To = Address.Zero,
-                Nonce = 0,
-                Value = 1,
-                Data = Array.Empty<byte>(),
-                Timestamp = 0,
-            };
-        }
+            GasPrice = 1,
+            GasLimit = Transaction.BaseTxGasCost,
+            To = Address.Zero,
+            Nonce = 0,
+            Value = 1,
+            Data = Array.Empty<byte>(),
+            Timestamp = 0,
+        };
 
         public TransactionBuilder<T> WithNonce(UInt256 nonce)
         {
@@ -209,10 +206,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx()
-        {
-            return TestObjectInternal.Type == TxType.SetCode ? WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))) : this;
-        }
+        public TransactionBuilder<T> WithAuthorizationCodeIfAuthorizationListTx() => TestObjectInternal.Type == TxType.SetCode ? WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0))) : this;
 
         public TransactionBuilder<T> WithAuthorizationCode(AuthorizationTuple authTuple)
         {

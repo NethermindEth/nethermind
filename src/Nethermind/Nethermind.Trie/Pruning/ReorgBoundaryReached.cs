@@ -8,13 +8,8 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Tells which number is safe to mark as a checkpoint if it was persisted before.
     /// </summary>
-    public class ReorgBoundaryReached : EventArgs
+    public class ReorgBoundaryReached(long blockNumber) : EventArgs
     {
-        public ReorgBoundaryReached(long blockNumber)
-        {
-            BlockNumber = blockNumber;
-        }
-
-        public long BlockNumber { get; }
+        public long BlockNumber { get; } = blockNumber;
     }
 }

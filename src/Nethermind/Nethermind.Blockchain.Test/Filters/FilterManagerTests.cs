@@ -43,10 +43,7 @@ public class FilterManagerTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _filterStore.Dispose();
-    }
+    public void TearDown() => _filterStore.Dispose();
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task removing_filter_removes_data()
@@ -283,6 +280,52 @@ public class FilterManagerTests
     }
 
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task concurrent_block_processing_and_poll_does_not_lose_data()
+    {
+        BlockFilter blockFilter = new(_currentFilterId++);
+        _filterStore.SaveFilter(blockFilter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
+
+        Block block = Build.A.Block.TestObject;
+
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
+        _filterManager.PollBlockHashes(blockFilter.Id);
+
+        const int producerCount = 4;
+        const int blocksPerProducer = 125;
+        const int blockCount = producerCount * blocksPerProducer;
+        int totalPolled = 0;
+
+        Task[] producers = new Task[producerCount];
+        for (int p = 0; p < producerCount; p++)
+        {
+            producers[p] = Task.Run(() =>
+            {
+                for (int i = 0; i < blocksPerProducer; i++)
+                    _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
+            });
+        }
+
+        Task consumer = Task.Run(async () =>
+        {
+            while (totalPolled < blockCount)
+            {
+                Hash256[] polled = _filterManager.PollBlockHashes(blockFilter.Id);
+                totalPolled += polled.Length;
+                if (polled.Length == 0) await Task.Yield();
+            }
+        });
+
+        List<Task> allTasks = new(producerCount + 1);
+        for (int p = 0; p < producerCount; p++)
+            allTasks.Add(producers[p]);
+        allTasks.Add(consumer);
+        await Task.WhenAll(allTasks);
+
+        totalPolled.Should().Be(blockCount);
+    }
+
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
         => LogsShouldNotBeEmpty([filterBuilder], [receiptBuilder]);
 
@@ -308,8 +351,8 @@ public class FilterManagerTests
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
         Action<IEnumerable<FilterLog>> logsAssertion)
     {
-        List<FilterBase> filters = new List<FilterBase>();
-        List<TxReceipt> receipts = new List<TxReceipt>();
+        List<FilterBase> filters = new();
+        List<TxReceipt> receipts = new();
         foreach (Action<FilterBuilder> filterBuilder in filterBuilders)
         {
             filters.Add(BuildFilter(filterBuilder));

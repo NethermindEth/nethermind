@@ -46,41 +46,6 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    protected override TimeoutCertificate DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemEmptyList())
-        {
-            rlpStream.ReadByte();
-            return null;
-        }
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        ulong round = rlpStream.DecodeULong();
-
-        byte[][]? signatureBytes = rlpStream.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in timeout certificate.");
-        Signature[]? signatures = null;
-        if (signatureBytes is not null)
-        {
-            signatures = new Signature[signatureBytes.Length];
-            for (int i = 0; i < signatures.Length; i++)
-            {
-                signatures[i] = new Signature(signatureBytes[i].AsSpan(0, 64), signatureBytes[i][64]);
-            }
-        }
-
-        ulong gapNumber = rlpStream.DecodeUlong();
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(endPosition);
-        }
-
-        return new TimeoutCertificate(round, signatures, gapNumber);
-    }
-
     public Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -109,17 +74,18 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         else
         {
             stream.StartSequence(SignaturesLength(item));
+            Span<byte> sigBuffer = stackalloc byte[Signature.Size];
             foreach (Signature sig in item.Signatures)
-                stream.Encode(sig.BytesWithRecovery);
+            {
+                sig.WriteBytesWithRecoveryTo(sigBuffer);
+                stream.Encode(sigBuffer);
+            }
         }
 
         stream.Encode(item.GapNumber);
     }
 
-    public override int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -130,8 +96,5 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
                + Rlp.LengthOf(item.GapNumber);
     }
 
-    private static int SignaturesLength(TimeoutCertificate item)
-    {
-        return item.Signatures is not null ? item.Signatures.Length * Rlp.LengthOfSequence(Signature.Size) : 0;
-    }
+    private static int SignaturesLength(TimeoutCertificate item) => item.Signatures is not null ? item.Signatures.Length * Rlp.LengthOfSequence(Signature.Size) : 0;
 }

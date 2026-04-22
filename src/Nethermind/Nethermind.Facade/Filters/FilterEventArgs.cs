@@ -5,13 +5,8 @@ using System;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class FilterEventArgs : EventArgs
+    public class FilterEventArgs(int filterId) : EventArgs
     {
-        public int FilterId { get; }
-
-        public FilterEventArgs(int filterId)
-        {
-            FilterId = filterId;
-        }
+        public int FilterId { get; } = filterId;
     }
 }

@@ -73,13 +73,13 @@ public class UPnPStep(
             Protocol.Tcp,
             networkConfig.P2PPort,
             networkConfig.P2PPort,
-            ExpirationRate.Milliseconds + 10000,
+            (int)ExpirationRate.TotalMilliseconds + 10000,
             "Nethermind P2P"));
         await device.CreatePortMapAsync(new Mapping(
             Protocol.Udp,
             networkConfig.DiscoveryPort,
             networkConfig.DiscoveryPort,
-            ExpirationRate.Milliseconds + 10000,
+            (int)ExpirationRate.TotalMilliseconds + 10000,
             "Nethermind Discovery"));
 
         if (_logger.IsDebug) _logger.Debug("UPnP mapping added");

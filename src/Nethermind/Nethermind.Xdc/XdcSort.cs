@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Xdc;
 
@@ -15,16 +13,10 @@ namespace Nethermind.Xdc;
 /// </summary>
 public static class XdcSort
 {
-    private struct LessSwap<T>
+    private struct LessSwap<T>(IList<T> data, Func<T, T, bool> less)
     {
-        public Func<T, T, bool> Less;
-        public IList<T> Data;
-
-        public LessSwap(IList<T> data, Func<T, T, bool> less)
-        {
-            Data = data;
-            Less = less;
-        }
+        public Func<T, T, bool> Less = less;
+        public IList<T> Data = data;
 
         public void Swap(int i, int j)
         {
@@ -40,13 +32,11 @@ public static class XdcSort
     /// </summary>
     public static void Slice<T>(IList<T> x, Func<T, T, bool> less)
     {
-        if (x == null)
-            throw new ArgumentNullException(nameof(x));
-        if (less == null)
-            throw new ArgumentNullException(nameof(less));
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(less);
 
         int length = x.Count;
-        var data = new LessSwap<T>(x, less);
+        LessSwap<T> data = new(x, less);
         QuickSort_func(data, 0, length, MaxDepth(length));
     }
 
@@ -70,8 +60,7 @@ public static class XdcSort
                 return;
             }
             maxDepth--;
-            int mlo, mhi;
-            DoPivot_func(data, a, b, out mlo, out mhi);
+            DoPivot_func(data, a, b, out int mlo, out int mhi);
             if (mlo - a < b - mhi)
             {
                 QuickSort_func(data, a, mlo, maxDepth);

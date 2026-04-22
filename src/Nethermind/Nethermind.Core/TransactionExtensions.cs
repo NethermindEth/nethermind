@@ -58,11 +58,19 @@ namespace Nethermind.Core
 
             public ulong GetBlobGas() => (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
             public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
+
+            public void CapGasLimit(long? gasCap)
+            {
+                if (gasCap is not null and not 0)
+                {
+                    tx.GasLimit = long.Min(tx.GasLimit, gasCap.Value);
+                }
+            }
         }
 
         public static bool TryGetByTxType<T>(this T?[] array, TxType txType, [NotNullWhen(true)] out T? item)
         {
-            var type = (byte)txType;
+            byte type = (byte)txType;
             if (type > Transaction.MaxTxType)
             {
                 item = default;

@@ -49,7 +49,7 @@ internal static class InstructionDbBuilder
         var db = new InstructionDb(targetArch);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        using var stream = File.OpenRead(xmlPath);
+        using FileStream stream = File.OpenRead(xmlPath);
         using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
 
         while (reader.Read())
@@ -70,7 +70,7 @@ internal static class InstructionDbBuilder
             string instructionXml = reader.ReadOuterXml();
             var instrDoc = new XmlDocument();
             instrDoc.LoadXml(instructionXml);
-            var instrNode = instrDoc.DocumentElement!;
+            XmlElement instrNode = instrDoc.DocumentElement!;
 
             // Parse operands
             string operandPattern = BuildOperandPattern(instrNode);
@@ -81,7 +81,7 @@ internal static class InstructionDbBuilder
                 continue;
 
             // Find measurement for target architecture (with fallback)
-            var measurement = FindMeasurement(instrNode, targetArch, fallbacks);
+            XmlElement? measurement = FindMeasurement(instrNode, targetArch, fallbacks);
             if (measurement is null)
                 continue;
 
