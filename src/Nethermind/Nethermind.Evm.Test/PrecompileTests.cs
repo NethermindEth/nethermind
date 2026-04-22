@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -67,7 +68,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     protected void RunTest(string input, string output, bool status)
     {
         byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Instance.Run(inputData, MuirGlacier.Instance);
+        (byte[] outputData, bool outcome) = Instance.Run(inputData, Prague.Instance);
 
         using (Assert.EnterMultipleScope())
         {

@@ -71,12 +71,14 @@ public class PrecompileCachedCodeInfoRepository(
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            PreBlockCaches.PrecompileCacheKey key = new(address, precompile.GetEffectiveInput(inputData));
+            ReadOnlyMemory<byte> effectiveInput = precompile.GetEffectiveInput(inputData);
+            PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput);
             if (!cache.TryGetValue(key, out Result<byte[]> result))
             {
                 result = precompile.Run(inputData, releaseSpec);
                 // we need to rebuild the key with data copy as the data can be changed by VM processing
-                key = new(address, precompile.GetEffectiveInput(inputData).ToArray());
+                // effective-input bounds are expected to remain the same
+                key = new(address, effectiveInput.ToArray());
                 cache.TryAdd(key, result);
             }
 
