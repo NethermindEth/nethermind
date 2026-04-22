@@ -22,7 +22,7 @@ public class BN254MulPrecompileTests : PrecompileTests<BN254MulPrecompile, BN254
         "23f16f1bcc31bd002746da6fa3825209af9a356ccd99cf79604a430dd592bcd90a03caeda9c5aa40cdc9e4166e083492885dad36c72714e3697e34a4bc72ccaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
         + "112233"
     )]
-    public void GetEffectiveInput_DoesntChangeOutput(string input)
+    public void GetEffectiveInput_SameOutput(string input)
     {
         ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input);
         ReadOnlyMemory<byte> effInput = Instance.GetEffectiveInput(fullInput);
