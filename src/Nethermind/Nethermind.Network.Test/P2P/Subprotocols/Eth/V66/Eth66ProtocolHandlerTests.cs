@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -105,14 +104,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Metadata_correct()
         {
-            _handler.ProtocolCode.Should().Be("eth");
-            _handler.Name.Should().Be("eth66");
-            _handler.ProtocolVersion.Should().Be(66);
-            _handler.MessageIdSpaceSize.Should().Be(17);
-            _handler.IncludeInTxPool.Should().BeTrue();
-            _handler.ClientId.Should().Be(_session.Node?.ClientId);
-            _handler.HeadHash.Should().BeNull();
-            _handler.HeadNumber.Should().Be(0);
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth66"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(66));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
         }
 
         [Test]
@@ -152,7 +151,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.BlockHeaders);
-            act.Should().Throw<SubprotocolException>();
+            Assert.That(act, Throws.TypeOf<SubprotocolException>());
         }
 
         [Test]
@@ -164,6 +163,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
             _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>());
+        }
+
+        [Test]
+        public void Should_throw_when_receiving_get_block_bodies_before_status()
+        {
+            using GetBlockBodiesMessage msg62 = new(new[] { Keccak.Zero, TestItem.KeccakA });
+            using Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage msg66 = new(1111, msg62);
+
+            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
+
+            Assert.That(act, Throws.TypeOf<SubprotocolException>());
+            _session.DidNotReceive().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>());
         }
 
         [Test]
@@ -192,7 +203,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.BlockBodies);
-            act.Should().Throw<SubprotocolException>();
+            Assert.That(act, Throws.TypeOf<SubprotocolException>());
         }
 
         [Test]
@@ -253,7 +264,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-            act.Should().Throw<SubprotocolException>();
+            Assert.That(act, Throws.TypeOf<SubprotocolException>());
         }
 
         [Test]
@@ -265,6 +276,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
             _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>());
+        }
+
+        [Test]
+        public void Should_throw_when_receiving_get_receipts_before_status()
+        {
+            using GetReceiptsMessage msg63 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+            using Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage msg66 = new(1111, msg63);
+
+            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
+
+            Assert.That(act, Throws.TypeOf<SubprotocolException>());
+            _session.DidNotReceive().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>());
         }
 
         [Test]
@@ -293,7 +316,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
-            act.Should().Throw<SubprotocolException>();
+            Assert.That(act, Throws.TypeOf<SubprotocolException>());
         }
 
 
