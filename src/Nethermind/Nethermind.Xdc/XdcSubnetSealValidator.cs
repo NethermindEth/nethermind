@@ -4,7 +4,6 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
 using System;
 
@@ -18,9 +17,6 @@ internal sealed class XdcSubnetSealValidator(
     IEpochSwitchManager epochSwitchManager,
     ISpecProvider specProvider) : XdcSealValidator(masternodesCalculator, epochSwitchManager, specProvider)
 {
-    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
-    private readonly XdcHeaderDecoder _headerDecoder = new();
-
     public override bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {
         if (header is not XdcSubnetBlockHeader xdcHeader)
@@ -31,17 +27,17 @@ internal sealed class XdcSubnetSealValidator(
             return false;
         }
         IXdcReleaseSpec spec = SpecProvider.GetXdcSpec(xdcHeader);
-        if (XdcSubnetConsensusRules.IsGapPlusOneBlock(xdcHeader.Number, spec.EpochLength, spec.Gap))
+        if (xdcHeader.IsGapPlusOne(spec))
         {
             (Address[] masternodes, Address[] penaltiesAddresses) = masternodesCalculator.GetNextEpochCandidatesAndPenalties(xdcHeader.ParentHash);
 
-            if (!xdcHeader.NextValidatorsAddress.SequenceEqual(masternodes))
+            if (xdcHeader.NextValidatorsAddress is null || !xdcHeader.NextValidatorsAddress.SequenceEqual(masternodes))
             {
                 error = "NextValidators do not match snapshot next epoch candidates.";
                 return false;
             }
 
-            if (!xdcHeader.PenaltiesAddress.SequenceEqual(penaltiesAddresses))
+            if (xdcHeader.PenaltiesAddress is null || !xdcHeader.PenaltiesAddress.SequenceEqual(penaltiesAddresses))
             {
                 error = "Penalties do not match snapshot next epoch penalties.";
                 return false;

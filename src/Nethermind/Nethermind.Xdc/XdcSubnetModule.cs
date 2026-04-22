@@ -4,6 +4,7 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -23,6 +24,7 @@ public class XdcSubnetModule : XdcModule
             .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
             .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()
             .Bind<IMasternodesCalculator, ISubnetMasternodesCalculator>()
+            .AddSingleton<ISealValidator, XdcSubnetSealValidator>()
             .AddSingleton<ISubnetSnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider, IPenaltyHandler>(CreateSnapshotManager)
             .Bind<ISnapshotManager, ISubnetSnapshotManager>()
             .AddSingleton<IPenaltyHandler, SubnetPenaltyHandler>();
