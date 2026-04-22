@@ -15,33 +15,29 @@ namespace Nethermind.Evm.Test;
 
 /// <summary>
 /// Tests for EIP-7981: access list token floor pricing.
-/// Uses OverridableReleaseSpec until pyspec fixtures include EIP-7981.
 /// </summary>
 [TestFixture]
 public class Eip7981Tests
 {
     private static readonly IReleaseSpec Spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
     private static long FloorPerToken => Spec.GasCosts.TotalCostFloorPerToken;
-    private static long NonZeroMultiplier => Spec.GasCosts.TxDataNonZeroMultiplier;
 
     private static IEnumerable<TestCaseData> AccessListOnlyCases()
     {
-        // Address = 20 bytes; new formula: 20 * 4 = 80 tokens (all bytes × multiplier)
+        // 20 bytes × 4 = 80 tokens
         yield return new TestCaseData(
             new AccessList.Builder().AddAddress(Address.Zero).Build(), 80L
         ).SetName("Single zero address: 80 tokens");
 
-        // Any address is 20 bytes × 4 = 80 tokens regardless of byte values
         yield return new TestCaseData(
             new AccessList.Builder().AddAddress(new Address("0xAB000000000000000000000000000000000000CD")).Build(), 80L
         ).SetName("Address with non-zero bytes: 80 tokens");
 
-        // Address.Zero (80) + UInt256.Zero (32 * 4 = 128) = 208 tokens
+        // Address (80) + storage key (32 * 4 = 128) = 208 tokens
         yield return new TestCaseData(
             new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.Zero).Build(), 208L
         ).SetName("Address + zero storage key: 208 tokens");
 
-        // Address.Zero (80) + UInt256.One (128) = 208 tokens (byte values don't matter)
         yield return new TestCaseData(
             new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.One).Build(), 208L
         ).SetName("Address + non-zero storage key: 208 tokens");

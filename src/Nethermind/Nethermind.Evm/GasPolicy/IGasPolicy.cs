@@ -385,9 +385,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     }
 
     /// <summary>
-    /// Counts floor tokens in the access list for floor cost pricing (EIP-7981).
-    /// Every byte costs TxDataNonZeroMultiplier tokens regardless of value,
-    /// matching the EIP-7976 calldata floor formula.
+    /// Computes the total floor tokens for all access list entries.
+    /// Returns 0 when floor pricing is not active.
     /// </summary>
     public static long CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
         spec.IsEip7981Enabled && transaction.AccessList is { Count: var count }
@@ -444,12 +443,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
 
     /// <summary>
-    /// Calculates the calldata floor cost for a transaction, including EIP-7981 access list tokens.
+    /// Calculates the transaction data floor cost (calldata + access list tokens).
     /// </summary>
     protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData, long floorTokensInAccessList) => spec switch
     {
         { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
-        { IsEip7623Enabled: true } => GasCostOf.Transaction + (tokensInCallData + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
+        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
         _ => 0L
     };
 }

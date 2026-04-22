@@ -543,7 +543,7 @@ public partial class EthRpcModuleTests
     }
 
     private static readonly OverridableReleaseSpec Eip7976Spec = new(Prague.Instance) { IsEip7976Enabled = true };
-    private static readonly OverridableReleaseSpec Eip7981Spec = new(Prague.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
+    private static readonly OverridableReleaseSpec Eip7981Spec = new(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
 
     private static IEnumerable<TestCaseData> EstimateGasFloorCostCases()
     {
@@ -571,14 +571,21 @@ public partial class EthRpcModuleTests
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: mixed calldata returns floor");
 
-        // EIP-7981: access list with 1 address (80 tokens × 16 = 1280 added to standard)
-        // Standard = 21000 + 2400 + 1280 = 24680, floor = 21000 + 1280 = 22280, standard wins
+        // EIP-7981: access list with 1 address, no calldata — standard wins
         long eip7981Standard = GasCostOf.Transaction + GasCostOf.AccessAccountListEntry
             + 80 * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, Array.Empty<byte>(), 100_000L,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Standard.ToHexString(true)}\",\"id\":67}}")
-            .SetName("EIP-7981: access list token floor in standard cost");
+            .SetName("EIP-7981: standard wins with access list");
+
+        // EIP-7981: 100 zero bytes + 1 address — floor wins
+        long eip7981Floor = GasCostOf.Transaction
+            + (100 * Eip7981Spec.GasCosts.TxDataNonZeroMultiplier + 80) * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
+        yield return new TestCaseData(Eip7981Spec, new byte[100], 100_000L,
+                new AccessList.Builder().AddAddress(Address.Zero).Build(),
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Floor.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7981: floor wins with calldata and access list");
     }
 
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]

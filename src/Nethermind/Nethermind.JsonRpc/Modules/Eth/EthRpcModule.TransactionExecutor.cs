@@ -25,9 +25,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private bool NoBaseFee { get; set; }
 
+            protected IReleaseSpec GetSpec(BlockHeader header) => specProvider.GetSpec(header);
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
-                IReleaseSpec spec = specProvider.GetSpec(header);
+                IReleaseSpec spec = GetSpec(header);
                 Result<Transaction> result = call.ToTransaction(validateUserInput: true, spec: spec);
                 if (result.IsError) return result;
 
@@ -144,12 +146,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
-            private readonly ISpecProvider _specProvider = specProvider;
-
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, token, optimize);
-                IReleaseSpec spec = _specProvider.GetSpec(header);
+                IReleaseSpec spec = GetSpec(header);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
