@@ -107,10 +107,13 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     /// <summary>
     /// V2 payloads don't carry Cancun/Prague header fields. For Uzen blocks these are
     /// pinned to known values, so we inject them when the payload didn't supply them.
-    /// For pre-Uzen blocks these fields stay null and are not part of the header RLP.
+    /// Only applied when <see cref="HeaderDifficulty"/> is present (Uzen sidecar),
+    /// so pre-Uzen (Shasta) blocks keep these fields null.
     /// </summary>
-    private static void ApplyUzenPinnedFields(BlockHeader header)
+    private void ApplyUzenPinnedFields(BlockHeader header)
     {
+        if (HeaderDifficulty is null) return;
+
         header.BlobGasUsed ??= 0;
         header.ExcessBlobGas ??= 0;
         header.ParentBeaconBlockRoot ??= Keccak.Zero;

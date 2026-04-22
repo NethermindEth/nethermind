@@ -269,11 +269,7 @@ public class TaikoModule : Module
 
     private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder.AddScoped<ZkGasMeterHolder>();
-            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
-        }
+        protected override void Load(ContainerBuilder builder) => builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
     }
 
 }

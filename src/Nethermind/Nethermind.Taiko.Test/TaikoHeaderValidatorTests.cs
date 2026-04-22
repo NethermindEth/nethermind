@@ -11,7 +11,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Taiko;
 using Nethermind.Taiko.TaikoSpec;
 using NSubstitute;
 using NUnit.Framework;
