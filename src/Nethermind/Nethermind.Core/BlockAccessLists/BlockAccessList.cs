@@ -21,7 +21,12 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     /// storage keys across all accounts + addresses
     [JsonIgnore]
-    public int ItemCount { get; set; }
+    public int ItemCount
+    {
+        get => _itemCount ??= CountItems();
+        init => _itemCount = value;
+    }
+
 
     public EnumerableWithCount<AccountChanges> AccountChanges => new(_accountChanges.Values, _accountChanges.Values.Count);
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
@@ -29,6 +34,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     private readonly SortedDictionary<Address, AccountChanges> _accountChanges = new(AddressComparer.Instance);
     private readonly Stack<Change> _changes = new();
+    private int? _itemCount = null;
 
     public BlockAccessList()
     {
@@ -529,6 +535,16 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             return accountChanges;
         }
         return existing;
+    }
+
+    private int CountItems()
+    {
+        int count = _accountChanges.Count;
+        foreach (AccountChanges accountChanges in _accountChanges.Values)
+        {
+            count += accountChanges.StorageChanges.Count + accountChanges.StorageReads.Count;
+        }
+        return count;
     }
 
     private enum ChangeType
