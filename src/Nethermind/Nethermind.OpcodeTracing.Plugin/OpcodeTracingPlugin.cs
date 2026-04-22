@@ -24,10 +24,8 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
     /// <summary>
     /// Generates a unique session identifier for RealTime mode cumulative file naming.
     /// </summary>
-    private static string GenerateSessionId()
-    {
-        return DateTime.UtcNow.ToString("yyyyMMddHHmmss");
-    }
+    private static string GenerateSessionId() =>
+        DateTime.UtcNow.ToString("yyyyMMddHHmmss");
 
     /// <summary>
     /// Gets the plugin name.

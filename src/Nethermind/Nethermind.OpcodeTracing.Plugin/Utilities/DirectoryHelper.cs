@@ -44,7 +44,7 @@ public static class DirectoryHelper
         {
             if (logManager is not null)
             {
-                ILogger logger = logManager.GetClassLogger<DirectoryHelper>();
+                ILogger logger = logManager.GetClassLogger(typeof(DirectoryHelper));
                 if (logger.IsDebug)
                 {
                     logger.Debug($"Output directory '{path}' failed write probe: {ex.Message}");

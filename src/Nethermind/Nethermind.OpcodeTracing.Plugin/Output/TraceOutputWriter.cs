@@ -9,22 +9,13 @@ namespace Nethermind.OpcodeTracing.Plugin.Output;
 /// <summary>
 /// Writes opcode trace output to JSON files.
 /// </summary>
-public sealed class TraceOutputWriter
+public sealed class TraceOutputWriter(ILogManager logManager)
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logManager?.GetClassLogger<TraceOutputWriter>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly JsonSerializerOptions _serializerOptions = new()
     {
         WriteIndented = true
     };
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="TraceOutputWriter"/> class.
-    /// </summary>
-    /// <param name="logManager">The log manager.</param>
-    public TraceOutputWriter(ILogManager logManager)
-    {
-        _logger = logManager?.GetClassLogger<TraceOutputWriter>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
 
     /// <summary>
     /// Writes a trace output to a JSON file.
