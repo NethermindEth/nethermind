@@ -279,6 +279,25 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_BeginScope_clears_suggested_and_generated_bal()
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        BlockAccessList suggested = new();
+        suggested.AddAccountRead(TestItem.AddressA);
+        stateProvider.LoadSuggestedBlockAccessList(suggested, 0);
+        stateProvider.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressB);
+
+        stateProvider.BeginScope(null);
+
+        // GeneratedBlockAccessList should be fresh (empty)
+        Assert.That(stateProvider.GeneratedBlockAccessList.ItemCount(), Is.EqualTo(0));
+        // _suggestedBlockAccessList should be null — ValidateBlockAccessList returns early without throwing
+        Assert.That(
+            () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, long.MaxValue),
+            Throws.Nothing);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
