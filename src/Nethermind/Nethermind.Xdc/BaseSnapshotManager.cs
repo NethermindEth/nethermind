@@ -65,9 +65,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
     public TSnapshot? GetSnapshotByGapNumber(long gapNumber)
     {
-        XdcBlockHeader gapBlockHeader = _blockTree.FindHeader(gapNumber) as XdcBlockHeader;
-
-        if (gapBlockHeader is null)
+        if (_blockTree.FindHeader(gapNumber) is not XdcBlockHeader gapBlockHeader)
             return null;
 
         TSnapshot? snapshot = _snapshotCache.Get(gapBlockHeader.Hash);

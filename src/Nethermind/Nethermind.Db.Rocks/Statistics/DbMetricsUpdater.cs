@@ -38,7 +38,6 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             {
                 string dbStatsString = dbOptions.GetStatisticsString();
                 ProcessStatisticsString(dbStatsString);
-                // Currently we don't extract any DB statistics but we can do it here
             }
         }
         catch (Exception exc)
@@ -169,5 +168,15 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
     [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractSubStatsRegex();
 
-    public void Dispose() => _timer?.Dispose();
+    public void Dispose()
+    {
+        Timer? timer = Interlocked.Exchange(ref _timer, null);
+        if (timer is null) return;
+
+        using ManualResetEvent waitHandle = new(false);
+        if (timer.Dispose(waitHandle) && !waitHandle.WaitOne(TimeSpan.FromSeconds(1)))
+        {
+            logger.Warn($"DbMetricsUpdater for {dbName} did not complete within the timeout during disposal.");
+        }
+    }
 }
