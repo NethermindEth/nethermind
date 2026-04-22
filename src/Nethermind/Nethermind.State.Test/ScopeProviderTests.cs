@@ -226,6 +226,76 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public void Test_HintBal_DoesNotThrow()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+
+                using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+                {
+                    storageA.Set(1, [10, 20]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        BlockAccessList bal = new();
+        bal.AddAccountRead(TestItem.AddressA);
+        bal.AddAccountRead(TestItem.AddressB);
+        bal.AddStorageRead(TestItem.AddressA, 1);
+
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            Assert.DoesNotThrow(() => scope.HintBal(bal));
+            // Dispose exits the using — must not throw either (covers the Cancel path).
+        }
+    }
+
+    [Test]
+    public void Test_HintBal_Smoke_PrewarmerWrapped()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+                {
+                    storageA.Set(1, [10, 20]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        // populatePreBlockCache: false targets the main-processing scope where HintBal actually runs.
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, populatePreBlockCache: false);
+
+        BlockAccessList bal = new();
+        bal.AddAccountRead(TestItem.AddressA);
+        bal.AddStorageRead(TestItem.AddressA, 1);
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            Assert.DoesNotThrow(() => scope.HintBal(bal));
+        }
+    }
+
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
