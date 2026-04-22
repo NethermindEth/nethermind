@@ -308,10 +308,16 @@ namespace Nethermind.Trie
         private Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx) => Task.Factory.StartNew(
             _ =>
             {
-                TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
-                if (!ReferenceEquals(childNode, newChild))
-                    node[idx] = newChild;
-                committer.ReturnConcurrencyQuota();
+                try
+                {
+                    TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
+                    if (!ReferenceEquals(childNode, newChild))
+                        node[idx] = newChild;
+                }
+                finally
+                {
+                    committer.ReturnConcurrencyQuota();
+                }
             },
             null,
             CancellationToken.None,
