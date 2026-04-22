@@ -36,8 +36,8 @@ public static class TestWorldStateFactory
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
-        if (dbProvider is null) dbProvider = TestMemDbProvider.Init();
-        if (logManager is null) logManager = LimboLogs.Instance;
+        dbProvider ??= TestMemDbProvider.Init();
+        logManager ??= LimboLogs.Instance;
 
         PruningConfig pruningConfig = new();
         TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);

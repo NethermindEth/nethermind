@@ -36,18 +36,6 @@ configs = {
         "multiplierRequirement": 1000,
         "isPoS": True
     },
-    "joc-mainnet": {
-        "url": "https://rpc-1.japanopenchain.org:8545",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": False
-    },
-    "joc-testnet": {
-        "url": "https://rpc-1.testnet.japanopenchain.org:8545",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": False
-    },
     "base-mainnet": {
         "url": "https://mainnet.base.org",
         "blockReduced": 8192,

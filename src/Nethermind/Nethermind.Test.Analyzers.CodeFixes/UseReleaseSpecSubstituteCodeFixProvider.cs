@@ -30,8 +30,7 @@ public sealed class UseReleaseSpecSubstituteCodeFixProvider : CodeFixProvider
             return;
         }
 
-        string? factoryNamespace = null;
-        if (!diagnostic.Properties.TryGetValue(UseCustomSubstituteAnalyzer.FactoryNamespacePropertyName, out factoryNamespace)
+        if (!diagnostic.Properties.TryGetValue(UseCustomSubstituteAnalyzer.FactoryNamespacePropertyName, out string? factoryNamespace)
             || string.IsNullOrWhiteSpace(factoryNamespace))
         {
             factoryNamespace = DefaultFactoryNamespace;

@@ -340,6 +340,7 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(ChiadoSpecProvider.Instance.TerminalTotalDifficulty));
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
+            Assert.That(chiado.TransitionActivations, Is.EqualTo(provider.TransitionActivations));
         }
 
         IReleaseSpec? preShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1));
@@ -414,6 +415,7 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GnosisSpecProvider.Instance.TerminalTotalDifficulty));
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Gnosis));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Gnosis));
+            Assert.That(gnosisSpecProvider.TransitionActivations, Is.EqualTo(provider.TransitionActivations));
         }
 
         VerifyGnosisPreShanghaiSpecifics(provider);

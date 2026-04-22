@@ -252,10 +252,7 @@ public class ValidateSubmissionHandler(
     {
         foreach (Transaction tx in block.Transactions)
         {
-            if (tx.SenderAddress is null)
-            {
-                tx.SenderAddress = _ethereumEcdsa.RecoverAddress(tx, !spec.ValidateChainId);
-            }
+            tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx, !spec.ValidateChainId);
         }
     }
 

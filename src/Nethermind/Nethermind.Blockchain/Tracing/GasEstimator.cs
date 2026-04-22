@@ -27,6 +27,9 @@ public class GasEstimator(
     /// <summary>Prefix of the error message emitted when the required gas exceeds what the sender can afford.</summary>
     public const string GasExceedsAllowanceMsgPrefix = "gas required exceeds allowance";
 
+    /// <summary>Message emitted when the sender has insufficient balance.</summary>
+    public const string InsufficientBalance = "insufficient funds for transfer";
+
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;
 
@@ -34,7 +37,6 @@ public class GasEstimator(
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
     private const string TransactionExecutionFails = "Transaction execution fails";
-    private const string InsufficientBalance = "insufficient balance";
     private const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
 
@@ -78,8 +80,9 @@ public class GasEstimator(
         if (leftBound > rightBound)
             return EstimationResult.Failure(CannotEstimateGasExceeded);
 
+        UInt256 feeCap = tx.CalculateFeeCap();
         // tx.ValueRef <= senderBalance is guaranteed here; subtract so the cap reflects gas budget only.
-        EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), tx, senderBalance - tx.ValueRef);
+        EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), senderBalance - tx.ValueRef, feeCap);
 
         return BinarySearchEstimate(tx, header, gasTracer, bounds, errorMargin, token);
     }
@@ -104,12 +107,12 @@ public class GasEstimator(
             : EstimationResult.Failure(GetError(gasTracer, InsufficientBalance));
     }
 
-    private static EstimationBounds CapByAllowance(EstimationBounds bounds, Transaction tx, UInt256 available)
+    private static EstimationBounds CapByAllowance(EstimationBounds bounds, UInt256 available, UInt256 feeCap = default)
     {
-        if (tx.MaxFeePerGas == UInt256.Zero)
+        if (feeCap == UInt256.Zero)
             return bounds;
 
-        long allowance = (long)UInt256.Min(available / tx.MaxFeePerGas, (UInt256)long.MaxValue);
+        long allowance = (long)UInt256.Min(available / feeCap, (UInt256)long.MaxValue);
         return bounds with { RightBound = Math.Min(bounds.RightBound, allowance) };
     }
 
@@ -206,7 +209,7 @@ public class GasEstimator(
         {
             { TopLevelRevert: true } => GetRevertError(gasTracer),
             { OutOfGas: true } => GasEstimationOutOfGas,
-            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? TransactionExecutionFails,
+            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? defaultError,
             _ => defaultError
         };
 
