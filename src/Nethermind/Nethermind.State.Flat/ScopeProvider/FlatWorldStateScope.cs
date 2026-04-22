@@ -241,7 +241,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (totalSlots > 0)
         {
-            using ArrayPoolList<(Address Address, IWorldStateScopeProvider.IStorageTree Tree, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+            // Read via the snapshot bundle directly, skipping the cached FlatStorageTree wrapper.
+            // The wrapper's Get calls HintGet -> PushSlotJob, which enqueues into the SPMC slot buffer;
+            // letting parallel workers share the cached tree would corrupt that buffer.
+            // HintBal still drives trie warmup via a per-account non-cached FlatStorageTree + PushSlotJobMpmc.
+            using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
             int jobIdx = 0;
             for (int i = 0; i < accountCount; i++)
             {
@@ -252,25 +256,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 AccountChanges accountChanges = accountChangesList[i];
                 Address address = accountChanges.Address;
-                IWorldStateScopeProvider.IStorageTree storageTree = CreateStorageTree(address);
+                int selfDestructIdx = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
 
                 foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-                    jobs[jobIdx++] = (address, storageTree, slotChanges.Slot);
+                    jobs[jobIdx++] = (address, selfDestructIdx, slotChanges.Slot);
 
                 foreach (StorageRead storageRead in accountChanges.StorageReads)
-                    jobs[jobIdx++] = (address, storageTree, storageRead.Key);
+                    jobs[jobIdx++] = (address, selfDestructIdx, storageRead.Key);
             }
 
             try
             {
                 Parallel.For(0, totalSlots, parallelOptions, (s) =>
                 {
-                    (Address address, IWorldStateScopeProvider.IStorageTree tree, UInt256 slot) = jobs[s];
+                    (Address address, int selfDestructIdx, UInt256 slot) = jobs[s];
                     StorageCell cell = new(address, in slot);
                     if (!sink.StillNeeded(in cell))
                         return;
 
-                    byte[] value = tree.Get(in slot);
+                    byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
+                    byte[] value = raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw;
                     sink.OnStorageRead(in cell, value);
                 });
             }
