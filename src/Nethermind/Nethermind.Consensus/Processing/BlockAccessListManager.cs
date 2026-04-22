@@ -149,20 +149,26 @@ public class BlockAccessListManager(
                 totalStateGas += blockStateGasUsed;
                 SpendGas(blockGasUsed.Value);
 
+                CheckGasUsed(j, block, totalRegularGas, totalStateGas);
+
                 bool validateStorageReads = j == chunkEnd - 1;
                 _txProcessorWithWorldStateManager.Get(j + 1).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
                 ValidateBlockAccessList(block, (ushort)(j + 1), validateStorageReads);
             }
+        }
 
+        // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
+        _blockExecutionContext.Value.Header.GasUsed = Math.Max(totalRegularGas, totalStateGas);
+
+        static void CheckGasUsed(int index, Block block, long totalRegularGas, long totalStateGas)
+        {
             // EIP-8037: block gasUsed = max(sum_regular, sum_state)
             long effectiveGas = Math.Max(totalRegularGas, totalStateGas);
             if (effectiveGas > block.Header.GasLimit)
             {
-                throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
+                throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
             }
         }
-        // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
-        _blockExecutionContext.Value.Header.GasUsed = Math.Max(totalRegularGas, totalStateGas);
     }
 
     public static void ApplyStateChanges(BlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
