@@ -561,7 +561,7 @@ public partial class EthRpcModuleTests
 
         object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""");
         string withOverride = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
-        JToken.Parse(withOverride).Should().BeEquivalentTo("""{"jsonrpc":"2.0","result":"0x5208","id":67}""");
+        JToken.Parse(withOverride)["result"]!.Value<string>().Should().Be("0x5208");
     }
 
     [Test]

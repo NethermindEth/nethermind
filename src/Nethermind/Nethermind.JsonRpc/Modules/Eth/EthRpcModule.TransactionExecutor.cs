@@ -61,14 +61,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Dictionary<Address, AccountOverride>? stateOverride = null,
                 SearchResult<BlockHeader>? searchResult = null)
             {                
-                // default to overridden or previous block gas limit if unspecified
-                if (transactionCall.Gas is null)
+
+                if (transactionCall.Gas is null && _blockOverride?.GasLimit is not null)
                 {
                     searchResult ??= _blockFinder.SearchForHeader(blockParameter);
                     if (!searchResult.Value.IsError)
-                        transactionCall.Gas = _blockOverride?.GasLimit is not null
-                            ? (long)_blockOverride.GasLimit.Value
-                            : searchResult.Value.Object.GasLimit;
+                        transactionCall.Gas = (long)_blockOverride.GasLimit.Value;
                 }
 
                 // enforces gas cap
