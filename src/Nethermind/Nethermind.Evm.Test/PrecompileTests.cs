@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,7 +16,13 @@ public abstract class PrecompileTests<TPrecompile, TTests>
     where TPrecompile: IPrecompile<TPrecompile>
     where TTests : PrecompileTests<TPrecompile, TTests>, IPrecompileTests
 {
-    public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError);
+    public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
+    {
+        public TestCase(string input, string output, bool status) : this(
+            Convert.FromHexString(input), Convert.FromHexString(output),
+            Name: input, Gas: null, ExpectedError: status ? null : "<error>"
+        ) { }
+    }
     private const string TestFilesDirectory = "PrecompileVectors";
 
     protected static readonly TPrecompile Instance = TPrecompile.Instance;
@@ -30,8 +36,14 @@ public abstract class PrecompileTests<TPrecompile, TTests>
             string json = File.ReadAllText(path);
             foreach (TestCase test in serializer.Deserialize<TestCase[]>(json))
             {
-                yield return new TestCaseData(test) { TestName = EnsureSafeName(test.Name) };
+                yield return new(test) { TestName = EnsureSafeName(test.Name) };
             }
+        }
+
+        foreach ((string input, string output, bool status) in TTests.TestCases())
+        {
+            TestCase test = new(input, output, status);
+            yield return new(test) { TestName = test.Name };
         }
     }
 

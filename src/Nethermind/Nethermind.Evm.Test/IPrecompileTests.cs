@@ -8,4 +8,5 @@ namespace Nethermind.Evm.Test;
 public interface IPrecompileTests
 {
     static virtual IEnumerable<string> TestFiles() => [];
+    static virtual IEnumerable<(string input, string output, bool status)> TestCases() => [];
 }
