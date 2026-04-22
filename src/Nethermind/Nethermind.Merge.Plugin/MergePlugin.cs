@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Core.Specs;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -340,7 +341,11 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
                 .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
 
-            // Testing rpc
+            // Testing rpc — keyed calculator so plugins can override without affecting global IGasLimitCalculator
+            .AddKeyedSingleton<IGasLimitCalculator>(TestingRpcModule.GasLimitCalculatorKey, ctx =>
+                new TargetAdjustedGasLimitCalculator(
+                    ctx.Resolve<ISpecProvider>(),
+                    new BlocksConfig { TargetBlockGasLimit = ctx.Resolve<IBlocksConfig>().TargetBlockGasLimit ?? TestingRpcModule.DefaultTestingGasLimit }))
             .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
 
