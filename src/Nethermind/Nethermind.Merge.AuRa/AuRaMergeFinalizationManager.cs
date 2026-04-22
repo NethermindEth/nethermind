@@ -12,11 +12,13 @@ namespace Nethermind.Merge.Plugin;
 public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlockFinalizationManager
 {
     private readonly IAuRaBlockFinalizationManager _auRaBlockFinalizationManager;
+    private readonly IPoSSwitcher _poSSwitcher;
 
     public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher)
         : base(manualBlockFinalizationManager, blockFinalizationManager, poSSwitcher)
     {
         _auRaBlockFinalizationManager = blockFinalizationManager;
+        _poSSwitcher = poSSwitcher;
         _auRaBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
     }
 
@@ -32,6 +34,9 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
     {
+        // Skip forwarding post-merge so the inner manager never subscribes to block events
+        // nor runs the startup catch-up walk — AuRa finalization is not active post-merge.
+        if (_poSSwitcher.HasEverReachedTerminalBlock()) return;
         _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
     }
 
