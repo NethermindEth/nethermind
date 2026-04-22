@@ -24,8 +24,9 @@ internal class SubnetMasternodesCalculatorTests
         Address a3 = Address.FromNumber(3);
         Address a4 = Address.FromNumber(4);
         Address a5 = Address.FromNumber(5);
+        Address a6 = Address.FromNumber(6);
 
-        SubnetSnapshot snapshot = new(0, Hash256.Zero, [a1, a2, a3, a4, a5], [a1, a2]);
+        SubnetSnapshot snapshot = new(0, Hash256.Zero, [a1, a2, a3, a4, a5, a6], [a1, a2]);
 
         ISubnetSnapshotManager snapshotManager = Substitute.For<ISubnetSnapshotManager>();
         snapshotManager.GetSnapshotByBlockNumber(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>()).Returns(snapshot);

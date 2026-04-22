@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
@@ -37,6 +38,14 @@ internal class TrieStoreDirtyNodesCache
     public readonly long KeyMemoryUsage;
     private readonly bool _keepRoot;
 
+    internal static void GetDictionarySizing(out int concurrencyLevel, out int initialBuckets)
+    {
+        // Core.Cpu.RuntimeInformation.ProcessorCount floors to 1 where Environment.ProcessorCount
+        // can report 0 (zk-evm). ConcurrentDictionary requires concurrencyLevel >= 1.
+        concurrencyLevel = Math.Min(RuntimeInformation.ProcessorCount * 4, 32);
+        initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
+    }
+
     public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, bool keepRoot, ILogger logger)
     {
         _trieStore = trieStore;
@@ -51,8 +60,7 @@ internal class TrieStoreDirtyNodesCache
         _keepRoot = keepRoot;
 
         // NOTE: DirtyNodesCache is already sharded.
-        int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
-        int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
+        GetDictionarySizing(out int concurrencyLevel, out int initialBuckets);
         if (_storeByHash)
         {
             _byHashObjectCache = new(concurrencyLevel, initialBuckets);
@@ -168,23 +176,45 @@ internal class TrieStoreDirtyNodesCache
         }, cache);
 
     public NodeRecord GetOrAdd(in Key key, NodeRecord record) => _storeByHash
-            ? _byHashObjectCache.AddOrUpdate(key.Keccak, static (key, arg) => arg,
-                RecordReplacementLogic, record)
-            : _byKeyObjectCache.AddOrUpdate(key, static (key, arg) => arg,
-                RecordReplacementLogic, record);
+            ? GetOrAdd(_byHashObjectCache, key.Keccak, record)
+            : GetOrAdd(_byKeyObjectCache, key, record);
 
-    private static NodeRecord RecordReplacementLogic(Key key, NodeRecord current, NodeRecord arg) => RecordReplacementLogic(null, current, arg);
+    private static NodeRecord GetOrAdd<TKey>(ConcurrentDictionary<TKey, NodeRecord> dictionary, TKey key, NodeRecord record)
+        where TKey : notnull
+    {
+        // Avoid AddOrUpdate here: an existing key often merges to the same logical NodeRecord,
+        // and this fast path returns without forcing ConcurrentDictionary's update path.
+        while (true)
+        {
+            if (dictionary.TryGetValue(key, out NodeRecord current))
+            {
+                NodeRecord merged = MergeRecords(current, record);
+                if (merged.Equals(current) || dictionary.TryUpdate(key, merged, current))
+                {
+                    return merged;
+                }
 
-    private static NodeRecord RecordReplacementLogic(Hash256AsKey keyHash, NodeRecord current, NodeRecord arg)
+                continue;
+            }
+
+            if (dictionary.TryAdd(key, record))
+            {
+                return record;
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static NodeRecord MergeRecords(NodeRecord current, NodeRecord candidate)
     {
         long lastCommit = current.LastCommit;
-        if (arg.LastCommit > lastCommit)
+        if (candidate.LastCommit > lastCommit)
         {
-            lastCommit = arg.LastCommit;
+            lastCommit = candidate.LastCommit;
         }
 
         TrieNode node = current.Node;
-        if (node.IsPersisted && !arg.Node.IsPersisted)
+        if (node.IsPersisted && !candidate.Node.IsPersisted)
         {
             // This code path happens around 0.8% of the time at 4GB of dirty cache and 16GB total cache.
             //
@@ -194,7 +224,7 @@ internal class TrieStoreDirtyNodesCache
             // the child is removed, but the parent is not and remain in the cache as persisted node.
             // Additionally, it may hold a reference to its child which is marked as persisted even though it was
             // deleted from the cached map.
-            node = arg.Node;
+            node = candidate.Node;
         }
 
         return new NodeRecord(node, lastCommit);
@@ -461,8 +491,8 @@ internal class TrieStoreDirtyNodesCache
         [SkipLocalsInit]
         public override int GetHashCode()
         {
-            int addressHash = Address != default ? Address.GetHashCode() : 1;
-            return Keccak.ValueHash256.GetChainedHashCode((uint)Path.GetHashCode()) ^ addressHash;
+            ulong chainedHash = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address?.GetHashCode() ?? 1);
+            return Keccak.ValueHash256.GetChainedHashCode(chainedHash);
         }
 
         public bool Equals(Key other) => other.Keccak == Keccak && other.Path == Path && other.Address == Address;

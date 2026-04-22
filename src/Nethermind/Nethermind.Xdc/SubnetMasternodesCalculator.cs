@@ -14,9 +14,7 @@ internal class SubnetMasternodesCalculator(ISubnetSnapshotManager snapshotManage
 {
     public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
-        SubnetSnapshot previousSnapshot = (SubnetSnapshot)snapshotManager.GetSnapshotByBlockNumber(blockNumber, spec);
-
-        if (previousSnapshot is null)
+        if (snapshotManager.GetSnapshotByBlockNumber(blockNumber, spec) is not SubnetSnapshot previousSnapshot)
             throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
 
         return (previousSnapshot.NextEpochCandidates
@@ -25,7 +23,7 @@ internal class SubnetMasternodesCalculator(ISubnetSnapshotManager snapshotManage
             .ToArray(), previousSnapshot.NextEpochPenalties);
     }
 
-    public (Address[] nextEpochCandidates, Address[] nextPenalties) GetNextEpochCandidatesAndPenalties(Hash256 parentHash)
+    public (Address[] NextEpochCandidates, Address[] NextPenalties) GetNextEpochCandidatesAndPenalties(Hash256 parentHash)
     {
         SubnetSnapshot snapshot = snapshotManager.GetSnapshotByHash(parentHash);
         return (snapshot.NextEpochCandidates, snapshot.NextEpochPenalties);

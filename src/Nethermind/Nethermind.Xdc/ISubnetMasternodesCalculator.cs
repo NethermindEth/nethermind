@@ -8,5 +8,5 @@ namespace Nethermind.Xdc;
 
 public interface ISubnetMasternodesCalculator : IMasternodesCalculator
 {
-    (Address[] nextEpochCandidates, Address[] nextPenalties) GetNextEpochCandidatesAndPenalties(Hash256 parentHash);
+    (Address[] NextEpochCandidates, Address[] NextPenalties) GetNextEpochCandidatesAndPenalties(Hash256 parentHash);
 }
