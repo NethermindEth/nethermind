@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -34,6 +33,7 @@ public class TestingRpcModule(
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
+    IJsonSerializer jsonSerializer,
     ILogManager logManager)
     : ITestingRpcModule
 {
@@ -117,7 +117,7 @@ public class TestingRpcModule(
             try
             {
                 string fileName = $"{processedBlock.Number}.json";
-                string jsonContent = JsonSerializer.Serialize(getPayloadV5Result, EthereumJsonSerializer.JsonOptions);
+                string jsonContent = jsonSerializer.Serialize(getPayloadV5Result);
                 await File.WriteAllTextAsync(fileName, jsonContent);
                 if (_logger.IsDebug) _logger.Debug($"Saved payload to {fileName}");
             }

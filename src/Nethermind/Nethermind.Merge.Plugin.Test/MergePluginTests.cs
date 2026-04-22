@@ -207,6 +207,7 @@ public class MergePluginTests
             specProvider,
             blockFinder,
             Substitute.For<IBlockTree>(),
+            new EthereumJsonSerializer(),
             LimboLogs.Instance);
 
         PayloadAttributes payloadAttributes = new()
@@ -301,6 +302,7 @@ public class MergePluginTests
             specProvider,
             blockFinder,
             blockTree,
+            new EthereumJsonSerializer(),
             LimboLogs.Instance);
 
         PayloadAttributes payloadAttributes = new()
@@ -359,6 +361,7 @@ public class MergePluginTests
             specProvider,
             blockFinder,
             blockTree,
+            new EthereumJsonSerializer(),
             LimboLogs.Instance);
 
         PayloadAttributes payloadAttributes = new()
@@ -437,6 +440,7 @@ public class MergePluginTests
             specProvider,
             blockFinder,
             blockTree,
+            new EthereumJsonSerializer(),
             LimboLogs.Instance);
 
         PayloadAttributes payloadAttributes = new()
