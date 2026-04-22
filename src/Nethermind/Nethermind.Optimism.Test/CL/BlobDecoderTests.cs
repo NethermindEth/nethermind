@@ -68,7 +68,7 @@ public class BlobDecoderTests
 
     private static IEnumerable<TestCaseData> InvalidEncodedBlobs()
     {
-        byte[] ValidEncodedBlob()
+        static byte[] ValidEncodedBlob()
         {
             string hexBlob = "0x2c000000277468697320697320612074657374206f6620696e76616c69642062106f62206465636f64696e67" + new string('0', 262056);
             return Bytes.FromHexString(hexBlob);

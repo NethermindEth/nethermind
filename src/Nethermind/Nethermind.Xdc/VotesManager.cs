@@ -56,8 +56,7 @@ internal class VotesManager(
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
-        XdcBlockHeader header = _blockTree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
-        if (header is null)
+        if (_blockTree.FindHeader(blockInfo.Hash) is not XdcBlockHeader header)
             throw new ArgumentException($"Cannot find block header for block {blockInfo.Hash}");
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
@@ -88,8 +87,7 @@ internal class VotesManager(
         _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
-        XdcBlockHeader proposedHeader = _blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
-        if (proposedHeader is null)
+        if (_blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) is not XdcBlockHeader proposedHeader)
         {
             //This is a vote for a block we have not seen yet, just return for now
             return Task.CompletedTask;
@@ -236,8 +234,7 @@ internal class VotesManager(
 
         for (int i = 0; i < blockNumDiff; i++)
         {
-            XdcBlockHeader parentHeader = _blockTree.FindHeader(nextBlockHash) as XdcBlockHeader;
-            if (parentHeader is null)
+            if (_blockTree.FindHeader(nextBlockHash) is not XdcBlockHeader parentHeader)
                 return false;
 
             nextBlockHash = parentHeader.ParentHash;
@@ -252,10 +249,7 @@ internal class VotesManager(
         List<Signature> signatures = new();
         foreach (Vote vote in votes)
         {
-            if (vote.Signer is null)
-            {
-                vote.Signer = _ethereumEcdsa.RecoverVoteSigner(vote);
-            }
+            vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
 
             if (masternodeSet.Contains(vote.Signer))
             {
