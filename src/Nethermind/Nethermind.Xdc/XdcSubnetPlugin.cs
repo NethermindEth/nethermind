@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using System.Threading.Tasks;
 
@@ -12,6 +16,7 @@ namespace Nethermind.Xdc;
 
 public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
+    private INethermindApi _nethermindApi;
     private IConsensusPlugin _xdcPlugin = new XdcPlugin(chainSpec);
 
     public const string XdcSubnet = "XdcSubnet";
@@ -22,12 +27,19 @@ public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string SealEngineType => XdcConstants.XDPoSSubnet;
     public IModule Module => new XdcSubnetModule();
 
-    public Task Init(INethermindApi nethermindApi) => _xdcPlugin.Init(nethermindApi);
+    public Task Init(INethermindApi nethermindApi)
+    {
+        _nethermindApi = nethermindApi;
+        return _xdcPlugin.Init(nethermindApi);
+    }
 
     public Task InitNetworkProtocol() => _xdcPlugin.InitNetworkProtocol();
 
     // IConsensusPlugin
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => _xdcPlugin.InitBlockProducerRunner(blockProducer);
-
-    public IBlockProducer InitBlockProducer() => _xdcPlugin.InitBlockProducer();
+    public IBlockProducer InitBlockProducer()
+    {
+        StartXdcSubnetBlockProducer start = _nethermindApi.Context.Resolve<StartXdcSubnetBlockProducer>();
+        return start.BuildProducer();
+    }
 }

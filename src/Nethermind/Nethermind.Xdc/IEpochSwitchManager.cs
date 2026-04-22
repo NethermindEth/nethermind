@@ -43,5 +43,4 @@ public interface IEpochSwitchManager
     /// Returns the epoch switch block info for the given epoch number, or null if not found.
     /// </summary>
     BlockRoundInfo? GetBlockByEpochNumber(ulong epochNumber);
-    bool IsGapPlusOne(XdcBlockHeader header, IXdcReleaseSpec spec);
 }

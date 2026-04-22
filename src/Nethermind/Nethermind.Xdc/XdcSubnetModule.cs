@@ -17,6 +17,10 @@ public class XdcSubnetModule : XdcModule
     {
         base.Load(builder);
         builder
+            .Add<StartXdcSubnetBlockProducer>()
+            .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
+            .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()
+            .AddSingleton<IMasternodesCalculator, SubnetMasternodesCalculator>()
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider, IPenaltyHandler>(CreateSnapshotManager)
             .AddSingleton<IPenaltyHandler, SubnetPenaltyHandler>();
 

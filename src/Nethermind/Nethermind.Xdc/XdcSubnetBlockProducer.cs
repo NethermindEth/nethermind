@@ -41,7 +41,7 @@ internal class XdcSubnetBlockProducer(
         headerCandidate.Penalties = [];
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(headerCandidate);
-        if (epochSwitchManager.IsGapPlusOne(headerCandidate, spec))
+        if (headerCandidate.IsGapPlusOne(spec))
         {
             (Address[] nextEpochCandidates, Address[] nextPenalties) = subnetMasternodesCalculator.GetNextEpochCandidatesAndPenalties(headerCandidate.ParentHash);
             headerCandidate.NextValidators = new byte[nextEpochCandidates.Length * Address.Size];
