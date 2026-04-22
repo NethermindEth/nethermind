@@ -28,6 +28,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly long _twoThirdsMajorityTransition;
         private long _lastFinalizedBlockLevel;
+        private bool _initialized;
         private Hash256 _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
@@ -45,14 +46,23 @@ namespace Nethermind.Consensus.AuRa
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _twoThirdsMajorityTransition = twoThirdsMajorityTransition;
-            Initialize();
         }
 
         public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
         {
+            if (_initialized)
+            {
+                if (!ReferenceEquals(_branchProcessor, branchProcessor))
+                    throw new InvalidOperationException($"{nameof(SetMainBlockBranchProcessor)} called with a different {nameof(IBranchProcessor)} instance after initialization.");
+                return;
+            }
+
+            _initialized = true;
             _branchProcessor = branchProcessor;
             _branchProcessor.BlockProcessed += OnBlockProcessed;
             _branchProcessor.BlocksProcessing += OnBlocksProcessing;
+
+            Initialize();
         }
 
 
