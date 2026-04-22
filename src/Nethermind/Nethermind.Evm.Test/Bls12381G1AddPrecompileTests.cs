@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
-public class Bls12381G1AddPrecompileTests : PrecompileTests<Bls12381G1AddPrecompile, Bls12381G1AddPrecompileTests>, IPrecompileTests
+public class Bls12381G1AddPrecompileTests : PrecompileTests<Bls12381G1AddPrecompile, Bls12381G1AddPrecompileTests>
 {
     public static IEnumerable<string> TestFiles()
     {
@@ -122,15 +120,5 @@ public class Bls12381G1AddPrecompileTests : PrecompileTests<Bls12381G1AddPrecomp
     [TestCase("0000000000000000000000000000000031f2e5916b17be2e71b10b4292f558e727dfd7d48af9cbc5087f0ce00dcca27c8b01e83eaace1aefb539f00adb2271660000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e100000000000000000000000000000000112b98340eee2777cc3c14163dea3ec97977ac3dc5c70da32e6e87578f44912e902ccef9efe28d4a78b8999dfbca942600000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21", "", false)]
     // additional
     [TestCase("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002", "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaa9", true)]
-    public static void Test(string input, string output, bool status)
-    {
-        byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Bls12381G1AddPrecompile.Instance.Run(inputData, MuirGlacier.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
-        }
-    }
+    public void Test(string input, string output, bool status) => RunTest(input, output, status);
 }

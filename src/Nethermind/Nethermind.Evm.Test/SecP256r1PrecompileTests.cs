@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1Precompile, SecP256r1PrecompileTests>, IPrecompileTests
+    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1Precompile, SecP256r1PrecompileTests>
     {
         private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 

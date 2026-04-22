@@ -12,7 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public abstract class PrecompileTests<TPrecompile, TTests>
+public abstract class PrecompileTests<TPrecompile, TTests>: IPrecompileTests
     where TPrecompile: IPrecompile<TPrecompile>
     where TTests : PrecompileTests<TPrecompile, TTests>, IPrecompileTests
 {
@@ -66,6 +66,18 @@ public abstract class PrecompileTests<TPrecompile, TTests>
             {
                 Assert.That(gas, Is.EqualTo(testCase.Gas));
             }
+        }
+    }
+
+    protected void RunTest(string input, string output, bool status)
+    {
+        byte[] inputData = Convert.FromHexString(input);
+        (byte[] outputData, bool outcome) = Instance.Run(inputData, MuirGlacier.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outcome, Is.EqualTo(status));
+            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
         }
     }
 

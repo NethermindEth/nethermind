@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
-public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecompile, Bls12381G2MsmPrecompileTests>, IPrecompileTests
+public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecompile, Bls12381G2MsmPrecompileTests>
 {
     public static IEnumerable<string> TestFiles()
     {
@@ -224,15 +222,5 @@ public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecomp
     [TestCase("0000000000000000000000000000000010d001a09cf5dc3276482185f26ef3f75d28cd6d2667eb08a7fe06c03b99f3b6c4d82390739b6867a314291cc642a8b2000000000000000000000000000000000587846a460b1f37c2e7f491f9a097b4e86e1943d9cd0999313f65627b3907f09b5d5ac1be376a313a959dd136f7e9b3000000000000000000000000000000000af439695556e86b102926d3b40e3e54cc84464e120de3b4e3c5541a6a5bca44151fb0594009663764c1824518b13f020000000000000000000000000000000003bfd9418c1e57269e222152d321b83ae090f216cb422956dd1fcc464f68526cb4a05cdaefc7bbe6e81d4ffe27d64db47cf23dee8d95d94046678f3bdb4b0ea3d4e3a1a2f07f582e2a98ad6eb7562cbf", "000000000000000000000000000000001375bd5ee66c330796bd8381a26cefa3f40f8cc8de42d4d59a7adbcd3852e6d632422e6ad9a06a6e497b23b17b1df87500000000000000000000000000000000165d8e7be17ecae9bf51a773da705aea42536d0fa3a2206267da50451f5104ee241811dd0e6710a80c38df77b126c009000000000000000000000000000000001559572407aff34969f83c394d2b095a7ae9f53a8e6c923910f256bb87b6ec076fa6acb85465102fd24d34031f88f7510000000000000000000000000000000015ff9ba89b55ef75f63732dec1e64106d7a912a6657fcc970dd011a03b5364117cca46d6cbafbc0c5049db10fa83fe6d", true)]
     public void TestScalar(string input, string output, bool status) => Test(input, output, status);
 
-    private static void Test(string input, string output, bool status)
-    {
-        byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Bls12381G2MsmPrecompile.Instance.Run(inputData, MuirGlacier.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
-        }
-    }
+    private void Test(string input, string output, bool status) => RunTest(input, output, status);
 }

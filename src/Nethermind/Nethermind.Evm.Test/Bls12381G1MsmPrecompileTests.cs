@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
-public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecompile, Bls12381G1MsmPrecompileTests>, IPrecompileTests
+public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecompile, Bls12381G1MsmPrecompileTests>
 {
     public static IEnumerable<string> TestFiles()
     {
@@ -230,15 +228,5 @@ public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecomp
     [TestCase("1000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e10000000000000000000000000000000000000000000000000000000000000002", "", false)]
     public void TestScalar(string input, string output, bool status) => Test(input, output, status);
 
-    private static void Test(string input, string output, bool status)
-    {
-        byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Bls12381G1MsmPrecompile.Instance.Run(inputData, MuirGlacier.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
-        }
-    }
+    private void Test(string input, string output, bool status) => RunTest(input, output, status);
 }
