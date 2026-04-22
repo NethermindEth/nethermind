@@ -23,7 +23,7 @@ internal class SubnetMasternodesCalculator(ISubnetSnapshotManager snapshotManage
             .ToArray(), previousSnapshot.NextEpochPenalties);
     }
 
-    public (Address[] nextEpochCandidates, Address[] nextPenalties) GetNextEpochCandidatesAndPenalties(Hash256 parentHash)
+    public (Address[] NextEpochCandidates, Address[] NextPenalties) GetNextEpochCandidatesAndPenalties(Hash256 parentHash)
     {
         SubnetSnapshot snapshot = snapshotManager.GetSnapshotByHash(parentHash);
         return (snapshot.NextEpochCandidates, snapshot.NextEpochPenalties);
