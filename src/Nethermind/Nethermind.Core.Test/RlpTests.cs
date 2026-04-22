@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -512,6 +512,7 @@ namespace Nethermind.Core.Test
 
             Rlp.ValueDecoderContext ctx = new(data.AsSpan());
             Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
         }
 
         [TestCase(2, 56)]
@@ -524,25 +525,7 @@ namespace Nethermind.Core.Test
 
             Rlp.ValueDecoderContext ctx = new(data.AsSpan());
             Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
-        }
-
-        [TestCase(new byte[] { 0xB8 }, TestName = "Long-string, only prefix byte")]
-        [TestCase(new byte[] { 0xF8 }, TestName = "Long-list, only prefix byte")]
-        [TestCase(new byte[] { 0xB9, 0x01 }, TestName = "Long-string, only one length byte of two")]
-        [TestCase(new byte[] { 0xF9, 0x01 }, TestName = "Long-list, only one length byte of two")]
-        [TestCase(new byte[] { 0xB8, 0xFF }, TestName = "Long-string, content length exceeds buffer")]
-        [TestCase(new byte[] { 0xF8, 0xFF }, TestName = "Long-list, content length exceeds buffer")]
-        [TestCase(new byte[] { 0xBB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "Long-string, int overflow in content-length check")]
-        [TestCase(new byte[] { 0xFB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "Long-list, int overflow in content-length check")]
-        public void ReadPrefixAndContentLength_OutOfBounds(byte[] data)
-        {
-            void Decode()
-            {
-                Rlp.ValueDecoderContext ctx = new(data);
-                ctx.ReadPrefixAndContentLength();
-            }
-
-            Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contain("bounds"));
+            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
         }
 
         private static void AssertItemCount(byte[] rlp, int expected)

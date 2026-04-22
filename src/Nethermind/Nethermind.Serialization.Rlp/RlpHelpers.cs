@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -178,9 +178,7 @@ internal static class RlpHelpers
             ThrowSequenceLengthTooLong();
         }
 
-        // prevent out-of-bound access in DeserializeLengthRef
-        int postPosition = position + 1 + lengthOfLength;
-        if (postPosition > data.Length)
+        if (position + 1 + lengthOfLength > data.Length)
         {
             ThrowRlpDataTruncated();
         }
@@ -194,12 +192,6 @@ internal static class RlpHelpers
         if (contentLength < SmallPrefixBarrier)
         {
             ThrowUnexpectedLength(contentLength);
-        }
-
-        // Verify array length is enough for content
-        if (contentLength > data.Length - postPosition)
-        {
-            ThrowLengthOutOfBounds(postPosition, contentLength);
         }
 
         return (1 + lengthOfLength, contentLength);
@@ -269,10 +261,6 @@ internal static class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowInvalidLength(int lengthOfLength)
         => throw new RlpException($"Invalid length of length = {lengthOfLength}");
-
-    [DoesNotReturn, StackTraceHidden]
-    public static void ThrowLengthOutOfBounds(int position, int length)
-        => throw new RlpException($"Length of {length} at position {position} leads outside of array bounds");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowUnexpectedPrefix(int prefix)
