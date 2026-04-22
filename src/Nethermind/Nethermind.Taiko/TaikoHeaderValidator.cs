@@ -296,28 +296,30 @@ public class TaikoHeaderValidator(
 
         if (taikoSpec.IsUzenEnabled)
         {
-            if (header.BlobGasUsed is not null && header.BlobGasUsed != 0)
+            if (header.BlobGasUsed != 0)
             {
-                error = $"Uzen header must have BlobGasUsed=0, got {header.BlobGasUsed}";
+                error = $"Uzen header must have BlobGasUsed=0, got {header.BlobGasUsed?.ToString() ?? "<null>"}";
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
                 return false;
             }
 
-            if (header.ExcessBlobGas is not null && header.ExcessBlobGas != 0)
+            if (header.ExcessBlobGas != 0)
             {
-                error = $"Uzen header must have ExcessBlobGas=0, got {header.ExcessBlobGas}";
+                error = $"Uzen header must have ExcessBlobGas=0, got {header.ExcessBlobGas?.ToString() ?? "<null>"}";
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
                 return false;
             }
 
-            if (header.ParentBeaconBlockRoot is not null && header.ParentBeaconBlockRoot != Keccak.Zero)
+            if (header.ParentBeaconBlockRoot != Keccak.Zero)
             {
-                error = $"Uzen header must have ParentBeaconBlockRoot=zero";
+                error = $"Uzen header must have ParentBeaconBlockRoot=zero, got {header.ParentBeaconBlockRoot?.ToString() ?? "<null>"}";
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
                 return false;
             }
+
+            return true;
         }
 
-        return true;
+        return base.ValidateBlobGasFields(header, parent, spec, ref error);
     }
 }

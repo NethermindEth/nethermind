@@ -7,7 +7,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Taiko.TaikoSpec;
 
-public class TaikoOntakeReleaseSpec : Cancun, ITaikoReleaseSpec
+public class TaikoOntakeReleaseSpec : Osaka, ITaikoReleaseSpec
 {
     public TaikoOntakeReleaseSpec() => IsOntakeEnabled = true;
 
