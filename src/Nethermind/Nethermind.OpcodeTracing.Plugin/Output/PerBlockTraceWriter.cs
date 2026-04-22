@@ -10,22 +10,13 @@ namespace Nethermind.OpcodeTracing.Plugin.Output;
 /// Writes per-block opcode trace output to individual JSON files.
 /// Files are named with pattern opcode-trace-block-{blockNumber}.json.
 /// </summary>
-public sealed class PerBlockTraceWriter
+public sealed class PerBlockTraceWriter(ILogManager logManager)
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logManager?.GetClassLogger<PerBlockTraceWriter>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly JsonSerializerOptions _serializerOptions = new()
     {
         WriteIndented = true
     };
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PerBlockTraceWriter"/> class.
-    /// </summary>
-    /// <param name="logManager">The log manager.</param>
-    public PerBlockTraceWriter(ILogManager logManager)
-    {
-        _logger = logManager?.GetClassLogger<PerBlockTraceWriter>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
 
     /// <summary>
     /// Writes a per-block trace output to a JSON file asynchronously.

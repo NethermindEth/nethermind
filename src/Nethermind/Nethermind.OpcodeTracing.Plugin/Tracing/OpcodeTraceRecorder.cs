@@ -18,13 +18,18 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 /// <summary>
 /// Orchestrates opcode tracing operations across block ranges.
 /// </summary>
-public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
+public sealed class OpcodeTraceRecorder(
+    IOpcodeTracingConfig config,
+    OpcodeCounter counter,
+    TraceOutputWriter outputWriter,
+    string sessionId,
+    ILogManager logManager) : IDisposable, IAsyncDisposable
 {
-    private readonly IOpcodeTracingConfig _config;
-    private readonly ILogger _logger;
-    private readonly OpcodeCounter _counter;
-    private readonly TraceOutputWriter _outputWriter;
-    private readonly string _sessionId;
+    private readonly IOpcodeTracingConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly ILogger _logger = logManager?.GetClassLogger<OpcodeTraceRecorder>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly OpcodeCounter _counter = counter ?? throw new ArgumentNullException(nameof(counter));
+    private readonly TraceOutputWriter _outputWriter = outputWriter ?? throw new ArgumentNullException(nameof(outputWriter));
+    private readonly string _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
 
     private TraceConfiguration? _traceConfig;
     private OpcodeBlockTracer? _blockTracer;
@@ -42,28 +47,6 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     private bool _waitingForBlockLogged;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="OpcodeTraceRecorder"/> class.
-    /// </summary>
-    /// <param name="config">The opcode tracing configuration.</param>
-    /// <param name="counter">The opcode counter.</param>
-    /// <param name="outputWriter">The trace output writer.</param>
-    /// <param name="sessionId">The unique session identifier for RealTime mode cumulative file naming.</param>
-    /// <param name="logManager">The log manager.</param>
-    public OpcodeTraceRecorder(
-        IOpcodeTracingConfig config,
-        OpcodeCounter counter,
-        TraceOutputWriter outputWriter,
-        string sessionId,
-        ILogManager logManager)
-    {
-        _config = config ?? throw new ArgumentNullException(nameof(config));
-        _counter = counter ?? throw new ArgumentNullException(nameof(counter));
-        _outputWriter = outputWriter ?? throw new ArgumentNullException(nameof(outputWriter));
-        _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
-        _logger = logManager?.GetClassLogger<OpcodeTraceRecorder>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
-
-    /// <summary>
     /// Prepares the tracer for operation by validating configuration and initializing resources.
     /// </summary>
     /// <param name="api">The Nethermind API.</param>
@@ -71,10 +54,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     /// <returns>A task representing the asynchronous operation.</returns>
     public Task PrepareAsync(INethermindApi api, CancellationToken cancellationToken = default)
     {
-        if (api is null)
-        {
-            throw new ArgumentNullException(nameof(api));
-        }
+        ArgumentNullException.ThrowIfNull(api);
 
         try
         {
@@ -150,10 +130,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     /// <param name="api">The Nethermind API.</param>
     public void Attach(INethermindApi api)
     {
-        if (api is null)
-        {
-            throw new ArgumentNullException(nameof(api));
-        }
+        ArgumentNullException.ThrowIfNull(api);
 
         if (_traceConfig is null)
         {
@@ -313,10 +290,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     /// <returns>A task representing the asynchronous operation.</returns>
     public Task ExecuteTracingAsync(INethermindApi api)
     {
-        if (api is null)
-        {
-            throw new ArgumentNullException(nameof(api));
-        }
+        ArgumentNullException.ThrowIfNull(api);
 
         if (_traceConfig is null || _progress is null)
         {

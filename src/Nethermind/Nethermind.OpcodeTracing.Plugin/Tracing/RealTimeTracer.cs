@@ -154,9 +154,8 @@ public sealed class RealTimeTracer : IAsyncDisposable
     /// <summary>
     /// Creates a per-block trace output from block trace data.
     /// </summary>
-    private static PerBlockTraceOutput CreatePerBlockOutput(OpcodeBlockTrace trace)
-    {
-        return new PerBlockTraceOutput
+    private static PerBlockTraceOutput CreatePerBlockOutput(OpcodeBlockTrace trace) =>
+        new()
         {
             Metadata = new PerBlockMetadata
             {
@@ -164,19 +163,17 @@ public sealed class RealTimeTracer : IAsyncDisposable
                 ParentHash = trace.ParentHash.ToString(),
                 Timestamp = (long)trace.Timestamp,
                 TransactionCount = trace.TransactionCount,
-                GasUsed = null, // Not available in current OpcodeBlockTrace
+                GasUsed = null,
                 TracedAt = DateTime.UtcNow
             },
             OpcodeCounts = new Dictionary<byte, long>(trace.Opcodes)
         };
-    }
 
     /// <summary>
     /// Creates a cumulative trace output with current state.
     /// </summary>
-    private CumulativeTraceOutput CreateCumulativeOutput(string completionStatus)
-    {
-        return new CumulativeTraceOutput
+    private CumulativeTraceOutput CreateCumulativeOutput(string completionStatus) =>
+        new()
         {
             Metadata = new CumulativeMetadata
             {
@@ -194,7 +191,6 @@ public sealed class RealTimeTracer : IAsyncDisposable
             },
             OpcodeCounts = _counter.ToOpcodeCountsDictionary()
         };
-    }
 
     /// <summary>
     /// Updates the cumulative file asynchronously.
@@ -275,8 +271,6 @@ public sealed class RealTimeTracer : IAsyncDisposable
     /// <summary>
     /// Asynchronously disposes of the tracer resources.
     /// </summary>
-    public async ValueTask DisposeAsync()
-    {
+    public async ValueTask DisposeAsync() =>
         await _writeQueue.DisposeAsync().ConfigureAwait(false);
-    }
 }
