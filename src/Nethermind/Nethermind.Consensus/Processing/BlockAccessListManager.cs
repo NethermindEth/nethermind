@@ -121,7 +121,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         int len = block.Transactions.Length;
         _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
@@ -139,11 +139,10 @@ public class BlockAccessListManager(
             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
             for (int j = chunkStart; j < chunkEnd; j++)
             {
-                (long? blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
-                blockGasUsed ??= block.Transactions[j].GasLimit;
-                totalRegularGas += blockGasUsed.Value;
+                (long blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                totalRegularGas += blockGasUsed;
                 totalStateGas += blockStateGasUsed;
-                SpendGas(blockGasUsed.Value);
+                SpendGas(blockGasUsed);
 
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 
