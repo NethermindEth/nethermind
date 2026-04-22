@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <Nullable>annotations</Nullable>
@@ -21,9 +21,7 @@
   </ItemGroup>
 
   <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
-    <PublishReadyToRun>true</PublishReadyToRun>
-    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
-    <OptimizationPreference>Speed</OptimizationPreference>
+    <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
   <PropertyGroup Label="PackagesLock">
