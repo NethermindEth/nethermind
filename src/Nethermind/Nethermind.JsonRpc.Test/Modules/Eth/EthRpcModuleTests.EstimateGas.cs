@@ -83,13 +83,21 @@ public partial class EthRpcModuleTests
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
-    [TestCase(false, 2)]
-    [TestCase(true, 2)]
-    [TestCase(true, 17)]
-    public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
+    private static IEnumerable<TestCaseData> CreateAccessListGasCases()
+    {
+        yield return new TestCaseData(false, 2, Berlin.Instance).SetName("Berlin: noOpt, 2");
+        yield return new TestCaseData(true, 2, Berlin.Instance).SetName("Berlin: opt, 2");
+        yield return new TestCaseData(true, 17, Berlin.Instance).SetName("Berlin: opt, 17");
+        yield return new TestCaseData(false, 2, Eip7981Spec).SetName("EIP-7981: noOpt, 2");
+        yield return new TestCaseData(true, 2, Eip7981Spec).SetName("EIP-7981: opt, 2");
+        yield return new TestCaseData(true, 17, Eip7981Spec).SetName("EIP-7981: opt, 17");
+    }
+
+    [TestCaseSource(nameof(CreateAccessListGasCases))]
+    public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads, IReleaseSpec spec)
     {
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .Build(new TestSpecProvider(Berlin.Instance));
+            .Build(new TestSpecProvider(spec));
 
         (byte[] code, _) = GetTestAccessList(loads);
 
@@ -574,7 +582,7 @@ public partial class EthRpcModuleTests
     }
 
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]
-    public async Task Eth_estimateGas_floor_cost(IReleaseSpec spec, byte[] data, long gasLimit, AccessList accessList, string expectedJson)
+    public async Task Eth_estimateGas_floor_cost(IReleaseSpec spec, byte[] data, long gasLimit, AccessList? accessList, string expectedJson)
     {
         TestSpecProvider specProvider = new(spec);
         using Context ctx = await Context.Create(specProvider);

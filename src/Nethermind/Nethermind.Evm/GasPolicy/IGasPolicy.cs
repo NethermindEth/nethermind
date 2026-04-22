@@ -389,16 +389,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// Every byte costs TxDataNonZeroMultiplier tokens regardless of value,
     /// matching the EIP-7976 calldata floor formula.
     /// </summary>
-    public static long CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec)
-    {
-        if (!spec.IsEip7981Enabled) return 0L;
-
-        AccessList? accessList = transaction.AccessList;
-        if (accessList is null) return 0L;
-
-        (int addressCount, int storageKeyCount) = accessList.Count;
-        return (addressCount * 20L + storageKeyCount * 32L) * spec.GasCosts.TxDataNonZeroMultiplier;
-    }
+    public static long CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
+        spec.IsEip7981Enabled && transaction.AccessList is { Count: var count }
+            ? (count.AddressesCount * 20L + count.StorageKeysCount * 32L) * spec.GasCosts.TxDataNonZeroMultiplier
+            : 0L;
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long floorTokensInAccessList)
     {
