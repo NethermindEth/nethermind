@@ -207,7 +207,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Phase 1: parallel account fetch, gated by the sink
         using ArrayPoolList<Account?> accounts = new(accountCount, accountCount);
-        int skippedAccounts = 0;
         try
         {
             Parallel.For(0, accountCount, parallelOptions, (i) =>
@@ -216,7 +215,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 if (!sink.StillNeeded(address, out Account? cached))
                 {
                     accounts[i] = cached;
-                    Interlocked.Increment(ref skippedAccounts);
                     return;
                 }
 
@@ -240,7 +238,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             totalSlots += accountChangesList[i].StorageChanges.Count + accountChangesList[i].StorageReads.Count;
         }
 
-        int skippedStorageFlat = 0;
         if (totalSlots > 0)
         {
             using ArrayPoolList<(Address Address, IWorldStateScopeProvider.IStorageTree Tree, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
@@ -270,10 +267,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     (Address address, IWorldStateScopeProvider.IStorageTree tree, UInt256 slot) = jobs[s];
                     StorageCell cell = new(address, in slot);
                     if (!sink.StillNeeded(in cell))
-                    {
-                        Interlocked.Increment(ref skippedStorageFlat);
                         return;
-                    }
 
                     byte[] value = tree.Get(in slot);
                     sink.OnStorageRead(in cell, value);
@@ -282,18 +276,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             catch (OperationCanceledException) { }
         }
 
-        LogBalSkipRates(accountCount, skippedAccounts, totalSlots, skippedStorageFlat);
         return Task.CompletedTask;
-    }
-
-    private void LogBalSkipRates(int accountCount, int skippedAccounts, int totalSlots, int skippedStorageFlat)
-    {
-        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-        if (!logger.IsInfo) return;
-
-        double accountSkipPct = accountCount == 0 ? 0 : 100.0 * skippedAccounts / accountCount;
-        double slotSkipPct = totalSlots == 0 ? 0 : 100.0 * skippedStorageFlat / totalSlots;
-        logger.Info($"[BAL] accounts={accountCount} skipped={skippedAccounts} ({accountSkipPct:F1}%) slots={totalSlots} skipped={skippedStorageFlat} ({slotSkipPct:F1}%)");
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
