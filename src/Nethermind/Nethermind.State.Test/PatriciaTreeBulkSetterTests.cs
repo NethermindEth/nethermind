@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -761,13 +762,29 @@ public class PatriciaTreeBulkSetterTests
         public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) =>
             new SynchronizedCommitter(baseTrieStore.BeginCommit(root, writeFlags));
 
+        // Mirrors TrieStore.BlockCommitter's quota semantics so tests actually exercise the
+        // parallel dispatch. Without this, TryRequestConcurrentQuota returns the interface
+        // default (false) and every parallel nib falls into the inline branch — the parallel
+        // code path would be uncovered.
         private sealed class SynchronizedCommitter(ICommitter inner) : ICommitter
         {
+            private int _concurrency = Environment.ProcessorCount;
+
             public void Dispose() => inner.Dispose();
+
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
                 lock (inner) return inner.CommitNode(ref path, node);
             }
+
+            public bool TryRequestConcurrentQuota()
+            {
+                if (Interlocked.Decrement(ref _concurrency) >= 0) return true;
+                Interlocked.Increment(ref _concurrency);
+                return false;
+            }
+
+            public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
         }
     }
 }
