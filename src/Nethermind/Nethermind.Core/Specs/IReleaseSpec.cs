@@ -364,11 +364,6 @@ namespace Nethermind.Core.Specs
         bool IsEip7623Enabled { get; }
 
         /// <summary>
-        ///  Increase Calldata Floor Cost
-        /// </summary>
-        bool IsEip7976Enabled { get; }
-
-        /// <summary>
         ///  Transaction gas limit cap
         /// </summary>
         bool IsEip7825Enabled { get; }
@@ -383,6 +378,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip7934Enabled { get; }
         int Eip7934MaxRlpBlockSize { get; }
+
+        /// <summary>
+        ///  Increase Calldata Floor Cost
+        /// </summary>
+        bool IsEip7976Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
