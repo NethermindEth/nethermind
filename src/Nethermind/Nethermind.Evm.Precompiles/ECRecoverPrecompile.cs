@@ -27,8 +27,12 @@ public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
 
-    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
-        inputData.Length > InputLength ? inputData[..InputLength] : inputData;
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData)
+    {
+        ReadOnlyMemory<byte> clamped = inputData.Length > InputLength ? inputData[..InputLength] : inputData;
+        int end = clamped.Span.LastIndexOfAnyExcept((byte)0);
+        return end < 0 ? ReadOnlyMemory<byte>.Empty : clamped[..(end + 1)];
+    }
 
     private readonly byte[] _zero31 = new byte[31];
 
