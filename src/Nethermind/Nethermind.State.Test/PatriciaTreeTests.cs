@@ -136,7 +136,7 @@ namespace Nethermind.Store.Test
             using ITrieStore trieStore = CreateTrieStore();
             StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             {
-                using var _ = trieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 stateTree.Set(TestItem.AddressA, new Account(1));
                 stateTree.Commit();
             }
