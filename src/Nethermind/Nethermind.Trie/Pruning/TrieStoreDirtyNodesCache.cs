@@ -201,6 +201,7 @@ internal class TrieStoreDirtyNodesCache
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static NodeRecord MergeRecords(NodeRecord current, NodeRecord candidate)
     {
         long lastCommit = current.LastCommit;

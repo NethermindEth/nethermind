@@ -865,11 +865,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return;
         }
 
-        // When deleting old nodes, the first revisit marks the key as ambiguous by switching it to null.
-        // After that, additional revisits are pure read-only probes, so we retry only until that
-        // one-way state transition succeeds instead of routing every revisit through AddOrUpdate.
+        // If TryGetValue returns false the key was removed by NoResizeClear, which runs after (not
+        // during) PruneCache has finished consuming the dictionary. The sentinel is no longer needed
+        // once that pass has completed, so exiting the loop is safe.
         while (persistedHashes.TryGetValue(key, out Hash256? existingHash))
         {
+            // When deleting old nodes, the first revisit marks the key as ambiguous by switching it to null.
+            // After that, additional revisits are pure read-only probes, so we retry only until that
+            // one-way state transition succeeds instead of routing every revisit through AddOrUpdate.
             if (existingHash is null || persistedHashes.TryUpdate(key, null, existingHash))
             {
                 return;

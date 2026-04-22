@@ -67,10 +67,10 @@ namespace Nethermind.Core.Crypto
         public long GetHashCode64() => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetChainedHashCode(uint previousHash) => (int)BitOperations.Crc32C((uint)Bytes.FastHash(), previousHash);
+        public int GetChainedHashCode(uint previousHash) => (int)BitOperations.Crc32C(previousHash, (uint)Bytes.FastHash());
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetChainedHashCode(ulong previousHash) => (int)BitOperations.Crc32C((uint)Bytes.FastHash(), previousHash);
+        public int GetChainedHashCode(ulong previousHash) => (int)BitOperations.Crc32C((uint)previousHash, (previousHash & ~(ulong)uint.MaxValue) | (uint)Bytes.FastHash());
 
         public int CompareTo(ValueHash256 other) => Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
 
