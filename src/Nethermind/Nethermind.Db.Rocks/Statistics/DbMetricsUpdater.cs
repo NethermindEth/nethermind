@@ -174,7 +174,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         if (timer is null) return;
 
         using ManualResetEvent waitHandle = new(false);
-        if (timer.Dispose(waitHandle) && !waitHandle.WaitOne(TimeSpan.FromSeconds(5)))
+        if (timer.Dispose(waitHandle) && !waitHandle.WaitOne(TimeSpan.FromSeconds(1)))
         {
             logger.Warn($"DbMetricsUpdater for {dbName} did not complete within the timeout during disposal.");
         }
