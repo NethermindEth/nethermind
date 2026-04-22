@@ -52,10 +52,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         {
             // In case of deeper node that already exist.
             byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
-            if (nodeRlp is null)
-            {
-                nodeRlp = await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
-            }
+            nodeRlp ??= await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
 
             if (nodeRlp is null)
             {

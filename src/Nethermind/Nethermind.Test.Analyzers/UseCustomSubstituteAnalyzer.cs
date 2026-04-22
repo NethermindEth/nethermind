@@ -68,8 +68,7 @@ public class UseCustomSubstituteAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        INamedTypeSymbol? substitutedType = context.SemanticModel.GetTypeInfo(genericName.TypeArgumentList.Arguments[0], context.CancellationToken).Type as INamedTypeSymbol;
-        if (substitutedType is null)
+        if (context.SemanticModel.GetTypeInfo(genericName.TypeArgumentList.Arguments[0], context.CancellationToken).Type is not INamedTypeSymbol substitutedType)
         {
             return;
         }
