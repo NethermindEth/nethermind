@@ -61,7 +61,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     }
 
     public override IDisposable BeginScope(BlockHeader? baseBlock)
-        => _innerWorldState.BeginScope(baseBlock);
+    {
+        GeneratedBlockAccessList = new();
+        _suggestedBlockAccessList = null!;
+        return _innerWorldState.BeginScope(baseBlock);
+    }
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
