@@ -17,7 +17,8 @@ public class XdcSubnetBlockHeader(
     long number,
     long gasLimit,
     ulong timestamp,
-    byte[] extraData) : XdcBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
+    byte[] extraData,
+    bool isSelfMined = false) : XdcBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData, isSelfMined)
 {
     private static readonly XdcSubnetHeaderDecoder _headerDecoder = new();
 
