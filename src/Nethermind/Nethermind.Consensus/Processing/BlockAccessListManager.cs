@@ -121,7 +121,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         int len = block.Transactions.Length;
         _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
@@ -139,20 +139,17 @@ public class BlockAccessListManager(
             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
             for (int j = chunkStart; j < chunkEnd; j++)
             {
-                (long blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
-                totalRegularGas += blockGasUsed;
-                totalStateGas += blockStateGasUsed;
-                SpendGas(blockGasUsed);
-
-                CheckGasUsed(j, block, totalRegularGas, totalStateGas);
-
+                (long? blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
                 if (ex is not null)
-                {
                     ExceptionDispatchInfo.Capture(ex).Throw();
-                }
 
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
+                totalRegularGas += blockGasUsed.Value;
+                totalStateGas += blockStateGasUsed;
+                SpendGas(blockGasUsed.Value);
+
+                CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 
                 bool validateStorageReads = j == chunkEnd - 1;
                 _txProcessorWithWorldStateManager.Get(j + 1).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
