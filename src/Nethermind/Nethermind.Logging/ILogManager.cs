@@ -3,28 +3,21 @@
 
 using System;
 
-namespace Nethermind.Logging
+namespace Nethermind.Logging;
+
+public interface ILogManager
 {
-    public interface ILogManager
-    {
-#if !ZK_EVM
-        ILogger GetClassLogger<T>();
-#endif
-        ILogger GetLogger(string loggerName);
+    ILogger GetClassLogger<T>();
 
-        void SetGlobalVariable(string name, object value) { }
+    ILogger GetLogger(string loggerName);
 
-        static string GetLoggerName(Type type) => (type.FullName ?? type.Name).Replace("Nethermind.", string.Empty);
-    }
+    void SetGlobalVariable(string name, object value) { }
 
-    public static class LogManagerExtensions
-    {
-#if ZK_EVM
-        public static ILogger GetClassLogger<T>(this ILogManager logManager)
-            => logManager.GetLogger(ILogManager.GetLoggerName(typeof(T)));
-#endif
+    static string GetLoggerName(Type type) => (type.FullName ?? type.Name).Replace("Nethermind.", string.Empty);
+}
 
-        public static ILogger GetClassLogger(this ILogManager logManager, Type type)
-            => logManager.GetLogger(ILogManager.GetLoggerName(type));
-    }
+public static class LogManagerExtensions
+{
+    public static ILogger GetClassLogger(this ILogManager logManager, Type type)
+        => logManager.GetLogger(ILogManager.GetLoggerName(type));
 }

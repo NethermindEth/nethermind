@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-public interface ISnapshotManager
+public interface ISnapshotManager : IDisposable
 {
     static bool IsTimeForSnapshot(long blockNumber, IXdcReleaseSpec spec)
     {

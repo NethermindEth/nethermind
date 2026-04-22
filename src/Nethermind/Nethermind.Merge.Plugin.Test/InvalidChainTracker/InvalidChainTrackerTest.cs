@@ -220,8 +220,7 @@ public class InvalidChainTrackerTest
 
     private void AssertInvalid(Hash256 hash, Hash256? expectedLsatValidHash = null)
     {
-        Hash256? lastValidHash;
-        _tracker.IsOnKnownInvalidChain(hash, out lastValidHash).Should().BeTrue();
+        _tracker.IsOnKnownInvalidChain(hash, out Hash256? lastValidHash).Should().BeTrue();
         if (expectedLsatValidHash is not null)
         {
             lastValidHash.Should().BeEquivalentTo(expectedLsatValidHash);

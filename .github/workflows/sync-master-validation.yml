@@ -93,6 +93,10 @@ jobs:
                   runner_label: (
                     (if $mode == "Flat" then "f-" else "hp-" end)
                     + $run_id + "-master-" + $config.network
+                  ),
+                  timeout: (
+                    if $config.network == "mainnet" and $mode == "Flat" then 360
+                    else $config.timeout end
                   )
                 }]')
 

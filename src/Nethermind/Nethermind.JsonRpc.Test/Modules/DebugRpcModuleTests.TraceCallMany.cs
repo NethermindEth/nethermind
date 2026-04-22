@@ -213,4 +213,38 @@ public partial class DebugRpcModuleTests
         gasAvailable.Should().BeLessThan(gasCap);
         gasAvailable.Should().BeGreaterThan(0);
     }
+
+    [Test]
+    public async Task Debug_traceCallMany_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await CreateContext();
+
+        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        long gasCap = blockGasLimit * 10;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns gas available at start of execution as a uint256
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+
+        // No Gas set — should default to gasCap via EnsureDefaults, not blockGasLimit
+        LegacyTransactionForRpc tx = new() { To = contractAddress };
+
+        TransactionBundle bundle = new()
+        {
+            Transactions = [tx],
+            StateOverrides = new Dictionary<Address, AccountOverride>
+            {
+                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
+            }
+        };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        GethLikeTxTrace trace = result.Data.First().First();
+        UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
+        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
+            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
+    }
 }

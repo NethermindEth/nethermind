@@ -43,12 +43,9 @@ public static class KeyValueStoreRlpExtensions
       where TCacheKey : struct, IEquatable<TCacheKey>
     {
         TItem item = cache?.Get(cacheKey);
-        if (item is null)
-        {
-            item = db is IReadOnlyNativeKeyValueStore native
-                ? Get(native, key, decoder, rlpBehaviors)
-                : Get(db, key, decoder, rlpBehaviors);
-        }
+        item ??= db is IReadOnlyNativeKeyValueStore native
+            ? Get(native, key, decoder, rlpBehaviors)
+            : Get(db, key, decoder, rlpBehaviors);
 
         if (shouldCache && cache is not null && item is not null)
         {
@@ -82,12 +79,9 @@ public static class KeyValueStoreRlpExtensions
       where TCacheKey : struct, IHash64bit<TCacheKey>
     {
         TItem item = cache?.Get(in cacheKey);
-        if (item is null)
-        {
-            item = db is IReadOnlyNativeKeyValueStore native
-                ? Get(native, key, decoder, rlpBehaviors)
-                : Get(db, key, decoder, rlpBehaviors);
-        }
+        item ??= db is IReadOnlyNativeKeyValueStore native
+            ? Get(native, key, decoder, rlpBehaviors)
+            : Get(db, key, decoder, rlpBehaviors);
 
         if (shouldCache && cache is not null && item is not null)
         {
