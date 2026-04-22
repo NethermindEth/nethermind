@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1738,5 +1739,54 @@ namespace Nethermind.Trie.Test.Pruning
 
             commitBlock1.Should().NotThrow();
         }
+    }
+
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class TreeStoreInternalBehaviorTests
+    {
+        [TestCase(false, false, 4, 2, false, 4, TestName = "Dirty_node_record_merge_keeps_current_when_neither_persisted")]
+        [TestCase(false, false, 2, 5, false, 5, TestName = "Dirty_node_record_merge_advances_last_commit_from_candidate")]
+        [TestCase(true, false, 1, 3, true, 3, TestName = "Dirty_node_record_merge_replaces_persisted_node_with_dirty_candidate")]
+        [TestCase(false, true, 4, 6, false, 6, TestName = "Dirty_node_record_merge_keeps_current_when_candidate_is_persisted")]
+        public void Dirty_node_record_merge_selects_expected_node_and_last_commit(bool currentPersisted, bool candidatePersisted, long currentLastCommit, long candidateLastCommit, bool expectCandidateNode, long expectedLastCommit)
+        {
+            TrieNode currentNode = CreateNode(currentPersisted);
+            TrieNode candidateNode = CreateNode(candidatePersisted);
+
+            TrieStoreDirtyNodesCache.NodeRecord merged = TrieStoreDirtyNodesCache.MergeRecords(
+                CreateRecord(currentNode, currentLastCommit),
+                CreateRecord(candidateNode, candidateLastCommit));
+
+            merged.Node.Should().BeSameAs(expectCandidateNode ? candidateNode : currentNode);
+            merged.LastCommit.Should().Be(expectedLastCommit);
+        }
+
+        [Test]
+        public void Persisted_hash_recorder_handles_revisited_keys([Values] bool deleteOldNodes)
+        {
+            ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes = new();
+            HashAndTinyPath key = new(TestItem.KeccakA, new TinyTreePath(TreePath.Empty));
+
+            TrieStore.RecordPersistedHash(persistedHashes, key, TestItem.KeccakB, deleteOldNodes);
+            TrieStore.RecordPersistedHash(persistedHashes, key, TestItem.KeccakC, deleteOldNodes);
+
+            if (deleteOldNodes)
+            {
+                TrieStore.RecordPersistedHash(persistedHashes, key, TestItem.KeccakD, deleteOldNodes);
+                persistedHashes[key].Should().BeNull();
+            }
+            else
+            {
+                persistedHashes[key].Should().Be(TestItem.KeccakB);
+            }
+
+            persistedHashes.Count.Should().Be(1);
+        }
+
+        private static TrieNode CreateNode(bool isPersisted) =>
+            new(NodeType.Unknown, TestItem.KeccakA) { IsPersisted = isPersisted };
+
+        private static TrieStoreDirtyNodesCache.NodeRecord CreateRecord(TrieNode node, long lastCommit) => new(node, lastCommit);
     }
 }
