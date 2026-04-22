@@ -3,10 +3,10 @@
 
 using System;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Threading;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
@@ -47,6 +47,16 @@ public partial class PatriciaTree
             return;
         }
 
+        // Depth gate — mirror Commit's formula, substituting entries.Count for
+        // _writeBeforeCommit since the fused op never buffers writes.
+        int maxLevelForConcurrentCommit = entries.Count switch
+        {
+            > 4 * 16 * 16 => 2,
+            > 4 * 16 => 1,
+            > 4 => 0,
+            _ => -1,
+        };
+
         TraverseStack traverseStack = _threadStaticTraverseStack ?? new();
         _threadStaticTraverseStack = null;
 
@@ -65,7 +75,7 @@ public partial class PatriciaTree
             {
                 newRoot = BulkSetAndCommit(ctx, traverseStack, committer,
                     entries.AsSpan(), entries.AsSpan(),
-                    ref path, RootRef, 0, flags);
+                    ref path, RootRef, 0, flags, maxLevelForConcurrentCommit);
                 FinalizeRoot(committer, ref path, newRoot, skipRoot);
             }
         }
@@ -82,7 +92,7 @@ public partial class PatriciaTree
             {
                 newRoot = BulkSetAndCommit(ctx, traverseStack, committer,
                     entries.AsSpan(), sortBuffer.AsSpan(),
-                    ref path, RootRef, 0, flags);
+                    ref path, RootRef, 0, flags, maxLevelForConcurrentCommit);
                 FinalizeRoot(committer, ref path, newRoot, skipRoot);
             }
         }
@@ -128,7 +138,8 @@ public partial class PatriciaTree
         ref TreePath path,
         TrieNode? node,
         int flipCount,
-        Flags flags)
+        Flags flags,
+        int maxLevelForConcurrentCommit)
     {
         TrieNode? originalNode = node;
 
@@ -262,7 +273,12 @@ public partial class PatriciaTree
             }
         }
 
-        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
+        // Dispatch mechanism mirrors PatriciaTree.Commit: per-child Task.Factory.StartNew,
+        // gated by ICommitter.TryRequestConcurrentQuota, with the last dirty child always
+        // inline. Depth gating via maxLevelForConcurrentCommit bounds recursive parallelism
+        // so total concurrency stays capped at the committer's quota (ProcessorCount) instead
+        // of exploding by 16^depth under nested FullBranch cascades.
+        if (path.Length <= maxLevelForConcurrentCommit && !flags.HasFlag(Flags.DoNotParallelize))
         {
             using ArrayPoolList<(
                 int startIdx,
@@ -278,6 +294,9 @@ public partial class PatriciaTree
             BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
 
+            // Pre-populate jobs for each touched nibble. Untouched slots stay default;
+            // the serial join below iterates the saved mask and skips those.
+            int savedNibMask = nibMask;
             while (nibMask != 0)
             {
                 int nib = BitOperations.TrailingZeroCount(nibMask);
@@ -291,46 +310,63 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            // Workers call BulkSetAndCommit recursively and commit descendants concurrently.
-            // CommitNode is called concurrently inside workers (for deep descendants); the 16 subtree
-            // roots are NOT committed here, they are committed serially below after the join.
-            // The supplied ICommitter MUST be concurrency-safe for CommitNode. Production TrieStore's
-            // BlockCommitter is; tests that use a non-thread-safe committer must wrap it themselves.
+            // Dispatch: per-nib Task with quota, last dirty nib always inline.
+            // Tasks write their newChild into jobs[nib]; the main-thread serial join below
+            // runs SetChild + MaybeCommitAt so the pendingChild / MaybeCombineNode invariant
+            // stays on a single thread.
             ICommitter closureCommitter = committer;
-            Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
-                () =>
-                {
-                    TraverseStack s = _threadStaticTraverseStack ?? new();
-                    _threadStaticTraverseStack = null;
-                    return s;
-                },
-                (i, _, workerTraverseStack) =>
-                {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
+            ArrayPoolList<Task>? childTasks = null;
+            int remaining = BitOperations.PopCount((uint)savedNibMask);
+            int consumed = 0;
+            int dispatchMask = savedNibMask;
 
+            while (dispatchMask != 0)
+            {
+                int nib = BitOperations.TrailingZeroCount(dispatchMask);
+                dispatchMask &= dispatchMask - 1;
+                consumed++;
+                bool isLast = consumed == remaining;
+
+                if (!isLast && committer.TryRequestConcurrentQuota())
+                {
+                    childTasks ??= new ArrayPoolList<Task>(remaining);
+                    childTasks.Add(CreateBulkSetAndCommitTask(
+                        in closureCtx, closureCommitter, jobs,
+                        originalEntriesArray, originalBufferArray,
+                        nib, flipCount, flags, maxLevelForConcurrentCommit));
+                }
+                else
+                {
+                    (int startIdx, int count, int _, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[nib];
                     Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
                     Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
 
                     TrieNode? newChild = BulkSetAndCommit(
-                        in closureCtx,
-                        workerTraverseStack,
-                        closureCommitter,
-                        jobEntries,
-                        bufferEntries,
-                        ref childPath,
-                        child,
-                        flipCount,
-                        flags & ~Flags.DoNotParallelize);
+                        in ctx, traverseStack, committer,
+                        jobEntries, bufferEntries,
+                        ref childPath, child, flipCount,
+                        flags & ~Flags.DoNotParallelize,
+                        maxLevelForConcurrentCommit);
 
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild);
-                    return workerTraverseStack;
-                },
-                s => _threadStaticTraverseStack = s
-            );
+                    jobs[nib] = (startIdx, count, nib, childPath, child, newChild);
+                }
+            }
 
-            path.AppendMut(0);
-            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            if (childTasks is not null)
             {
+                Task.WaitAll(childTasks.AsSpan());
+                childTasks.Dispose();
+            }
+
+            // Serial join: iterate the saved mask so untouched slots are skipped cheaply,
+            // then for each touched nib merge the task/inline result into `node`.
+            path.AppendMut(0);
+            int joinMask = savedNibMask;
+            while (joinMask != 0)
+            {
+                int i = BitOperations.TrailingZeroCount(joinMask);
+                joinMask &= joinMask - 1;
+
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
@@ -382,7 +418,7 @@ public partial class PatriciaTree
                     newChild = BulkSetAndCommit(in ctx, traverseStack, committer,
                         entries[startRange..endRange],
                         sortBuffer[startRange..endRange],
-                        ref path, child, flipCount, flags);
+                        ref path, child, flipCount, flags, maxLevelForConcurrentCommit);
                 }
 
                 if ((newChild is null || !newChild.IsDirty) && !ShouldUpdateChild(originalNode, child, newChild))
@@ -506,6 +542,59 @@ public partial class PatriciaTree
             path.TruncateMut(prev);
         }
         // Leaf: terminal, no children. Caller hashes/seals/commits.
+    }
+
+    /// <summary>
+    /// Mirror of <see cref="CreateTaskForPath"/>: spawns a task that runs
+    /// <see cref="BulkSetAndCommit(in Context, TraverseStack, ICommitter, Span{BulkSetEntry}, Span{BulkSetEntry}, ref TreePath, TrieNode?, int, Flags, int)"/>
+    /// on one branch child. Result lands in <paramref name="jobs"/> at slot <paramref name="nib"/>;
+    /// the caller's serial join picks it up after <see cref="Task.WaitAll(System.ReadOnlySpan{Task})"/>.
+    /// The committer quota is returned in <c>finally</c> so exceptions don't leak it.
+    /// </summary>
+    private Task CreateBulkSetAndCommitTask(
+        in Context ctx,
+        ICommitter committer,
+        ArrayPoolList<(int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)> jobs,
+        BulkSetEntry[] originalEntriesArray,
+        BulkSetEntry[] originalBufferArray,
+        int nib,
+        int flipCount,
+        Flags flags,
+        int maxLevelForConcurrentCommit)
+    {
+        Context closureCtx = ctx;
+        return Task.Factory.StartNew(_ =>
+        {
+            try
+            {
+                TraverseStack stack = _threadStaticTraverseStack ?? new();
+                _threadStaticTraverseStack = null;
+                try
+                {
+                    (int startIdx, int count, int _, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[nib];
+
+                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
+                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
+
+                    TrieNode? newChild = BulkSetAndCommit(
+                        in closureCtx, stack, committer,
+                        jobEntries, bufferEntries,
+                        ref childPath, child, flipCount,
+                        flags & ~Flags.DoNotParallelize,
+                        maxLevelForConcurrentCommit);
+
+                    jobs[nib] = (startIdx, count, nib, childPath, child, newChild);
+                }
+                finally
+                {
+                    _threadStaticTraverseStack = stack;
+                }
+            }
+            finally
+            {
+                committer.ReturnConcurrencyQuota();
+            }
+        }, null, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default);
     }
 
 }
