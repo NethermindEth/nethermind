@@ -22,6 +22,8 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 
     public static string Name => "BLS12_PAIRING_CHECK";
 
+    public bool SupportsFastPath => true;
+
     public long BaseGasCost(IReleaseSpec _) => 37700L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 32600L * (inputData.Length / PairSize);

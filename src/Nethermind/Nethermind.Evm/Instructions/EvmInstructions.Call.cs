@@ -3,10 +3,12 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -189,6 +191,10 @@ public static partial class EvmInstructions
 
         // Retrieve code information for the call and schedule background analysis if needed.
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        bool useFastPrecompile = codeInfo.IsPrecompile
+            && codeInfo.Precompile!.SupportsFastPath
+            && !TTracingInst.IsActive
+            && !vm.TxTracer.IsTracingActions;
 
         // Get remaining gas for 63/64 calculation
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
@@ -242,6 +248,25 @@ public static partial class EvmInstructions
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
             return pushResult;
+        }
+
+        if (useFastPrecompile)
+        {
+            return FastPrecompileCall(
+                vm,
+                state,
+                ref gas,
+                ref stack,
+                gasLimitUl,
+                in transferValue,
+                caller,
+                target,
+                codeInfo.Precompile!,
+                in dataOffset,
+                in dataLength,
+                in outputOffset,
+                in outputLength,
+                spec);
         }
 
         // Take a snapshot of the state for potential rollback.
@@ -303,6 +328,159 @@ public static partial class EvmInstructions
             state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
             Metrics.IncrementEmptyCalls();
 
+            vm.ReturnData = null;
+            return EvmExceptionType.None;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static EvmExceptionType FastPrecompileCall(
+            VirtualMachine<TGasPolicy> vm,
+            IWorldState state,
+            ref TGasPolicy gas,
+            ref EvmStack stack,
+            long gasLimitUl,
+            in UInt256 transferValue,
+            Address caller,
+            Address target,
+            IPrecompile precompile,
+            in UInt256 dataOffset,
+            in UInt256 dataLength,
+            in UInt256 outputOffset,
+            in UInt256 outputLength,
+            IReleaseSpec spec)
+        {
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> inputData))
+                return EvmExceptionType.OutOfGas;
+
+            long baseGasCost = precompile.BaseGasCost(spec);
+            long dataGasCost = precompile.DataGasCost(inputData, spec);
+            bool gasOverflow = (ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue;
+            long precompileGasCost = gasOverflow ? long.MaxValue : baseGasCost + dataGasCost;
+
+            Snapshot snapshot = default;
+            bool hasSnapshot = false;
+            if (!transferValue.IsZero)
+            {
+                hasSnapshot = true;
+                snapshot = state.TakeSnapshot();
+                state.SubtractFromBalance(caller, in transferValue, spec);
+                state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
+            }
+
+            // On failure all forwarded gas is consumed, matching normal precompile CALL semantics.
+            if (gasOverflow || precompileGasCost > gasLimitUl)
+                return ReturnFailedPrecompileCallAndRestore(vm, ref stack, state, hasSnapshot, in snapshot);
+
+            if (!TryRunPrecompile(vm, precompile, inputData, spec, out Result<byte[]> output) || !output)
+                return ReturnFailedPrecompileCallAndRestore(vm, ref stack, state, hasSnapshot, in snapshot);
+
+            EvmExceptionType precompileResult = HandlePrecompileSuccess(
+                vm,
+                ref gas,
+                ref stack,
+                output.Data,
+                in outputOffset,
+                in outputLength,
+                gasLimitUl,
+                precompileGasCost);
+
+            if (precompileResult != EvmExceptionType.None)
+                return precompileResult;
+
+            vm.AddTransferLog<TEip7708>(caller, target, transferValue);
+
+            // Mirror RunPrecompile account-touch behavior for zero-value successful precompile calls.
+            // RIPEMD-160 is excluded from the fast path because its historical touch ordering matters.
+            if (transferValue.IsZero)
+                state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
+
+            return EvmExceptionType.None;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static bool TryRunPrecompile(
+            VirtualMachine<TGasPolicy> vm,
+            IPrecompile precompile,
+            ReadOnlyMemory<byte> inputData,
+            IReleaseSpec spec,
+            out Result<byte[]> output)
+        {
+            try
+            {
+                output = precompile.Run(inputData, spec);
+                return true;
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+            {
+                if (vm.Logger.IsError)
+                {
+                    vm.Logger.Error(
+                        $"Failed to load one of the dependencies of {precompile.GetType()} precompile",
+                        exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
+                }
+
+                Environment.Exit(ExitCodes.MissingPrecompile);
+                throw;
+            }
+            catch (Exception exception)
+            {
+                if (vm.Logger.IsError)
+                    vm.Logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
+
+                output = default;
+                return false;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static EvmExceptionType ReturnFailedPrecompileCall(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
+        {
+            vm.ReturnDataBuffer = Array.Empty<byte>();
+            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+            vm.ReturnData = null;
+            return pushResult;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static EvmExceptionType ReturnFailedPrecompileCallAndRestore(
+            VirtualMachine<TGasPolicy> vm,
+            ref EvmStack stack,
+            IWorldState state,
+            bool hasSnapshot,
+            in Snapshot snapshot)
+        {
+            if (hasSnapshot)
+                state.Restore(snapshot);
+
+            return ReturnFailedPrecompileCall(vm, ref stack);
+        }
+
+        static EvmExceptionType HandlePrecompileSuccess(
+            VirtualMachine<TGasPolicy> vm,
+            ref TGasPolicy gas,
+            ref EvmStack stack,
+            byte[]? outputData,
+            in UInt256 outputOffset,
+            in UInt256 outputLength,
+            long gasLimitUl,
+            long precompileGasCost)
+        {
+            byte[] returnBytes = outputData ?? Array.Empty<byte>();
+            vm.ReturnDataBuffer = returnBytes;
+
+            if (!outputLength.IsZero)
+            {
+                int bytesToCopy = Math.Min(returnBytes.Length, (int)outputLength);
+                if (bytesToCopy > 0 &&
+                    !vm.VmState.Memory.TrySave(in outputOffset, returnBytes.AsSpan(0, bytesToCopy)))
+                    return EvmExceptionType.OutOfGas;
+            }
+
+            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+            if (pushResult != EvmExceptionType.None)
+                return pushResult;
+
+            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl - precompileGasCost);
             vm.ReturnData = null;
             return EvmExceptionType.None;
         }

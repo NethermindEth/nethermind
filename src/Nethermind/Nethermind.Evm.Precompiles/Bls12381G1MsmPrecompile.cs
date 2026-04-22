@@ -22,6 +22,8 @@ public partial class Bls12381G1MsmPrecompile : IPrecompile<Bls12381G1MsmPrecompi
 
     public static string Name => "BLS12_G1MSM";
 
+    public bool SupportsFastPath => true;
+
     public long BaseGasCost(IReleaseSpec _) => 0L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)

@@ -25,6 +25,11 @@ public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
     public static Address Address { get; } = Address.FromNumber(3);
 
     public static string Name => "RIPEMD160";
+    // The fast path cannot be used for RIPEMD-160 because the EIP-161 Parity touch bug
+    // workaround (applied in RunPrecompile in VirtualMachine.cs) requires touching the
+    // precompile address *before* execution. The fast path touches *after* success, which
+    // would break consensus for historical sync.
+    public bool SupportsFastPath => false;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
 

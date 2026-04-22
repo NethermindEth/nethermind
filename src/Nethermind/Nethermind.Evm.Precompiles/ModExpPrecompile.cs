@@ -42,6 +42,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     public static Address Address { get; } = Address.FromNumber(5);
 
     public static string Name => "MODEXP";
+    public bool SupportsFastPath => true;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 

@@ -24,6 +24,8 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
 
     public static string Name => "KZG_POINT_EVALUATION";
 
+    public bool SupportsFastPath => true;
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50_000L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;

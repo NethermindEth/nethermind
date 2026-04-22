@@ -36,4 +36,42 @@ public class SupportsCachingTests
 
     [Test]
     public void IdentityPrecompile_SupportsCaching_ReturnsFalse() => Assert.That(IdentityPrecompile.Instance.SupportsCaching, Is.False);
+
+    public static IEnumerable<TestCaseData> PrecompilesWithFastPathEnabled()
+    {
+        yield return new TestCaseData(IdentityPrecompile.Instance).SetName(nameof(IdentityPrecompile));
+        yield return new TestCaseData(Sha256Precompile.Instance).SetName(nameof(Sha256Precompile));
+        yield return new TestCaseData(BN254AddPrecompile.Instance).SetName(nameof(BN254AddPrecompile));
+        yield return new TestCaseData(BN254MulPrecompile.Instance).SetName(nameof(BN254MulPrecompile));
+        yield return new TestCaseData(BN254PairingPrecompile.Instance).SetName(nameof(BN254PairingPrecompile));
+        yield return new TestCaseData(ModExpPrecompile.Instance).SetName(nameof(ModExpPrecompile));
+        yield return new TestCaseData(Blake2FPrecompile.Instance).SetName(nameof(Blake2FPrecompile));
+        yield return new TestCaseData(Bls12381G1AddPrecompile.Instance).SetName(nameof(Bls12381G1AddPrecompile));
+        yield return new TestCaseData(Bls12381G1MsmPrecompile.Instance).SetName(nameof(Bls12381G1MsmPrecompile));
+        yield return new TestCaseData(Bls12381G2AddPrecompile.Instance).SetName(nameof(Bls12381G2AddPrecompile));
+        yield return new TestCaseData(Bls12381G2MsmPrecompile.Instance).SetName(nameof(Bls12381G2MsmPrecompile));
+        yield return new TestCaseData(Bls12381PairingCheckPrecompile.Instance).SetName(nameof(Bls12381PairingCheckPrecompile));
+        yield return new TestCaseData(Bls12381FpToG1Precompile.Instance).SetName(nameof(Bls12381FpToG1Precompile));
+        yield return new TestCaseData(Bls12381Fp2ToG2Precompile.Instance).SetName(nameof(Bls12381Fp2ToG2Precompile));
+        yield return new TestCaseData(KzgPointEvaluationPrecompile.Instance).SetName(nameof(KzgPointEvaluationPrecompile));
+#pragma warning disable CS0618
+        yield return new TestCaseData(ModExpPrecompilePreEip2565.Instance).SetName(nameof(ModExpPrecompilePreEip2565));
+#pragma warning restore CS0618
+    }
+
+    [TestCaseSource(nameof(PrecompilesWithFastPathEnabled))]
+    public void Precompile_SupportsFastPath_ReturnsTrue_WhenEnabled(IPrecompile precompile) =>
+        Assert.That(precompile.SupportsFastPath, Is.True);
+
+    [Test]
+    public void EcRecoverPrecompile_SupportsFastPath_ReturnsFalse() =>
+        Assert.That(ECRecoverPrecompile.Instance.SupportsFastPath, Is.False);
+
+    [Test]
+    public void Ripemd160Precompile_SupportsFastPath_ReturnsFalse() =>
+        Assert.That(Ripemd160Precompile.Instance.SupportsFastPath, Is.False);
+
+    [Test]
+    public void Secp256r1Precompile_SupportsFastPath_ReturnsFalse() =>
+        Assert.That(((IPrecompile)SecP256r1Precompile.Instance).SupportsFastPath, Is.False);
 }

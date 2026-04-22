@@ -20,6 +20,8 @@ public partial class Bls12381Fp2ToG2Precompile : IPrecompile<Bls12381Fp2ToG2Prec
 
     public static string Name => "BLS12_MAP_FP2_TO_G2";
 
+    public bool SupportsFastPath => true;
+
     public long BaseGasCost(IReleaseSpec _) => 23800L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;

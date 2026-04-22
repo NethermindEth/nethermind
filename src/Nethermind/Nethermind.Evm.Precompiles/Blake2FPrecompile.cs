@@ -23,6 +23,7 @@ public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
     public static Address Address { get; } = Address.FromNumber(9);
 
     public static string Name => "BLAKE2F";
+    public bool SupportsFastPath => true;
 
     public long BaseGasCost(IReleaseSpec _) => 0;
 

@@ -20,6 +20,8 @@ public partial class Bls12381G2AddPrecompile : IPrecompile<Bls12381G2AddPrecompi
 
     public static string Name => "BLS12_G2ADD";
 
+    public bool SupportsFastPath => true;
+
     public long BaseGasCost(IReleaseSpec _) => 600L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
