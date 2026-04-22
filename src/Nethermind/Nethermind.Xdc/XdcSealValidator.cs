@@ -110,7 +110,7 @@ internal class XdcSealValidator(
             return false;
         }
         if (xdcHeader.Penalties is not null &&
-            xdcHeader.Penalties?.Length != 0)
+            xdcHeader.Penalties.Length != 0)
         {
             error = "Penalties are not empty in non-epoch switch header.";
             return false;
