@@ -210,7 +210,7 @@ public class TestingRpcModuleTests
         result.Result.ResultType.Should().Be(ResultType.Success);
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
 
-        long effectiveTarget = targetBlockGasLimit ?? TestingGasLimitCalculator.DefaultGasLimit;
+        long effectiveTarget = targetBlockGasLimit ?? TestingRpcGasLimitCalculator.DefaultGasLimit;
         TargetAdjustedGasLimitCalculator expectedCalculator = new(
             new TestSpecProvider(Osaka.Instance),
             new BlocksConfig { TargetBlockGasLimit = effectiveTarget });
@@ -233,7 +233,7 @@ public class TestingRpcModuleTests
             Address.Zero,
             UInt256.Zero,
             1,
-            TestingGasLimitCalculator.DefaultGasLimit / 2,
+            TestingRpcGasLimitCalculator.DefaultGasLimit / 2,
             1,
             [])
         {
@@ -253,7 +253,7 @@ public class TestingRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? Osaka.Instance);
 
-        TestingGasLimitCalculator gasLimitCalculator = new (
+        TestingRpcGasLimitCalculator gasLimitCalculator = new(
             specProvider, new BlocksConfig { TargetBlockGasLimit = targetBlockGasLimit });
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();

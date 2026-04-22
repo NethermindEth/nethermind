@@ -341,7 +341,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
 
             // Testing rpc
-            .AddSingleton<ITestingGasLimitCalculator, TestingGasLimitCalculator>()
+            .AddSingleton<ITestingRpcGasLimitCalculator, TestingRpcGasLimitCalculator>()
             .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
 

@@ -11,15 +11,15 @@ namespace Nethermind.Merge.Plugin;
 /// <summary>
 /// Gas limit calculator scoped to <see cref="TestingRpcModule"/>, separate from the
 /// global <see cref="IGasLimitCalculator"/> used by block production. Plugins can
-/// override by registering their own <see cref="ITestingGasLimitCalculator"/>.
+/// override by registering their own <see cref="ITestingRpcGasLimitCalculator"/>.
 /// </summary>
-public interface ITestingGasLimitCalculator : IGasLimitCalculator;
+public interface ITestingRpcGasLimitCalculator : IGasLimitCalculator;
 
 /// <summary>
 /// Default implementation that targets <see cref="DefaultGasLimit"/> when
 /// <see cref="IBlocksConfig.TargetBlockGasLimit"/> is not configured.
 /// </summary>
-public class TestingGasLimitCalculator(ISpecProvider specProvider, IBlocksConfig blocksConfig) : ITestingGasLimitCalculator
+public class TestingRpcGasLimitCalculator(ISpecProvider specProvider, IBlocksConfig blocksConfig) : ITestingRpcGasLimitCalculator
 {
     // Matches the current mainnet gas limit target.
     internal const long DefaultGasLimit = 60_000_000;

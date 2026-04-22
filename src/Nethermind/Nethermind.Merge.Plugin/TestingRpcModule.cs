@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin;
 /// </summary>
 public class TestingRpcModule(
     IBlockProducerEnvFactory blockProducerEnvFactory,
-    ITestingGasLimitCalculator gasLimitCalculator,
+    ITestingRpcGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     ILogManager logManager)
