@@ -352,7 +352,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         // on TTD-driven chains with no such later transitions are not detected here - runtime
         // MergeHeaderValidator (UnclesHash == empty via PoSSwitcher) is the safety net.
         private static bool IsPostMergeRelease(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp) =>
-            chainSpec.Parameters.TerminalTotalDifficulty == UInt256.Zero
+            chainSpec.Parameters.TerminalTotalDifficulty?.IsZero == true
             || releaseStartBlock > (chainSpec.Parameters.TerminalPoWBlockNumber ?? long.MaxValue)
             || (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= (releaseStartTimestamp ?? 0);
 
