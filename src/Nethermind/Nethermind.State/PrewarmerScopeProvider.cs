@@ -13,6 +13,7 @@ using Nethermind.Core.Metric;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.State;
 
@@ -34,17 +35,18 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
+    ILogManager logManager,
     bool populatePreBlockCache = true
 ) : IWorldStateScopeProvider, IPreBlockCaches
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, logManager, populatePreBlockCache);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool populatePreBlockCache) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
@@ -53,6 +55,7 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+        private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
         private CancellationTokenSource? _balCts;
         private Task? _balTask;
@@ -66,12 +69,13 @@ public class PrewarmerScopeProvider(
             }
             catch { }
             _balTask = null;
+            _balCts?.Dispose();
+            _balCts = null;
         }
 
         public void Dispose()
         {
             CancelBal();
-            _balCts?.Dispose();
             if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
@@ -187,16 +191,16 @@ public class PrewarmerScopeProvider(
             _balCts = new CancellationTokenSource();
             CacheSink cacheSink = new(preBlockCache, storageCache);
             CancellationToken token = _balCts.Token;
-            _balTask = Task.Run(() =>
+            _balTask = Task.Run(async () =>
             {
                 try
                 {
-                    baseScope.ReadBalAsync(bal, cacheSink, token);
+                    await baseScope.ReadBalAsync(bal, cacheSink, token);
                 }
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine(ex);
+                    if (_logger.IsError) _logger.Error("HintBal background task faulted", ex);
                 }
             });
 

@@ -34,10 +34,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
-    // tasks within the trie warmer's ring buffer.
-    private int _hintSequenceId = 0;
+    // tasks within the trie warmer's ring buffer. Volatile so the background HintBal task sees increments without
+    // conflicting with the Interlocked writer.
+    private volatile int _hintSequenceId = 0;
     private StateId _currentStateId;
-    internal bool _pausePrewarmer = false;
+    internal volatile bool _pausePrewarmer = false;
 
     // Tracked HintBal background task — mirrors PrewarmerScopeProvider's _balCts/_balTask pattern.
     private CancellationTokenSource? _hintBalCts;

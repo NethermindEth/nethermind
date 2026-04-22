@@ -226,13 +226,14 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+#nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
         public Dictionary<Address, Account> Accounts { get; } = new();
         public HashSet<Address> NullAccounts { get; } = new();
         public Dictionary<StorageCell, byte[]> Storage { get; } = new();
 
-        public void OnAccountRead(Address address, Account account)
+        public void OnAccountRead(Address address, Account? account)
         {
             if (account is null)
                 NullAccounts.Add(address);
@@ -243,4 +244,5 @@ public class ScopeProviderTests(bool useFlat)
         public void OnStorageRead(in StorageCell storageCell, byte[] value)
             => Storage[storageCell] = value;
     }
+#nullable disable
 }
