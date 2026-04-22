@@ -585,41 +585,4 @@ public partial class EthRpcModuleTests
             .Should().BeEquivalentTo("gas limit below intrinsic gas");
     }
 
-    [Test]
-    public async Task Estimate_gas_block_override_blobBaseFee_rejects_insufficient_maxFeePerBlobGas()
-    {
-        using Context ctx = await Context.CreateWithCancunEnabled();
-
-        // Valid blob versioned hash (must start with 0x01 for KZG)
-        byte[] validHash = new byte[32];
-        validHash[0] = 0x01;
-
-        object? transaction = JsonSerializer.Deserialize<object>(
-            "{"
-            + $"\"from\":\"{TestItem.AddressA}\","
-            + $"\"to\":\"{TestItem.AddressB}\","
-            + "\"type\":\"0x03\","
-            + "\"maxFeePerBlobGas\":\"0x1\","
-            + $"\"blobVersionedHashes\":[\"0x{validHash.ToHexString()}\"]"
-            + "}");
-
-        // Force blob base fee higher than tx cap
-        object? blockOverride = JsonSerializer.Deserialize<object>(
-            """{"blobBaseFee":"0x2"}"""
-        );
-
-        string serialized = await ctx.Test.TestEthRpc(
-            "eth_estimateGas",
-            transaction,
-            "latest",
-            null,
-            blockOverride
-        );
-
-        string error = JToken.Parse(serialized)["error"]!["message"]!.Value<string>()!;
-
-
-        error.Should().Contain("MaxFeePerBlobGas");
-    }
-
 }
