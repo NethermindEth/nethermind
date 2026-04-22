@@ -19,6 +19,8 @@ public class JsonRpcL1CallProvider(IJsonRpcClient rpcClient, ILogManager logMana
 
     public L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, long gasLimit)
     {
+        // Defensive depth: L1StaticCallPrecompile already validates the range; we re-validate here so
+        // direct provider callers (outside the precompile) still get the 256-block window enforced.
         (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
         if (!isValid)
         {

@@ -87,6 +87,8 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
         UInt256 blockNumber = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.BlockNumberBytes)], isBigEndian: true);
         byte[] calldata = inputData.Span[(Address.Size + L1PrecompileConstants.BlockNumberBytes)..].ToArray();
 
+        // Defensive depth: precompile fast-fails here; JsonRpcL1CallProvider validates independently
+        // for callers that reach the provider outside the precompile (admin tools, unit-test harnesses).
         (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
         if (!isValid)
         {

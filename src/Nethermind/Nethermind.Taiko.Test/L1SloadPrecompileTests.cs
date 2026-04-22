@@ -132,52 +132,32 @@ public class L1SloadPrecompileTests
 
     // --- Block-range validation (via L1PrecompileExecutionContext) ---
 
-    [Test]
-    public void Run_BlockBeyondLookback_Should_Reject()
+    [TestCase(900ul, 1000ul, 700ul, false, Description = "Block 700 is 300 away from l1Origin 1000 — exceeds 256 lookback")]
+    [TestCase(500ul, 1000ul, 744ul, true, Description = "Block 744 is exactly 256 from l1Origin 1000 — should be accepted")]
+    [TestCase(500ul, 1000ul, 1000ul, true, Description = "Block 1000 == l1Origin 1000 — upper inclusive edge")]
+    [TestCase(900ul, 1000ul, 1001ul, false, Description = "Block 1001 > l1Origin 1000 — must be rejected")]
+    [TestCase(1100ul, 1000ul, 999ul, false, Description = "l1Origin 1000 < anchor 1100 is an invariant violation")]
+    public void Run_BlockRangeValidation(ulong anchor, ulong l1Origin, ulong blockNumber, bool expectedSuccess)
     {
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
-        L1PrecompileExecutionContext.Set(anchor: 900, l1Origin: 1000);
-        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)700, (UInt256)1);
+        L1PrecompileExecutionContext.Set(anchor: anchor, l1Origin: l1Origin);
+        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)blockNumber, (UInt256)1);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
-        Assert.That(success, Is.False, "Block 700 is 300 away from l1Origin 1000 — exceeds 256 lookback");
+        Assert.That(success, Is.EqualTo(expectedSuccess));
     }
 
     [Test]
-    public void Run_BlockAtExactBoundary_Should_Accept()
+    public void Run_UnsetContext_AcceptsAnyBlock()
     {
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
-        L1PrecompileExecutionContext.Set(anchor: 500, l1Origin: 1000);
-        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)744, (UInt256)1);
+        L1PrecompileExecutionContext.Clear();
+        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)12_345, (UInt256)1);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
-        Assert.That(success, Is.True, "Block 744 is exactly 256 from l1Origin 1000 — should be accepted");
-    }
-
-    [Test]
-    public void Run_FutureBlock_Should_Reject()
-    {
-        L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
-        L1PrecompileExecutionContext.Set(anchor: 900, l1Origin: 1000);
-        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1001, (UInt256)1);
-
-        (byte[]? result, bool success) = _precompile.Run(input, _spec);
-
-        Assert.That(success, Is.False, "Block 1001 > l1Origin 1000 — must be rejected");
-    }
-
-    [Test]
-    public void Run_InvariantViolation_Should_Reject()
-    {
-        L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
-        L1PrecompileExecutionContext.Set(anchor: 1100, l1Origin: 1000);
-        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)999, (UInt256)1);
-
-        (byte[]? result, bool success) = _precompile.Run(input, _spec);
-
-        Assert.That(success, Is.False, "l1Origin < anchor is an invariant violation — must be rejected");
+        Assert.That(success, Is.True, "Permissive fall-through when no context is set (eth_call / debug_traceCall / preconf)");
     }
 
     /// <summary>

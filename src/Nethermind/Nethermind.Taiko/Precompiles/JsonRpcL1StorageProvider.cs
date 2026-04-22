@@ -19,6 +19,8 @@ public class JsonRpcL1StorageProvider(IJsonRpcClient rpcClient, ILogManager logM
 
     public UInt256? GetStorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)
     {
+        // Defensive depth: L1SloadPrecompile already validates the range; we re-validate here so
+        // direct provider callers (outside the precompile) still get the 256-block window enforced.
         (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
         if (!isValid)
         {

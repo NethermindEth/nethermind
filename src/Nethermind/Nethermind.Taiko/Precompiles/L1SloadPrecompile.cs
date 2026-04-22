@@ -58,6 +58,8 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
         UInt256 storageKey = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)], isBigEndian: true);
         UInt256 blockNumber = new(inputData.Span[(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)..], isBigEndian: true);
 
+        // Defensive depth: precompile fast-fails here; JsonRpcL1StorageProvider validates independently
+        // for callers that reach the provider outside the precompile (admin tools, unit-test harnesses).
         (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
         if (!isValid)
         {

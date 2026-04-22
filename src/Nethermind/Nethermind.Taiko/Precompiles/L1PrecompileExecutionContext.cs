@@ -20,6 +20,17 @@ public static class L1PrecompileExecutionContext
     public static (UInt256 Anchor, UInt256 L1Origin)? Get() => _ctx.Value;
     public static void Clear() => _ctx.Value = null;
 
+    /// <summary>
+    /// Validates a block number against the current execution context's 256-block lookback window.
+    /// </summary>
+    /// <remarks>
+    /// Returns <c>(true, null)</c> when no context is set. This permissive fall-through exists so that
+    /// callers outside the block-processing pipeline — <c>eth_call</c>, <c>debug_traceCall</c>, unit tests,
+    /// and preconf blocks where <c>L1BlockHeight == 0/null</c> and no anchor tx can be parsed — are not
+    /// blocked by a missing context. Block-validation paths must call <see cref="Set"/> for every block
+    /// they process (anchor tx at <c>i==0</c>); <see cref="BlockTransactionExecutors.L1PrecompileContextInitializer"/>
+    /// is the canonical setter.
+    /// </remarks>
     public static (bool IsValid, string? Reason) ValidateBlockRange(UInt256 blockNumber)
     {
         if (Get() is not { } ctx)

@@ -17,7 +17,7 @@ public class TaikoBlockValidationTransactionExecutor(
     IL1OriginStore l1OriginStore)
     : BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    public new TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+    public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
     {
         try
         {

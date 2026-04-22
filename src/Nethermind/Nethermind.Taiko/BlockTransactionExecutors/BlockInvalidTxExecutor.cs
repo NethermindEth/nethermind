@@ -11,6 +11,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.Taiko.Precompiles;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
@@ -18,9 +19,12 @@ namespace Nethermind.Taiko.BlockTransactionExecutors;
 public class BlockInvalidTxExecutor(
     ITransactionProcessorAdapter txProcessor,
     IWorldState worldState,
-    IL1OriginStore l1OriginStore)
+    IL1OriginStore l1OriginStore,
+    ILogManager logManager)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockInvalidTxExecutor>();
+
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => txProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -52,6 +56,16 @@ public class BlockInvalidTxExecutor(
                     continue;
                 }
 
+                // Parse anchor context before Execute so subsequent L1 precompile calls in the
+                // block still see the 256-block window even if the anchor tx fails. The parse
+                // reads calldata only and does not depend on execution success; the method
+                // early-returns for i!=0 or non-AnchorV4 selectors.
+                if (i == 0 && !L1PrecompileContextInitializer.TrySetFromAnchorTransaction(i, tx, block.Header.Number, l1OriginStore)
+                    && _logger.IsWarn)
+                {
+                    _logger.Warn($"BlockInvalidTxExecutor: anchor tx context not set at block {block.Header.Number} — subsequent L1 precompile calls will skip range validation");
+                }
+
                 using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
 
                 try
@@ -70,8 +84,6 @@ public class BlockInvalidTxExecutor(
                     worldState.Restore(snap);
                     continue;
                 }
-
-                L1PrecompileContextInitializer.TrySetFromAnchorTransaction(i, tx, block.Header.Number, l1OriginStore);
 
                 // only end the trace if the transaction was successful
                 // so that we don't increment the receipt index for failed transactions
