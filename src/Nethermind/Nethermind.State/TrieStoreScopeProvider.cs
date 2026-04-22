@@ -235,6 +235,14 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
                 bulkCount = _bulkWrite.Count;
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
+
+                if (commit && hasSet)
+                {
+                    storageTree.BulkSetAndCommit(asRef);
+                    onRootUpdated(address, storageTree.RootHash);
+                    return;
+                }
+
                 storageTree.BulkSet(asRef);
             }
 
