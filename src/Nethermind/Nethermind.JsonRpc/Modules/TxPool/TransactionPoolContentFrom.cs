@@ -9,6 +9,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool;
 
+/// <summary>Response model for <c>txpool_contentFrom</c>: pending and queued transactions from a single address, keyed by nonce.</summary>
 public class TxPoolContentFrom
 {
     public TxPoolContentFrom(TxPoolInfo info, Address address, ulong chainId)
@@ -19,7 +20,10 @@ public class TxPoolContentFrom
         Queued = MapTransactions(info.Queued, key, extraData);
     }
 
+    /// <summary>Transactions ready for inclusion in the next block, keyed by nonce.</summary>
     public Dictionary<ulong, TransactionForRpc> Pending { get; }
+
+    /// <summary>Transactions with nonce gaps awaiting preceding transactions, keyed by nonce.</summary>
     public Dictionary<ulong, TransactionForRpc> Queued { get; }
 
     private static Dictionary<ulong, TransactionForRpc> MapTransactions(

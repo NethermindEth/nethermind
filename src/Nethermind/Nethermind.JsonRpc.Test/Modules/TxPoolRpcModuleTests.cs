@@ -101,8 +101,8 @@ public class TxPoolRpcModuleTests
 
         TxPoolStatus status = txPoolRpcModule.txpool_status().Data;
 
-        status.Pending.Should().Be(2L, "AddressA has 2 pending transactions");
-        status.Queued.Should().Be(1L, "AddressB has 1 queued transaction");
+        status.Pending.Should().Be(2ul, "AddressA has 2 pending transactions");
+        status.Queued.Should().Be(1ul, "AddressB has 1 queued transaction");
     }
 
     [Test]
