@@ -305,13 +305,18 @@ namespace Nethermind.Trie
             void TraceSkipInlineNode(TrieNode node) => _logger.Trace($"Skipping commit of an inlined {node}");
         }
 
-        private Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx) => Task.Run(() =>
-        {
-            TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
-            if (!ReferenceEquals(childNode, newChild))
-                node[idx] = newChild;
-            committer.ReturnConcurrencyQuota();
-        });
+        private Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx) => Task.Factory.StartNew(
+            _ =>
+            {
+                TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
+                if (!ReferenceEquals(childNode, newChild))
+                    node[idx] = newChild;
+                committer.ReturnConcurrencyQuota();
+            },
+            null,
+            CancellationToken.None,
+            TaskCreationOptions.None,
+            TaskScheduler.Default);
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
