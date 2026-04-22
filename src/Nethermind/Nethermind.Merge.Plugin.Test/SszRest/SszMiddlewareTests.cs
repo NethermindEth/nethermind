@@ -1,0 +1,610 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using FluentAssertions;
+using Microsoft.AspNetCore.Http;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
+using Nethermind.Core.Authentication;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Merge.Plugin.Test.SszRest;
+
+[TestFixture]
+public class SszMiddlewareTests
+{
+    private IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayload = null!;
+    private IForkchoiceUpdatedHandler _forkchoiceUpdated = null!;
+    private IAsyncHandler<byte[], ExecutionPayload?> _getPayloadV1 = null!;
+    private IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadV2 = null!;
+    private IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadV3 = null!;
+    private IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadV4 = null!;
+    private IAsyncHandler<byte[], GetPayloadV5Result?> _getPayloadV5 = null!;
+    private IAsyncHandler<byte[], GetPayloadV6Result?> _getPayloadV6 = null!;
+    private IHandler<IEnumerable<string>, IEnumerable<string>> _capabilities = null!;
+    private IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> _getBlobsV1 = null!;
+    private IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> _getBlobsV2 = null!;
+    private IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> _bodiesByHashV1 = null!;
+    private IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> _bodiesByHashV2 = null!;
+    private IGetPayloadBodiesByRangeV1Handler _bodiesByRangeV1 = null!;
+    private IGetPayloadBodiesByRangeV2Handler _bodiesByRangeV2 = null!;
+    private IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfig = null!;
+
+    private IJsonRpcUrlCollection _urlCollection = null!;
+    private IRpcAuthentication _auth = null!;
+    private ISszProcessExitSource _processExitSource = null!;
+    private SszMiddleware _middleware = null!;
+
+    private const int AuthenticatedPort = 8551;
+    private const string OctetStream = "application/octet-stream";
+
+    [SetUp]
+    public void SetUp()
+    {
+        _newPayload = Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>();
+        _forkchoiceUpdated = Substitute.For<IForkchoiceUpdatedHandler>();
+        _getPayloadV1 = Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>();
+        _getPayloadV2 = Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>();
+        _getPayloadV3 = Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>();
+        _getPayloadV4 = Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>();
+        _getPayloadV5 = Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>();
+        _getPayloadV6 = Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>();
+        _capabilities = Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>();
+        _getBlobsV1 = Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>();
+        _getBlobsV2 = Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>();
+        _bodiesByHashV1 = Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>();
+        _bodiesByHashV2 = Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>();
+        _bodiesByRangeV1 = Substitute.For<IGetPayloadBodiesByRangeV1Handler>();
+        _bodiesByRangeV2 = Substitute.For<IGetPayloadBodiesByRangeV2Handler>();
+        _transitionConfig = Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>();
+
+        _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
+        _auth = Substitute.For<IRpcAuthentication>();
+        _processExitSource = Substitute.For<ISszProcessExitSource>();
+        _processExitSource.ProcessExit.Returns(CancellationToken.None);
+
+        JsonRpcUrl engineUrl = new("http", "localhost", AuthenticatedPort, RpcEndpoint.Http, true, ["engine"]);
+        _urlCollection.TryGetValue(AuthenticatedPort, out Arg.Any<JsonRpcUrl?>())
+            .Returns(x => { x[1] = engineUrl; return true; });
+        _auth.Authenticate(Arg.Any<string>()).Returns(true);
+
+        _middleware = BuildMiddleware();
+    }
+
+    private SszMiddleware BuildMiddleware(RequestDelegate? next = null)
+    {
+        RequestDelegate passthrough = next ?? (_ => Task.CompletedTask);
+
+        ISszEndpointHandler[] handlers =
+        [
+            new NewPayloadSszHandler(_newPayload),
+
+            new GetPayloadV1SszHandler(_getPayloadV1),
+            new GetPayloadV2SszHandler(_getPayloadV2),
+            new GetPayloadV3SszHandler(_getPayloadV3),
+            new GetPayloadV4SszHandler(_getPayloadV4),
+            new GetPayloadV5SszHandler(_getPayloadV5),
+            new GetPayloadV6SszHandler(_getPayloadV6),
+
+            new ForkchoiceUpdatedSszHandler(_forkchoiceUpdated),
+
+            new GetBlobsV1SszHandler(_getBlobsV1),
+            new GetBlobsV2SszHandler(_getBlobsV2),
+            new GetBlobsV3SszHandler(_getBlobsV2),
+
+            new GetPayloadBodiesByHashV1SszHandler(_bodiesByHashV1),
+            new GetPayloadBodiesByHashV2SszHandler(_bodiesByHashV2),
+
+            new GetPayloadBodiesByRangeV1SszHandler(_bodiesByRangeV1),
+            new GetPayloadBodiesByRangeV2SszHandler(_bodiesByRangeV2),
+
+            new ClientVersionSszHandler(),
+            new CapabilitiesSszHandler(_capabilities),
+            new TransitionConfigurationSszHandler(_transitionConfig),
+        ];
+
+        return new SszMiddleware(
+            passthrough,
+            _urlCollection,
+            _auth,
+            handlers,
+            _processExitSource,
+            LimboLogs.Instance);
+    }
+
+    private static DefaultHttpContext MakePostContext(string path, byte[] body, int port = AuthenticatedPort)
+    {
+        DefaultHttpContext ctx = new();
+        ctx.Request.Method = "POST";
+        ctx.Request.Path = path;
+        ctx.Request.ContentType = OctetStream;
+        ctx.Request.ContentLength = body.Length;
+        ctx.Request.Body = new MemoryStream(body);
+        ctx.Connection.LocalPort = port;
+        ctx.Request.Headers.Authorization = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PME";
+        ctx.Response.Body = new MemoryStream();
+        return ctx;
+    }
+
+    private static DefaultHttpContext MakeGetContext(string path, int port = AuthenticatedPort)
+    {
+        DefaultHttpContext ctx = new();
+        ctx.Request.Method = "GET";
+        ctx.Request.Path = path;
+        ctx.Request.Headers.Accept = OctetStream;
+        ctx.Request.Body = Stream.Null;
+        ctx.Connection.LocalPort = port;
+        ctx.Request.Headers.Authorization = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PME";
+        ctx.Response.Body = new MemoryStream();
+        return ctx;
+    }
+
+    private static byte[] ResponseBytes(HttpContext ctx)
+    {
+        ctx.Response.Body.Seek(0, SeekOrigin.Begin);
+        using MemoryStream ms = new();
+        ctx.Response.Body.CopyTo(ms);
+        return ms.ToArray();
+    }
+
+    private static byte[] ToBytes((byte[] buffer, int length) pooled)
+    {
+        try { return pooled.buffer.AsSpan(0, pooled.length).ToArray(); }
+        finally { ArrayPool<byte>.Shared.Return(pooled.buffer); }
+    }
+
+    [Test]
+    public async Task NewPayload_v1_calls_handler_and_returns_200()
+    {
+        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+        _newPayload.HandleAsync(Arg.Any<ExecutionPayload>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+
+        byte[] body = BuildMinimalV1NewPayloadRequest();
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        ctx.Response.ContentType.Should().Contain(OctetStream);
+        await _newPayload.Received(1).HandleAsync(Arg.Any<ExecutionPayload>());
+    }
+
+    [Test]
+    public async Task GetPayloadV1_returns_200_and_no_store_header()
+    {
+        ExecutionPayload ep = MakeMinimalPayload();
+        _getPayloadV1.HandleAsync(Arg.Any<byte[]>())
+            .Returns(ResultWrapper<ExecutionPayload?>.Success(ep));
+
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708");
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        ctx.Response.Headers["Cache-Control"].ToString().Should().Contain("no-store");
+    }
+
+    [Test]
+    public async Task GetPayloadV2_routes_to_v2_handler_not_v1()
+    {
+        GetPayloadV2Result result = new(MakeMinimalBlock(), UInt256.One);
+        _getPayloadV2.HandleAsync(Arg.Any<byte[]>())
+            .Returns(ResultWrapper<GetPayloadV2Result?>.Success(result));
+
+        DefaultHttpContext ctx = MakeGetContext("/engine/v2/payloads/0x0102030405060708");
+
+        await _middleware.InvokeAsync(ctx);
+
+        await _getPayloadV2.Received(1).HandleAsync(Arg.Any<byte[]>());
+        await _getPayloadV1.DidNotReceive().HandleAsync(Arg.Any<byte[]>());
+    }
+
+    [Test]
+    public async Task Forkchoice_calls_handler_and_returns_200()
+    {
+        ForkchoiceUpdatedV1Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
+            PayloadId = null
+        };
+        _forkchoiceUpdated
+            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<int>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+
+        byte[] body = BuildForkchoiceRequest();
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        await _forkchoiceUpdated.Received(1)
+            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), 1);
+    }
+
+    [Test]
+    public async Task Forkchoice_passes_correct_version_to_handler()
+    {
+        _forkchoiceUpdated
+            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<int>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result
+            {
+                PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Syncing }
+            }));
+
+        byte[] body = BuildForkchoiceRequest();
+        DefaultHttpContext ctx = MakePostContext("/engine/v4/forkchoice", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        await _forkchoiceUpdated.Received(1)
+            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), 4);
+    }
+
+    [Test]
+    public async Task GetBlobsV1_returns_200_when_all_blobs_present()
+    {
+        byte[] blob = new byte[131072];
+        byte[] proof = new byte[48];
+        BlobAndProofV1 bap = new(blob, proof);
+        _getBlobsV1.HandleAsync(Arg.Any<byte[][]>())
+            .Returns(ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success([bap]));
+
+        byte[] body = BuildGetBlobsRequest([TestItem.KeccakA.Bytes.ToArray()]);
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/blobs", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        await _getBlobsV1.Received(1).HandleAsync(Arg.Any<byte[][]>());
+        await _getBlobsV2.DidNotReceive().HandleAsync(Arg.Any<GetBlobsHandlerV2Request>());
+    }
+
+    [Test]
+    public async Task GetBlobsV2_uses_allowPartialReturn_false()
+    {
+        GetBlobsHandlerV2Request? capturedRequest = null;
+        _getBlobsV2.HandleAsync(Arg.Do<GetBlobsHandlerV2Request>(r => capturedRequest = r))
+            .Returns(ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(null));
+
+        byte[] body = BuildGetBlobsRequest([]);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/blobs", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        capturedRequest!.Value.AllowPartialReturn.Should().BeFalse();
+    }
+
+    [Test]
+    public async Task GetBlobsV3_uses_allowPartialReturn_true()
+    {
+        GetBlobsHandlerV2Request? capturedRequest = null;
+        _getBlobsV2.HandleAsync(Arg.Do<GetBlobsHandlerV2Request>(r => capturedRequest = r))
+            .Returns(ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(null));
+
+        byte[] body = BuildGetBlobsRequest([]);
+        DefaultHttpContext ctx = MakePostContext("/engine/v3/blobs", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        capturedRequest!.Value.AllowPartialReturn.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByHashV1_calls_handler_and_returns_200()
+    {
+        _bodiesByHashV1.Handle(Arg.Any<IReadOnlyList<Hash256>>())
+            .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(
+                [new ExecutionPayloadBodyV1Result([], null)]));
+
+        byte[] body = BuildPayloadBodiesByHashRequest([TestItem.KeccakA]);
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads/bodies/by-hash", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        _bodiesByHashV1.Received(1).Handle(Arg.Any<IReadOnlyList<Hash256>>());
+        _bodiesByHashV2.DidNotReceive().Handle(Arg.Any<IReadOnlyList<Hash256>>());
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByHashV2_calls_v2_handler_not_v1()
+    {
+        _bodiesByHashV2.Handle(Arg.Any<IReadOnlyList<Hash256>>())
+            .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success([]));
+
+        byte[] body = BuildPayloadBodiesByHashRequest([]);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads/bodies/by-hash", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        _bodiesByHashV2.Received(1).Handle(Arg.Any<IReadOnlyList<Hash256>>());
+        _bodiesByHashV1.DidNotReceive().Handle(Arg.Any<IReadOnlyList<Hash256>>());
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByRangeV1_calls_handler_with_correct_args()
+    {
+        long capturedStart = -1, capturedCount = -1;
+        _bodiesByRangeV1
+            .Handle(Arg.Do<long>(s => capturedStart = s), Arg.Do<long>(c => capturedCount = c))
+            .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success([]));
+
+        byte[] body = BuildPayloadBodiesByRangeRequest(7, 3);
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads/bodies/by-range", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        capturedStart.Should().Be(7);
+        capturedCount.Should().Be(3);
+        await _bodiesByRangeV2.DidNotReceive().Handle(Arg.Any<long>(), Arg.Any<long>());
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByRangeV2_uses_v2_handler_not_v1()
+    {
+        _bodiesByRangeV2.Handle(Arg.Any<long>(), Arg.Any<long>())
+            .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success([]));
+
+        byte[] body = BuildPayloadBodiesByRangeRequest(1, 10);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads/bodies/by-range", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        await _bodiesByRangeV2.Received(1).Handle(1, 10);
+        await _bodiesByRangeV1.DidNotReceive().Handle(Arg.Any<long>(), Arg.Any<long>());
+    }
+
+    [Test]
+    public async Task Capabilities_returns_intersection_of_supported_methods()
+    {
+        string[] returned = ["POST /engine/v5/payloads"];
+        _capabilities.Handle(Arg.Any<IEnumerable<string>>())
+            .Returns(ResultWrapper<IEnumerable<string>>.Success(returned));
+
+        byte[] body = BuildCapabilitiesRequest(["POST /engine/v5/payloads", "POST /engine/v4/forkchoice"]);
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/capabilities", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        ctx.Response.ContentType.Should().Contain(OctetStream);
+    }
+
+    [Test]
+    public async Task ClientVersion_returns_non_empty_response()
+    {
+        byte[] body = BuildClientVersionRequest();
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/client/version", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        ctx.Response.ContentType.Should().Contain(OctetStream);
+        ResponseBytes(ctx).Length.Should().BeGreaterThan(0);
+    }
+
+    [Test]
+    public async Task TransitionConfiguration_calls_handler_and_returns_200()
+    {
+        TransitionConfigurationV1 tc = new()
+        {
+            TerminalTotalDifficulty = UInt256.One,
+            TerminalBlockHash = TestItem.KeccakA,
+            TerminalBlockNumber = 1
+        };
+        _transitionConfig.Handle(Arg.Any<TransitionConfigurationV1>())
+            .Returns(ResultWrapper<TransitionConfigurationV1>.Success(tc));
+
+        byte[] body = BuildTransitionConfigRequest(tc);
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/transition-configuration", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        _transitionConfig.Received(1).Handle(Arg.Any<TransitionConfigurationV1>());
+    }
+
+    [Test]
+    public async Task Authentication_failure_returns_401_and_does_not_call_handler()
+    {
+        _auth.Authenticate(Arg.Any<string>()).Returns(false);
+
+        byte[] body = BuildMinimalV1NewPayloadRequest();
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        await _newPayload.DidNotReceive().HandleAsync(Arg.Any<ExecutionPayload>());
+    }
+
+    [Test]
+    public async Task Oversized_body_returns_413_without_calling_handler()
+    {
+        const int MaxBodySize = 16 * 1024 * 1024;
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", []);
+        ctx.Request.ContentLength = MaxBodySize + 1;
+        ctx.Request.Body = new MemoryStream(new byte[1]);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        await _newPayload.DidNotReceive().HandleAsync(Arg.Any<ExecutionPayload>());
+    }
+
+    [Test]
+    public async Task Unknown_engine_path_returns_404()
+    {
+        bool nextInvoked = false;
+        SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
+
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/unknown-resource", []);
+
+        await mw.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        nextInvoked.Should().BeFalse("SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
+    }
+
+    [Test]
+    public async Task Malformed_ssz_body_returns_500_without_propagating_exception()
+    {
+        byte[] garbage = new byte[64];
+        new Random(42).NextBytes(garbage);
+
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", garbage);
+
+        Func<Task> act = () => _middleware.InvokeAsync(ctx);
+
+        await act.Should().NotThrowAsync();
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
+    }
+
+    [Test]
+    public async Task GetBlobsV1_null_result_data_returns_204_no_content()
+    {
+        _getBlobsV1.HandleAsync(Arg.Any<byte[][]>())
+            .Returns(ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(null!));
+
+        byte[] body = BuildGetBlobsRequest([TestItem.KeccakA.Bytes.ToArray()]);
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/blobs", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        ResponseBytes(ctx).Should().BeEmpty("204 responses must have no body");
+    }
+
+    [Test]
+    public async Task Unknown_version_for_versioned_endpoint_returns_404()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v99/payloads/0x0102030405060708");
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+    }
+
+    private static ExecutionPayload MakeMinimalPayload() => new()
+    {
+        ParentHash = TestItem.KeccakA,
+        FeeRecipient = TestItem.AddressA,
+        StateRoot = TestItem.KeccakB,
+        ReceiptsRoot = TestItem.KeccakC,
+        LogsBloom = Bloom.Empty,
+        PrevRandao = TestItem.KeccakD,
+        BlockNumber = 1,
+        GasLimit = 1_000_000,
+        GasUsed = 0,
+        Timestamp = 1_700_000_000,
+        ExtraData = [],
+        BaseFeePerGas = 1,
+        BlockHash = TestItem.KeccakE,
+        Transactions = []
+    };
+
+    private static Block MakeMinimalBlock()
+    {
+        BlockHeader header = new(
+            parentHash: TestItem.KeccakA,
+            unclesHash: Keccak.OfAnEmptySequenceRlp,
+            beneficiary: TestItem.AddressA,
+            difficulty: 0,
+            number: 1,
+            gasLimit: 1_000_000,
+            timestamp: 1_700_000_000,
+            extraData: [])
+        {
+            StateRoot = TestItem.KeccakB,
+            ReceiptsRoot = TestItem.KeccakC,
+            Bloom = Bloom.Empty,
+            MixHash = TestItem.KeccakD,
+            GasUsed = 0,
+            BaseFeePerGas = 1,
+            Hash = TestItem.KeccakE
+        };
+        return new Block(header);
+    }
+
+    private static byte[] BuildMinimalV1NewPayloadRequest() =>
+        NewPayloadV1RequestWire.Encode(new NewPayloadV1RequestWire
+        {
+            ExecutionPayload = ExecutionPayloadV1Ssz.Wrap(MakeMinimalPayload())
+        });
+
+    private static byte[] BuildForkchoiceRequest()
+    {
+        byte[] body = new byte[100];
+        Buffer.BlockCopy(TestItem.KeccakA.Bytes.ToArray(), 0, body, 0, 32);
+        Buffer.BlockCopy(TestItem.KeccakB.Bytes.ToArray(), 0, body, 32, 32);
+        Buffer.BlockCopy(Keccak.Zero.Bytes.ToArray(), 0, body, 64, 32);
+        BitConverter.TryWriteBytes(body.AsSpan(96, 4), (uint)100);
+        return body;
+    }
+
+    private static byte[] BuildGetBlobsRequest(byte[][] hashes)
+    {
+        int varLen = hashes.Length * 32;
+        byte[] result = new byte[4 + varLen];
+        BitConverter.TryWriteBytes(result.AsSpan(0, 4), (uint)4);
+        for (int i = 0; i < hashes.Length; i++)
+            Buffer.BlockCopy(hashes[i], 0, result, 4 + i * 32, 32);
+        return result;
+    }
+
+    private static byte[] BuildPayloadBodiesByHashRequest(Hash256[] hashes)
+    {
+        int varLen = hashes.Length * 32;
+        byte[] result = new byte[4 + varLen];
+        BitConverter.TryWriteBytes(result.AsSpan(0, 4), (uint)4);
+        for (int i = 0; i < hashes.Length; i++)
+            Buffer.BlockCopy(hashes[i].Bytes.ToArray(), 0, result, 4 + i * 32, 32);
+        return result;
+    }
+
+    private static byte[] BuildPayloadBodiesByRangeRequest(ulong start, ulong count)
+    {
+        byte[] result = new byte[16];
+        BitConverter.TryWriteBytes(result.AsSpan(0, 8), start);
+        BitConverter.TryWriteBytes(result.AsSpan(8, 8), count);
+        return result;
+    }
+
+    private static byte[] BuildCapabilitiesRequest(string[] capabilities)
+        => ToBytes(SszCodec.EncodeCapabilitiesResponse(capabilities));
+
+    private static byte[] BuildClientVersionRequest()
+    {
+        byte[] clientVersion = new byte[16];
+        uint offset = 16;
+        BitConverter.TryWriteBytes(clientVersion.AsSpan(0, 4), offset);
+        BitConverter.TryWriteBytes(clientVersion.AsSpan(4, 4), offset);
+        BitConverter.TryWriteBytes(clientVersion.AsSpan(8, 4), offset);
+
+        byte[] request = new byte[4 + clientVersion.Length];
+        BitConverter.TryWriteBytes(request.AsSpan(0, 4), (uint)4);
+        Buffer.BlockCopy(clientVersion, 0, request, 4, clientVersion.Length);
+        return request;
+    }
+
+    private static byte[] BuildTransitionConfigRequest(TransitionConfigurationV1 tc)
+        => ToBytes(SszCodec.EncodeTransitionConfigurationResponse(tc));
+}

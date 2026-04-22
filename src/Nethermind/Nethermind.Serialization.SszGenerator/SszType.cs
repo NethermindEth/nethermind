@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Nethermind.Serialization.Ssz;
 
 class SszType
 {
@@ -61,6 +60,8 @@ class SszType
             Name = "UInt256",
             Kind = Kind.Basic,
             StaticLength = 32,
+            CustomEncodeTemplate = "{1}.ToLittleEndian({0});",
+            CustomDecodeTemplate = "{1} = new UInt256({0}, isBigEndian: false);",
         });
 
         BasicTypes.Add(new SszType
@@ -85,6 +86,39 @@ class SszType
             Kind = Kind.Basic,
             StaticLength = 32,
         });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "Nethermind.Core.Crypto",
+            Name = "Hash256",
+            Kind = Kind.Basic,
+            StaticLength = 32,
+            IsRefType = true,
+            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
+            CustomDecodeTemplate = "{1} = new Hash256({0});",
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "Nethermind.Core",
+            Name = "Address",
+            Kind = Kind.Basic,
+            StaticLength = 20,
+            IsRefType = true,
+            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
+            CustomDecodeTemplate = "{1} = new Address({0}.ToArray());",
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "Nethermind.Core",
+            Name = "Bloom",
+            Kind = Kind.Basic,
+            StaticLength = 256,
+            IsRefType = true,
+            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
+            CustomDecodeTemplate = "{1} = new Bloom({0}.ToArray());",
+        });
     }
 
     public static List<SszType> BasicTypes { get; set; } = [];
@@ -98,8 +132,12 @@ class SszType
     public int ActiveFieldsBitLength { get; set; }
 
     public bool IsStruct { get; set; }
+    public bool IsRefType { get; init; }
     public SszType? EnumType { get; set; }
 
+    public string? CustomEncodeTemplate { get; init; }
+    public string? CustomDecodeTemplate { get; init; }
+    public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
     public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);
 
@@ -300,7 +338,7 @@ class SszType
         }
 
         bool isProgressiveContainer = HasAnyFieldIndex(type);
-        bool isCompatibleUnion = HasAttribute(type, nameof(SszCompatibleUnionAttribute));
+        bool isCompatibleUnion = HasAttribute(type, "SszCompatibleUnionAttribute");
         if (isProgressiveContainer && isCompatibleUnion)
         {
             throw new InvalidOperationException($"Type {GetTypeName(type)} cannot be both a progressive container and a compatible union.");
@@ -418,18 +456,57 @@ class SszType
         }
     }
 
-    private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type) =>
-        type.GetMembers().OfType<IPropertySymbol>()
-            .Where(p => p.GetMethod is not null
-                && p.SetMethod is not null
-                && p.GetMethod.DeclaredAccessibility == Accessibility.Public
-                && p.SetMethod.DeclaredAccessibility == Accessibility.Public);
+    private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type)
+    {
+        List<ITypeSymbol> typeChain = [];
+        ITypeSymbol? current = type;
+        while (current is not null && current.SpecialType == SpecialType.None)
+        {
+            typeChain.Add(current);
+            current = current.BaseType;
+        }
+        typeChain.Reverse();
+
+        Dictionary<string, IPropertySymbol> mostDerived = new(StringComparer.Ordinal);
+        foreach (ITypeSymbol t in typeChain)
+        {
+            foreach (IPropertySymbol p in t.GetMembers().OfType<IPropertySymbol>()
+                .Where(p => p.GetMethod?.DeclaredAccessibility == Accessibility.Public
+                         && p.SetMethod?.DeclaredAccessibility == Accessibility.Public))
+            {
+                mostDerived[p.Name] = p;
+            }
+        }
+
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        foreach (ITypeSymbol t in typeChain)
+        {
+            foreach (IPropertySymbol p in t.GetMembers().OfType<IPropertySymbol>()
+                .Where(p => p.GetMethod?.DeclaredAccessibility == Accessibility.Public
+                         && p.SetMethod?.DeclaredAccessibility == Accessibility.Public))
+            {
+                if (!seen.Add(p.Name))
+                    continue;
+
+                if (!mostDerived.TryGetValue(p.Name, out IPropertySymbol? canonical))
+                    continue;
+
+                if (HasPropertyAttribute(canonical, "SszIgnoreAttribute"))
+                    continue;
+
+                yield return canonical;
+            }
+        }
+    }
 
     private static bool HasAttribute(ITypeSymbol typeSymbol, string attributeName) =>
         typeSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);
 
+    private static bool HasPropertyAttribute(IPropertySymbol property, string attributeName) =>
+        property.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);
+
     private static bool HasAnyFieldIndex(ITypeSymbol typeSymbol) =>
-        GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == nameof(SszFieldAttribute)));
+        GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == "SszFieldAttribute"));
 
     private static string? GetNamespace(ITypeSymbol syntaxNode) => syntaxNode.ContainingNamespace?.ToString();
 
@@ -441,7 +518,7 @@ class SszType
     private static bool GetIsCollectionItselfValue(ITypeSymbol typeSymbol)
     {
         object? attrValue = typeSymbol
-            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == nameof(SszContainerAttribute))?
+            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszContainerAttribute")?
             .ConstructorArguments.FirstOrDefault().Value;
 
         return attrValue is not null && (bool)attrValue;

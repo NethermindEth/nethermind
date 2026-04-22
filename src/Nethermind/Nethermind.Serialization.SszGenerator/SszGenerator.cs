@@ -339,19 +339,16 @@ internal static class SszCodecHelpers
         return lowerCased == "data" || lowerCased == "container" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
     }
 
-    private static string ValidationStatement(SszType decl, SszProperty property, string expression)
+    private static string ValidationStatement(SszType decl, SszProperty property, string expression) => property.Kind switch
     {
-        return property.Kind switch
-        {
-            Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.List when property.Type.Name == "BitArray" => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            _ => string.Empty,
-        };
-    }
+        Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
+        Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
+        Kind.List when property.Type.Name == "BitArray" => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
+        Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
+        Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
+        Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
+        _ => string.Empty,
+    };
 
     private static string EncodeValueExpression(SszProperty property, string expression) =>
         property.Kind is Kind.BitList or Kind.ProgressiveBitList ? $"{expression} ?? new BitArray(0)" : expression;
@@ -382,9 +379,56 @@ internal static class SszCodecHelpers
         }
     }
 
+    /// <summary>
+    /// Emits a single encode statement for a fixed-length (static) field at a known byte offset.
+    /// For types with <see cref="SszType.CustomEncodeTemplate"/>, expands the template inline
+    /// instead of routing through <c>SszLib.Encode</c> or <c>TypeName.Encode</c>.
+    /// Template placeholders: {0} = destination Span&lt;byte&gt; expression, {1} = value expression.
+    /// </summary>
+    private static string StaticFieldEncodeStatement(SszProperty property, int staticOffset, string containerExpr)
+    {
+        string destSpan = $"data.Slice({staticOffset}, {property.StaticLength})";
+        string valueExpr = $"{containerExpr}.{property.Name}";
+
+        if (property.Type.HasCustomInlineCodec)
+        {
+            return property.Type.CustomEncodeTemplate!
+                .Replace("{0}", destSpan)
+                .Replace("{1}", valueExpr);
+        }
+
+        return property.HandledByStd
+            ? $"SszLib.Encode({destSpan}, {valueExpr});"
+            : $"{property.Type.Name}.Encode({destSpan}, {valueExpr});";
+    }
+
     private static string DecodeAndAssign(SszType decl, SszProperty property, string sliceExpression)
     {
         string variableName = VarName(property.Name);
+
+        if (property.Type.HasCustomInlineCodec && property.Kind == Kind.Basic)
+        {
+            string decodeStatement = property.Type.CustomDecodeTemplate!
+                .Replace("{0}", sliceExpression)
+                .Replace("{1}", $"{property.Type.Name} {variableName}");
+            string assignment = $"container.{property.Name} = {variableName};";
+            return $"{decodeStatement} {assignment}";
+        }
+
+        if ((property.Kind is Kind.Vector or Kind.List) && property.Type.Kind == Kind.Basic && property.Type.IsRefType)
+        {
+            int itemSize = property.Type.StaticLength;
+            string decodeBody = property.Type.CustomDecodeTemplate!
+                .Replace("{0}", $"{sliceExpression}.Slice(__i * {itemSize}, {itemSize})")
+                .Replace("{1}", $"{property.Type.Name} __item");
+            string countExpr = property.Kind == Kind.Vector
+                ? property.Length!.Value.ToString()
+                : $"{sliceExpression}.Length / {itemSize}";
+            string validation = ValidationStatement(decl, property, $"container.{property.Name}");
+            string loop = $"{{ int __count = {countExpr}; {property.Type.Name}[] {variableName} = new {property.Type.Name}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {variableName}; }}";
+            return string.IsNullOrEmpty(validation) ? loop : $"{loop} {validation}";
+        }
+
         string outType = property.Kind switch
         {
             Kind.BitVector or Kind.BitList or Kind.ProgressiveBitList => "BitArray",
@@ -400,39 +444,52 @@ internal static class SszCodecHelpers
             _ => $"{property.Type.Name}.Decode({sliceExpression}, out {outType} {variableName});",
         };
 
-        string assignment = property.IsCollection ? $"container.{property.Name} = [ ..{variableName}];" : $"container.{property.Name} = {variableName};";
-        string validation = ValidationStatement(decl, property, $"container.{property.Name}");
-        return string.IsNullOrEmpty(validation) ? $"{decode} {assignment}" : $"{decode} {assignment} {validation}";
+        string assignment2 = property.IsCollection ? $"container.{property.Name} = [ ..{variableName}];" : $"container.{property.Name} = {variableName};";
+        string validation2 = ValidationStatement(decl, property, $"container.{property.Name}");
+        return string.IsNullOrEmpty(validation2) ? $"{decode} {assignment2}" : $"{decode} {assignment2} {validation2}";
     }
 
-    private static string MerkleizeRootStatement(SszProperty property, string expression, string rootName)
+    private static string MerkleizeRootStatement(SszProperty property, string expression, string rootName) => property.Kind switch
     {
-        return property.Kind switch
-        {
-            Kind.Basic => $"Merkle.Merkleize(out {rootName}, {expression});",
-            Kind.BitVector => $"Merkle.Merkleize(out {rootName}, {expression}!);",
-            Kind.BitList => $"Merkle.Merkleize(out {rootName}, {expression} ?? new BitArray(0), {property.Limit});",
-            Kind.ProgressiveBitList => $"MerkleizeProgressiveBitList({expression}, out {rootName});",
-            Kind.Vector when property.Type.Kind == Kind.Basic => $"MerkleizeBasicVector({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic => $"MerkleizeBasicList({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}, out {rootName});",
-            Kind.ProgressiveList when property.Type.Kind == Kind.Basic => $"MerkleizeProgressiveBasicList({SpanExpression(property, expression)}, out {rootName});",
-            Kind.Vector => $"{property.Type.Name}.MerkleizeVector({SpanExpression(property, expression)}, out {rootName});",
-            Kind.List => $"{property.Type.Name}.MerkleizeList({SpanExpression(property, expression)}, {property.Limit}, out {rootName});",
-            Kind.ProgressiveList => $"{property.Type.Name}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
-            _ => $"{property.Type.Name}.Merkleize({expression}, out {rootName});",
-        };
+        Kind.Basic when property.Type.IsRefType => $"Merkle.Merkleize(out {rootName}, {expression}.Bytes);",
+        Kind.Basic => $"Merkle.Merkleize(out {rootName}, {expression});",
+        Kind.BitVector => $"Merkle.Merkleize(out {rootName}, {expression}!);",
+        Kind.BitList => $"Merkle.Merkleize(out {rootName}, {expression} ?? new BitArray(0), {property.Limit});",
+        Kind.ProgressiveBitList => $"MerkleizeProgressiveBitList({expression}, out {rootName});",
+        Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.IsRefType
+            => RefTypeMerkleizeVector(property, expression, rootName),
+        Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsRefType
+            => RefTypeMerkleizeList(property, expression, rootName),
+        Kind.Vector when property.Type.Kind == Kind.Basic => $"MerkleizeBasicVector({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, out {rootName});",
+        Kind.List when property.Type.Kind == Kind.Basic => $"MerkleizeBasicList({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}, out {rootName});",
+        Kind.ProgressiveList when property.Type.Kind == Kind.Basic => $"MerkleizeProgressiveBasicList({SpanExpression(property, expression)}, out {rootName});",
+        Kind.Vector => $"{property.Type.Name}.MerkleizeVector({SpanExpression(property, expression)}, out {rootName});",
+        Kind.List => $"{property.Type.Name}.MerkleizeList({SpanExpression(property, expression)}, {property.Limit}, out {rootName});",
+        Kind.ProgressiveList => $"{property.Type.Name}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
+        _ => $"{property.Type.Name}.Merkleize({expression}, out {rootName});",
+    };
+
+    private static string RefTypeMerkleizeVector(SszProperty property, string expression, string rootName)
+    {
+        int itemSize = property.Type.StaticLength;
+        return $@"{{ var __items = {expression} ?? Array.Empty<{property.Type.Name}>(); byte[] __bytes = new byte[__items.Length * {itemSize}]; for (int __i = 0; __i < __items.Length; __i++) {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", $"__bytes.AsSpan(__i * {itemSize}, {itemSize})").Replace("{1}", "__items[__i]")} }} Merkle.Merkleize(out {rootName}, __bytes, {property.Length}); }}";
     }
 
-    private static string MerkleizeFeedStatement(SszProperty property, string expression)
+    private static string RefTypeMerkleizeList(SszProperty property, string expression, string rootName)
     {
-        return property.Kind switch
-        {
-            Kind.Basic => $"merkleizer.Feed({expression});",
-            Kind.BitVector => $"merkleizer.Feed({expression});",
-            Kind.BitList => $"merkleizer.Feed({expression} ?? new BitArray(0), {property.Limit});",
-            _ => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
-        };
+        int itemSize = property.Type.StaticLength;
+        ulong chunkCount = (ulong)Math.Ceiling((double)property.Limit!.Value * itemSize / 32);
+        return $@"{{ var __items = {expression} ?? Array.Empty<{property.Type.Name}>(); byte[] __bytes = new byte[__items.Length * {itemSize}]; for (int __i = 0; __i < __items.Length; __i++) {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", $"__bytes.AsSpan(__i * {itemSize}, {itemSize})").Replace("{1}", "__items[__i]")} }} Merkle.Merkleize(out {rootName}, __bytes, {chunkCount}); Merkle.MixIn(ref {rootName}, __items.Length); }}";
     }
+
+    private static string MerkleizeFeedStatement(SszProperty property, string expression) => property.Kind switch
+    {
+        Kind.Basic when property.Type.IsRefType => $"{{ Merkle.Merkleize(out UInt256 {VarName(property.Name)}Root, {expression}.Bytes); merkleizer.Feed({VarName(property.Name)}Root); }}",
+        Kind.Basic => $"merkleizer.Feed({expression});",
+        Kind.BitVector => $"merkleizer.Feed({expression});",
+        Kind.BitList => $"merkleizer.Feed({expression} ?? new BitArray(0), {property.Limit});",
+        _ => $"UInt256 {VarName(property.Name)}Root; {MerkleizeRootStatement(property, expression, $"{VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
+    };
 
     private static string DynamicLength(SszType container, SszProperty m)
     {
@@ -468,6 +525,15 @@ internal static class SszCodecHelpers
 
     private static string EncodeStatement(string target, SszProperty property, string expression)
     {
+        if ((property.Kind is Kind.List or Kind.Vector) && property.Type.Kind == Kind.Basic && property.Type.IsRefType)
+        {
+            int itemSize = property.Type.StaticLength;
+            string encodeBody = property.Type.CustomEncodeTemplate!
+                .Replace("{0}", $"{target}.Slice(__i * {itemSize}, {itemSize})")
+                .Replace("{1}", $"{expression}[__i]");
+            return $"{{ var __arr = {expression}; for (int __i = 0; __i < __arr.Length; __i++) {{ {encodeBody} }} }}";
+        }
+
         string arguments = $"{target}, {EncodeValueExpression(property, expression)}";
         if (property.Kind == Kind.BitList)
         {
@@ -488,8 +554,48 @@ internal static class SszCodecHelpers
         try
         {
             List<SszProperty> variables = decl.Members.Where(m => m.IsVariable).ToList();
-            int encodeOffsetIndex = 0, encodeStaticOffset = 0;
-            int offsetIndex = 0, offset = 0;
+            IEnumerable<string> BuildStaticEncodeLines(SszType d)
+            {
+                int localStaticOffset = 0;
+                int localOffsetIndex = 0;
+                foreach (SszProperty m in d.Members!)
+                {
+                    string line;
+                    if (m.IsVariable)
+                    {
+                        localOffsetIndex++;
+                        line = $"SszLib.Encode(data.Slice({localStaticOffset}, 4), offset{localOffsetIndex});";
+                    }
+                    else
+                    {
+                        line = StaticFieldEncodeStatement(m, localStaticOffset, "container");
+                    }
+                    localStaticOffset += m.StaticLength;
+                    yield return line;
+                }
+            }
+
+            IEnumerable<string> BuildStaticDecodeLines(SszType d)
+            {
+                int localOffset = 0;
+                int localOffsetIndex = 0;
+                foreach (SszProperty m in d.Members!)
+                {
+                    string line;
+                    if (m.IsVariable)
+                    {
+                        localOffsetIndex++;
+                        line = $"SszLib.Decode(data.Slice({localOffset}, 4), out int offset{localOffsetIndex});";
+                    }
+                    else
+                    {
+                        line = DecodeAndAssign(d, m, $"data.Slice({localOffset}, {m.StaticLength})");
+                    }
+                    localOffset += m.StaticLength;
+                    yield return line;
+                }
+            }
+
             string containerMerkleizeBody = decl.Kind == Kind.ProgressiveContainer
                 ? ProgressiveContainerMerkleizeBody(decl)
                 : $@"Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
@@ -725,15 +831,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {Shift(2, variables.Select((_, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, variables[i - 1])}")};"))}
 {Whitespace}
-{Shift(2, decl.Members.Select(m =>
-{
-    if (m.IsVariable) encodeOffsetIndex++;
-    string result = m.IsVariable ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), offset{encodeOffsetIndex});"
-                                    : m.HandledByStd ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name});"
-                                                     : $"{m.Type.Name}.Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name});";
-    encodeStaticOffset += m.StaticLength;
-    return result;
-}))}
+{Shift(2, BuildStaticEncodeLines(decl))}
 {Whitespace}
 {Shift(2, variables.Select((m, i) => (RequiresNullGuard(m) ? $"if (container.{m.Name} is not null) " : "") + EncodeStatement($"data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1})", m, $"container.{m.Name}")))}
     }}
@@ -772,14 +870,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         {(decl.IsVariable ? $"ValidateSszMinimumLength(data.Length, {decl.StaticLength}, nameof({decl.Name}));" : $"ValidateSszExactLength(data.Length, {decl.StaticLength}, nameof({decl.Name}));")}
         container = new();
 {Whitespace}
-{Shift(2, decl.Members.Select(m =>
-{
-    if (m.IsVariable) offsetIndex++;
-    string result = m.IsVariable ? $"SszLib.Decode(data.Slice({offset}, 4), out int offset{offsetIndex});"
-                                    : DecodeAndAssign(decl, m, $"data.Slice({offset}, {m.StaticLength})");
-    offset += m.StaticLength;
-    return result;
-}))}
+{Shift(2, BuildStaticDecodeLines(decl))}
 {Whitespace}
         {(variables.Any() ? $"ValidateSszDynamicOffsets(data, {decl.StaticLength}, nameof({decl.Name}), [{string.Join(", ", Enumerable.Range(1, variables.Count).Select(i => $"offset{i}"))}]);" : string.Empty)}
 {Whitespace}

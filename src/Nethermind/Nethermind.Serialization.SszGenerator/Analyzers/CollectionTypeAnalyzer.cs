@@ -40,12 +40,27 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
         }
     }
 
+    private static readonly HashSet<string> SszIgnoreAttributeNames = new(StringComparer.Ordinal)
+    {
+        "SszIgnoreAttribute",
+        "SszIgnore",
+    };
+
     private static void CheckProperty(SyntaxNodeAnalysisContext context, PropertyDeclarationSyntax propertyDeclaration)
     {
         ITypeSymbol? typeSymbol = context.SemanticModel.GetTypeInfo(propertyDeclaration.Type).Type;
 
         if (typeSymbol is not null && IsCollectionType(typeSymbol))
         {
+            bool isIgnored = propertyDeclaration.AttributeLists
+                .SelectMany(attrList => attrList.Attributes)
+                .Any(attr => MatchesAttributeName(attr, SszIgnoreAttributeNames));
+
+            if (isIgnored)
+            {
+                return;
+            }
+
             bool hasRequiredAttribute = propertyDeclaration.AttributeLists
                 .SelectMany(attrList => attrList.Attributes)
                 .Any(attr => MatchesAttributeName(attr, SszCollectionAttributeNames));
