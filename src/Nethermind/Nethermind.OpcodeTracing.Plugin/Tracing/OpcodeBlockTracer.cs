@@ -8,16 +8,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 
-internal sealed class OpcodeBlockTracer : IBlockTracer
+internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockCompleted) : IBlockTracer
 {
-    private readonly Action<OpcodeBlockTrace> _onBlockCompleted;
+    private readonly Action<OpcodeBlockTrace> _onBlockCompleted = onBlockCompleted ?? throw new ArgumentNullException(nameof(onBlockCompleted));
     private OpcodeTraceBuilder? _builder;
     private OpcodeCountingTxTracer? _currentTxTracer;
-
-    public OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockCompleted)
-    {
-        _onBlockCompleted = onBlockCompleted ?? throw new ArgumentNullException(nameof(onBlockCompleted));
-    }
 
     public bool IsTracingRewards => false;
 
@@ -26,10 +21,8 @@ internal sealed class OpcodeBlockTracer : IBlockTracer
         // Rewards do not execute opcodes, so nothing to capture here.
     }
 
-    public void StartNewBlockTrace(Block block)
-    {
+    public void StartNewBlockTrace(Block block) =>
         _builder = new OpcodeTraceBuilder(block ?? throw new ArgumentNullException(nameof(block)));
-    }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
@@ -79,16 +72,11 @@ internal sealed record OpcodeBlockTrace
     public required IReadOnlyDictionary<byte, long> Opcodes { get; init; }
 }
 
-internal sealed class OpcodeTraceBuilder
+internal sealed class OpcodeTraceBuilder(Block block)
 {
-    private readonly Block _block;
+    private readonly Block _block = block;
     private readonly long[] _opcodeCounters = new long[256];
     private int _transactions;
-
-    public OpcodeTraceBuilder(Block block)
-    {
-        _block = block;
-    }
 
     public void Accumulate(OpcodeCountingTxTracer tracer)
     {

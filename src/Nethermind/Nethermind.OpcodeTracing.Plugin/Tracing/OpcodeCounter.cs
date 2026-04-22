@@ -32,10 +32,8 @@ public sealed class OpcodeCounter
     /// Increments the count for the specified opcode.
     /// </summary>
     /// <param name="opcode">The opcode byte value.</param>
-    public void Increment(byte opcode)
-    {
+    public void Increment(byte opcode) =>
         _counters.AddOrUpdate(opcode, 1, static (_, oldValue) => oldValue + 1);
-    }
 
     /// <summary>
     /// Accumulates counts from a source dictionary into this counter.
@@ -82,8 +80,5 @@ public sealed class OpcodeCounter
     /// Gets an immutable snapshot of current opcode counts as a dictionary.
     /// </summary>
     /// <returns>A dictionary mapping opcode bytes to counts.</returns>
-    public Dictionary<byte, long> ToOpcodeCountsDictionary()
-    {
-        return new Dictionary<byte, long>(_counters);
-    }
+    public Dictionary<byte, long> ToOpcodeCountsDictionary() => new(_counters);
 }

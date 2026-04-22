@@ -95,10 +95,7 @@ public sealed record TraceConfiguration
     /// <exception cref="InvalidOperationException">Thrown when configuration is invalid.</exception>
     public static TraceConfiguration FromConfig(IOpcodeTracingConfig config, long currentChainTip)
     {
-        if (config is null)
-        {
-            throw new ArgumentNullException(nameof(config));
-        }
+        ArgumentNullException.ThrowIfNull(config);
 
         TracingMode mode = Enum.TryParse<TracingMode>(config.Mode, true, out TracingMode parsedMode)
             ? parsedMode
