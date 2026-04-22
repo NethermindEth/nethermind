@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Taiko.ZkGas;
 using NUnit.Framework;
