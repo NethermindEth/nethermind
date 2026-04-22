@@ -137,18 +137,21 @@ public sealed class ZkGasTxTracer : TxTracer
     }
 
     /// <summary>
-    /// Clears pending precompile state on action error.
+    /// Charges precompile ZK gas on action error.
     /// Also flushes the deferred spawn step.
     /// </summary>
+    /// <remarks>
+    /// The EVM specification burns all gas forwarded to a precompile when it errors (not reverts),
+    /// so gas remaining after the call is zero. Calling <see cref="ChargePrecompileIfPending"/>
+    /// with <c>gasRemaining = 0</c> therefore charges the full forwarded gas
+    /// (<c>_precompileGasStart - 0 = _precompileGasStart</c>), which mirrors alethia-reth's
+    /// <c>call_end</c> where <c>gas_used = inputs.gas_limit - outcome.result.gas.remaining()</c>
+    /// evaluates to <c>gas_limit</c> on error.
+    /// </remarks>
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         FlushDeferredStep();
-
-        if (_pendingPrecompile)
-        {
-            _meter.ChargePrecompile(_precompileAddressByte, (ulong)_precompileGasStart);
-            _pendingPrecompile = false;
-        }
+        ChargePrecompileIfPending(gasRemaining: 0);
     }
 
     /// <summary>

@@ -24,12 +24,10 @@ public class TaikoGetPayloadV2Handler(
     ILogManager logManager)
     : GetPayloadHandlerBase<GetPayloadV2Result>(2, payloadPreparationService, specProvider, logManager)
 {
-    private readonly ISpecProvider _taikoSpecProvider = specProvider;
-
     protected override GetPayloadV2Result GetPayloadResultFromBlock(IBlockProductionContext context)
     {
         Block block = context.CurrentBestBlock!;
-        ITaikoReleaseSpec spec = (ITaikoReleaseSpec)_taikoSpecProvider.GetSpec(block.Header);
+        ITaikoReleaseSpec spec = (ITaikoReleaseSpec)SpecProvider.GetSpec(block.Header);
 
         // For Uzen, carry header difficulty through blockValue (matches alethia-reth behavior).
         // The driver reads blockValue from the standard ExecutionPayloadEnvelopeV2.

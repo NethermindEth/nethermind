@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -277,6 +278,12 @@ public class TaikoHeaderValidator(
         if (taikoSpec.IsUzenEnabled)
         {
             // Uzen pins RequestsHash to EMPTY_REQUESTS_HASH even though Prague system contracts aren't active
+            if (header.RequestsHash != ExecutionRequestExtensions.EmptyRequestsHash)
+            {
+                error = $"Uzen header must have RequestsHash={ExecutionRequestExtensions.EmptyRequestsHash}, got {header.RequestsHash}";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                return false;
+            }
             return true;
         }
 

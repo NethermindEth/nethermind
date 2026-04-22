@@ -20,6 +20,12 @@ public class TaikoExtendedEthModule(
     internal static readonly ResultWrapper<L1Origin?> L1OriginNotFound = ResultWrapper<L1Origin?>.Fail("not found");
     private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
 
+    /// <summary>
+    /// Maximum number of blocks to scan backwards when the batch→block index is missing.
+    /// Matches alethia-reth's <c>MAX_BACKWARD_SCAN_BLOCKS = 192 * 21_600</c>.
+    /// </summary>
+    private const int MaxBatchLookupBlocks = 192 * 21_600;
+
     public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(syncConfig switch
     {
         { SnapSync: true } => "snap",
@@ -79,34 +85,42 @@ public class TaikoExtendedEthModule(
     }
 
     /// <summary>
-    /// Traverses the blockchain backwards to find the last Shasta block of the given Shasta batch ID.
+    /// Scans backwards from head to find the last block belonging to <paramref name="batchId"/>.
+    /// Used as a fallback when the batch→block index has not been populated (e.g. legacy nodes
+    /// or nodes that were upgraded without replaying historical blocks). Capped at
+    /// <see cref="MaxBatchLookupBlocks"/> iterations to prevent unbounded RPC thread blocking.
     /// </summary>
-    /// <param name="batchId">The batch ID.</param>
-    /// <returns>The last block ID.</returns>
     private UInt256? GetLastBlockByBatchId(UInt256 batchId)
     {
         Block? currentBlock = blockFinder.Head;
+        int scanned = 0;
 
         while (currentBlock is not null &&
                currentBlock.Transactions.Length > 0 &&
                HasAnchorV4Prefix(currentBlock.Transactions[0].Data))
         {
             if (currentBlock.Number == 0)
-            {
                 break;
-            }
 
-            UInt256? proposalId = ExtractAnchorV4ProposalId(currentBlock.Transactions[0].Data);
-
-            if (proposalId is null)
-            {
+            if (scanned >= MaxBatchLookupBlocks)
                 return null;
+
+            scanned++;
+
+            // Skip preconfirmation blocks (no L1 origin entry or L1 block height == 0).
+            L1Origin? l1Origin = l1OriginStore.ReadL1Origin((UInt256)currentBlock.Number);
+            if (l1Origin is not null && l1Origin.IsPreconfBlock)
+            {
+                currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
+                continue;
             }
+
+            UInt256? proposalId = currentBlock.Header.DecodeShastaProposalID();
+            if (proposalId is null)
+                return null;
 
             if (proposalId.Value == batchId)
-            {
                 return (UInt256)currentBlock.Number;
-            }
 
             currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
         }
@@ -117,29 +131,4 @@ public class TaikoExtendedEthModule(
     private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data) =>
         data.Length >= 4 && (AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4])
             || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(data.Span[..4]));
-
-    private static UInt256? ExtractAnchorV4ProposalId(ReadOnlyMemory<byte> data)
-    {
-        // Calldata layout: 4-byte selector + ABI-encoded arguments.
-        // The first 32 bytes hold the offset (relative to args start) where the proposal id is stored.
-        const int selectorLength = 4;
-        const int dataLength = 32;
-
-        if (data.Length <= selectorLength + dataLength)
-        {
-            return null;
-        }
-
-        ReadOnlySpan<byte> args = data.Span[selectorLength..];
-        UInt256 offset = new(args[..dataLength], true);
-
-        // Check if the offset is invalid
-        if (offset > int.MaxValue || offset + dataLength > args.Length)
-        {
-            return null;
-        }
-
-        ReadOnlySpan<byte> proposalIdBytes = args.Slice((int)offset, dataLength);
-        return new UInt256(proposalIdBytes, true);
-    }
 }

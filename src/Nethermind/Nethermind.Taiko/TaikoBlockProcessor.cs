@@ -42,7 +42,7 @@ public class TaikoBlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    ZkGasMeterHolder zkGasMeterHolder)
+    ZkGasMeterHolder? zkGasMeterHolder = null)
     : BlockProcessor(
         specProvider,
         blockValidator,
@@ -56,7 +56,7 @@ public class TaikoBlockProcessor(
         withdrawalProcessor,
         executionRequestsProcessor)
 {
-    private readonly ZkGasMeterHolder _zkGasMeterHolder = zkGasMeterHolder;
+    private readonly ZkGasMeterHolder? _zkGasMeterHolder = zkGasMeterHolder;
 
     /// <summary>
     /// Wraps the incoming block tracer with ZK gas metering, delegates to
