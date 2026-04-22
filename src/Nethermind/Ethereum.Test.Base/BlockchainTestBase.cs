@@ -269,7 +269,8 @@ public abstract class BlockchainTestBase
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
         for (int i = 0; i < correctRlp.Count; i++)
         {
-            // IsPostMerge is set by MergeProcessingRecoveryStep / PoSSwitcher during the pipeline.
+            // Setting IsPostMerge here would bypass PoSSwitcher and hide divergences
+            // between CI and hive's production pipeline (the bug this test path exists to catch).
 
             // For tests with reorgs, find the actual parent header from block tree
             parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
