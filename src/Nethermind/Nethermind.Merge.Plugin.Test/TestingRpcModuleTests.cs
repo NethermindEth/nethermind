@@ -210,7 +210,7 @@ public class TestingRpcModuleTests
         result.Result.ResultType.Should().Be(ResultType.Success);
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
 
-        long effectiveTarget = targetBlockGasLimit ?? TestingRpcModule.DefaultTestingGasLimit;
+        long effectiveTarget = targetBlockGasLimit ?? TestingGasLimitCalculator.DefaultGasLimit;
         TargetAdjustedGasLimitCalculator expectedCalculator = new(
             new TestSpecProvider(Osaka.Instance),
             new BlocksConfig { TargetBlockGasLimit = effectiveTarget });
@@ -233,7 +233,7 @@ public class TestingRpcModuleTests
             Address.Zero,
             UInt256.Zero,
             1,
-            TestingRpcModule.DefaultTestingGasLimit / 2,
+            TestingGasLimitCalculator.DefaultGasLimit / 2,
             1,
             [])
         {
@@ -253,7 +253,8 @@ public class TestingRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? Osaka.Instance);
 
-        IBlocksConfig blocksConfig = new BlocksConfig { TargetBlockGasLimit = targetBlockGasLimit };
+        TestingGasLimitCalculator gasLimitCalculator = new (
+            specProvider, new BlocksConfig { TargetBlockGasLimit = targetBlockGasLimit });
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(parentHash).Returns(parentBlock);
@@ -268,7 +269,7 @@ public class TestingRpcModuleTests
         IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
         blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
 
-        TestingRpcModule module = new(blockProducerEnvFactory, blocksConfig, specProvider, blockFinder, LimboLogs.Instance);
+        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, LimboLogs.Instance);
         return (module, parentHash, parentHeader);
     }
 

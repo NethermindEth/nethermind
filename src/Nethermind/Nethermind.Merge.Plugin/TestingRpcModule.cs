@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -30,18 +29,12 @@ namespace Nethermind.Merge.Plugin;
 /// </summary>
 public class TestingRpcModule(
     IBlockProducerEnvFactory blockProducerEnvFactory,
-    IBlocksConfig blocksConfig,
+    ITestingGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     ILogManager logManager)
     : ITestingRpcModule
 {
-    // Fallback when TargetBlockGasLimit is not configured — matches the current mainnet gas limit target.
-    internal const long DefaultTestingGasLimit = 60_000_000;
-
-    private readonly TargetAdjustedGasLimitCalculator _gasLimitCalculator = new(
-        specProvider, new BlocksConfig { TargetBlockGasLimit = blocksConfig.TargetBlockGasLimit ?? DefaultTestingGasLimit });
-
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
 
     public async Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
@@ -110,7 +103,7 @@ public class TestingRpcModule(
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            payloadAttributes.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent),
+            payloadAttributes.GetGasLimit() ?? gasLimitCalculator.GetGasLimit(parent),
             payloadAttributes.Timestamp,
             extraData ?? [])
         {
