@@ -71,6 +71,65 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ProcessOne_WithBlockAccessList_CallsHintBal()
+    {
+        BlockProcessor processor = CreateProcessorWithMockedState(out IWorldState stateProvider);
+        BlockAccessList bal = new();
+        Block block = Build.A.Block.WithBlockAccessList(bal).TestObject;
+
+        try
+        {
+            processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance,
+                HoodiSpecProvider.Instance.GenesisSpec, CancellationToken.None);
+        }
+        catch
+        {
+            // Downstream processing against a mocked IWorldState will fail after HintBal;
+            // we only care whether HintBal was invoked.
+        }
+
+        stateProvider.Received(1).HintBal(bal);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ProcessOne_WithoutBlockAccessList_DoesNotCallHintBal()
+    {
+        BlockProcessor processor = CreateProcessorWithMockedState(out IWorldState stateProvider);
+        Block block = Build.A.Block.TestObject;
+        Assert.That(block.BlockAccessList, Is.Null);
+
+        try
+        {
+            processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance,
+                HoodiSpecProvider.Instance.GenesisSpec, CancellationToken.None);
+        }
+        catch
+        {
+            // Same as above — downstream failure is not what this test verifies.
+        }
+
+        stateProvider.DidNotReceive().HintBal(Arg.Any<BlockAccessList>());
+    }
+
+    private static BlockProcessor CreateProcessorWithMockedState(out IWorldState stateProvider)
+    {
+        stateProvider = Substitute.For<IWorldState>();
+        ITransactionProcessor txProcessor = Substitute.For<ITransactionProcessor>();
+        return new BlockProcessor(
+            HoodiSpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(txProcessor), stateProvider),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(txProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(txProcessor));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch();
