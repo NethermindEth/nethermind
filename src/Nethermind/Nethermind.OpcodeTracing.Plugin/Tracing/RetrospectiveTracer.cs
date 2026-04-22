@@ -14,7 +14,7 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 /// Handles retrospective opcode tracing by reading historical blocks from the database.
 /// Supports parallel processing via MaxDegreeOfParallelism configuration.
 /// </summary>
-public sealed class RetrospectiveTracer
+public sealed class RetrospectiveTracer(IBlockTree blockTree, OpcodeCounter counter, int maxDegreeOfParallelism, ILogManager logManager)
 {
     /// <summary>
     /// Precomputed lookup table for valid EVM opcodes. Avoids Enum.IsDefined overhead in tight loops.
@@ -31,25 +31,10 @@ public sealed class RetrospectiveTracer
         return table;
     }
 
-    private readonly IBlockTree _blockTree;
-    private readonly OpcodeCounter _counter;
-    private readonly ILogger _logger;
-    private readonly int _maxDegreeOfParallelism;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="RetrospectiveTracer"/> class.
-    /// </summary>
-    /// <param name="blockTree">The block tree for accessing historical blocks.</param>
-    /// <param name="counter">The opcode counter to accumulate into.</param>
-    /// <param name="maxDegreeOfParallelism">Maximum degree of parallelism. 0 or negative uses processor count.</param>
-    /// <param name="logManager">The log manager.</param>
-    public RetrospectiveTracer(IBlockTree blockTree, OpcodeCounter counter, int maxDegreeOfParallelism, ILogManager logManager)
-    {
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _counter = counter ?? throw new ArgumentNullException(nameof(counter));
-        _maxDegreeOfParallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
-        _logger = logManager?.GetClassLogger<RetrospectiveTracer>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    private readonly OpcodeCounter _counter = counter ?? throw new ArgumentNullException(nameof(counter));
+    private readonly ILogger _logger = logManager?.GetClassLogger<RetrospectiveTracer>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly int _maxDegreeOfParallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
 
     /// <summary>
     /// Traces the specified block range asynchronously with parallel processing.
