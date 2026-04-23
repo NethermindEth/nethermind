@@ -138,7 +138,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
     public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
-
         VmState<TGasPolicy> vmState,
         IWorldState worldState,
         ITxTracer txTracer)

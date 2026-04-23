@@ -54,18 +54,11 @@ public readonly ref struct TransactionSubstate
     public long Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs;
     public JournalSet<Address>? DestroyList => _destroyList;
-    public bool DestroyListContains(Address? address)
-    {
-        if (address is null) return false;
 
-        JournalSet<Address>? destroyList = _destroyList;
-        if (destroyList is null) return false;
-
-        return destroyList.Contains(address);
-    }
-
+    public bool DestroyListContains(Address? address) =>
+        address is not null && _destroyList?.Contains(address) == true;
     public int DestroyListCount => _destroyList?.Count ?? 0;
-    public LogEntry[] LogsToArray() => _logs is { Count: not 0 } logs ? [.. logs] : [];
+    public LogEntry[] LogsToArray() => _logs.Count != 0 ? _logs.ToArray() : [];
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {

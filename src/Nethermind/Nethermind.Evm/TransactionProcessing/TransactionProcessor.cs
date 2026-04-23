@@ -254,14 +254,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 JournalSet<Address>? destroyList = substate.DestroyList;
                 if (destroyList is not null)
                 {
-                    ProcessDestoryList(substate, destroyList);
+                    ProcessDestroyList(substate, destroyList);
                 }
             }
 
             return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, env.ExecutingAccount, statusCode, in substate, in spentGas);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void ProcessDestoryList(TransactionSubstate substate, JournalSet<Address> destroyList)
+            void ProcessDestroyList(TransactionSubstate substate, JournalSet<Address> destroyList)
             {
                 foreach (Address toBeDestroyed in destroyList)
                 {
@@ -932,7 +932,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         JournalSet<Address>? destroyList = substate.DestroyList;
                         if (destroyList is not null)
                         {
-                            ProcessDestoryList(spec, tracer, substate, eip7708Enabled, tracingRefunds, destroyList);
+                            ProcessDestroyList(spec, tracer, substate, eip7708Enabled, tracingRefunds, destroyList);
                         }
                     }
 
@@ -955,7 +955,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return statusCode;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void ProcessDestoryList(IReleaseSpec spec, ITxTracer tracer, TransactionSubstate substate, bool eip7708Enabled, bool tracingRefunds, JournalSet<Address> destroyList)
+            void ProcessDestroyList(IReleaseSpec spec, ITxTracer tracer, TransactionSubstate substate, bool eip7708Enabled, bool tracingRefunds, JournalSet<Address> destroyList)
             {
                 foreach (Address toBeDestroyed in destroyList)
                 {
