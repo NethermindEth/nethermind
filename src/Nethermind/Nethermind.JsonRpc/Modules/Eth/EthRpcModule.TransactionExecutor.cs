@@ -39,6 +39,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
+                if (stateOverride is not null)
+                {
+                    IReleaseSpec spec = specProvider.GetSpec(header);
+                    foreach ((Address address, AccountOverride accountOverride) in stateOverride)
+                    {
+                        if (accountOverride.MovePrecompileToAddress is not null &&
+                            spec.IsPrecompile(address) &&
+                            accountOverride.MovePrecompileToAddress == address)
+                        {
+                            return ResultWrapper<TResult>.Fail(
+                                $"account {address} is already overridden",
+                                ErrorCodes.InvalidInput);
+                        }
+                    }
+                }
+
                 BlockHeader clonedHeader = header.Clone();
 
                 if (NoBaseFee)
@@ -108,9 +124,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
-                // Non-revert execution errors — no data field (Geth also omits data for non-revert errors)
+                // Non-revert errors: execution errors (OOG, insufficient funds) use -32003; input validation errors use -32000
                 if (!result.ExecutionReverted && result.Error is not null)
-                    return ResultWrapper<string>.Fail(result.Error, ErrorCodes.InvalidInput);
+                {
+                    int errorCode = result.InputError ? ErrorCodes.InvalidInput : ErrorCodes.ExecutionError;
+                    return ResultWrapper<string>.Fail(result.Error, errorCode);
+                }
 
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
             }

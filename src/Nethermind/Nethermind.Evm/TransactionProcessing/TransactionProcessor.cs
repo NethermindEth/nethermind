@@ -603,7 +603,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                string errorDetail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas} (supplied gas {tx.GasLimit})";
+                string errorDetail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas} (supplied gas {tx.GasLimit})";
                 return TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, errorDetail);
             }
 
@@ -614,7 +614,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCostForMsg);
                 UInt256.AddOverflow(gasCostForMsg, tx.Value, out UInt256 wantForMsg);
                 return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
-                    $"insufficient funds for gas * price + value: address {tx.SenderAddress} have {senderBalance} want {wantForMsg}");
+                    $"err: insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {wantForMsg} (supplied gas {tx.GasLimit})");
             }
 
             bool overflows;
@@ -654,7 +654,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCostForMsg);
                 UInt256.AddOverflow(gasCostForMsg, tx.Value, out UInt256 wantForMsg);
                 return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
-                    $"insufficient funds for gas * price + value: address {tx.SenderAddress} have {senderBalance} want {wantForMsg}");
+                    $"err: insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {wantForMsg} (supplied gas {tx.GasLimit})");
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);

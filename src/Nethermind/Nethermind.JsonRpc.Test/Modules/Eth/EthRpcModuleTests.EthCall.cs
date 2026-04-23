@@ -63,7 +63,7 @@ public partial class EthRpcModuleTests
             $"{{\"from\":\"{TestAccountAddress}\",\"gasPrice\":\"0x100000\", \"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\", \"value\": 500, \"gas\": 1000000}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
-        parsed["error"]!["code"]!.Value<int>().Should().Be(-32000);
+        parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
         parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient funds");
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
@@ -302,7 +302,7 @@ public partial class EthRpcModuleTests
             $"{{\"type\": \"0x2\", \"value\":\"{1.Ether}\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
-        parsed["error"]!["code"]!.Value<int>().Should().Be(-32000);
+        parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
         parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient funds");
     }
 
@@ -467,7 +467,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\"}},\"id\":67}}");
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32003,\"message\":\"out of gas\"}},\"id\":67}}");
     }
 
     [Test]
@@ -793,6 +793,6 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\"}},\"id\":67}}");
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32003,\"message\":\"out of gas\"}},\"id\":67}}");
     }
 }
