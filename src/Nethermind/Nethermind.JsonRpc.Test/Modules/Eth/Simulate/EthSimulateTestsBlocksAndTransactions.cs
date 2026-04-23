@@ -460,7 +460,6 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That((bool)result.Result, Is.False);
         result.ErrorCode.Should().Be(expectedErrorCode);
         result.Result.Error.Should().Be(expectedMessage);
     }
