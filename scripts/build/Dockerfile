@@ -11,7 +11,7 @@ ENV CI=true
 WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
+COPY Directory.*.props Directory.Build.targets ./
 COPY global.json .
 COPY nuget.config .
 COPY --chmod=0755 scripts/build/build.sh .
