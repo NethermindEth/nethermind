@@ -299,7 +299,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             PayValue(tx, spec, opts);
-            WorldState.AddToBalanceAndCreateIfNotExists(recipient, in value, spec);
+            WorldState.AddToBalanceAndCreateIfNotExists(recipient, ExecutionType.TRANSACTION, in value, spec);
 
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && !value.IsZero && tx.SenderAddress != recipient)

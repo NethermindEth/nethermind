@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
@@ -21,6 +22,10 @@ namespace Nethermind.Evm
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool CreditsBalance(this ExecutionType executionType) =>
             executionType is not (ExecutionType.STATICCALL or ExecutionType.DELEGATECALL);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ref readonly UInt256 GetBalanceCredit(this ExecutionType executionType, in UInt256 value) =>
+            ref executionType.CreditsBalance() ? ref value : ref UInt256.Zero;
 
         public static Instruction ToInstruction(this ExecutionType executionType) =>
             executionType switch
