@@ -116,9 +116,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 UInt256 nextFeePerBlobGas = UInt256.Zero;
                 if (b.Header.ExcessBlobGas.HasValue)
                 {
+                    // Uses parent-block spec for BlobBaseFeeUpdateFraction, matching Geth's feehistory.go.
+                    // At hard-fork boundaries this is one block off, but it is intentional for compatibility.
                     ulong nextExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(b.Header, spec) ?? 0;
-                    BlobGasCalculator.TryCalculateFeePerBlobGas(nextExcessBlobGas, spec.BlobBaseFeeUpdateFraction, out nextFeePerBlobGas);
-                    if (nextFeePerBlobGas == UInt256.MaxValue)
+                    if (!BlobGasCalculator.TryCalculateFeePerBlobGas(nextExcessBlobGas, spec.BlobBaseFeeUpdateFraction, out nextFeePerBlobGas))
                         nextFeePerBlobGas = UInt256.Zero;
                 }
 
