@@ -15,7 +15,7 @@ namespace Nethermind.Xdc.Spec;
 public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
     XdcChainSpecEngineParameters chainSpecEngineParameters,
     ILogManager logManager)
-    : ChainSpecBasedSpecProvider(chainSpec, logManager), IXdcSpecProvider
+    : ChainSpecBasedSpecProvider(chainSpec, logManager)
 {
     private readonly ConcurrentDictionary<(int blockIndex, int roundIndex), XdcReleaseSpec> _specCache = new();
 
@@ -109,10 +109,4 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         return releaseSpec;
     }
 
-}
-
-public interface IXdcSpecProvider : ISpecProvider
-{
-    IXdcReleaseSpec GetXdcSpec(long blockNumber, ulong round = 0);
-    IXdcReleaseSpec GetXdcSpec(XdcBlockHeader header, ulong round = 0);
 }

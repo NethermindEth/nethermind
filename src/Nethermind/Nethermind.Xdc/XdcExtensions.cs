@@ -33,15 +33,15 @@ internal static partial class XdcExtensions
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
-        if (specProvider is not IXdcSpecProvider xdcProvider)
-            throw new InvalidOperationException($"Expected {nameof(IXdcSpecProvider)}.");
+        if (specProvider is not XdcChainSpecBasedSpecProvider xdcProvider)
+            throw new InvalidOperationException($"Expected {nameof(XdcChainSpecBasedSpecProvider)}.");
         return xdcProvider.GetXdcSpec(xdcBlockHeader, round);
     }
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
     {
-        if (specProvider is not IXdcSpecProvider xdcProvider)
-            throw new InvalidOperationException($"Expected {nameof(IXdcSpecProvider)}.");
+        if (specProvider is not XdcChainSpecBasedSpecProvider xdcProvider)
+            throw new InvalidOperationException($"Expected {nameof(XdcChainSpecBasedSpecProvider)}.");
         return xdcProvider.GetXdcSpec(blockNumber, round);
     }
 
