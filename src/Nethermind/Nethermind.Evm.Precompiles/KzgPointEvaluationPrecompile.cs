@@ -15,7 +15,7 @@ namespace Nethermind.Evm.Precompiles;
 /// </summary>
 public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluationPrecompile>
 {
-    public static readonly KzgPointEvaluationPrecompile Instance = new();
+    public static KzgPointEvaluationPrecompile Instance { get; } = new();
 
     // FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values
     private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 0, 115, 237, 167, 83, 41, 157, 125, 72, 51, 57, 216, 8, 9, 161, 216, 5, 83, 189, 164, 2, 255, 254, 91, 254, 255, 255, 255, 255, 0, 0, 0, 1];
