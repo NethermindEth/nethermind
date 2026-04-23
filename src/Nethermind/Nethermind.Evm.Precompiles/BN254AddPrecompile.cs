@@ -16,8 +16,7 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
     private const int InputLength = 128;
     private const int OutputLength = 64;
 
-    public static readonly BN254AddPrecompile Instance = new();
-    static BN254AddPrecompile IPrecompile<BN254AddPrecompile>.Instance => Instance;
+    public static BN254AddPrecompile Instance { get; } = new();
 
     public static Address Address { get; } = Address.FromNumber(6);
 

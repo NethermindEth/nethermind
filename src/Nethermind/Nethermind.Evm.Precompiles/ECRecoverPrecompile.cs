@@ -11,8 +11,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 {
-    public static readonly ECRecoverPrecompile Instance = new();
-    static ECRecoverPrecompile IPrecompile<ECRecoverPrecompile>.Instance => Instance;
+    public static ECRecoverPrecompile Instance { get; } = new();
     private static readonly Result<byte[]> Empty = Array.Empty<byte>();
 
     private ECRecoverPrecompile() { }

@@ -16,8 +16,7 @@ public partial class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
     private const int InputLength = 96;
     private const int OutputLength = 64;
 
-    public static readonly BN254MulPrecompile Instance = new();
-    static BN254MulPrecompile IPrecompile<BN254MulPrecompile>.Instance => Instance;
+    public static BN254MulPrecompile Instance { get; } = new();
 
     public static Address Address { get; } = Address.FromNumber(7);
 

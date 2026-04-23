@@ -10,8 +10,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
 {
-    public static readonly Ripemd160Precompile Instance = new();
-    static Ripemd160Precompile IPrecompile<Ripemd160Precompile>.Instance => Instance;
+    public static Ripemd160Precompile Instance { get; } = new();
 
     // missing in .NET Core
     //        private static RIPEMD160 _ripemd;

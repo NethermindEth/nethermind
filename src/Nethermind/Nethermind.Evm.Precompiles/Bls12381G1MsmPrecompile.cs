@@ -14,8 +14,7 @@ public partial class Bls12381G1MsmPrecompile : IPrecompile<Bls12381G1MsmPrecompi
 {
     public const int ItemSize = 160;
 
-    public static readonly Bls12381G1MsmPrecompile Instance = new();
-    static Bls12381G1MsmPrecompile IPrecompile<Bls12381G1MsmPrecompile>.Instance => Instance;
+    public static Bls12381G1MsmPrecompile Instance { get; } = new();
 
     private Bls12381G1MsmPrecompile() { }
 

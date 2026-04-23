@@ -9,8 +9,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 {
-    public static readonly IdentityPrecompile Instance = new();
-    static IdentityPrecompile IPrecompile<IdentityPrecompile>.Instance => Instance;
+    public static IdentityPrecompile Instance { get; } = new();
 
     private IdentityPrecompile()
     {

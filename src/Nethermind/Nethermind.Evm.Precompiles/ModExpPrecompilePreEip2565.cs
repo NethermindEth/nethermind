@@ -16,8 +16,7 @@ namespace Nethermind.Evm.Precompiles;
 [Obsolete("Pre-eip2565 implementation")]
 public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
 {
-    public static ModExpPrecompilePreEip2565 Instance = new();
-    static ModExpPrecompilePreEip2565 IPrecompile<ModExpPrecompilePreEip2565>.Instance => Instance;
+    public static ModExpPrecompilePreEip2565 Instance { get; } = new();
     private static readonly UInt256 Eight = 8;
 
     private ModExpPrecompilePreEip2565()

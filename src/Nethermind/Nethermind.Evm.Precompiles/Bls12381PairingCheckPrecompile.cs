@@ -14,8 +14,7 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 {
     private const int PairSize = 384;
 
-    public static readonly Bls12381PairingCheckPrecompile Instance = new();
-    static Bls12381PairingCheckPrecompile IPrecompile<Bls12381PairingCheckPrecompile>.Instance => Instance;
+    public static Bls12381PairingCheckPrecompile Instance { get; } = new();
 
     private Bls12381PairingCheckPrecompile() { }
 
