@@ -166,23 +166,23 @@ public class ShutterTxLoader(
         }
         catch (ShutterCrypto.ShutterCryptoException e)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Could not decode encrypted Shutter transaction", e);
+            _logger.DebugError("Could not decode encrypted Shutter transaction", e);
         }
         catch (Bls.BlsException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not decrypt Shutter transaction with invalid key", e);
+            _logger.DebugError("Could not decrypt Shutter transaction with invalid key", e);
         }
         catch (RlpException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not decode decrypted Shutter transaction", e);
+            _logger.DebugError("Could not decode decrypted Shutter transaction", e);
         }
         catch (ArgumentException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not recover Shutter transaction sender address", e);
+            _logger.DebugError("Could not recover Shutter transaction sender address", e);
         }
         catch (InvalidDataException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Decrypted Shutter transaction had no signature", e);
+            _logger.DebugError("Decrypted Shutter transaction had no signature", e);
         }
 
         return null;

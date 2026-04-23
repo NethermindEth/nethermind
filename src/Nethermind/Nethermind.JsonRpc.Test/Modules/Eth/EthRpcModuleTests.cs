@@ -971,7 +971,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccount", account_address, "0xffff");
 
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"65535 could not be found\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"block not found: 0xffff\"},\"id\":67}");
     }
 
     [Test]
@@ -1014,7 +1014,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address, "0xffff");
 
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"65535 could not be found\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"block not found: 0xffff\"},\"id\":67}");
     }
 
     [Test]
@@ -1381,6 +1381,31 @@ public partial class EthRpcModuleTests
 
         long gasUsed = Convert.ToInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
         gasUsed.Should().BeLessOrEqualTo(gasCap);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+
+        long blockGasLimit = ctx.Test.BlockTree.FindHeadBlock()!.Header.GasLimit;
+        long gasCap = blockGasLimit + 500_000;
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        // Inject infinite-loop contract — with no gas field it should consume all of gasCap, not blockGasLimit
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"0xc200000000000000000000000000000000000000\":{{\"code\":\"{InfiniteLoopCode.ToHexString(true)}\"}}}}")!;
+
+        // No gas field — should default to gasCap, not blockGasLimit
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"to":"0xc200000000000000000000000000000000000000"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
+
+        long gasUsed = Convert.ToInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
+        gasUsed.Should().BeGreaterThan(blockGasLimit,
+            "gas used ({0}) should reflect gasCap ({1}), not block gas limit ({2})",
+            gasUsed, gasCap, blockGasLimit);
     }
 
     [Test]

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Precompiles;
 [Obsolete("Pre-eip2565 implementation")]
 public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
 {
-    public static ModExpPrecompilePreEip2565 Instance = new();
+    public static ModExpPrecompilePreEip2565 Instance { get; } = new();
     private static readonly UInt256 Eight = 8;
 
     private ModExpPrecompilePreEip2565()

@@ -485,7 +485,7 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(Utf8JsonWriter writer, object? id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
+        static void WriteOther(Utf8JsonWriter writer, object? id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
     }
 
     private static async ValueTask WriteStreamableResponseAsync(
@@ -523,7 +523,7 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(PipeWriter writer, object? id)
+        static void WriteOther(PipeWriter writer, object? id)
         {
             switch (id)
             {
