@@ -111,6 +111,8 @@ public class PreBlockCaches
     /// </summary>
     public void FlushCarryForwardWrites()
     {
+        _stateCache.Clear();
+
         foreach ((AddressAsKey key, Account? account) in _pendingStateWrites)
         {
             _stateCache.Set(key, account);
@@ -122,10 +124,7 @@ public class PreBlockCaches
         }
         _pendingStateWrites.Clear();
 
-        if (_hasLegacyStorageClear)
-        {
-            _storageCache.Clear();
-        }
+        _storageCache.Clear();
 
         while (_pendingStorageWrites.TryDequeue(out PendingStorageWrite entry))
         {

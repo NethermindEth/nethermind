@@ -570,8 +570,8 @@ public class StorageProviderTests(bool useFlat)
     {
         provider.CommitTree(blockNumber);
         caches.RecordCommittedBlock(blockNumber, Keccak.Compute($"block-{blockNumber}"));
-        caches.FlushCarryForwardWrites();
         provider.Reset();
+        caches.FlushCarryForwardWrites();
     }
 
     [Test]
@@ -606,6 +606,38 @@ public class StorageProviderTests(bool useFlat)
             provider.GetAccount(TestItem.AddressA).Nonce.Should().Be((UInt256)4);
             caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out _).Should().BeFalse();
         }
+    }
+
+    [Test]
+    public void FlushCarryForwardWrites_replaces_state_cache_with_current_block_entries()
+    {
+        PreBlockCaches caches = new();
+        Account oldAccount = new((UInt256)1, (UInt256)1);
+        Account currentAccount = new((UInt256)2, (UInt256)3);
+
+        caches.StateCache.Set((AddressAsKey)TestItem.AddressA, oldAccount);
+        caches.EnqueueStateWrite((AddressAsKey)TestItem.AddressB, currentAccount);
+        caches.FlushCarryForwardWrites();
+
+        caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out _).Should().BeFalse();
+        caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressB, out Account account).Should().BeTrue();
+        account.Should().BeSameAs(currentAccount);
+    }
+
+    [Test]
+    public void FlushCarryForwardWrites_replaces_storage_cache_with_current_block_entries()
+    {
+        PreBlockCaches caches = new();
+        StorageCell oldCell = new(TestItem.AddressA, 1);
+        StorageCell currentCell = new(TestItem.AddressB, 2);
+
+        caches.StorageCache.Set(in oldCell, [1]);
+        caches.EnqueueStorageWrite(in currentCell, [2]);
+        caches.FlushCarryForwardWrites();
+
+        caches.StorageCache.TryGetValue(in oldCell, out _).Should().BeFalse();
+        caches.StorageCache.TryGetValue(in currentCell, out byte[] value).Should().BeTrue();
+        value.Should().BeEquivalentTo([2]);
     }
 
     [Test]
