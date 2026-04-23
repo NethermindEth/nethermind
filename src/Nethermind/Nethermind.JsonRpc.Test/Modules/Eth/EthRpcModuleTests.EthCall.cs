@@ -802,7 +802,7 @@ public partial class EthRpcModuleTests
             $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\",\"data\":\"0x\"}},\"id\":67}}");
     }
 
-    // Each test deploys a one-opcode contract that stores the chosen block property and returns it,
+    // Each test uses a state override to inject one-opcode contract code at the target address,
     // then verifies the returned value matches what was supplied in blockOverride.
     [TestCase(
         "NUMBER opcode returns overridden block number",
