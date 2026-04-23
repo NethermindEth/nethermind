@@ -34,20 +34,52 @@ namespace Nethermind.Core.Collections;
 ///
 /// Array layout: [way0_set0..way0_set16383, way1_set0..way1_set16383] (split, not interleaved).
 /// </summary>
-/// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
-/// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
-public sealed class SeqlockCache<TKey, TValue>
+/// <summary>
+/// Marker interface for cache set-count configuration.
+/// Implementations must provide a power-of-2 set count and the corresponding bit-shift for way-1 indexing.
+/// </summary>
+public interface ICacheSets
+{
+    static abstract int SetBits { get; }
+}
+
+/// <summary>Default: 16384 sets × 2 ways = 32768 entries.</summary>
+public struct DefaultCacheSets : ICacheSets
+{
+    public static int SetBits => 14;
+}
+
+/// <summary>Large: 131072 sets × 2 ways = 262144 entries.</summary>
+public struct LargeCacheSets : ICacheSets
+{
+    public static int SetBits => 17;
+}
+
+/// <summary>Huge: 1048576 sets × 2 ways = 2097152 entries.</summary>
+public struct HugeCacheSets : ICacheSets
+{
+    public static int SetBits => 20;
+}
+
+/// <inheritdoc cref="SeqlockCache{TKey,TValue,TSets}"/>
+public sealed class SeqlockCache<TKey, TValue> : SeqlockCache<TKey, TValue, DefaultCacheSets>
     where TKey : struct, IHash64bit<TKey>
     where TValue : class?
 {
-    /// <summary>
-    /// Number of sets. Must be a power of 2 for mask operations.
-    /// 16384 sets × 2 ways = 32768 total entries.
-    /// </summary>
-    private const int Sets = 1 << 14; // 16384
-    private const int SetMask = Sets - 1;
+}
 
-    // Header bit layout:
+/// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
+/// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
+/// <typeparam name="TSets">Cache sizing configuration</typeparam>
+public class SeqlockCache<TKey, TValue, TSets>
+    where TKey : struct, IHash64bit<TKey>
+    where TValue : class?
+    where TSets : struct, ICacheSets
+{
+    private static readonly int Sets = 1 << TSets.SetBits;
+    private static readonly int SetMask = Sets - 1;
+
+    // Header bit layout (fixed regardless of set size):
     // [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
 
     private const long LockMarker = unchecked((long)0x8000_0000_0000_0000); // bit 63
@@ -70,9 +102,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
     // With 14-bit set index (bits 0-13) for way 0, hash signature needs independent bits.
     // HashShift=5 maps header bits 17-36 to original bits 22-41, avoiding overlap with both ways.
+    // Works for all set sizes up to 22 bits (way 0: 0..SetBits-1, sig: 22-41, way 1: 42..42+SetBits-1).
     private const int HashShift = 5;
 
-    // Way 1 uses bits 42-55 of the original hash (completely independent from way 0's bits 0-13).
+    // Way 1 uses bits 42+ of the original hash (completely independent from way 0's bits 0..SetBits-1).
     private const int Way1Shift = 42;
 
     /// <summary>
@@ -94,7 +127,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
     public SeqlockCache()
     {
-        _entries = new Entry[Sets << 1]; // Sets * 2
+        _entries = new Entry[Sets * 2];
         _epoch = 0;
         _shiftedEpoch = 0;
     }
