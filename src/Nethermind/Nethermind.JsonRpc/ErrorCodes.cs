@@ -43,6 +43,11 @@ namespace Nethermind.JsonRpc
         public const int InvalidInput = -32000;
 
         /// <summary>
+        /// EVM execution error (out of gas, insufficient funds during execution, etc.)
+        /// </summary>
+        public const int ExecutionError = -32003;
+
+        /// <summary>
         /// Requested resource not found
         /// </summary>
         public const int ResourceNotFound = -32000;
