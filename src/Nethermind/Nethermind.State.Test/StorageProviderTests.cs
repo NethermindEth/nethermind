@@ -584,6 +584,23 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Non_prewarmer_account_reads_do_not_repopulate_state_cache()
+    {
+        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
+        using (scope) using (ctx)
+        {
+            provider.CreateAccount(TestItem.AddressA, 3, 4);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            provider.Reset();
+            caches.InvalidateCaches();
+
+            provider.GetAccount(TestItem.AddressA).Nonce.Should().Be((UInt256)4);
+            caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out _).Should().BeFalse();
+        }
+    }
+
+    [Test]
     public void Commit_mirrors_storage_writes_into_storage_cache()
     {
         (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
@@ -598,6 +615,26 @@ public class StorageProviderTests(bool useFlat)
 
             caches.StorageCache.TryGetValue(in storageCell, out byte[] value).Should().BeTrue();
             value.Should().BeEquivalentTo([1, 2, 3]);
+        }
+    }
+
+    [Test]
+    public void Non_prewarmer_storage_reads_do_not_repopulate_storage_cache()
+    {
+        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
+        using (scope) using (ctx)
+        {
+            StorageCell storageCell = new(TestItem.AddressA, 1);
+
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(storageCell, [1, 2, 3]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            provider.Reset();
+            caches.InvalidateCaches();
+
+            provider.Get(storageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);
+            caches.StorageCache.TryGetValue(in storageCell, out _).Should().BeFalse();
         }
     }
 
