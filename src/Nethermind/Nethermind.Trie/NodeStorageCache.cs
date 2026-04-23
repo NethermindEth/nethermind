@@ -8,7 +8,7 @@ namespace Nethermind.Trie;
 public sealed class NodeStorageCache
 {
     private readonly SeqlockCache<NodeKey, byte[]> _cache = new();
-    private readonly SeqlockCache<NodeKey, byte[], HugeCacheSets> _crossBlockCache = new();
+    private readonly SeqlockCache<NodeKey, byte[], LargeCacheSets> _crossBlockCache = new();
 
     private volatile bool _enabled = false;
 
