@@ -488,19 +488,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private static ArrayPoolList<AddressAsKey> CollectWarmupAddresses(Block block)
         {
             Transaction[] transactions = block.Transactions;
-            ArrayPoolList<AddressAsKey> addresses = new(transactions.Length * 2);
-            HashSet<AddressAsKey> seen = new(transactions.Length * 2);
+            ArrayPoolList<AddressAsKey> addresses = new(transactions.Length);
+            HashSet<AddressAsKey> seen = new(transactions.Length);
 
             for (int i = 0; i < transactions.Length; i++)
             {
-                Transaction tx = transactions[i];
-                Address? sender = tx.SenderAddress;
-                if (sender is not null && seen.Add(sender))
-                {
-                    addresses.Add(sender);
-                }
-
-                Address? to = tx.To;
+                Address? to = transactions[i].To;
                 if (to is not null && seen.Add(to))
                 {
                     addresses.Add(to);
