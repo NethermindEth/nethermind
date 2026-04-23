@@ -263,7 +263,7 @@ public static partial class EvmInstructions
                 state.SubtractFromBalance(caller, in callValue, spec);
                 vm.AddTransferLog<TEip7708>(caller, target, callValue);
             }
-            return FastCall(vm, spec, in callValue, target, TOpCall.ExecutionType);
+            return FastCall(vm, spec, in callValue, target);
         }
 
         return SlowCall(ref gas);
@@ -272,9 +272,9 @@ public static partial class EvmInstructions
         // Directly credit the target account and avoid constructing a full call frame.
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 callValue, Address target, ExecutionType executionType)
+        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 callValue, Address target)
         {
-            vm.WorldState.AddToBalanceAndCreateIfNotExists(target, executionType, in callValue, spec);
+            vm.WorldState.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
 
             Metrics.IncrementEmptyCalls();
 

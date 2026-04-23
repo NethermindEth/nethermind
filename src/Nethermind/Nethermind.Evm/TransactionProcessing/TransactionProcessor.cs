@@ -212,7 +212,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
 
             TransactionResult result;
-            TxExecutionState<TGasPolicy> state = default;
+            TxExecutionState<TGasPolicy> state;
             state.IntrinsicGas = CalculateIntrinsicGas(tx, spec);
             if (!(result = ValidateStatic(tx, header, spec, opts, in state.IntrinsicGas))) return result;
 
@@ -235,6 +235,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Address? executingAccount = tx.To;
             bool useSimpleTransferFastPath = false;
+            state.PreloadedCodeInfo = null;
+            state.PreloadedDelegationAddress = null;
             if (executingAccount is not null && IsSimpleTransferFastPathCandidate(tx))
             {
                 state.PreloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(executingAccount, spec, out state.PreloadedDelegationAddress);
@@ -286,8 +288,8 @@ namespace Nethermind.Evm.TransactionProcessing
             using ExecutionEnvironment env = e;
 
             int statusCode = !tracer.IsTracingInstructions ?
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, state.IntrinsicGas, accessTracker, state.GasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, state.IntrinsicGas, accessTracker, state.GasAvailable, env, out substate, out spentGas);
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, in state.IntrinsicGas, accessTracker, state.GasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, in state.IntrinsicGas, accessTracker, state.GasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, state.PremiumPerGas, state.BlobBaseFee, statusCode);
 
@@ -323,12 +325,12 @@ namespace Nethermind.Evm.TransactionProcessing
         private bool IsSimpleTransferFastPathCandidate(Transaction tx) => !_isOverridableCodeInfoRepository && tx.AuthorizationList is null;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress) => codeInfo.IsEmpty && delegationAddress is null;
+        private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress) => delegationAddress is null && codeInfo.IsEmpty;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private int ExecuteSimpleTransfer(Transaction tx, Address recipient, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, ref TxExecutionState<TGasPolicy> state, out TransactionSubstate substate, out GasConsumed spentGas)
         {
-            UInt256 value = tx.ValueRef;
+            ref readonly UInt256 value = ref tx.ValueRef;
             if (tracer.IsTracingActions)
             {
                 TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in state.GasAvailable);
@@ -899,7 +901,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            IntrinsicGas<TGasPolicy> gas,
+            in IntrinsicGas<TGasPolicy> gas,
             in StackAccessTracker accessedItems,
             TGasPolicy gasAvailable,
             ExecutionEnvironment env,
