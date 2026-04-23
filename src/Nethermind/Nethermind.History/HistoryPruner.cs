@@ -252,9 +252,11 @@ public class HistoryPruner : IHistoryPruner
 
     /// <summary>
     /// Schedules a pruning operation if one is not already running. Pruning will only be performed if the configured pruning interval has elapsed and there are blocks eligible for pruning.
+    /// Cancelled when timeout elapses or process is exiting, to avoid long pruning operations during shutdown. Will be rescheduled on next trigger if pruning could not be completed.
     /// </summary>
-    /// <param name="cancellationToken"></param>
-    public void SchedulePruneHistory(CancellationToken cancellationToken)
+    public void SchedulePruneHistory() => SchedulePruneHistory(_processExitSource.Token);
+
+    protected void SchedulePruneHistory(CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _currentlyPruning) == 0)
         {

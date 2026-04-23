@@ -214,8 +214,8 @@ public class HistoryPrunerTests
         CapturingScheduler scheduler = new();
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.SchedulePruneHistory(CancellationToken.None);
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.SchedulePruneHistory();
 
         await scheduler.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
         TimeSpan? expected = pruningTimeoutSeconds == 0 ? null : TimeSpan.FromSeconds(pruningTimeoutSeconds);
@@ -241,7 +241,7 @@ public class HistoryPrunerTests
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
         metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(storedPointer).Bytes);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(storedPointer));
     }
