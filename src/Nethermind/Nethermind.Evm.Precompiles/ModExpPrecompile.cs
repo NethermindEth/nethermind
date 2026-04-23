@@ -77,6 +77,24 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
     }
 
+    // Run reads exactly (96 + baseLength + expLength + modulusLength) bytes via
+    // SliceWithZeroPaddingEmptyOnError, so bytes beyond that range don't affect the result.
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData)
+    {
+        if (inputData.Length <= LengthsLengths) return inputData;
+
+        (uint baseLength, uint expLength, uint modulusLength) = GetInputLengths(inputData.Span);
+
+        // Any length saturated to uint.MaxValue signals overflow or is rejected as oversized;
+        // in either case Run's output is determined by the header alone.
+        // Likewise, when baseLength == 0 && modulusLength == 0 Run short-circuits to empty regardless of exp.
+        if (baseLength == uint.MaxValue || expLength == uint.MaxValue || modulusLength == uint.MaxValue || (baseLength == 0 && modulusLength == 0))
+            return inputData[..LengthsLengths];
+
+        ulong end = (ulong)LengthsLengths + baseLength + expLength + modulusLength;
+        return end < (ulong)inputData.Length ? inputData[..(int)end] : inputData;
+    }
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
     [MethodImpl(MethodImplOptions.NoInlining)]

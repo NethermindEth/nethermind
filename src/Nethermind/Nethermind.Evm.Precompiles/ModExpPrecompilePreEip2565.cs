@@ -29,6 +29,28 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
+    // Run reads exactly (96 + baseLength + expLength + modulusLength) bytes via
+    // SliceWithZeroPaddingEmptyOnError, so bytes beyond that range don't affect the result.
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData)
+    {
+        const int headerLen = 96;
+        if (inputData.Length <= headerLen) return inputData;
+
+        ReadOnlySpan<byte> span = inputData.Span;
+        int baseLen = SafeCast(span[..32].ToUnsignedBigInteger());
+        int expLen = SafeCast(span.Slice(32, 32).ToUnsignedBigInteger());
+        int modLen = SafeCast(span.Slice(64, 32).ToUnsignedBigInteger());
+
+        // Saturated lengths mean Run can't produce a meaningful result (would OOM / read oversized slices);
+        // base==0 && mod==0 short-circuits Run to empty regardless of exp. Either way the header alone
+        // determines the output, so trailing bytes don't belong in the cache key.
+        if (baseLen == int.MaxValue || expLen == int.MaxValue || modLen == int.MaxValue || (baseLen == 0 && modLen == 0))
+            return inputData[..headerLen];
+
+        long end = headerLen + (long)baseLen + expLen + modLen;
+        return end < inputData.Length ? inputData[..(int)end] : inputData;
+    }
+
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         try
@@ -73,24 +95,27 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
     {
         Metrics.ModExpPrecompile++;
 
-        int baseLength = (int)inputData.Span.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
-        BigInteger expLengthBig = inputData.Span.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
-        int expLength = expLengthBig > int.MaxValue ? int.MaxValue : (int)expLengthBig;
-        int modulusLength = (int)inputData.Span.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
+        ReadOnlySpan<byte> span = inputData.Span;
+        int baseLength = SafeCast(span.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger());
+        int expLength = SafeCast(span.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger());
+        int modulusLength = SafeCast(span.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger());
 
-        BigInteger modulusInt = inputData.Span
-            .SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
+        BigInteger modulusInt = SafeSlice(span, 96L + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
 
         if (modulusInt.IsZero)
         {
             return new byte[modulusLength];
         }
 
-        BigInteger baseInt = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
-        BigInteger expInt = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength)
-            .ToUnsignedBigInteger();
+        BigInteger baseInt = span.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
+        BigInteger expInt = SafeSlice(span, 96L + baseLength, expLength).ToUnsignedBigInteger();
         return BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength);
     }
+
+    private static int SafeCast(BigInteger value) => value > int.MaxValue ? int.MaxValue : (int)value;
+
+    private static ReadOnlySpan<byte> SafeSlice(ReadOnlySpan<byte> bytes, long startIndex, int length) =>
+        startIndex > int.MaxValue ? default : bytes.SliceWithZeroPaddingEmptyOnError((int)startIndex, length);
 
     private static UInt256 MultComplexity(in UInt256 adjustedExponentLength)
     {
