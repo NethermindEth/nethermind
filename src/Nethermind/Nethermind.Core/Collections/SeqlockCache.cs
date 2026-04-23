@@ -55,12 +55,6 @@ public struct LargeCacheSets : ICacheSets
     public static int SetBits => 17;
 }
 
-/// <summary>Huge: 1048576 sets × 2 ways = 2097152 entries.</summary>
-public struct HugeCacheSets : ICacheSets
-{
-    public static int SetBits => 20;
-}
-
 /// <inheritdoc cref="SeqlockCache{TKey,TValue,TSets}"/>
 public sealed class SeqlockCache<TKey, TValue> : SeqlockCache<TKey, TValue, DefaultCacheSets>
     where TKey : struct, IHash64bit<TKey>

@@ -103,11 +103,15 @@ public sealed class TrieNodeCache : ITrieNodeCache
         (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
         int bucketIdx = hashCode & _bucketMask;
 
-        TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], node);
+        node.PrunePersistedRecursively(1);
         Interlocked.Add(ref _shardMemoryUsages[shardIdx], node.GetMemorySize(false));
+
+        TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], node);
         if (oldNode is not null)
         {
-            Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldNode.GetMemorySize(false));
+            long oldMemory = oldNode.GetMemorySize(false);
+            oldNode.PrunePersistedRecursively(1);
+            Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldMemory);
         }
     }
 
