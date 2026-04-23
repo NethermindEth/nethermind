@@ -26,8 +26,8 @@
     <PackageVersion Include="Grpc.Tools" Version="2.78.0" />
     <PackageVersion Include="KubernetesClient" Version="19.0.2" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.6" />
-    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.6" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.7" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.7" />
     <PackageVersion Include="Microsoft.Build.Tasks.Git" Version="10.0.201" />
     <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.5.0" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.5.0" />
