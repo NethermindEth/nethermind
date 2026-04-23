@@ -79,7 +79,7 @@ public class BlockCachePreWarmerTests
         (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 1);
 
-        await preWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        await preWarmer.PreWarmCaches(BuildGroupedSenderBlock(), BuildParentHeader(), Osaka.Instance);
 
         // With pool capacity 1 and two parallel workers, at least one eviction must occur.
         created.Count.Should().BeGreaterThanOrEqualTo(2,
@@ -140,14 +140,33 @@ public class BlockCachePreWarmerTests
             .TestObject;
 
     /// <summary>
-    /// Builds a block with transactions from two distinct senders, producing two parallel
-    /// sender groups in <c>WarmupTransactions</c> and guaranteeing concurrent pool usage.
+    /// Builds a block with transactions from two distinct senders, exercising the
+    /// independent-sender fast path in <c>WarmupTransactions</c>.
     /// </summary>
     private static Block BuildTwoSenderBlock()
     {
         Transaction[] txs =
         [
             Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        ];
+
+        return Build.A.Block
+            .WithTransactions(txs)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+    }
+
+    /// <summary>
+    /// Builds a block with one duplicated sender and one independent sender, forcing the
+    /// grouped-sender path while still producing two sender groups for concurrent pool usage.
+    /// </summary>
+    private static Block BuildGroupedSenderBlock()
+    {
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressD).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
             Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
         ];
 
