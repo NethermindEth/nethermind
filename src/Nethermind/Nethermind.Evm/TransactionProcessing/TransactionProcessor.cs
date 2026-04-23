@@ -844,7 +844,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 caller: tx.SenderAddress!,
                 codeSource: recipient,
                 callDepth: 0,
-                transferValue: in tx.ValueRef,
                 value: in tx.ValueRef,
                 inputData: in inputData);
 
@@ -1059,7 +1058,11 @@ namespace Nethermind.Evm.TransactionProcessing
             return true;
         }
 
-        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts) => WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
+        {
+            if (!tx.ValueRef.IsZero)
+                WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+        }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {

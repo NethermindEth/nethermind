@@ -899,7 +899,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private CallResult RunPrecompile(VmState<TGasPolicy> state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
-        UInt256 transferValue = state.Env.TransferValue;
         TGasPolicy gas = state.Gas;
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
@@ -908,6 +907,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
+        ref readonly UInt256 transferValue = ref state.ExecutionType.CreditsBalance() ? ref state.Env.Value : ref UInt256.Zero;
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
@@ -1033,7 +1033,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             IReleaseSpec spec = BlockExecutionContext.Spec;
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+            ref readonly UInt256 transferValue = ref vmState.ExecutionType.CreditsBalance() ? ref env.Value : ref UInt256.Zero;
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, in transferValue, spec);
 
             // For contract creation calls, increment the nonce if the specification requires it.
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)

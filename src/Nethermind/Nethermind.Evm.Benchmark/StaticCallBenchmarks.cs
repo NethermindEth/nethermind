@@ -96,7 +96,6 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(Bytecode),
                 callDepth: 0,
                 value: 0,
-                transferValue: 0,
                 inputData: default
             );
 

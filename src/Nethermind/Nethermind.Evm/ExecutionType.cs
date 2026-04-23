@@ -16,6 +16,12 @@ namespace Nethermind.Evm
         public static bool IsAnyCall(this ExecutionType executionType) =>
             executionType is ExecutionType.CALL or ExecutionType.STATICCALL or ExecutionType.DELEGATECALL or ExecutionType.CALLCODE;
 
+        // STATICCALL forbids any state change; DELEGATECALL reuses the caller's context with no transfer.
+        // Every other ExecutionType (TRANSACTION, CALL, CALLCODE, CREATE, CREATE2) moves ETH to ExecutingAccount on entry.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool CreditsBalance(this ExecutionType executionType) =>
+            executionType is not (ExecutionType.STATICCALL or ExecutionType.DELEGATECALL);
+
         public static Instruction ToInstruction(this ExecutionType executionType) =>
             executionType switch
             {
