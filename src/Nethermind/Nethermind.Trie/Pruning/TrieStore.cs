@@ -101,10 +101,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
+        TrieStoreDirtyNodesCache.GetDictionarySizing(out int concurrencyLevel, out int initialBuckets);
         for (int i = 0; i < _shardedDirtyNodeCount; i++)
         {
             _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepRoot: _deleteOldNodes, _logger);
-            _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
+            _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256?>(concurrencyLevel, initialBuckets);
         }
     }
 
@@ -849,25 +850,32 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             int shardIdx = GetNodeShardIdx(treePath, tn.Keccak);
 
             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
+            RecordPersistedHash(_persistedHashes[shardIdx], key, tn.Keccak, _deleteOldNodes);
+        }
+    }
 
-            if (_deleteOldNodes)
+    internal static void RecordPersistedHash(
+        ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes,
+        in HashAndTinyPath key,
+        Hash256 hash,
+        bool deleteOldNodes)
+    {
+        if (persistedHashes.TryAdd(key, hash) || !deleteOldNodes)
+        {
+            return;
+        }
+
+        // If TryGetValue returns false the key was removed by NoResizeClear, which runs after (not
+        // during) PruneCache has finished consuming the dictionary. The sentinel is no longer needed
+        // once that pass has completed, so exiting the loop is safe.
+        while (persistedHashes.TryGetValue(key, out Hash256? existingHash))
+        {
+            // When deleting old nodes, the first revisit marks the key as ambiguous by switching it to null.
+            // After that, additional revisits are pure read-only probes, so we retry only until that
+            // one-way state transition succeeds instead of routing every revisit through AddOrUpdate.
+            if (existingHash is null || persistedHashes.TryUpdate(key, null, existingHash))
             {
-                _persistedHashes[shardIdx].AddOrUpdate(
-                    key,
-                    static (_, newHash) => newHash,
-                    static (_, hash, _) => null,
-                    tn.Keccak);
-            }
-            else
-            {
-                _persistedHashes[shardIdx].AddOrUpdate(
-                    key,
-                    static (_, newHash) => newHash,
-                    // When not deleting old nodes, key tracking is used to prune in memory cache. It is
-                    // safe to accidentally remove key by taking non-canon block as canon as it will just load
-                    // from disk again.
-                    static (_, hash, _) => hash,
-                    tn.Keccak);
+                return;
             }
         }
     }

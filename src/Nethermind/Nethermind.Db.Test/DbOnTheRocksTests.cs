@@ -615,7 +615,7 @@ namespace Nethermind.Db.Test
             Assert.That(iterator.MoveNext(), Is.False);
 
             // Ai generated
-            byte[] CreateNextKey(ReadOnlySpan<byte> key)
+            static byte[] CreateNextKey(ReadOnlySpan<byte> key)
             {
                 // 1. Create a copy of the key to modify
                 byte[] nextKey = key.ToArray();

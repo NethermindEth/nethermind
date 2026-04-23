@@ -129,7 +129,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Error pre-warming {suggestedBlock.Number}. {ex}");
+            _logger.DebugWarn($"Error pre-warming {suggestedBlock.Number}. {ex}");
         }
         finally
         {
@@ -174,7 +174,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error pre-warming withdrawal", ex);
+            _logger.DebugError("Error pre-warming withdrawal", ex);
         }
     }
 
@@ -242,7 +242,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming transactions", ex);
+            _logger.DebugError("Error pre-warming transactions", ex);
         }
     }
 
@@ -297,7 +297,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         catch (Exception ex)
         {
-            if (blockState.PreWarmer._logger.IsDebug) blockState.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx.Hash}", ex);
+            blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
         }
     }
 
@@ -339,7 +339,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             catch (Exception ex)
             {
-                if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming addresses", ex);
+                PreWarmer._logger.DebugError("Error pre-warming addresses", ex);
             }
             finally
             {
