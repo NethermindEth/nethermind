@@ -72,6 +72,20 @@ public class SeqlockCacheTests
     }
 
     [Test]
+    public void Large_cache_variant_can_store_and_read_values()
+    {
+        SeqlockCache<StorageCell, byte[], HugeCacheSets> cache = new();
+        StorageCell key = CreateKey(99);
+        byte[] expected = CreateValue(99);
+
+        cache.Set(in key, expected);
+        bool found = cache.TryGetValue(in key, out byte[]? value);
+
+        found.Should().BeTrue();
+        value.Should().BeSameAs(expected);
+    }
+
+    [Test]
     public void Set_overwrites_existing_value()
     {
         SeqlockCache<StorageCell, byte[]> cache = new();

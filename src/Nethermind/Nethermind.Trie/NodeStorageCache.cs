@@ -8,6 +8,7 @@ namespace Nethermind.Trie;
 public sealed class NodeStorageCache
 {
     private readonly SeqlockCache<NodeKey, byte[]> _cache = new();
+    private readonly SeqlockCache<NodeKey, byte[], HugeCacheSets> _crossBlockCache = new();
 
     private volatile bool _enabled = false;
 
@@ -21,9 +22,39 @@ public sealed class NodeStorageCache
     {
         if (!_enabled)
         {
-            return tryLoadRlp(in nodeKey);
+            if (_crossBlockCache.TryGetValue(in nodeKey, out byte[]? cached))
+            {
+                return cached;
+            }
+
+            byte[]? value = tryLoadRlp(in nodeKey);
+            if (value is not null)
+            {
+                _crossBlockCache.Set(in nodeKey, value);
+            }
+
+            return value;
         }
-        return _cache.GetOrAdd(in nodeKey, tryLoadRlp);
+
+        if (_cache.TryGetValue(in nodeKey, out byte[]? perBlock))
+        {
+            return perBlock;
+        }
+
+        if (_crossBlockCache.TryGetValue(in nodeKey, out byte[]? crossBlock))
+        {
+            _cache.Set(in nodeKey, crossBlock);
+            return crossBlock;
+        }
+
+        byte[]? loaded = tryLoadRlp(in nodeKey);
+        if (loaded is not null)
+        {
+            _cache.Set(in nodeKey, loaded);
+            _crossBlockCache.Set(in nodeKey, loaded);
+        }
+
+        return loaded;
     }
 
     public bool ClearCaches()
