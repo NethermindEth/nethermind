@@ -21,7 +21,8 @@ namespace Nethermind.State.Flat;
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
-    bool recordDetailedMetrics)
+    bool recordDetailedMetrics,
+    SeqlockCache<Hash256AsKey, byte[], HugeCacheSets>? sharedNodeRlpCache = null)
     : RefCountingDisposable
 {
     public int SnapshotCount => snapshots.Count;
@@ -176,10 +177,25 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        if (sharedNodeRlpCache is not null && flags == ReadFlags.None)
+        {
+            Hash256AsKey cacheKey = hash;
+            if (sharedNodeRlpCache.TryGetValue(in cacheKey, out byte[]? cachedValue))
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return cachedValue;
+            }
+        }
+
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
+        if (sharedNodeRlpCache is not null && flags == ReadFlags.None)
+        {
+            Hash256AsKey cacheKey = hash;
+            sharedNodeRlpCache.Set(in cacheKey, value);
+        }
 
         return value;
     }
@@ -188,10 +204,25 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        if (sharedNodeRlpCache is not null && flags == ReadFlags.None)
+        {
+            Hash256AsKey cacheKey = hash;
+            if (sharedNodeRlpCache.TryGetValue(in cacheKey, out byte[]? cachedValue))
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return cachedValue;
+            }
+        }
+
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
+        if (sharedNodeRlpCache is not null && flags == ReadFlags.None)
+        {
+            Hash256AsKey cacheKey = hash;
+            sharedNodeRlpCache.Set(in cacheKey, value);
+        }
 
         return value;
     }
