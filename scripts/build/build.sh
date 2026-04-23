@@ -11,7 +11,11 @@ cd src/Nethermind/Nethermind.Runner
 
 echo "Building Nethermind"
 
-dotnet restore --locked-mode
+# Pass PublishReadyToRun so the SDK fetches R2R platform packs (crossgen2,
+# runtime packs) for every RID listed in the csproj's <RuntimeIdentifiers>.
+# Staying in --locked-mode preserves reproducibility — platform packs are
+# determined by the pinned SDK image, not the lock file.
+dotnet restore --locked-mode -p:PublishReadyToRun=true
 
 for rid in "linux-arm64" "linux-x64" "osx-arm64" "osx-x64" "win-x64"; do
   echo "  Publishing for $rid"
