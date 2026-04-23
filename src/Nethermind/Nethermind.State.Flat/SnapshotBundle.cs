@@ -200,11 +200,18 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStateNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                _trieNodeCache.Set(null, path, node);
                 return true;
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
+        if (_readOnlySnapshotBundle.TryFindStateNodes(key, out node))
+        {
+            _trieNodeCache.Set(null, path, node);
+            return true;
+        }
+
+        return false;
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
@@ -269,11 +276,18 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStorageNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                _trieNodeCache.Set(address, path, node);
                 return true;
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
+        if (_readOnlySnapshotBundle.TryFindStorageNodes(key, out node))
+        {
+            _trieNodeCache.Set(address, path, node);
+            return true;
+        }
+
+        return false;
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
