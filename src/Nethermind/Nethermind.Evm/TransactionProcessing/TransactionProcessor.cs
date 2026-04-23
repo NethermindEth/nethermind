@@ -52,6 +52,22 @@ namespace Nethermind.Evm.TransactionProcessing
             BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
     }
 
+    /// <summary>
+    /// Bundle of per-tx state computed during Execute's prelude. Passed by ref to
+    /// downstream methods so the arg count stays low (one byref vs. many stack args).
+    /// </summary>
+    internal struct TxExecutionState<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        public IntrinsicGas<TGasPolicy> IntrinsicGas;
+        public TGasPolicy GasAvailable;
+        public UInt256 PremiumPerGas;
+        public UInt256 SenderReservedGasPayment;
+        public UInt256 BlobBaseFee;
+        public UInt256 OpcodeGasPrice;
+        public CodeInfo? PreloadedCodeInfo;
+        public Address? PreloadedDelegationAddress;
+    }
+
     public abstract class TransactionProcessorBase<TGasPolicy> : ITransactionProcessor
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
@@ -182,6 +198,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return result;
         }
 
+        [SkipLocalsInit]
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
@@ -195,17 +212,18 @@ namespace Nethermind.Evm.TransactionProcessing
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
 
             TransactionResult result;
-            IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
-            if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
+            TxExecutionState<TGasPolicy> state = default;
+            state.IntrinsicGas = CalculateIntrinsicGas(tx, spec);
+            if (!(result = ValidateStatic(tx, header, spec, opts, in state.IntrinsicGas))) return result;
 
-            UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
+            UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out state.OpcodeGasPrice);
 
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts)) ||
-                !(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)) ||
+                !(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out state.PremiumPerGas, out state.SenderReservedGasPayment, out state.BlobBaseFee)) ||
                 !(result = IncrementNonce(tx, header, spec, tracer, opts)))
             {
                 if (restore)
@@ -216,39 +234,30 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             Address? executingAccount = tx.To;
-            CodeInfo? preloadedCodeInfo = null;
-            Address? preloadedDelegationAddress = null;
             bool useSimpleTransferFastPath = false;
             if (executingAccount is not null && IsSimpleTransferFastPathCandidate(tx))
             {
-                preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(executingAccount, spec, out preloadedDelegationAddress);
-                useSimpleTransferFastPath = HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
+                state.PreloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(executingAccount, spec, out state.PreloadedDelegationAddress);
+                useSimpleTransferFastPath = HasNoExecutableCode(state.PreloadedCodeInfo, state.PreloadedDelegationAddress);
             }
 
             // Simple transfers have no execution snapshot to roll back, so the final commit can include upfront gas and nonce changes.
             bool commitBeforeExecution = commit && (!useSimpleTransferFastPath || restore || tracer.IsTracingState);
             if (commitBeforeExecution) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
 
-            if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
+            if (!(result = CalculateAvailableGas(tx, spec, in state.IntrinsicGas, out state.GasAvailable))) return result;
 
             if (useSimpleTransferFastPath)
             {
-                int fastStatusCode = ExecuteSimpleTransfer(tx, executingAccount!, header, spec, tracer, opts, in intrinsicGas, in premiumPerGas, in blobBaseFee, in opcodeGasPrice, gasAvailable, out TransactionSubstate fastSubstate, out GasConsumed fastSpentGas);
-                return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, executingAccount!, fastStatusCode, in fastSubstate, in fastSpentGas);
+                int fastStatusCode = ExecuteSimpleTransfer(tx, executingAccount!, header, spec, tracer, opts, ref state, out TransactionSubstate fastSubstate, out GasConsumed fastSpentGas);
+                return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in state.SenderReservedGasPayment, executingAccount!, fastStatusCode, in fastSubstate, in fastSpentGas);
             }
 
             // Extracted so the fast-path above doesn't carry the two `using` block frames and larger local set.
             return ExecuteEvmTransaction(
                 tx, header, spec, tracer, opts,
                 restore, commit, deleteCallerAccount,
-                in intrinsicGas,
-                in premiumPerGas,
-                in senderReservedGasPayment,
-                in blobBaseFee,
-                in opcodeGasPrice,
-                gasAvailable,
-                preloadedCodeInfo,
-                preloadedDelegationAddress);
+                ref state);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -261,33 +270,26 @@ namespace Nethermind.Evm.TransactionProcessing
             bool restore,
             bool commit,
             bool deleteCallerAccount,
-            in IntrinsicGas<TGasPolicy> intrinsicGas,
-            in UInt256 premiumPerGas,
-            in UInt256 senderReservedGasPayment,
-            in UInt256 blobBaseFee,
-            in UInt256 opcodeGasPrice,
-            TGasPolicy gasAvailable,
-            CodeInfo? preloadedCodeInfo,
-            Address? preloadedDelegationAddress)
+            ref TxExecutionState<TGasPolicy> state)
         {
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in state.OpcodeGasPrice));
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
 
             int delegationRefunds = !spec.IsEip7702Enabled || !tx.HasAuthorizationList ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
-            Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
+            Apply8037DelegationRefunds(spec, in state.IntrinsicGas, ref state.GasAvailable, ref delegationRefunds);
 
             TransactionResult result;
-            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
+            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, state.PreloadedCodeInfo, state.PreloadedDelegationAddress, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
             int statusCode = !tracer.IsTracingInstructions ?
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, state.IntrinsicGas, accessTracker, state.GasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, state.IntrinsicGas, accessTracker, state.GasAvailable, env, out substate, out spentGas);
 
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, state.PremiumPerGas, state.BlobBaseFee, statusCode);
 
             // EIP-8037+EIP-7708: process destroy list after PayFees so burn logs include
             // the priority fee in the destroyed account's balance.
@@ -300,7 +302,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, env.ExecutingAccount, statusCode, in substate, in spentGas);
+            return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in state.SenderReservedGasPayment, env.ExecutingAccount, statusCode, in substate, in spentGas);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void ProcessDestroyList(TransactionSubstate substate, JournalSet<Address> destroyList)
@@ -324,12 +326,12 @@ namespace Nethermind.Evm.TransactionProcessing
         private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress) => codeInfo.IsEmpty && delegationAddress is null;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private int ExecuteSimpleTransfer(Transaction tx, Address recipient, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in UInt256 gasPrice, TGasPolicy gasAvailable, out TransactionSubstate substate, out GasConsumed spentGas)
+        private int ExecuteSimpleTransfer(Transaction tx, Address recipient, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, ref TxExecutionState<TGasPolicy> state, out TransactionSubstate substate, out GasConsumed spentGas)
         {
             UInt256 value = tx.ValueRef;
             if (tracer.IsTracingActions)
             {
-                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in state.GasAvailable);
             }
 
             PayValue(tx, spec, opts);
@@ -352,14 +354,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tracer.IsTracingActions)
             {
-                tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
+                tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in state.GasAvailable), default);
             }
 
-            TGasPolicy floorGas = intrinsicGas.FloorGas;
-            TGasPolicy standardGas = intrinsicGas.Standard;
-            spentGas = Refund(tx, header, spec, opts, in substate, in gasAvailable, in gasPrice, codeInsertRefunds: 0, in floorGas, in standardGas);
+            TGasPolicy floorGas = state.IntrinsicGas.FloorGas;
+            TGasPolicy standardGas = state.IntrinsicGas.Standard;
+            spentGas = Refund(tx, header, spec, opts, in substate, in state.GasAvailable, in state.OpcodeGasPrice, codeInsertRefunds: 0, in floorGas, in standardGas);
             const int statusCode = StatusCode.Success;
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, state.PremiumPerGas, state.BlobBaseFee, statusCode);
 
             if (tracer.IsTracingAccess)
             {
