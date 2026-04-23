@@ -15,6 +15,8 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
+    private const int MaxWarmupSlotHints = 12;
+
     private readonly StorageTree _tree;
     private readonly StorageTree _warmupStorageTree;
     private readonly Address _address;
@@ -27,6 +29,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
     private int _selfDestructKnownStateIdx;
+    private int _queuedWarmupSlots;
 
     public FlatStorageTree(
         FlatWorldStateScope scope,
@@ -86,8 +89,14 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     private void WarmUpSlot(UInt256 index)
     {
+        if (_queuedWarmupSlots >= MaxWarmupSlotHints)
+        {
+            return;
+        }
+
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
+            _queuedWarmupSlots++;
             _trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId);
         }
     }
