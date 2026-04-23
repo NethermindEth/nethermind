@@ -100,7 +100,7 @@ public class SimulateTxExecutor<TTrace>(
 
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidInputTooManyBlocks);
+                $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 

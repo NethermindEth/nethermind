@@ -103,6 +103,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
     /// <remarks>
     /// See: https://github.com/ethereum/execution-apis/blob/e56d3208789259d0b09fa68e9d8594aa4d73c725/docs/ethsimulatev1-notes.md?plain=1#L18
     /// </remarks>
+    [Test]
     [Combinatorial]
     public async Task TestSimulate_TimestampIsComputedCorrectly_WhenNoTimestampOverride(
         [Values(2, 12)] int secondsPerSlot,

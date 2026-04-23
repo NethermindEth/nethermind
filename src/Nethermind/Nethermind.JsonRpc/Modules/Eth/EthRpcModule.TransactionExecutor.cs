@@ -107,6 +107,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
+
+                // Non-revert execution errors — no data field (Geth also omits data for non-revert errors)
+                if (!result.ExecutionReverted && result.Error is not null)
+                    return ResultWrapper<string>.Fail(result.Error, ErrorCodes.InvalidInput);
+
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
             }
         }

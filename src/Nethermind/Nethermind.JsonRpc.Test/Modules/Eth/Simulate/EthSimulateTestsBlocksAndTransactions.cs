@@ -268,7 +268,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
+        Assert.That(result.Result!.Error!.Contains("insufficient funds"), Is.True);
     }
 
 

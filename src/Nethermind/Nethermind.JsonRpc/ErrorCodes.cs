@@ -98,12 +98,7 @@ namespace Nethermind.JsonRpc
         public const int MovePrecompileSelfReference = -38022;
 
         /// <summary>
-        /// Invalid RPC simulate call containing too many blocks
-        /// </summary>
-        public const int InvalidInputTooManyBlocks = -38026;
-
-        /// <summary>
-        /// Too many blocks for simulation
+        /// Too many blocks or calls — client limit exceeded
         /// </summary>
         public const int ClientLimitExceededError = -38026;
 

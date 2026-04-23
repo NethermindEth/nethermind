@@ -611,7 +611,10 @@ namespace Nethermind.Evm.TransactionProcessing
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return TransactionResult.InsufficientSenderBalance;
+                UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCostForMsg);
+                UInt256.AddOverflow(gasCostForMsg, tx.Value, out UInt256 wantForMsg);
+                return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
+                    $"err: insufficient funds for gas * price + value: address {tx.SenderAddress} have {senderBalance} want {wantForMsg} (supplied gas {tx.GasLimit})");
             }
 
             bool overflows;
@@ -648,7 +651,10 @@ namespace Nethermind.Evm.TransactionProcessing
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return TransactionResult.InsufficientSenderBalance;
+                UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCostForMsg);
+                UInt256.AddOverflow(gasCostForMsg, tx.Value, out UInt256 wantForMsg);
+                return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
+                    $"err: insufficient funds for gas * price + value: address {tx.SenderAddress} have {senderBalance} want {wantForMsg} (supplied gas {tx.GasLimit})");
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
