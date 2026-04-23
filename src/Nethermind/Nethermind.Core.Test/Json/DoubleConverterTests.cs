@@ -11,9 +11,9 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class DoubleConverterTests
 {
-    static readonly DoubleConverter _converter = new();
+    private static readonly DoubleConverter _converter = new();
 
-    static readonly JsonSerializerOptions Options = new() { Converters = { _converter } };
+    private static readonly JsonSerializerOptions Options = new() { Converters = { _converter } };
 
     [TestCase(0.678584082336891, "0.678584082336891")]
     [TestCase(0.9985787551520126, "0.9985787551520126")]
