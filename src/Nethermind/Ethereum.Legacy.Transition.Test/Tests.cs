@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -13,8 +12,7 @@ public class MetaTests : DirectoryMetaTests<BcPrefix>
 {
     protected override string GetTestsDirectory() => Path.Combine(base.GetTestsDirectory(), "Tests");
 
-    protected override IEnumerable<string> FilterDirectories(IEnumerable<string> dirs) =>
-        dirs.Except(["bcArrowGlacierToMerge", "bcArrowGlacierToParis"]);
+    protected override IEnumerable<string> FilterDirectories(IEnumerable<string> dirs) => dirs;
 }
 
 [NonParallelizable]

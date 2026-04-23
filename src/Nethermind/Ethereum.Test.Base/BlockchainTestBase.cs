@@ -89,6 +89,8 @@ public abstract class BlockchainTestBase
         IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
         IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
         bool isPostMerge = test.Network != London.Instance &&
+                           test.Network != ArrowGlacier.Instance &&
+                           test.Network != GrayGlacier.Instance &&
                            test.Network != Berlin.Instance &&
                            test.Network != MuirGlacier.Instance &&
                            test.Network != Istanbul.Instance &&
