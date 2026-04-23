@@ -124,8 +124,7 @@ public static partial class EvmInstructions
             }
         }
 
-        bool outOfGas = false;
-        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas);
+        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out bool outOfGas);
         if (outOfGas)
             goto OutOfGas;
 

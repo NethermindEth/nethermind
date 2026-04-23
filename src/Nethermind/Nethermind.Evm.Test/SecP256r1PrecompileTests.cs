@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1PrecompileTests>, IPrecompileTests
+    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1Precompile, SecP256r1PrecompileTests>
     {
         private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 
@@ -20,8 +20,6 @@ namespace Nethermind.Evm.Test
         {
             yield return "p256Verify.json";
         }
-
-        public static IPrecompile Precompile() => SecP256r1Precompile.Instance;
 
         [Test]
         [TestCase(
@@ -36,7 +34,7 @@ namespace Nethermind.Evm.Test
         public void Produces_Empty_Output_On_Invalid_Input(string input)
         {
             byte[] bytes = Bytes.FromHexString(input);
-            (ReadOnlyMemory<byte> output, bool success) = Precompile().Run(bytes, Prague.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = Instance.Run(bytes, Prague.Instance);
 
             using (Assert.EnterMultipleScope())
             {
