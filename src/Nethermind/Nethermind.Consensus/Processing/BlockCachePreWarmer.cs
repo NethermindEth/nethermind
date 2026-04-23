@@ -84,17 +84,7 @@ public sealed class BlockCachePreWarmer(
 
     public void FinalizeProcessedBlock(BlockHeader block, IReleaseSpec spec)
     {
-        if (!spec.IsEip6780Enabled && preBlockCaches.HasLegacyStorageClear)
-        {
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Legacy storage clear detected at block {block.Number}, invalidating carry-forward caches");
-            }
-
-            InvalidateCaches();
-            return;
-        }
-
+        _ = spec;
         preBlockCaches.RecordCommittedBlock(block.Number, block.Hash);
     }
 

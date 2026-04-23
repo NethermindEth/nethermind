@@ -361,7 +361,7 @@ public class PrewarmerScopeProvider(
         public void Clear()
         {
             baseStorageWriteBatch.Clear();
-            preBlockCaches.NoteStorageClear();
+            preBlockCaches.NoteStorageClear(address);
         }
     }
 

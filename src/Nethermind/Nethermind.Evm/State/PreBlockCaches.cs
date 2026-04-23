@@ -17,18 +17,21 @@ namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
+    private readonly record struct PendingStorageWrite(StorageCell Cell, byte[] Value, int ClearVersion);
+
     private const int InitialCapacity = 4096 * 8;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private long _committedBlockNumber = -1;
     private volatile Hash256? _committedBlockHash;
     private volatile bool _hasLegacyStorageClear;
+    private readonly ConcurrentDictionary<AddressAsKey, int> _storageClearVersions = new(LockPartitions, InitialCapacity);
 
     // Pending carry-forward writes buffered during FlushToTree, flushed after prewarm completion.
     // State: single-threaded producer (StateProvider.FlushToTree).
     // Storage: multi-threaded producers (PersistentStorageProvider.FlushToTree parallelizes across contracts).
     private readonly List<(AddressAsKey Key, Account? Account)> _pendingStateWrites = new();
-    private readonly ConcurrentQueue<(StorageCell Cell, byte[] Value)> _pendingStorageWrites = new();
+    private readonly ConcurrentQueue<PendingStorageWrite> _pendingStorageWrites = new();
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
@@ -65,13 +68,18 @@ public class PreBlockCaches
         => Volatile.Read(ref _committedBlockNumber) == parentNumber
             && _committedBlockHash == parentHash;
 
-    public void NoteStorageClear() => _hasLegacyStorageClear = true;
+    public void NoteStorageClear(Address address)
+    {
+        _hasLegacyStorageClear = true;
+        _storageClearVersions.AddOrUpdate(address, 1, static (_, version) => version + 1);
+    }
 
     public bool HasLegacyStorageClear => _hasLegacyStorageClear;
 
     public void ResetBlockFlags()
     {
         _hasLegacyStorageClear = false;
+        _storageClearVersions.Clear();
     }
 
     /// <summary>
@@ -84,7 +92,10 @@ public class PreBlockCaches
     /// Buffer a storage write for deferred carry-forward. Thread-safe (called from parallel FlushToTree).
     /// </summary>
     public void EnqueueStorageWrite(in StorageCell cell, byte[] value)
-        => _pendingStorageWrites.Enqueue((cell, value));
+    {
+        AddressAsKey address = cell.Address;
+        _pendingStorageWrites.Enqueue(new PendingStorageWrite(cell, value, GetStorageClearVersion(address)));
+    }
 
     /// <summary>
     /// Flush all buffered carry-forward writes into the SeqlockCaches.
@@ -98,17 +109,32 @@ public class PreBlockCaches
         }
         _pendingStateWrites.Clear();
 
-        while (_pendingStorageWrites.TryDequeue(out (StorageCell Cell, byte[] Value) entry))
+        if (_hasLegacyStorageClear)
         {
-            _storageCache.Set(entry.Cell, entry.Value);
+            _storageCache.Clear();
         }
+
+        while (_pendingStorageWrites.TryDequeue(out PendingStorageWrite entry))
+        {
+            AddressAsKey address = entry.Cell.Address;
+            if (entry.ClearVersion == GetStorageClearVersion(address))
+            {
+                _storageCache.Set(entry.Cell, entry.Value);
+            }
+        }
+
+        ResetBlockFlags();
     }
 
     private void DiscardPendingCarryForward()
     {
         _pendingStateWrites.Clear();
         while (_pendingStorageWrites.TryDequeue(out _)) { }
+        _storageClearVersions.Clear();
     }
+
+    private int GetStorageClearVersion(AddressAsKey address)
+        => _storageClearVersions.TryGetValue(address, out int version) ? version : 0;
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
     {

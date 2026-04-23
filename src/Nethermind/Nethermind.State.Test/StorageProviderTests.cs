@@ -172,7 +172,7 @@ public class StorageProviderTests(bool useFlat)
 
         caches.HasLegacyStorageClear.Should().BeFalse();
 
-        caches.NoteStorageClear();
+        caches.NoteStorageClear(TestItem.AddressA);
         caches.HasLegacyStorageClear.Should().BeTrue();
 
         caches.ResetBlockFlags();
@@ -566,6 +566,14 @@ public class StorageProviderTests(bool useFlat)
         return (caches, provider, scope, ctx);
     }
 
+    private static void AdvanceCarryForwardBlock(PreBlockCaches caches, WorldState provider, long blockNumber)
+    {
+        provider.CommitTree(blockNumber);
+        caches.RecordCommittedBlock(blockNumber, Keccak.Compute($"block-{blockNumber}"));
+        caches.FlushCarryForwardWrites();
+        provider.Reset();
+    }
+
     [Test]
     public void Commit_mirrors_account_writes_into_state_cache()
     {
@@ -671,6 +679,57 @@ public class StorageProviderTests(bool useFlat)
             provider.Commit(Frontier.Instance);
 
             caches.HasLegacyStorageClear.Should().BeTrue();
+        }
+    }
+
+    [Test]
+    public void Storage_clear_removes_stale_carry_forward_slots_across_blocks()
+    {
+        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
+        using (scope) using (ctx)
+        {
+            StorageCell slot1 = new(TestItem.AddressA, 1);
+            StorageCell slot2 = new(TestItem.AddressA, 2);
+
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(slot1, [1]);
+            provider.Set(slot2, [2]);
+            provider.Commit(Frontier.Instance);
+            AdvanceCarryForwardBlock(caches, provider, 0);
+
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(slot2, [9]);
+            provider.Commit(Frontier.Instance);
+            AdvanceCarryForwardBlock(caches, provider, 1);
+
+            provider.Get(slot1).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+            provider.Get(slot2).ToArray().Should().BeEquivalentTo([9]);
+        }
+    }
+
+    [Test]
+    public void Storage_clear_discards_earlier_same_block_carry_forward_writes()
+    {
+        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
+        using (scope) using (ctx)
+        {
+            StorageCell slot1 = new(TestItem.AddressA, 1);
+            StorageCell slot2 = new(TestItem.AddressA, 2);
+
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(slot1, [1]);
+            provider.Set(slot2, [2]);
+            provider.Commit(Frontier.Instance);
+            AdvanceCarryForwardBlock(caches, provider, 0);
+
+            provider.Set(slot1, [7]);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(slot2, [9]);
+            provider.Commit(Frontier.Instance);
+            AdvanceCarryForwardBlock(caches, provider, 1);
+
+            provider.Get(slot1).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+            provider.Get(slot2).ToArray().Should().BeEquivalentTo([9]);
         }
     }
 
