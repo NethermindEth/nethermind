@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -26,6 +27,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     }
     private const string TestFilesDirectory = "PrecompileVectors";
 
+    private static readonly IReleaseSpec DefaultSpec = Prague.Instance;
     protected static readonly TPrecompile Instance = TPrecompile.Instance;
     protected static readonly IEqualityComparer<Result<byte[]>> ResultComparer = new ResultEqComparer();
 
@@ -49,8 +51,8 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         if (this is not TTests) throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(TTests)}");
 
         IPrecompile precompile = Instance;
-        long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
-        Result<byte[]> result = precompile.Run(testCase.Input, Prague.Instance);
+        long gas = precompile.BaseGasCost(DefaultSpec) + precompile.DataGasCost(testCase.Input, DefaultSpec);
+        Result<byte[]> result = precompile.Run(testCase.Input, DefaultSpec);
         (byte[]? output, bool success) = result;
 
         using (Assert.EnterMultipleScope())
@@ -68,13 +70,29 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     protected void RunTest(string input, string output, bool status)
     {
         byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Instance.Run(inputData, Prague.Instance);
+        (byte[] outputData, bool outcome) = Instance.Run(inputData, DefaultSpec);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(outcome, Is.EqualTo(status));
             Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
         }
+    }
+
+    protected static void RunEffectiveInputTest(string input, string? trailing = null, IReleaseSpec? spec = null) =>
+        RunEffectiveInputTest(Instance, input, trailing, spec);
+
+    protected static void RunEffectiveInputTest(IPrecompile precompile, string input, string? trailing = null, IReleaseSpec? spec = null)
+    {
+        spec ??= DefaultSpec;
+        ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
+        ReadOnlyMemory<byte> effInput = precompile.GetEffectiveInput(fullInput);
+
+        Assert.That(effInput.Length, Is.LessThan(fullInput.Length));
+        Assert.That(
+            precompile.Run(effInput, spec),
+            Is.EqualTo(precompile.Run(fullInput, spec)).Using(ResultComparer)
+        );
     }
 
     private static string EnsureSafeName(string name) =>

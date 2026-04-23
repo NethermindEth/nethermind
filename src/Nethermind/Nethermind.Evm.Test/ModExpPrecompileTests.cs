@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -32,7 +30,7 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         TestName = "expLength=uint.MaxValue overflow path"
     )]
     public void GetEffectiveInput_SameOutput(string input, string trailing) =>
-        AssertEffectiveInputPreservesOutput(Instance, Prague.Instance, input, trailing);
+        RunEffectiveInputTest(Instance, input, trailing, Prague.Instance);
 
 #pragma warning disable 618 // ModExpPrecompilePreEip2565 is Obsolete
     [TestCase(
@@ -56,20 +54,8 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         TestName = "pre2565: expLength>int.MaxValue overflow-safe SafeSlice"
     )]
     public void GetEffectiveInput_SameOutput_PreEip2565(string input, string trailing) =>
-        AssertEffectiveInputPreservesOutput(ModExpPrecompilePreEip2565.Instance, Byzantium.Instance, input, trailing);
+        RunEffectiveInputTest(ModExpPrecompilePreEip2565.Instance, input, trailing, Byzantium.Instance);
 #pragma warning restore 618
-
-    private static void AssertEffectiveInputPreservesOutput(IPrecompile precompile, IReleaseSpec spec, string input, string trailing)
-    {
-        ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
-        ReadOnlyMemory<byte> effInput = precompile.GetEffectiveInput(fullInput);
-
-        Assert.That(effInput.Length, Is.LessThan(fullInput.Length));
-        Assert.That(
-            precompile.Run(effInput, spec),
-            Is.EqualTo(precompile.Run(fullInput, spec)).Using(ResultComparer)
-        );
-    }
 
     // Data from https://github.com/ethereum/go-ethereum/blob/master/core/vm/testdata/precompiles/modexp.json
     [TestCase(
