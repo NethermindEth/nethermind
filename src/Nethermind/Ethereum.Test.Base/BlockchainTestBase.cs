@@ -50,6 +50,30 @@ public abstract class BlockchainTestBase
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
 
+    protected static bool IsPostMergeSpec(IReleaseSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+
+        return spec.Name is not
+        (
+            "Olympic" or
+            "Frontier" or
+            "Homestead" or
+            "DAO" or
+            "Tangerine Whistle" or
+            "Spurious Dragon" or
+            "Byzantium" or
+            "Constantinople" or
+            "Constantinople Fix" or
+            "Istanbul" or
+            "Muir Glacier" or
+            "Berlin" or
+            "London" or
+            "ArrowGlacier" or
+            "Gray Glacier"
+        );
+    }
+
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
         _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
@@ -88,21 +112,7 @@ public abstract class BlockchainTestBase
         // [Parallelizable(ParallelScope.All)] so anything shared-mutable across tests would race.
         IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
         IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-        bool isPostMerge = test.Network != London.Instance &&
-                           test.Network != ArrowGlacier.Instance &&
-                           test.Network != GrayGlacier.Instance &&
-                           test.Network != Berlin.Instance &&
-                           test.Network != MuirGlacier.Instance &&
-                           test.Network != Istanbul.Instance &&
-                           test.Network != ConstantinopleFix.Instance &&
-                           test.Network != Constantinople.Instance &&
-                           test.Network != Byzantium.Instance &&
-                           test.Network != SpuriousDragon.Instance &&
-                           test.Network != TangerineWhistle.Instance &&
-                           test.Network != Dao.Instance &&
-                           test.Network != Homestead.Instance &&
-                           test.Network != Frontier.Instance &&
-                           test.Network != Olympic.Instance;
+        bool isPostMerge = IsPostMergeSpec(test.Network);
         if (isPostMerge)
         {
             rewardCalculator = NoBlockRewards.Instance;
