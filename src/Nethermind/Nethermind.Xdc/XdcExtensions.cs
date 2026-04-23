@@ -33,20 +33,16 @@ internal static partial class XdcExtensions
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
-        if (specProvider.GetSpec(xdcBlockHeader) is not IXdcReleaseSpec spec)
-            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
-        if (round == 0)
-            round = xdcBlockHeader.ExtraConsensusData?.BlockRound ?? 0;
-        spec.ApplyV2Config(round);
-        return spec;
+        if (specProvider is not IXdcSpecProvider xdcProvider)
+            throw new InvalidOperationException($"Expected {nameof(IXdcSpecProvider)}.");
+        return xdcProvider.GetXdcSpec(xdcBlockHeader, round);
     }
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
     {
-        if (specProvider.GetSpec(blockNumber, null) is not IXdcReleaseSpec spec)
-            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
-        spec.ApplyV2Config(round);
-        return spec;
+        if (specProvider is not IXdcSpecProvider xdcProvider)
+            throw new InvalidOperationException($"Expected {nameof(IXdcSpecProvider)}.");
+        return xdcProvider.GetXdcSpec(blockNumber, round);
     }
 
     public static Address[] ParseV1Masternodes(this byte[] extraData)
