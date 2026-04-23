@@ -29,8 +29,6 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
-    // Run reads exactly (96 + baseLength + expLength + modulusLength) bytes via
-    // SliceWithZeroPaddingEmptyOnError, so bytes beyond that range don't affect the result.
     public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData)
     {
         const int headerLen = 96;
@@ -41,9 +39,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         int expLen = SafeCast(span.Slice(32, 32).ToUnsignedBigInteger());
         int modLen = SafeCast(span.Slice(64, 32).ToUnsignedBigInteger());
 
-        // Saturated lengths mean Run can't produce a meaningful result (would OOM / read oversized slices);
-        // base==0 && mod==0 short-circuits Run to empty regardless of exp. Either way the header alone
-        // determines the output, so trailing bytes don't belong in the cache key.
+        // Header alone determines the output when any length saturated or base/mod short-circuit to empty.
         if (baseLen == int.MaxValue || expLen == int.MaxValue || modLen == int.MaxValue || (baseLen == 0 && modLen == 0))
             return inputData[..headerLen];
 
