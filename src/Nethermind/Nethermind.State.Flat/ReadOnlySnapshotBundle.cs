@@ -21,8 +21,7 @@ namespace Nethermind.State.Flat;
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
-    bool recordDetailedMetrics,
-    SeqlockCache<NodeKey, byte[], HugeCacheSets>? crossBlockTrieNodeRlpCache = null)
+    bool recordDetailedMetrics)
     : RefCountingDisposable
 {
     public int SnapshotCount => snapshots.Count;
@@ -177,24 +176,10 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        if (flags == ReadFlags.None && crossBlockTrieNodeRlpCache is not null)
-        {
-            NodeKey nodeKey = new(address: null, in path, hash);
-            if (crossBlockTrieNodeRlpCache.TryGetValue(in nodeKey, out byte[]? cached))
-            {
-                return cached;
-            }
-        }
-
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
-
-        if (flags == ReadFlags.None && value is not null)
-        {
-            crossBlockTrieNodeRlpCache?.Set(new NodeKey(address: null, in path, hash), value);
-        }
 
         return value;
     }
@@ -203,24 +188,10 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        if (flags == ReadFlags.None && crossBlockTrieNodeRlpCache is not null)
-        {
-            NodeKey nodeKey = new(address, in path, hash);
-            if (crossBlockTrieNodeRlpCache.TryGetValue(in nodeKey, out byte[]? cached))
-            {
-                return cached;
-            }
-        }
-
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
-
-        if (flags == ReadFlags.None && value is not null)
-        {
-            crossBlockTrieNodeRlpCache?.Set(new NodeKey(address, in path, hash), value);
-        }
 
         return value;
     }

@@ -5,11 +5,9 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
@@ -31,7 +29,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
-    private readonly SeqlockCache<NodeKey, byte[], HugeCacheSets> _crossBlockTrieNodeRlpCache = new();
 
     // First it go to here
     private readonly Task _compactorTask;
@@ -252,7 +249,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, _crossBlockTrieNodeRlpCache);
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
         }
 
         long sw = 0;
@@ -313,7 +310,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics, _crossBlockTrieNodeRlpCache);
+            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
