@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -36,7 +35,17 @@ namespace Nethermind.Trie
 
         public TrieType TrieType { get; init; }
 
-        private Stack<TraverseStack>? _traverseStack;
+        [ThreadStatic]
+        private static TraverseStack? _threadStaticTraverseStack;
+
+        private static TraverseStack GetTraverseStack()
+        {
+            TraverseStack stack = _threadStaticTraverseStack ?? new();
+            _threadStaticTraverseStack = null;
+            return stack;
+        }
+
+        private static void ReturnTraverseStack(TraverseStack stack) => _threadStaticTraverseStack = stack;
         public readonly IScopedTrieStore TrieStore;
         public ICappedArrayPool? _bufferPool;
 
@@ -296,17 +305,24 @@ namespace Nethermind.Trie
             void TraceSkipInlineNode(TrieNode node) => _logger.Trace($"Skipping commit of an inlined {node}");
         }
 
-        private async Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx)
-        {
-            // Background task
-            await Task.Yield();
-            TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
-            if (!ReferenceEquals(childNode, newChild))
+        private Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx) => Task.Factory.StartNew(
+            _ =>
             {
-                node[idx] = newChild;
-            }
-            committer.ReturnConcurrencyQuota();
-        }
+                try
+                {
+                    TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
+                    if (!ReferenceEquals(childNode, newChild))
+                        node[idx] = newChild;
+                }
+                finally
+                {
+                    committer.ReturnConcurrencyQuota();
+                }
+            },
+            state: null,
+            CancellationToken.None,
+            TaskCreationOptions.None,
+            TaskScheduler.Default);
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
@@ -521,12 +537,12 @@ namespace Nethermind.Trie
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
-                if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
-                else if (_traverseStack.Count > 0) _traverseStack.Clear();
+                TraverseStack traverseStack = GetTraverseStack();
 
                 TreePath empty = TreePath.Empty;
-                RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
+                RootRef = SetNew(traverseStack, nibbles, value, ref empty, RootRef);
 
+                ReturnTraverseStack(traverseStack);
             }
             finally
             {
@@ -554,7 +570,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, CappedArray<byte> value, ref TreePath path, TrieNode? node)
+        private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> remainingKey, CappedArray<byte> value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;
             int originalPathLength = path.Length;
@@ -582,7 +598,7 @@ namespace Nethermind.Trie
                             path.AppendMut(node.Key);
                             TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
 
-                            traverseStack.Push(new TraverseStack()
+                            traverseStack.Push(new TraverseStackFrame()
                             {
                                 Node = node,
                                 OriginalChild = extensionChild,
@@ -667,7 +683,7 @@ namespace Nethermind.Trie
                 path.AppendMut(nib);
                 TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
 
-                traverseStack.Push(new TraverseStack()
+                traverseStack.Push(new TraverseStackFrame()
                 {
                     Node = node,
                     OriginalChild = child,
@@ -679,7 +695,7 @@ namespace Nethermind.Trie
                 remainingKey = remainingKey[1..];
             }
 
-            while (traverseStack.TryPop(out TraverseStack cStack))
+            while (traverseStack.TryPop(out TraverseStackFrame cStack))
             {
                 TrieNode? child = node;
                 node = cStack.Node;
@@ -858,11 +874,43 @@ namespace Nethermind.Trie
             return tn;
         }
 
-        private record struct TraverseStack
+        private record struct TraverseStackFrame
         {
             public TrieNode Node;
             public int ChildIdx;
             public TrieNode? OriginalChild;
+        }
+
+        private class TraverseStack
+        {
+            [InlineArray(64)]
+            private struct Inline64
+            {
+                public TraverseStackFrame Item;
+            }
+
+            private Inline64 _entries;
+            private int _count;
+
+            public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
+
+            public bool TryPop(out TraverseStackFrame frame)
+            {
+                if (_count == 0) { frame = default; return false; }
+                frame = _entries[--_count];
+                _entries[_count] = default; // release references
+                return true;
+            }
+
+            public void Clear()
+            {
+                if (_count != 0)
+                {
+                    _entries[.._count].Clear();
+                    _count = 0;
+                }
+            }
+            public int Count => _count;
         }
 
         private CappedArray<byte> GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)

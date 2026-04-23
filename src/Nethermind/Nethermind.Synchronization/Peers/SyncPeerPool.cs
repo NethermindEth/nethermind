@@ -457,7 +457,7 @@ namespace Nethermind.Synchronization.Peers
                 }
                 catch (Exception exception)
                 {
-                    if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Allocations upgrade failure", exception);
+                    _logger.DebugError("Allocations upgrade failure", exception);
                 }
                 finally
                 {

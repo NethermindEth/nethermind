@@ -27,9 +27,10 @@ public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchai
 
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
 
-// Engine blockchain tests — only forks with meaningful Engine API differences
-// (e.g. blobs, execution requests, BAL). Regular BlockchainTests cover earlier forks.
+// Engine blockchain tests - post-merge forks with Engine API-specific coverage.
 // Directory derived from class name by convention (strip "EngineBlockchainTests", lowercase)
+
+public class ParisEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisEngineBlockchainTests>;
 
 public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunEngineBlockchainTests>;
 

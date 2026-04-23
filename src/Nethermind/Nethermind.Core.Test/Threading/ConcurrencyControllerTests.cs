@@ -12,12 +12,11 @@ public class ConcurrencyControllerTests
     [Test]
     public void ThreadLimiterWillLimit()
     {
-        ConcurrencyController.Slot returner;
         ConcurrencyController limiter = new(3);
 
         limiter.TryTakeSlot(out _).Should().Be(true);
         limiter.TryTakeSlot(out _).Should().Be(true);
-        limiter.TryTakeSlot(out returner).Should().Be(false);
+        limiter.TryTakeSlot(out ConcurrencyController.Slot returner).Should().Be(false);
 
         returner.Dispose();
 

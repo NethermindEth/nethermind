@@ -1,16 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
-using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
-using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
@@ -222,10 +213,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
         [Test]
         public void Finished_any_sync_far_time_ago() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
+                .IfThisNodeHasBeenOfflineForLongTime()
                 .WhenSnapSyncIsConfigured()
                 .AndGoodPeersAreKnown()
-                .TheSyncModeShouldBe(SyncMode.StateNodes);
+                .TheSyncModeShouldBe(SyncMode.Full);
 
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
@@ -341,20 +332,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
 
         [Test]
-        public void Fast_sync_catch_up() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeNeedsAFastSyncCatchUp()
-                .AndGoodPeersAreKnown()
-                .ThenInAnyFastSyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.FastSync);
-
-        [Test]
-        public void Nearly_fast_sync_catch_up() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeNearlyNeedsAFastSyncCatchUp()
-                .AndGoodPeersAreKnown()
-                .ThenInAnyFastSyncConfiguration()
-                .TheSyncModeShouldBe(SyncMode.Full);
-
-        [Test]
         public void State_far_in_the_past() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeHasStateThatIsFarInThePast()
                 .When_FastSync_NoSnapSync_Configured()
@@ -389,16 +366,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
 
-        /// <summary>
-        /// We should switch to State Sync in a case like below
-        /// 2020-04-27 11:48:30.6691|Changing state to StateNodes at processed:2594949|state:2594949|block:2596807|header:2596807|peer block:2596807
-        /// </summary>
         [Test]
-        public void When_long_range_state_catch_up_is_needed() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
+        public void When_node_has_been_offline_for_long_time_stays_in_full_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeHasBeenOfflineForLongTime()
                 .When_FastSync_NoSnapSync_Configured()
                 .AndGoodPeersAreKnown()
-                .TheSyncModeShouldBe(SyncMode.StateNodes);
+                .TheSyncModeShouldBe(SyncMode.Full);
 
         [Test]
         public void Does_not_move_back_to_state_sync_mistakenly_when_in_full_sync_because_of_thinking_that_it_needs_to_catch_up() => Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -414,54 +387,5 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
 
-        [Test]
-        public void Switch_correctly_from_full_sync_to_state_nodes_catch_up()
-        {
-            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
-            syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
-            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - 32);
-            syncProgressResolver.FindBestProcessedBlock().Returns(0);
-            syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
-            syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
-
-            List<ISyncPeer> syncPeers = new();
-
-            BlockHeader header = Scenario.ChainHead;
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            syncPeer.HeadHash.Returns(header.Hash);
-            syncPeer.HeadNumber.Returns(header.Number);
-            syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? UInt256.Zero);
-            syncPeer.IsInitialized.Returns(true);
-            syncPeer.ClientId.Returns("nethermind");
-
-            syncPeers.Add(syncPeer);
-            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(static p => new PeerInfo(p)).ToArray();
-            syncPeerPool.InitializedPeers.Returns(peerInfos);
-            syncPeerPool.AllPeers.Returns(peerInfos);
-
-            ISyncConfig syncConfig = new TestSyncConfig() { FastSyncCatchUpHeightDelta = 2 };
-            syncConfig.FastSync = true;
-
-            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
-            selector.StopAsync().Wait();
-            syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);
-            selector.Update();
-            selector.Current.Should().Be(SyncMode.Full);
-
-            for (uint i = 0; i < syncConfig.FastSyncCatchUpHeightDelta + 1; i++)
-            {
-                long number = header.Number + i;
-                syncPeer.HeadNumber.Returns(number);
-                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty!.Value + i);
-                syncProgressResolver.FindBestHeader().Returns(number);
-                syncProgressResolver.FindBestFullBlock().Returns(number);
-                selector.Update();
-            }
-
-            selector.Current.Should().Be(SyncMode.StateNodes);
-        }
     }
 }

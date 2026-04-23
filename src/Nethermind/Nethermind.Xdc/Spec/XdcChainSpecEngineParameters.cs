@@ -12,7 +12,7 @@ namespace Nethermind.Xdc.Spec;
 public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public string EngineName => SealEngineType;
-    public string SealEngineType => Core.SealEngineType.XDPoS;
+    public string SealEngineType => XdcConstants.XDPoS;
     public int Epoch { get; set; }
     public int Gap { get; set; }
     public int Period { get; set; }

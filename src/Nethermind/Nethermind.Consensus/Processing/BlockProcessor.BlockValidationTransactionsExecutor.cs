@@ -30,7 +30,8 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
-                bool shouldValidateBlockAccessList = _balBuilder is not null && !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+                bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+                bool shouldValidateBlockAccessList = _balBuilder is not null && shouldValidate;
                 long? gasRemaining = shouldValidateBlockAccessList ? _balBuilder!.GasUsed() : null;
 
                 if (shouldValidateBlockAccessList)
@@ -44,6 +45,11 @@ namespace Nethermind.Consensus.Processing
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 
+                    if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
+                    {
+                        ThrowInvalidBlockForGasLimit(block);
+                    }
+
                     if (shouldValidateBlockAccessList)
                     {
                         gasRemaining -= currentTx.BlockGasUsed;
@@ -53,6 +59,10 @@ namespace Nethermind.Consensus.Processing
                 _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
                 return [.. receiptsTracer.TxReceipts];
+
+                [DebuggerHidden]
+                [DoesNotReturn]
+                static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
             }
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)

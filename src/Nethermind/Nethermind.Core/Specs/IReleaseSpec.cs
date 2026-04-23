@@ -380,6 +380,11 @@ namespace Nethermind.Core.Specs
         int Eip7934MaxRlpBlockSize { get; }
 
         /// <summary>
+        ///  Increase Calldata Floor Cost
+        /// </summary>
+        bool IsEip7976Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -436,11 +441,6 @@ namespace Nethermind.Core.Specs
         /// EIP-7939 - CLZ - Count leading zeros instruction
         /// </summary>
         public bool IsEip7939Enabled { get; }
-
-        /// <summary>
-        /// EIP-7907: Meter Contract Code Size And Increase Limit
-        /// </summary>
-        public bool IsEip7907Enabled { get; }
 
         /// <summary>
         /// EIP-7928: Block-Level Access Lists

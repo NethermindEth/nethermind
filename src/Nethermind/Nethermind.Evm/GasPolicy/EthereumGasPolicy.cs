@@ -190,6 +190,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, VmState<EthereumGasPolicy> vmState)
+    {
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas(ref EthereumGasPolicy gas,
         long gasCost)
     {
@@ -244,7 +255,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor)
     {
         if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
-            RefundStateGas(ref gas, GasCostOf.NewAccountState * codeInsertRefunds, stateGasFloor);
+        {
+            long stateRefund = GasCostOf.NewAccountState * codeInsertRefunds;
+            long stateGasAboveFloor = Math.Max(0, gas.StateGasUsed - stateGasFloor);
+            long refundToReservoir = Math.Max(0, stateRefund - stateGasAboveFloor);
+            gas.StateReservoir += refundToReservoir;
+
+            long newFloor = Math.Max(0, stateGasFloor - stateRefund);
+            gas.StateGasUsed = Math.Max(gas.StateGasUsed - stateRefund, newFloor);
+        }
+
         return GetCodeInsertRegularRefund(codeInsertRefunds, spec);
     }
 
@@ -305,7 +325,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                           + CreateCost(tx, spec)
                           + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
                           + authRegularCost;
-        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
+        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tx, spec, tokensInCallData);
         long createStateCost = CreateStateCost(tx, spec);
         long totalStateCost = authStateCost + createStateCost;
         return spec.IsEip8037Enabled
