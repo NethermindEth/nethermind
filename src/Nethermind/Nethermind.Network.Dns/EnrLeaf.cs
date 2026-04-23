@@ -17,5 +17,5 @@ public class EnrLeaf : EnrTreeNode
 
     public override string[] Refs => [];
 
-    public override string[] Records => new[] { NodeRecord };
+    public override string[] Records => new[] { ToString() };
 }
