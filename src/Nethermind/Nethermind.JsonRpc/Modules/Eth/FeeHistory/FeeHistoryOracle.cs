@@ -169,8 +169,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             if (historyInfo is null)
             {
-                return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available",
-                    ErrorCodes.ResourceUnavailable);
+                return ResultWrapper<FeeHistoryResults>.Fail("upstream does not have the requested block yet",
+                    ErrorCodes.InternalError);
             }
 
             BlockFeeHistorySearchInfo info = historyInfo.Value;
