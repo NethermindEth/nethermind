@@ -461,13 +461,11 @@ public class EthSimulateTestsBlocksAndTransactions
                 {
                     Calls =
                     [
-                        new LegacyTransactionForRpc
+                        new EIP1559TransactionForRpc
                         {
                             From = TestItem.AddressA,
                             To = TestItem.AddressB,
                             Value = 1_000_000.Ether,
-                            Gas = 21_000,
-                            GasPrice = 0
                         }
                     ]
                 }
