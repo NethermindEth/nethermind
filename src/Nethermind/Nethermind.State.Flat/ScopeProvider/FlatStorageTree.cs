@@ -23,7 +23,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
-    private readonly object _warmupStorageTreeLock = new();
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -108,20 +107,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             return false;
         }
 
-        lock (_warmupStorageTreeLock)
-        {
-            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
-            {
-                return false;
-            }
+        // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
+        // this is just to warm up the nodes.
+        ValueHash256 key = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(index, ref key);
 
-            // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
-            // this is just to warm up the nodes.
-            ValueHash256 key = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(index, ref key);
-
-            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
-        }
+        _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
         return true;
     }
 

@@ -26,7 +26,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
-    private readonly object _warmupStateTreeLock = new();
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
     private bool _isDisposed = false;
@@ -122,14 +121,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
 
-        lock (_warmupStateTreeLock)
-        {
-            if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
-
-            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-            // this is just for warming up
-            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
-        }
+        // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+        // this is just for warming up
+        _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
         return true;
     }
