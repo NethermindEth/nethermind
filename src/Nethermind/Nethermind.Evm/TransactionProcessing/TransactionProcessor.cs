@@ -5,9 +5,9 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -61,6 +61,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IWorldState WorldState { get; }
         protected IVirtualMachine<TGasPolicy> VirtualMachine { get; }
         private readonly ICodeInfoRepository _codeInfoRepository;
+        private readonly bool _isOverridableCodeInfoRepository;
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
@@ -126,6 +127,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
+            _isOverridableCodeInfoRepository = codeInfoRepository is IOverridableCodeInfoRepository;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -215,14 +217,25 @@ namespace Nethermind.Evm.TransactionProcessing
                 return result;
             }
 
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+            Address? executingAccount = tx.To;
+            bool useSimpleTransferFastPath = executingAccount is not null && IsSimpleTransferToAccountWithoutCode(tx, spec, executingAccount);
+            // Simple transfers have no execution snapshot to roll back, so the final commit can include upfront gas and nonce changes.
+            bool commitBeforeExecution = commit && (!useSimpleTransferFastPath || restore || tracer.IsTracingState);
+            if (commitBeforeExecution) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+
+            if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
+
+            if (useSimpleTransferFastPath)
+            {
+                int fastStatusCode = ExecuteSimpleTransfer(tx, executingAccount!, header, spec, tracer, opts, in intrinsicGas, in premiumPerGas, in blobBaseFee, in opcodeGasPrice, gasAvailable, out TransactionSubstate fastSubstate, out GasConsumed fastSpentGas);
+                return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, executingAccount!, fastStatusCode, in fastSubstate, in fastSpentGas);
+            }
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
 
             int delegationRefunds = !spec.IsEip7702Enabled || !tx.HasAuthorizationList ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
-            if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
             Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
 
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
@@ -238,7 +251,19 @@ namespace Nethermind.Evm.TransactionProcessing
             // the priority fee in the destroyed account's balance.
             if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
             {
-                foreach (Address toBeDestroyed in substate.DestroyList)
+                JournalSet<Address>? destroyList = substate.DestroyList;
+                if (destroyList is not null)
+                {
+                    ProcessDestoryList(substate, destroyList);
+                }
+            }
+
+            return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, env.ExecutingAccount, statusCode, in substate, in spentGas);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void ProcessDestoryList(TransactionSubstate substate, JournalSet<Address> destroyList)
+            {
+                foreach (Address toBeDestroyed in destroyList)
                 {
                     UInt256 balance = WorldState.GetBalance(toBeDestroyed);
                     if (!balance.IsZero)
@@ -248,7 +273,109 @@ namespace Nethermind.Evm.TransactionProcessing
                     WorldState.DeleteAccount(toBeDestroyed);
                 }
             }
+        }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsSimpleTransferToAccountWithoutCode(Transaction tx, IReleaseSpec spec, Address recipient) =>
+            !_isOverridableCodeInfoRepository &&
+            tx.AuthorizationList is null &&
+            !WorldState.IsContract(recipient) &&
+            !spec.IsPrecompile(recipient);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int ExecuteSimpleTransfer(Transaction tx, Address recipient, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in UInt256 gasPrice, TGasPolicy gasAvailable, out TransactionSubstate substate, out GasConsumed spentGas)
+        {
+            UInt256 value = tx.ValueRef;
+            if (tracer.IsTracingActions)
+            {
+                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+            }
+
+            PayValue(tx, spec, opts);
+            WorldState.AddToBalanceAndCreateIfNotExists(recipient, in value, spec);
+
+            JournalCollection<LogEntry>? logs = null;
+            if (spec.IsEip7708Enabled && !value.IsZero && tx.SenderAddress != recipient)
+            {
+                logs = [TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value)];
+            }
+
+            substate = new TransactionSubstate(
+                bytes: default,
+                refund: 0,
+                destroyList: null,
+                logs: logs,
+                shouldRevert: false,
+                isTracerConnected: tracer.IsTracing,
+                logger: Logger);
+
+            if (tracer.IsTracingActions)
+            {
+                tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
+            }
+
+            TGasPolicy floorGas = intrinsicGas.FloorGas;
+            TGasPolicy standardGas = intrinsicGas.Standard;
+            spentGas = Refund(tx, header, spec, opts, in substate, in gasAvailable, in gasPrice, codeInsertRefunds: 0, in floorGas, in standardGas);
+            const int statusCode = StatusCode.Success;
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+
+            if (tracer.IsTracingAccess)
+            {
+                ReportSimpleTransferAccess(tx, spec, tracer, recipient);
+            }
+
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            {
+                header.GasUsed += spentGas.EffectiveBlockGas;
+            }
+
+            return statusCode;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void TraceSimpleTransferActionStart(Transaction tx, Address recipient, ITxTracer tracer, in UInt256 value, in TGasPolicy gasAvailable)
+        {
+            tracer.ReportAction(
+                TGasPolicy.GetRemainingGas(in gasAvailable),
+                value,
+                tx.SenderAddress!,
+                recipient,
+                tx.Data,
+                ExecutionType.TRANSACTION);
+
+            if (tracer.IsTracingCode)
+            {
+                tracer.ReportByteCode(default);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void ReportSimpleTransferAccess(Transaction tx, IReleaseSpec spec, ITxTracer tracer, Address recipient)
+        {
+            using StackAccessTracker accessTracker = new();
+            WarmUpTxAccesses(tx, spec, accessTracker, recipient);
+            tracer.ReportAccess(accessTracker.AccessedAddresses, accessTracker.AccessedStorageCells);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WarmUpTxAccesses(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker, Address recipient)
+        {
+            if (!spec.UseHotAndColdStorage) return;
+
+            if (spec.UseTxAccessLists)
+                accessTracker.WarmUp(tx.AccessList); // eip-2930
+
+            if (spec.AddCoinbaseToTxAccessList)
+                accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
+
+            accessTracker.WarmUp(recipient);
+            accessTracker.WarmUp(tx.SenderAddress!);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private TransactionResult FinalizeTransaction(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in UInt256 senderReservedGasPayment, Address executingAccount, int statusCode, in TransactionSubstate substate, in GasConsumed spentGas)
+        {
             tx.BlockGasUsed = spentGas.EffectiveBlockGas;
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
@@ -301,12 +428,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (statusCode == StatusCode.Failure)
                 {
                     byte[] output = substate.ShouldRevert ? substate.Output.ToArray() : [];
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
+                    tracer.MarkAsFailed(executingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
-                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : [];
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
+                    LogEntry[] logs = substate.LogsToArray();
+                    tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
 
@@ -699,17 +826,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessTracker.WarmUp(delegationAddress);
             }
 
-            if (spec.UseHotAndColdStorage)
-            {
-                if (spec.UseTxAccessLists)
-                    accessTracker.WarmUp(tx.AccessList); // eip-2930
-
-                if (spec.AddCoinbaseToTxAccessList)
-                    accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
-
-                accessTracker.WarmUp(recipient);
-                accessTracker.WarmUp(tx.SenderAddress!);
-            }
+            WarmUpTxAccesses(tx, spec, accessTracker, recipient);
 
             env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
@@ -812,26 +929,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
-                        foreach (Address toBeDestroyed in substate.DestroyList)
+                        JournalSet<Address>? destroyList = substate.DestroyList;
+                        if (destroyList is not null)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
-
-                            if (eip7708Enabled)
-                            {
-                                UInt256 balance = WorldState.GetBalance(toBeDestroyed);
-                                if (!balance.IsZero)
-                                {
-                                    substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
-                                }
-                            }
-
-                            WorldState.ClearStorage(toBeDestroyed);
-                            WorldState.DeleteAccount(toBeDestroyed);
-
-                            if (tracingRefunds)
-                            {
-                                tracer.ReportRefund(spec.GasCosts.DestroyRefund);
-                            }
+                            ProcessDestoryList(spec, tracer, substate, eip7708Enabled, tracingRefunds, destroyList);
                         }
                     }
 
@@ -852,6 +953,32 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             return statusCode;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void ProcessDestoryList(IReleaseSpec spec, ITxTracer tracer, TransactionSubstate substate, bool eip7708Enabled, bool tracingRefunds, JournalSet<Address> destroyList)
+            {
+                foreach (Address toBeDestroyed in destroyList)
+                {
+                    if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
+
+                    if (eip7708Enabled)
+                    {
+                        UInt256 balance = WorldState.GetBalance(toBeDestroyed);
+                        if (!balance.IsZero)
+                        {
+                            substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                        }
+                    }
+
+                    WorldState.ClearStorage(toBeDestroyed);
+                    WorldState.DeleteAccount(toBeDestroyed);
+
+                    if (tracingRefunds)
+                    {
+                        tracer.ReportRefund(spec.GasCosts.DestroyRefund);
+                    }
+                }
+            }
         }
 
 
@@ -930,7 +1057,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // n.b. destroyed accounts already set to zero balance
             // EIP-8037: always pay coinbase — deferred finalization will burn the balance
-            bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
+            bool gasBeneficiaryNotDestroyed = !substate.DestroyListContains(header.GasBeneficiary);
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed || spec.IsEip8037Enabled)
             {
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
@@ -1006,7 +1133,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long totalToRefund = codeInsertRegularRefund;
             if (!substate.IsError && !substate.ShouldRevert)
-                totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
+            {
+                totalToRefund += substate.Refund + substate.DestroyListCount * spec.GasCosts.DestroyRefund;
+            }
 
             return (spentGas, CalculateClaimableRefund(spentGas, totalToRefund, spec));
         }

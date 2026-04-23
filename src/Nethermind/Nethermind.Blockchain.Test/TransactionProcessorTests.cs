@@ -14,6 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -69,6 +70,35 @@ public class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
         Assert.That(result.TransactionExecuted, Is.True);
+    }
+
+    [Test]
+    public void Simple_transfer_to_empty_account_does_not_invoke_virtual_machine()
+    {
+        CountingVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance,
+            _specProvider,
+            _stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1)
+            .WithGasLimit(GasCostOf.Transaction)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .TestObject;
+
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        result.TransactionExecuted.Should().BeTrue();
+        virtualMachine.ExecuteTransactionCalls.Should().Be(0);
+        _stateProvider.GetBalance(TestItem.AddressB).Should().Be((UInt256)1);
     }
 
     [TestCase(true, true)]
@@ -742,5 +772,20 @@ public class TransactionProcessorTests(bool eip155Enabled)
         _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         _stateProvider.GetBalance(TestItem.AddressA).Should().Be(balanceBefore, "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
+    }
+
+    private sealed class CountingVirtualMachine(IBlockhashProvider blockHashProvider, ISpecProvider specProvider)
+        : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, LimboLogs.Instance), IVirtualMachine
+    {
+        public int ExecuteTransactionCalls { get; private set; }
+
+        public override TransactionSubstate ExecuteTransaction<TTracingInst>(
+            VmState<EthereumGasPolicy> vmState,
+            IWorldState worldState,
+            ITxTracer txTracer)
+        {
+            ExecuteTransactionCalls++;
+            return base.ExecuteTransaction<TTracingInst>(vmState, worldState, txTracer);
+        }
     }
 }
