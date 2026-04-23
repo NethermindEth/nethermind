@@ -269,7 +269,13 @@ public class TaikoModule : Module
 
     private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder) => builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>()
+            // Register GenesisBuilder by its concrete type so TaikoGenesisBuilder can inject
+            // it directly without resolving through IGenesisBuilder (which would cause a cycle).
+            .AddScoped<GenesisBuilder>()
+            .AddScoped<IGenesisBuilder>(static ctx =>
+                new TaikoGenesisBuilder(ctx.Resolve<GenesisBuilder>(), ctx.Resolve<ISpecProvider>()));
     }
 
 }

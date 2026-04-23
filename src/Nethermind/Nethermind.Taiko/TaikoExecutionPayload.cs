@@ -38,9 +38,38 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     public UInt256? HeaderDifficulty { get; set; }
 
     /// <summary>
-    /// Creates a <see cref="TaikoExecutionPayload"/> from a <see cref="Block"/>.
+    /// Non-serialised spec provider injected by <see cref="Rpc.TaikoEngineRpcModule"/> before the
+    /// request is forwarded to the base handler. Used by <see cref="ApplyUzenPinnedFields"/> to
+    /// determine which EIPs are active at the block's timestamp so header fields that V2 payloads
+    /// cannot carry (ParentBeaconBlockRoot, RequestsHash) can be restored to their canonical
+    /// zero/empty values for Taiko L2.
     /// </summary>
-    public new static TaikoExecutionPayload Create(Block block) => Create<TaikoExecutionPayload>(block);
+    private ISpecProvider? _specProvider;
+
+    /// <summary>
+    /// Attaches the spec provider so that <see cref="TryGetBlock"/> can determine the active
+    /// EIPs at the block's timestamp.  Must be called before <see cref="TryGetBlock"/> is
+    /// invoked.  Not serialised; this reference is only valid within a single Engine API request.
+    /// </summary>
+    internal void AttachSpecProvider(ISpecProvider specProvider) => _specProvider = specProvider;
+
+    /// <summary>
+    /// Creates a <see cref="TaikoExecutionPayload"/> from a <see cref="Block"/>.
+    /// Also copies the EIP-4844 header fields (<see cref="Block.BlobGasUsed"/> and
+    /// <see cref="Block.ExcessBlobGas"/>) that the base
+    /// <see cref="ExecutionPayload.Create{TExecutionPayload}"/> does not copy, so the Go
+    /// driver sees the same values Nethermind used when hashing the block.
+    /// <see cref="ExecutionPayload.ParentBeaconBlockRoot"/> is <c>[JsonIgnore]</c> on the
+    /// base type, so it never reaches the wire and is restored from the spec provider on
+    /// the inbound path (see <see cref="ApplyUzenPinnedFields"/>).
+    /// </summary>
+    public new static TaikoExecutionPayload Create(Block block)
+    {
+        TaikoExecutionPayload payload = Create<TaikoExecutionPayload>(block);
+        payload.BlobGasUsed = block.BlobGasUsed;
+        payload.ExcessBlobGas = block.ExcessBlobGas;
+        return payload;
+    }
 
     public new byte[][]? Transactions
     {
@@ -105,18 +134,38 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     }
 
     /// <summary>
-    /// V2 payloads don't carry Cancun/Prague header fields. For Uzen blocks these are
-    /// pinned to known values, so we inject them when the payload didn't supply them.
-    /// Only applied when <see cref="HeaderDifficulty"/> is present (Uzen sidecar),
-    /// so pre-Uzen (Shasta) blocks keep these fields null.
+    /// Restores header fields that the V2 Engine API payload cannot carry through JSON so
+    /// that the reconstructed header hash matches the one Nethermind produced originally.
+    /// <list type="bullet">
+    ///   <item><description><see cref="BlobGasUsed"/> / <see cref="ExcessBlobGas"/> are
+    ///     serialised (<c>JsonIgnoreCondition.WhenWritingNull</c>) so the payload carries
+    ///     them when present; we only copy them across when non-null.</description></item>
+    ///   <item><description><see cref="ExecutionPayload.ParentBeaconBlockRoot"/> is
+    ///     <c>[JsonIgnore]</c> on the base type and therefore always arrives <c>null</c>.
+    ///     Pin it to <see cref="Keccak.Zero"/> whenever EIP-4788 is active at the block's
+    ///     timestamp (Taiko L2 has no beacon chain root).</description></item>
+    ///   <item><description><c>RequestsHash</c> is not a payload field at all. Pin it to
+    ///     <see cref="ExecutionRequestExtensions.EmptyRequestsHash"/> whenever EIP-7685 is
+    ///     active (Taiko L2 has no execution-layer requests).</description></item>
+    /// </list>
+    /// The spec provider is attached by <see cref="Rpc.TaikoEngineRpcModule"/> before the
+    /// request is dispatched to the base handler.
     /// </summary>
     private void ApplyUzenPinnedFields(BlockHeader header)
     {
-        if (HeaderDifficulty is null) return;
+        if (BlobGasUsed is not null) header.BlobGasUsed ??= BlobGasUsed.Value;
+        if (ExcessBlobGas is not null) header.ExcessBlobGas ??= ExcessBlobGas.Value;
 
-        header.BlobGasUsed ??= 0;
-        header.ExcessBlobGas ??= 0;
-        header.ParentBeaconBlockRoot ??= Keccak.Zero;
-        header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
+        IReleaseSpec? spec = _specProvider?.GetSpec(new ForkActivation(header.Number, header.Timestamp));
+
+        if (spec?.IsEip4788Enabled == true)
+        {
+            header.ParentBeaconBlockRoot ??= Keccak.Zero;
+        }
+
+        if (spec?.RequestsEnabled == true)
+        {
+            header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
+        }
     }
 }

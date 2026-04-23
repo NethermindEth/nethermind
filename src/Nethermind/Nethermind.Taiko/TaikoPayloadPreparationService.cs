@@ -138,11 +138,25 @@ public class TaikoPayloadPreparationService(
         };
 
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)specProvider.GetSpec(header);
-        if (taikoSpec.IsUzenEnabled)
+
+        // Taiko L2 has no real blobs, no beacon root data, and no execution-layer deposits.
+        // Wherever an EIP is active that requires a matching header field, pin it to its
+        // zero/empty value so that the built header is internally consistent for the chainspec
+        // and so that <see cref="TaikoExecutionPayload"/> can round-trip it through V2 payloads
+        // (which don't carry these fields) without hash drift.  This covers both the Uzen case
+        // (where Uzen enables these EIPs via TaikoChainSpecBasedSpecProvider) and the Surge
+        // case (where they're enabled directly by the chainspec's Prague/Cancun timestamps).
+        if (taikoSpec.IsEip4844Enabled)
         {
             header.BlobGasUsed = 0;
             header.ExcessBlobGas = 0;
+        }
+        if (taikoSpec.IsEip4788Enabled)
+        {
             header.ParentBeaconBlockRoot = Keccak.Zero;
+        }
+        if (taikoSpec.RequestsEnabled)
+        {
             header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
         }
 
