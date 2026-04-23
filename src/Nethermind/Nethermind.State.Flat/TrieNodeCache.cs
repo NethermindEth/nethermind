@@ -96,6 +96,25 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return false;
     }
 
+    public void Set(Hash256? address, in TreePath path, TrieNode node)
+    {
+        if (_maxCacheMemoryThreshold == 0) return;
+
+        (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
+        int bucketIdx = hashCode & _bucketMask;
+
+        node.PrunePersistedRecursively(1);
+        Interlocked.Add(ref _shardMemoryUsages[shardIdx], node.GetMemorySize(false));
+
+        TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], node);
+        if (oldNode is not null)
+        {
+            long oldMemory = oldNode.GetMemorySize(false);
+            oldNode.PrunePersistedRecursively(1);
+            Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldMemory);
+        }
+    }
+
     public void Add(TransientResource transientResource)
     {
         if (_maxCacheMemoryThreshold == 0)

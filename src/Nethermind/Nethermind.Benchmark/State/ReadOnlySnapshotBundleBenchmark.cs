@@ -390,6 +390,8 @@ public class ReadOnlySnapshotBundleBenchmark
             return false;
         }
 
+        public void Set(Hash256? address, in TreePath path, TrieNode node) { }
+
         public void Add(TransientResource transientResource) { }
 
         public void Clear() { }
