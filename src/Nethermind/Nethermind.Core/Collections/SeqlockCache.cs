@@ -448,6 +448,12 @@ public struct LargeCacheSets : ICacheSets
     public static int SetsLog2 => 16;
 }
 
+/// <summary>1M sets x 2 ways = 2M entries. Intended for large content-addressed caches.</summary>
+public struct HugeCacheSets : ICacheSets
+{
+    public static int SetsLog2 => 20;
+}
+
 /// <summary>
 /// Size-parameterized variant of <see cref="SeqlockCache{TKey,TValue}"/>.
 /// <typeparamref name="TSets"/> controls the number of sets; the JIT constant-folds

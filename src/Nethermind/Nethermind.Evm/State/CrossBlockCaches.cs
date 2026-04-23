@@ -13,10 +13,10 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public class CrossBlockCaches
 {
-    private readonly SeqlockCache<StorageCell, byte[], LargeCacheSets> _storageCache = new();
+    private readonly SeqlockCache<StorageCell, byte[], HugeCacheSets> _storageCache = new();
     private long _lastCommittedBlockNumber = -1;
 
-    public SeqlockCache<StorageCell, byte[], LargeCacheSets> StorageCache => _storageCache;
+    public SeqlockCache<StorageCell, byte[], HugeCacheSets> StorageCache => _storageCache;
 
     public long LastCommittedBlockNumber
     {

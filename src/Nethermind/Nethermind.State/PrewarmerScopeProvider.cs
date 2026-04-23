@@ -216,13 +216,13 @@ public class PrewarmerScopeProvider(
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool populatePreBlockCache,
-        SeqlockCache<StorageCell, byte[], LargeCacheSets>? crossBlockStorageCache) : IWorldStateScopeProvider.IStorageTree
+        SeqlockCache<StorageCell, byte[], HugeCacheSets>? crossBlockStorageCache) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool populatePreBlockCache = populatePreBlockCache;
-        private readonly SeqlockCache<StorageCell, byte[], LargeCacheSets>? crossBlockStorageCache = crossBlockStorageCache;
+        private readonly SeqlockCache<StorageCell, byte[], HugeCacheSets>? crossBlockStorageCache = crossBlockStorageCache;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
@@ -311,7 +311,7 @@ public class PrewarmerScopeProvider(
     private sealed class CacheUpdatingWriteBatch(
         IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
         ScopeWrapper scope,
-        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
+        SeqlockCache<StorageCell, byte[], HugeCacheSets> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         public void Dispose() => baseBatch.Dispose();
 
@@ -330,7 +330,7 @@ public class PrewarmerScopeProvider(
     private sealed class CacheUpdatingStorageWriteBatch(
         IWorldStateScopeProvider.IStorageWriteBatch baseBatch,
         ScopeWrapper scope,
-        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache,
+        SeqlockCache<StorageCell, byte[], HugeCacheSets> crossBlockStorageCache,
         Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, byte[] value)
