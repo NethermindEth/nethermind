@@ -18,7 +18,7 @@ public class SequentialAuRaMergeEngineModuleTests : AuRaMergeEngineModuleTests
         IMergeConfig? mergeConfig = null)
     {
         MergeTestBlockchain bc = base.CreateBaseBlockchain(mergeConfig);
-        bc.ParallelExecutionOverride = parallel;
+        bc.ParallelExecutionOverride = false;
         return bc;
     }
 }
