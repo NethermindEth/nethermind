@@ -63,6 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             UInt256 BlockBaseFeePerGas,
             UInt256 BaseFeePerGasEst,
             UInt256 BaseFeePerBlobGas,
+            UInt256 BaseFeePerBlobGasEst,
             double GasUsedRatio,
             double BlobGasUsedRatio,
             Hash256? ParentHash,
@@ -105,24 +106,28 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
         private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block)
         {
-            double CalculateBlobGasUsedRatio(Block b, out UInt256 feePerBlobGas)
-            {
-                IReleaseSpec spec = _specProvider.GetSpec(b.Header);
-                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas);
-
-                ulong maxBlobGasPerBlock = spec.GasCosts.MaxBlobGasPerBlock;
-                return maxBlobGasPerBlock == 0 ? 0 : (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlock;
-            }
-
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
-                double blobGasUsedRatio = CalculateBlobGasUsedRatio(b, out UInt256 feePerBlobGas);
+                IReleaseSpec spec = _specProvider.GetSpec(b.Header);
+                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+                ulong maxBlobGasPerBlock = spec.GasCosts.MaxBlobGasPerBlock;
+                double blobGasUsedRatio = maxBlobGasPerBlock == 0 ? 0 : (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlock;
+
+                UInt256 nextFeePerBlobGas = UInt256.Zero;
+                if (b.Header.ExcessBlobGas.HasValue)
+                {
+                    ulong nextExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(b.Header, spec) ?? 0;
+                    BlobGasCalculator.TryCalculateFeePerBlobGas(nextExcessBlobGas, spec.BlobBaseFeeUpdateFraction, out nextFeePerBlobGas);
+                    if (nextFeePerBlobGas == UInt256.MaxValue)
+                        nextFeePerBlobGas = UInt256.Zero;
+                }
 
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
                     BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
+                    nextFeePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
                     blobGasUsedRatio,
                     b.ParentHash,
@@ -182,7 +187,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             long oldestBlockNumber = info.BlockNumber;
             baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
-            baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
+            baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
 
             while (historyInfo is not null && effectiveBlockCount-- > 0)
             {

@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.Evm;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -451,6 +452,50 @@ namespace Nethermind.JsonRpc.Test.Modules
                     GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, spec: spec);
                 return feeHistoryOracle1;
             }
+        }
+
+        [Test]
+        public void GetFeeHistory_BaseFeePerBlobGasNewestPlusOne_UsesNextBlockEstimate()
+        {
+            // The last entry of baseFeePerBlobGas (index = blockCount) is the NEXT block's
+            // estimated fee — derived from CalculateExcessBlobGas(newestBlock.Header), not the current fee.
+            // Use large excess so the fake-exponential produces a fee well above MinBlobGasPrice,
+            // ensuring current and next are numerically distinct after BlobGasUsed=0 reduces excess.
+            const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
+                                                   BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+                                                   BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
+            IReleaseSpec spec = Cancun.Instance;
+            ulong excessBlobGas = spec.GasCosts.MaxBlobGasPerBlock * 16;
+            Block block = Build.A.Block.Genesis
+                .WithBaseFeePerGas(1)
+                .WithGasUsed(1).WithGasLimit(10)
+                .WithBlobGasUsed(0)
+                .WithExcessBlobGas(excessBlobGas)
+                .TestObject;
+
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+            blockTree.Head.Returns(block);
+            blockTree.FindBlock(block.Hash!, options, block.Number).Returns(block);
+
+            ISpecProvider specProvider = SpecProviderSubstitute.Create();
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
+
+            FeeHistoryOracle oracle = new(blockTree, Substitute.For<IReceiptStorage>(), specProvider);
+            using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0L), []);
+
+            ArrayPoolList<UInt256> fees = result.Data.BaseFeePerBlobGas;
+            fees.Count.Should().Be(2, "blockCount + 1 entries");
+
+            BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedCurrentFee);
+            fees[0].Should().Be(expectedCurrentFee, "index 0 is the current block's blob base fee");
+
+            ulong nextExcess = BlobGasCalculator.CalculateExcessBlobGas(block.Header, spec) ?? 0;
+            BlobGasCalculator.TryCalculateFeePerBlobGas(nextExcess, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedNextFee);
+            fees[1].Should().Be(expectedNextFee, "index 1 is the next block's estimated blob base fee");
+            fees[1].Should().BeLessThan(fees[0], "next fee must be lower since BlobGasUsed=0 reduces excess blob gas");
         }
 
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
