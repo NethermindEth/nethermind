@@ -40,7 +40,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
 
-    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "2147483648")]
+    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "1073741824")]
     long TrieCacheMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
