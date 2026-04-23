@@ -9,13 +9,10 @@ namespace Nethermind.Merge.AuRa.Test;
 
 /// <summary>
 /// Runs all AuRa engine module tests with an explicit parallel execution setting.
-/// Mirrors <see cref="ParallelEngineModuleTests"/> for the AuRa consensus variant.
+/// Mirrors <see cref="SequentialEngineModuleTests"/> for the AuRa consensus variant.
 /// Both parallel and sequential must produce identical hashes.
 /// </summary>
-[TestFixture(false)]
-[TestFixture(true)]
-[Parallelizable(ParallelScope.All)]
-public class ParallelAuRaMergeEngineModuleTests(bool parallel) : AuRaMergeEngineModuleTests
+public class SequentialAuRaMergeEngineModuleTests : AuRaMergeEngineModuleTests
 {
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null)
