@@ -614,7 +614,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCostForMsg);
                 UInt256.AddOverflow(gasCostForMsg, tx.Value, out UInt256 wantForMsg);
                 return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
-                    $"err: insufficient funds for gas * price + value: address {tx.SenderAddress} have {senderBalance} want {wantForMsg} (supplied gas {tx.GasLimit})");
+                    $"insufficient funds for gas * price + value: address {tx.SenderAddress} have {senderBalance} want {wantForMsg}");
             }
 
             bool overflows;
@@ -654,7 +654,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCostForMsg);
                 UInt256.AddOverflow(gasCostForMsg, tx.Value, out UInt256 wantForMsg);
                 return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
-                    $"err: insufficient funds for gas * price + value: address {tx.SenderAddress} have {senderBalance} want {wantForMsg} (supplied gas {tx.GasLimit})");
+                    $"insufficient funds for gas * price + value: address {tx.SenderAddress} have {senderBalance} want {wantForMsg}");
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
