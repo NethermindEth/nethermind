@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CkzgLib;
 using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Core.Crypto;
@@ -201,7 +202,7 @@ public partial class ShardBlobTxDecoderTests
                 .SignedAndResolved()
                 .TestObject;
 
-        static Transaction BuildMempoolTransactionWithWrapperCounts(int blobsCount, int commitmentsCount, int proofsCount)
+        static Transaction BuildMempoolTransactionWithWrapperCounts(int blobsCount, int commitmentsCount, int proofsCount, ProofVersion version = ProofVersion.V0)
         {
             byte[][] blobs = CreateEmptyByteArrays(blobsCount);
             byte[][] commitments = CreateEmptyByteArrays(commitmentsCount);
@@ -209,7 +210,7 @@ public partial class ShardBlobTxDecoderTests
             return Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(1, false)
                 .WithChainId(TestBlockchainIds.ChainId)
-                .With(tx => tx.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V0))
+                .With(tx => tx.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version))
                 .SignedAndResolved()
                 .TestObject;
         }
@@ -240,6 +241,12 @@ public partial class ShardBlobTxDecoderTests
         yield return new TestCaseData(BuildMempoolTransactionWithWrapperCounts(1, 1, 129), RlpBehaviors.InMempoolForm)
         {
             TestName = "Decode rejects more than 128 wrapper proofs"
+        };
+        yield return new TestCaseData(
+            BuildMempoolTransactionWithWrapperCounts(1, 1, 128 * Ckzg.CellsPerExtBlob + 1, ProofVersion.V1),
+            RlpBehaviors.InMempoolForm)
+        {
+            TestName = "Decode rejects more than v1 wrapper proofs limit"
         };
     }
 }
