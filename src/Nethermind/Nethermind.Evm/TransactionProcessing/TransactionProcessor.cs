@@ -340,7 +340,11 @@ namespace Nethermind.Evm.TransactionProcessing
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && !value.IsZero && tx.SenderAddress != recipient)
             {
-                logs = [TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value)];
+                // Mirror VirtualMachine.AddLog: tracers that build responses from ReportLog
+                // (e.g. SimulateTxTracer) would otherwise miss synthetic transfer logs.
+                LogEntry transferLog = TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value);
+                logs = [transferLog];
+                if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
             }
 
             substate = new TransactionSubstate(

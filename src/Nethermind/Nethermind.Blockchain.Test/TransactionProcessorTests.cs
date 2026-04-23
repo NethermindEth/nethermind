@@ -788,4 +788,46 @@ public class TransactionProcessorTests(bool eip155Enabled)
             return base.ExecuteTransaction<TTracingInst>(vmState, worldState, txTracer);
         }
     }
+
+    private sealed class LogRecordingTxTracer : TxTracer
+    {
+        public List<LogEntry> Logs { get; } = [];
+        public override bool IsTracingLogs => true;
+        public override void ReportLog(LogEntry log) => Logs.Add(log);
+    }
+
+    [Test]
+    public void Simple_transfer_fast_path_reports_eip7708_log_to_tracer()
+    {
+        // Regression: the fast path was storing the synthetic EIP-7708 transfer log in the substate
+        // for the receipt but not calling tracer.ReportLog, so tracers that build their response
+        // from ReportLog (e.g. SimulateTxTracer) missed the log vs. the non-fast VM path.
+        IReleaseSpec spec = Amsterdam.Instance; // EIP-7708 enabled
+        ISpecProvider specProvider = new TestSpecProvider(spec);
+        CountingVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance,
+            specProvider,
+            _stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .TestObject;
+
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        LogRecordingTxTracer tracer = new();
+        TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+
+        result.TransactionExecuted.Should().BeTrue();
+        virtualMachine.ExecuteTransactionCalls.Should().Be(0, "fast path must be taken");
+        tracer.Logs.Should().HaveCount(1, "the EIP-7708 transfer log must be reported to the tracer");
+    }
 }
