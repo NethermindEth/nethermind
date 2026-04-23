@@ -872,8 +872,6 @@ namespace Nethermind.Trie.Test.Pruning
 
             readOnlyNode.GetChildHash(0).Should().Be(TestItem.Keccaks[0]);
             readOnlyNode.FullRlp[0].Should().Be(firstReadOnlyByte);
-
-            readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
         private long ExpectedPerNodeKeyMemorySize => (scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;

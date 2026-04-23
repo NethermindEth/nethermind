@@ -1724,7 +1724,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return new TrieNode(NodeType.Unknown, key.Keccak);
         }
 
-        // we returning a copy to avoid multithreaded access
+        // AsSpan forces an owned copy via the ReadOnlySpan ctor overload: node.FullRlp may be
+        // pool-backed and returned to the pool while this read-only clone is still in use.
         TrieNode trieNode = new(NodeType.Unknown, key.Keccak, fullRlp.AsSpan());
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
         trieNode.Keccak = key.Keccak;
