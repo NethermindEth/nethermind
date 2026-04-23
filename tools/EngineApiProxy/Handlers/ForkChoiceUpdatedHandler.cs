@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Text.Json.Nodes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
@@ -9,8 +10,6 @@ using Nethermind.EngineApiProxy.Models;
 using Nethermind.EngineApiProxy.Services;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.EngineApiProxy.Handlers;
 
@@ -153,8 +152,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
     /// Checks if the request contains non-null payload attributes (second parameter).
     /// </summary>
     private static bool HasPayloadAttributes(JsonRpcRequest request)
-        => request.Params is { Count: > 1 }
-           && request.Params[1] is JObject { Type: not JTokenType.Null };
+        => request.Params is { Count: > 1 } && request.Params[1] is JsonObject;
 
     private async Task<JsonRpcResponse> ProcessWithValidation(JsonRpcRequest request)
     {
@@ -214,11 +212,11 @@ public class ForkChoiceUpdatedHandler : IDisposable
         JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
         // If response contains payloadId, store it for tracking
-        if (response.Result is JObject resultObj &&
+        if (response.Result is JsonObject resultObj &&
             resultObj["payloadId"] is not null &&
             request.Params is not null &&
             request.Params.Count > 0 &&
-            request.Params[0] is JObject fcState &&
+            request.Params[0] is JsonObject fcState &&
             fcState["headBlockHash"] is not null)
         {
             string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
@@ -272,9 +270,9 @@ public class ForkChoiceUpdatedHandler : IDisposable
             JsonRpcResponse response = new()
             {
                 Id = request.Id,
-                Result = new JObject
+                Result = new JsonObject
                 {
-                    ["payloadStatus"] = new JObject
+                    ["payloadStatus"] = new JsonObject
                     {
                         ["status"] = "VALID",
                         ["latestValidHash"] = headBlockHashStr,
@@ -302,7 +300,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
             // Check if request contains payload attributes
             bool hasPayloadAttributes = request.Params is not null &&
                                       request.Params.Count > 1 &&
-                                      request.Params[1] is JObject;
+                                      request.Params[1] is JsonObject;
 
             // For requests with payload attributes, implement deduplication
             if (hasPayloadAttributes)
@@ -340,7 +338,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                 string headBlockHashStr = string.Empty;
                 if (request.Params is not null &&
                     request.Params.Count > 0 &&
-                    request.Params[0] is JObject fcState &&
+                    request.Params[0] is JsonObject fcState &&
                     fcState["headBlockHash"] is not null)
                 {
                     headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
@@ -368,7 +366,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                 JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
                 // If response contains payloadId, store it for tracking
-                if (response.Result is JObject resultObj &&
+                if (response.Result is JsonObject resultObj &&
                     resultObj["payloadId"] is not null)
                 {
                     string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
@@ -423,11 +421,11 @@ public class ForkChoiceUpdatedHandler : IDisposable
                 JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
                 // Process response normally
-                if (response.Result is JObject resultObj &&
+                if (response.Result is JsonObject resultObj &&
                     resultObj["payloadId"] is not null &&
                     request.Params is not null &&
                     request.Params.Count > 0 &&
-                    request.Params[0] is JObject fcState &&
+                    request.Params[0] is JsonObject fcState &&
                     fcState["headBlockHash"] is not null)
                 {
                     string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
@@ -465,40 +463,28 @@ public class ForkChoiceUpdatedHandler : IDisposable
     /// <summary>
     /// Computes a fingerprint for FCU requests to identify duplicates
     /// </summary>
-    private static string ComputeRequestFingerprint(JsonRpcRequest request)
-    {
-        // We only need the params to determine if two requests are identical
-        if (request.Params is null)
-            return string.Empty;
-
-        // Create a normalized JSON string of the params
-        return JsonConvert.SerializeObject(request.Params);
-    }
+    private static string ComputeRequestFingerprint(JsonRpcRequest request) => request.Params?.ToJsonString() ?? string.Empty;
 
     /// <summary>
     /// Creates a clone of a response with a new ID to match the current request
     /// </summary>
-    private static JsonRpcResponse CloneResponseWithNewId(JsonRpcResponse response, object? newId) => new()
+    private static JsonRpcResponse CloneResponseWithNewId(JsonRpcResponse response, JsonNode? newId) => new()
     {
-        Id = newId,
-        Result = response.Result is not null
-            ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Result))
-            : null,
+        Id = newId?.DeepClone(),
+        Result = response.Result?.DeepClone(),
         Error = response.Error is not null
             ? new JsonRpcError
             {
                 Code = response.Error.Code,
                 Message = response.Error.Message,
-                Data = response.Error.Data is not null
-                    ? JsonConvert.DeserializeObject<JToken>(JsonConvert.SerializeObject(response.Error.Data))
-                    : null
+                Data = response.Error.Data?.DeepClone()
             }
             : null
     };
 
     private static string ExtractHeadBlockHash(JsonRpcRequest request)
     {
-        if (request.Params?[0] is JObject forkChoiceState &&
+        if (request.Params is { Count: > 0 } && request.Params[0] is JsonObject forkChoiceState &&
             forkChoiceState["headBlockHash"] is not null)
         {
             return forkChoiceState["headBlockHash"]?.ToString() ?? string.Empty;
@@ -514,7 +500,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
     {
         // If the FCU request has payload attributes (param index 1)
         if (request.Params?.Count > 1 &&
-            request.Params[1] is JObject payloadAttributes &&
+            request.Params[1] is JsonObject payloadAttributes &&
             payloadAttributes["parentBeaconBlockRoot"] is not null)
         {
             string? parentBeaconBlockRoot = payloadAttributes["parentBeaconBlockRoot"]?.ToString();

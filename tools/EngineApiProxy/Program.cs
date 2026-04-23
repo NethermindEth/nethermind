@@ -15,92 +15,100 @@ public class Program
     public static async Task<int> Main(string[] args)
     {
         // Create command line options
-        Option<string?> executionClientOption = new(
-            name: "--ec-endpoint",
-            description: "The URL of the execution client API endpoint");
-        executionClientOption.AddAlias("-e");
+        Option<string?> executionClientOption = new("--ec-endpoint", "-e")
+        {
+            Description = "The URL of the execution client API endpoint"
+        };
 
-        Option<string?> consensusClientOption = new(
-            name: "--cl-endpoint",
-            description: "The URL of the consensus client API endpoint (optional)");
-        consensusClientOption.AddAlias("-c");
+        Option<string?> consensusClientOption = new("--cl-endpoint", "-c")
+        {
+            Description = "The URL of the consensus client API endpoint (optional)"
+        };
 
-        Option<int> portOption = new(
-            name: "--port",
-            description: "The port to listen for consensus client requests",
-            getDefaultValue: () => 8551);
-        portOption.AddAlias("-p");
+        Option<int> portOption = new("--port", "-p")
+        {
+            Description = "The port to listen for consensus client requests",
+            DefaultValueFactory = _ => 8551
+        };
 
-        Option<string> logLevelOption = new(
-            name: "--log-level",
-            description: "Log level (Trace, Debug, Info, Warn, Error)",
-            getDefaultValue: () => "Info");
-        logLevelOption.AddAlias("-l");
+        Option<string> logLevelOption = new("--log-level", "-l")
+        {
+            Description = "Log level (Trace, Debug, Info, Warn, Error)",
+            DefaultValueFactory = _ => "Info"
+        };
 
-        Option<string?> logFileOption = new(
-            name: "--log-file",
-            description: "Path to log file (if not specified, only console logging is used)",
-            getDefaultValue: () => null);
+        Option<string?> logFileOption = new("--log-file")
+        {
+            Description = "Path to log file (if not specified, only console logging is used)"
+        };
 
-        Option<bool> validateAllBlocksOption = new(
-            name: "--validate-all-blocks",
-            description: "Enable validation for all blocks, including those where CL doesn't request validation",
-            getDefaultValue: () => false);
+        Option<bool> validateAllBlocksOption = new("--validate-all-blocks")
+        {
+            Description = "Enable validation for all blocks, including those where CL doesn't request validation",
+            DefaultValueFactory = _ => false
+        };
 
-        Option<string> feeRecipientOption = new(
-            name: "--fee-recipient",
-            description: "Default fee recipient address for generated payload attributes",
-            getDefaultValue: () => "0x8943545177806ed17b9f23f0a21ee5948ecaa776");
+        Option<string> feeRecipientOption = new("--fee-recipient")
+        {
+            Description = "Default fee recipient address for generated payload attributes",
+            DefaultValueFactory = _ => "0x8943545177806ed17b9f23f0a21ee5948ecaa776"
+        };
 
-        Option<ValidationMode> validationModeOption = new(
-            name: "--validation-mode",
-            description: "Mode for block validation (ForkChoiceUpdated, NewPayload, Merged, or Lighthouse)",
-            getDefaultValue: () => ValidationMode.Lighthouse);
+        Option<ValidationMode> validationModeOption = new("--validation-mode")
+        {
+            Description = "Mode for block validation (ForkChoiceUpdated, NewPayload, Merged, or Lighthouse)",
+            DefaultValueFactory = _ => ValidationMode.Lighthouse
+        };
 
-        Option<int> requestTimeoutOption = new(
-            name: "--request-timeout",
-            description: "Timeout in seconds for HTTP requests to EL/CL clients",
-            getDefaultValue: () => 60);
+        Option<int> requestTimeoutOption = new("--request-timeout")
+        {
+            Description = "Timeout in seconds for HTTP requests to EL/CL clients",
+            DefaultValueFactory = _ => 60
+        };
 
-        Option<string> getPayloadMethodOption = new(
-            name: "--get-payload-method",
-            description: "Engine API method to use when getting payloads for validation (e.g., engine_getPayloadV3, engine_getPayloadV4)",
-            getDefaultValue: () => "engine_getPayloadV4");
+        Option<string> getPayloadMethodOption = new("--get-payload-method")
+        {
+            Description = "Engine API method to use when getting payloads for validation (e.g., engine_getPayloadV3, engine_getPayloadV4)",
+            DefaultValueFactory = _ => "engine_getPayloadV4"
+        };
 
-        Option<string> newPayloadMethodOption = new(
-            name: "--new-payload-method",
-            description: "Engine API method to use when sending new payloads for validation (e.g., engine_newPayloadV3, engine_newPayloadV4)",
-            getDefaultValue: () => "engine_newPayloadV4");
+        Option<string> newPayloadMethodOption = new("--new-payload-method")
+        {
+            Description = "Engine API method to use when sending new payloads for validation (e.g., engine_newPayloadV3, engine_newPayloadV4)",
+            DefaultValueFactory = _ => "engine_newPayloadV4"
+        };
 
         // Create root command with options
-        RootCommand rootCommand = new("Nethermind Engine API Proxy");
-        rootCommand.AddOption(executionClientOption);
-        rootCommand.AddOption(consensusClientOption);
-        rootCommand.AddOption(portOption);
-        rootCommand.AddOption(logLevelOption);
-        rootCommand.AddOption(logFileOption);
-        rootCommand.AddOption(validateAllBlocksOption);
-        rootCommand.AddOption(feeRecipientOption);
-        rootCommand.AddOption(validationModeOption);
-        rootCommand.AddOption(requestTimeoutOption);
-        rootCommand.AddOption(getPayloadMethodOption);
-        rootCommand.AddOption(newPayloadMethodOption);
+        RootCommand rootCommand = new("Nethermind Engine API Proxy")
+        {
+            executionClientOption,
+            consensusClientOption,
+            portOption,
+            logLevelOption,
+            logFileOption,
+            validateAllBlocksOption,
+            feeRecipientOption,
+            validationModeOption,
+            requestTimeoutOption,
+            getPayloadMethodOption,
+            newPayloadMethodOption,
+        };
 
-        rootCommand.SetHandler(async (context) =>
+        rootCommand.SetAction(async (parseResult, ct) =>
         {
             try
             {
-                string? ecEndpoint = context.ParseResult.GetValueForOption(executionClientOption);
-                string? clEndpoint = context.ParseResult.GetValueForOption(consensusClientOption);
-                int port = context.ParseResult.GetValueForOption(portOption);
-                string logLevel = context.ParseResult.GetValueForOption(logLevelOption) ?? "Info";
-                string? logFile = context.ParseResult.GetValueForOption(logFileOption);
-                bool validateAllBlocks = context.ParseResult.GetValueForOption(validateAllBlocksOption);
-                string feeRecipient = context.ParseResult.GetValueForOption(feeRecipientOption) ?? "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
-                ValidationMode validationMode = context.ParseResult.GetValueForOption(validationModeOption);
-                int requestTimeout = context.ParseResult.GetValueForOption(requestTimeoutOption);
-                string getPayloadMethod = context.ParseResult.GetValueForOption(getPayloadMethodOption) ?? "engine_getPayloadV4";
-                string newPayloadMethod = context.ParseResult.GetValueForOption(newPayloadMethodOption) ?? "engine_newPayloadV4";
+                string? ecEndpoint = parseResult.GetValue(executionClientOption);
+                string? clEndpoint = parseResult.GetValue(consensusClientOption);
+                int port = parseResult.GetValue(portOption);
+                string logLevel = parseResult.GetValue(logLevelOption) ?? "Info";
+                string? logFile = parseResult.GetValue(logFileOption);
+                bool validateAllBlocks = parseResult.GetValue(validateAllBlocksOption);
+                string feeRecipient = parseResult.GetValue(feeRecipientOption) ?? "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
+                ValidationMode validationMode = parseResult.GetValue(validationModeOption);
+                int requestTimeout = parseResult.GetValue(requestTimeoutOption);
+                string getPayloadMethod = parseResult.GetValue(getPayloadMethodOption) ?? "engine_getPayloadV4";
+                string newPayloadMethod = parseResult.GetValue(newPayloadMethodOption) ?? "engine_newPayloadV4";
 
                 // Configure logging
                 NLogManager logManager = new();
@@ -137,8 +145,7 @@ public class Program
                 if (string.IsNullOrWhiteSpace(ecEndpoint))
                 {
                     logger.Error("Execution Client endpoint is required. Use --ec-endpoint or -e to specify.");
-                    context.ExitCode = 1;
-                    return;
+                    return 1;
                 }
 
                 // Create and configure proxy
@@ -164,7 +171,7 @@ public class Program
                 await proxy.StartAsync();
 
                 // Wait for Ctrl+C
-                CancellationTokenSource cancellationTokenSource = new();
+                CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 Console.CancelKeyPress += (sender, e) =>
                 {
                     e.Cancel = true;
@@ -182,15 +189,16 @@ public class Program
 
                 // Stop proxy server gracefully
                 await proxy.StopAsync();
+                return 0;
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error: {ex.Message}");
-                context.ExitCode = 1;
+                return 1;
             }
         });
 
-        return await rootCommand.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 
     private static void ConfigureConsoleLogging(string logLevel)

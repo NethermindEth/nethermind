@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
@@ -8,7 +10,6 @@ using Nethermind.EngineApiProxy.Models;
 using Nethermind.EngineApiProxy.Services;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.EngineApiProxy.Handlers;
 
@@ -104,7 +105,7 @@ public class NewPayloadHandler(
 
                 // Extract blobVersionedHashes from incoming request (params[1]) and store them
                 Hash256 parentHashObj = new(Bytes.FromHexString(parentHash));
-                JArray incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
+                JsonArray incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
                 if (incomingBlobHashes.Count > 0)
                 {
                     string[] hashArray = BlobHashComputer.ToStringArray(incomingBlobHashes);
@@ -181,7 +182,7 @@ public class NewPayloadHandler(
                 Hash256 parentHashObj = new(Bytes.FromHexString(parentHash));
 
                 // Extract blobVersionedHashes from incoming request (params[1])
-                JArray incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
+                JsonArray incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
                 if (incomingBlobHashes.Count > 0)
                 {
                     // Store the blob versioned hashes for this block for later retrieval
@@ -218,7 +219,7 @@ public class NewPayloadHandler(
             JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
             // Log the response status for monitoring
-            if (response.Result is JObject result && result["status"] is not null)
+            if (response.Result is JsonObject result && result["status"] is not null)
             {
                 string status = result["status"]?.ToString() ?? "unknown";
                 _logger.Info($"{_config.ValidationMode} validation block {blockHash} status: {status}");
@@ -238,8 +239,8 @@ public class NewPayloadHandler(
     {
         "engine_newPayloadV3" or "engine_newPayloadV4" => new JsonRpcRequest(
             "engine_forkchoiceUpdatedV3",
-            new JArray(
-                new JObject
+            new JsonArray(
+                new JsonObject
                 {
                     [HeadBlockHashKey] = parentHash,
                     [FinalizedBlockHashKey] = ZeroHash,
@@ -250,8 +251,8 @@ public class NewPayloadHandler(
         ),
         _ => new JsonRpcRequest(
             "engine_forkchoiceUpdated",
-            new JArray(
-                new JObject
+            new JsonArray(
+                new JsonObject
                 {
                     [HeadBlockHashKey] = parentHash,
                     [FinalizedBlockHashKey] = ZeroHash,
@@ -264,7 +265,7 @@ public class NewPayloadHandler(
 
     private static string ExtractBlockHashFromPayload(JsonRpcRequest request)
     {
-        if (request.Params is { Count: > 0 } && request.Params[0] is JObject payload)
+        if (request.Params is { Count: > 0 } && request.Params[0] is JsonObject payload)
         {
             return payload[BlockHashKey]?.ToString() ?? string.Empty;
         }
@@ -274,7 +275,7 @@ public class NewPayloadHandler(
     /// <summary>
     /// Checks if the request has no payload attributes (empty, missing, or null second parameter).
     /// </summary>
-    private static bool HasNoPayloadAttributes(JArray parameters)
+    private static bool HasNoPayloadAttributes(JsonArray parameters)
     {
         if (parameters.Count == 1)
             return true;
@@ -282,9 +283,8 @@ public class NewPayloadHandler(
         return parameters[1] switch
         {
             null => true,
-            JToken { Type: JTokenType.Null } => true,
-            JArray { Count: 0 } => true,
-            JObject => false,
+            JsonArray { Count: 0 } => true,
+            JsonObject => false,
             _ => true
         };
     }
@@ -292,30 +292,30 @@ public class NewPayloadHandler(
     /// <summary>
     /// Extracts the parent hash from the newPayload request parameters.
     /// The first parameter can be either:
-    /// - A JObject containing the execution payload with a "parentHash" field
-    /// - A JArray where the first element is a JObject with a "parentHash" field
+    /// - A JsonObject containing the execution payload with a "parentHash" field
+    /// - A JsonArray where the first element is a JsonObject with a "parentHash" field
     /// </summary>
-    private static string ExtractParentHash(JArray parameters)
+    private static string ExtractParentHash(JsonArray parameters)
     {
         if (parameters is not { Count: > 0 })
             return string.Empty;
 
         return parameters[0] switch
         {
-            JObject payload => payload[ParentHashKey]?.ToString() ?? string.Empty,
-            JArray { Count: > 0 } arr when arr[0] is JObject nested => nested[ParentHashKey]?.ToString() ?? string.Empty,
+            JsonObject payload => payload[ParentHashKey]?.ToString() ?? string.Empty,
+            JsonArray { Count: > 0 } arr when arr[0] is JsonObject nested => nested[ParentHashKey]?.ToString() ?? string.Empty,
             _ => string.Empty
         };
     }
 
-    private static string ExtractParentBeaconBlockRoot(JArray parameters)
+    private static string ExtractParentBeaconBlockRoot(JsonArray parameters)
     {
         if (parameters is null || parameters.Count < 3)
             return string.Empty;
 
         // The parentBeaconBlockRoot is the third parameter in the NewPayloadV4 request
-        JToken? parentBeaconBlockRoot = parameters[2];
-        if (parentBeaconBlockRoot is null || parentBeaconBlockRoot.Type == JTokenType.Null)
+        JsonNode? parentBeaconBlockRoot = parameters[2];
+        if (parentBeaconBlockRoot is null || parentBeaconBlockRoot.GetValueKind() == JsonValueKind.Null)
             return string.Empty;
 
         return parentBeaconBlockRoot.ToString();

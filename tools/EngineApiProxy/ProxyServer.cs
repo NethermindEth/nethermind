@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,8 +15,6 @@ using Nethermind.EngineApiProxy.Models;
 using Nethermind.EngineApiProxy.Services;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.EngineApiProxy;
 
@@ -245,8 +245,8 @@ public class ProxyServer
         string method;
         try
         {
-            JObject requestObj = JObject.Parse(requestBody);
-            method = requestObj["method"]?.ToString() ?? "unknown";
+            JsonObject? requestObj = JsonNode.Parse(requestBody) as JsonObject;
+            method = requestObj?["method"]?.ToString() ?? "unknown";
         }
         catch
         {
@@ -257,7 +257,7 @@ public class ProxyServer
         JsonRpcRequest? request;
         try
         {
-            request = JsonConvert.DeserializeObject<JsonRpcRequest>(requestBody);
+            request = JsonSerializer.Deserialize<JsonRpcRequest>(requestBody);
             if (request is null)
             {
                 await SendErrorResponse(context, 400, "Invalid JSON-RPC request");
@@ -294,7 +294,7 @@ public class ProxyServer
                 // Queue the newPayload message and wait for the response
                 Task<JsonRpcResponse> responseTask = _messageQueue.EnqueueMessage(request);
                 response = await responseTask;
-                _logger.Debug($"Received response from message queue for {request.Method}: {JsonConvert.SerializeObject(response)}");
+                _logger.Debug($"Received response from message queue for {request.Method}: {JsonSerializer.Serialize(response)}");
             }
             // In Lighthouse mode, we want to handle FCU requests specially but still queue them
             else if (request.Method.StartsWith("engine_forkchoiceUpdated") &&
@@ -305,7 +305,7 @@ public class ProxyServer
                 // Queue the forkChoiceUpdated message and wait for the response
                 Task<JsonRpcResponse> responseTask = _messageQueue.EnqueueMessage(request);
                 response = await responseTask;
-                _logger.Debug($"Received response from message queue for {request.Method}: {JsonConvert.SerializeObject(response)}");
+                _logger.Debug($"Received response from message queue for {request.Method}: {JsonSerializer.Serialize(response)}");
             }
             else
             {
@@ -322,8 +322,8 @@ public class ProxyServer
         context.Response.ContentType = "application/json";
         string destinationIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         string destinationHost = context.Request.Headers.TryGetValue("Host", out Microsoft.Extensions.Primitives.StringValues val) ? val.ToString() : "unknown";
-        _logger.Info($"PR -> CL|{request.Method}|(Destination IP: {destinationIp}, Headers Host: {destinationHost}): {JsonConvert.SerializeObject(response)}");
-        await context.Response.WriteAsync(JsonConvert.SerializeObject(response));
+        _logger.Info($"PR -> CL|{request.Method}|(Destination IP: {destinationIp}, Headers Host: {destinationHost}): {JsonSerializer.Serialize(response)}");
+        await context.Response.WriteAsync(JsonSerializer.Serialize(response));
     }
 
     private async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
@@ -383,6 +383,6 @@ public class ProxyServer
             }
         };
 
-        await context.Response.WriteAsync(JsonConvert.SerializeObject(errorResponse));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(errorResponse));
     }
 }

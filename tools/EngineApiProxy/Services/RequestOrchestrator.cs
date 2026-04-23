@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.EngineApiProxy.Services;
 
@@ -100,12 +100,12 @@ public class RequestOrchestrator(
                 return string.Empty;
             }
 
-            JObject payloadAttributes = new();
+            JsonObject payloadAttributes;
 
             // Original behavior for non-LH modes
             if (!fromCL)
             {
-                JObject? blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
+                JsonObject? blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
                 if (blockData is null)
                 {
                     _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
@@ -118,7 +118,7 @@ public class RequestOrchestrator(
             else
             {
                 // Get the head block data
-                JObject? beaconBlockHeader = await _blockFetcher.GetBeaconBlockHeader();
+                JsonObject? beaconBlockHeader = await _blockFetcher.GetBeaconBlockHeader();
                 if (beaconBlockHeader is null)
                 {
                     _logger.Warn("Failed to fetch beacon block header");
@@ -126,25 +126,24 @@ public class RequestOrchestrator(
                 }
                 headBlockHash = beaconBlockHeader["data"]?["root"]?.ToString() ?? string.Empty;
 
-                JObject? blockData = await _blockFetcher.GetBeaconBlock(headBlockHash);
+                JsonObject? blockData = await _blockFetcher.GetBeaconBlock(headBlockHash);
                 if (blockData is null)
                 {
                     _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
                     return string.Empty;
                 }
-                else
+
+                JsonObject? payload = (blockData["data"]?["message"]?["body"]?["execution_payload"])?.DeepClone() as JsonObject;
+                if (payload is null)
                 {
-                    JObject? payload = blockData["data"]?["message"]?["body"]?["execution_payload"]?.ToObject<JObject>();
-                    if (payload is null)
-                    {
-                        _logger.Warn($"Failed to fetch payload for hash: {headBlockHash}");
-                        return string.Empty;
-                    }
-                    blockData["timestamp"] = payload["timestamp"]?.ToString() ?? null;
-                    blockData["prevRandao"] = payload["prev_randao"]?.ToString() ?? null;
-                    blockData["parentBeaconBlockRoot"] = headBlockHash;
-                    blockData["withdrawals"] = payload["withdrawals"] ?? new JArray();
+                    _logger.Warn($"Failed to fetch payload for hash: {headBlockHash}");
+                    return string.Empty;
                 }
+                blockData["timestamp"] = payload["timestamp"]?.ToString();
+                blockData["prevRandao"] = payload["prev_randao"]?.ToString();
+                blockData["parentBeaconBlockRoot"] = headBlockHash;
+                blockData["withdrawals"] = payload["withdrawals"]?.DeepClone() ?? new JsonArray();
+
                 payloadAttributes = _attributesGenerator.GeneratePayloadAttributes(blockData);
             }
 
@@ -160,7 +159,7 @@ public class RequestOrchestrator(
             // Ensure the first parameter (fork choice state) exists
             if (modifiedRequest.Params.Count == 0)
             {
-                modifiedRequest.Params.Add(new JObject
+                modifiedRequest.Params.Add(new JsonObject
                 {
                     ["headBlockHash"] = headBlockHash,
                     ["finalizedBlockHash"] = headBlockHash, // Use same hash as finalized for simplicity
@@ -183,7 +182,7 @@ public class RequestOrchestrator(
             JsonRpcResponse fcuResponse = await SendJsonRpcRequest(modifiedRequest);
 
             // 5. Extract payload ID from response
-            if (fcuResponse.Result is JObject resultObj && resultObj["payloadId"] is not null)
+            if (fcuResponse.Result is JsonObject resultObj && resultObj["payloadId"] is not null)
             {
                 string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
 
@@ -296,7 +295,7 @@ public class RequestOrchestrator(
             // Create getPayload request
             JsonRpcRequest getPayloadRequest = new(
                 _config.GetPayloadMethod,
-                new JArray(payloadId),
+                new JsonArray(payloadId),
                 Guid.NewGuid().ToString());
 
             // Make sure any authorization headers from HttpClient are included
@@ -329,13 +328,13 @@ public class RequestOrchestrator(
                 throw new InvalidOperationException($"Error getting payload: {payloadResponse.Error.Code} - {payloadResponse.Error.Message}");
             }
 
-            if (payloadResponse.Result is JObject payload)
+            if (payloadResponse.Result is JsonObject payload)
             {
                 try
                 {
                     // Extract blobsBundle and compute versioned hashes
-                    JObject? blobsBundle = payload["blobsBundle"] as JObject;
-                    JArray blobVersionedHashes = _blobHashComputer.ComputeVersionedHashes(blobsBundle);
+                    JsonObject? blobsBundle = payload["blobsBundle"] as JsonObject;
+                    JsonArray blobVersionedHashes = _blobHashComputer.ComputeVersionedHashes(blobsBundle);
 
                     // Store blob versioned hashes in tracker for this head block
                     if (blobVersionedHashes.Count > 0)
@@ -372,7 +371,7 @@ public class RequestOrchestrator(
                     {
                         _logger.Warn($"Synthetic newPayload validation resulted in error: {newPayloadResponse.Error.Code} - {newPayloadResponse.Error.Message}");
                     }
-                    else if (newPayloadResponse.Result is JObject resultObj && resultObj["status"]?.ToString() == "INVALID")
+                    else if (newPayloadResponse.Result is JsonObject resultObj && resultObj["status"]?.ToString() == "INVALID")
                     {
                         _logger.Warn($"Synthetic newPayload validation returned status INVALID: {resultObj["validationError"]}");
                     }
@@ -409,15 +408,15 @@ public class RequestOrchestrator(
     /// <param name="parentBeaconBlockRoot">The parent beacon block root extracted from block data</param>
     /// <param name="blobVersionedHashes">The blob versioned hashes computed from blobsBundle</param>
     /// <returns>A newPayload request</returns>
-    private JsonRpcRequest CreateNewPayloadRequest(JObject payload, string? parentBeaconBlockRoot = null, JArray? blobVersionedHashes = null)
+    private JsonRpcRequest CreateNewPayloadRequest(JsonObject payload, string? parentBeaconBlockRoot = null, JsonArray? blobVersionedHashes = null)
     {
         try
         {
             // Extract the executionPayload from the response
-            JToken executionPayload = payload["executionPayload"] ?? payload;
+            JsonNode executionPayload = (payload["executionPayload"] ?? payload).DeepClone();
 
             // Use provided blobVersionedHashes or empty array
-            blobVersionedHashes ??= new JArray();
+            blobVersionedHashes ??= new JsonArray();
             _logger.Debug($"CreateNewPayloadRequest: Including {blobVersionedHashes.Count} blobVersionedHashes in synthetic newPayload");
 
             // Check if parentBeaconBlockRoot is provided
@@ -464,12 +463,12 @@ public class RequestOrchestrator(
             }
 
             // Create the parameter array for the newPayload request
-            JArray parameters = new()
+            JsonArray parameters = new()
             {
                 executionPayload,          // First parameter: executionPayload
                 blobVersionedHashes,       // Second parameter: blobVersionedHashes
                 parentBeaconBlockRoot,     // Third parameter: parentBeaconBlockRoot
-                new JArray()               // Fourth parameter: execution_payload_preparation_info
+                new JsonArray()            // Fourth parameter: execution_payload_preparation_info
             };
 
             _logger.Debug($"Created {_config.NewPayloadMethod} request with {blobVersionedHashes.Count} blobVersionedHashes, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
@@ -497,7 +496,7 @@ public class RequestOrchestrator(
         try
         {
             // Serialize request
-            string requestJson = JsonConvert.SerializeObject(request);
+            string requestJson = JsonSerializer.Serialize(request);
             string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
             _logger.Debug($"Forwarding validation request to EL at: {targetHost}");
             _logger.Info($"PR -> EL|{request.Method}|V|{requestJson}");
@@ -571,7 +570,7 @@ public class RequestOrchestrator(
 
             try
             {
-                JsonRpcResponse? jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
+                JsonRpcResponse? jsonRpcResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseJson);
                 if (jsonRpcResponse is null)
                 {
                     _logger.Error($"Failed to deserialize JSON-RPC response: {responseJson}");
@@ -609,13 +608,13 @@ public class RequestOrchestrator(
     /// <param name="request">The request to clone</param>
     /// <returns>A clone of the request</returns>
     private static JsonRpcRequest CloneRequest(JsonRpcRequest request) => new(
-            request.Method,
-            request.Params?.DeepClone() as JArray,
-            request.Id)
+        request.Method,
+        request.Params?.DeepClone() as JsonArray,
+        request.Id?.DeepClone())
     {
         OriginalHeaders = request.OriginalHeaders is not null
-                ? new Dictionary<string, string>(request.OriginalHeaders)
-                : null
+            ? new Dictionary<string, string>(request.OriginalHeaders)
+            : null
     };
 
     /// <summary>
@@ -643,9 +642,9 @@ public class RequestOrchestrator(
             JsonRpcResponse payloadResponse = await GetAndProcessPayload(payloadId, headBlock);
 
             // Extract the block hash from the response
-            if (payloadResponse.Result is JObject payload)
+            if (payloadResponse.Result is JsonObject payload)
             {
-                JObject? executionPayload = payload["executionPayload"]?.ToObject<JObject>();
+                JsonObject? executionPayload = payload["executionPayload"] as JsonObject;
                 if (executionPayload is not null)
                 {
                     string? synthBlockHash = executionPayload["blockHash"]?.ToString();

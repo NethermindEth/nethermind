@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.EngineApiProxy.Utilities;
 
@@ -75,11 +76,11 @@ public class BlobHashComputer(ILogManager logManager)
     /// <summary>
     /// Computes versioned hashes from an array of KZG commitments in a blobsBundle
     /// </summary>
-    /// <param name="blobsBundle">The blobsBundle JObject from a getPayload response</param>
-    /// <returns>A JArray of versioned hash hex strings</returns>
-    public JArray ComputeVersionedHashes(JObject? blobsBundle)
+    /// <param name="blobsBundle">The blobsBundle JsonObject from a getPayload response</param>
+    /// <returns>A JsonArray of versioned hash hex strings</returns>
+    public JsonArray ComputeVersionedHashes(JsonObject? blobsBundle)
     {
-        JArray result = new();
+        JsonArray result = new();
 
         if (blobsBundle is null)
         {
@@ -87,8 +88,7 @@ public class BlobHashComputer(ILogManager logManager)
             return result;
         }
 
-        JArray? commitments = blobsBundle["commitments"] as JArray;
-        if (commitments is null || commitments.Count == 0)
+        if (blobsBundle["commitments"] is not JsonArray commitments || commitments.Count == 0)
         {
             _logger.Debug("No commitments in blobsBundle, returning empty versioned hashes array");
             return result;
@@ -97,7 +97,7 @@ public class BlobHashComputer(ILogManager logManager)
         _logger.Info($"Processing block with {commitments.Count} blobs");
 
         int successCount = 0;
-        foreach (JToken commitment in commitments)
+        foreach (JsonNode? commitment in commitments)
         {
             string? commitmentHex = commitment?.ToString();
             if (string.IsNullOrEmpty(commitmentHex))
@@ -122,39 +122,39 @@ public class BlobHashComputer(ILogManager logManager)
     /// <summary>
     /// Extracts blob versioned hashes from the params array of a newPayloadV3/V4 request
     /// </summary>
-    /// <param name="requestParams">The params JArray from a newPayload request</param>
-    /// <returns>A JArray of versioned hash hex strings, or empty array if not present</returns>
-    public static JArray ExtractBlobVersionedHashes(JArray? requestParams)
+    /// <param name="requestParams">The params JsonArray from a newPayload request</param>
+    /// <returns>A JsonArray of versioned hash hex strings, or empty array if not present</returns>
+    public static JsonArray ExtractBlobVersionedHashes(JsonArray? requestParams)
     {
         // blobVersionedHashes is the second parameter (index 1) in newPayloadV3/V4
         if (requestParams is null || requestParams.Count < 2)
         {
-            return new JArray();
+            return new JsonArray();
         }
 
-        JToken? blobHashes = requestParams[1];
+        JsonNode? blobHashes = requestParams[1];
 
-        // Handle null or JTokenType.Null
-        if (blobHashes is null || blobHashes.Type == JTokenType.Null)
+        // Handle null or JsonValueKind.Null
+        if (blobHashes is null || blobHashes.GetValueKind() == JsonValueKind.Null)
         {
-            return new JArray();
+            return new JsonArray();
         }
 
-        // Should be a JArray
-        if (blobHashes is JArray hashArray)
+        // Should be a JsonArray
+        if (blobHashes is JsonArray hashArray)
         {
             return hashArray;
         }
 
-        return new JArray();
+        return new JsonArray();
     }
 
     /// <summary>
-    /// Converts a JArray of versioned hash hex strings to a string array
+    /// Converts a JsonArray of versioned hash hex strings to a string array
     /// </summary>
-    /// <param name="hashArray">JArray of versioned hashes</param>
+    /// <param name="hashArray">JsonArray of versioned hashes</param>
     /// <returns>String array of versioned hashes</returns>
-    public static string[] ToStringArray(JArray? hashArray)
+    public static string[] ToStringArray(JsonArray? hashArray)
     {
         if (hashArray is null || hashArray.Count == 0)
         {
@@ -162,7 +162,7 @@ public class BlobHashComputer(ILogManager logManager)
         }
 
         List<string> result = new(hashArray.Count);
-        foreach (JToken? token in hashArray)
+        foreach (JsonNode? token in hashArray)
         {
             string? value = token?.ToString();
             if (!string.IsNullOrEmpty(value))

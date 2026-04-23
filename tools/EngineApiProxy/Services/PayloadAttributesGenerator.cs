@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.Logging;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.EngineApiProxy.Services;
 
@@ -20,8 +20,8 @@ public class PayloadAttributesGenerator(ProxyConfig config, ILogManager logManag
     /// Generates payload attributes based on the block data
     /// </summary>
     /// <param name="blockData">Block data from execution client</param>
-    /// <returns>A JObject containing the payload attributes</returns>
-    public JObject GeneratePayloadAttributes(JObject blockData)
+    /// <returns>A JsonObject containing the payload attributes</returns>
+    public JsonObject GeneratePayloadAttributes(JsonObject blockData)
     {
         _logger.Debug("Generating payload attributes from block data");
 
@@ -42,17 +42,19 @@ public class PayloadAttributesGenerator(ProxyConfig config, ILogManager logManag
             // Generate a random parentBeaconBlockRoot (32 bytes)
             string parentBeaconBlockRoot = blockData["parentBeaconBlockRoot"]?.ToString() ?? GenerateRandomHash();
 
+            JsonNode withdrawals = blockData["withdrawals"]?.DeepClone() ?? new JsonArray();
+
             // Create payload attributes
-            JObject payloadAttributes = new()
+            JsonObject payloadAttributes = new()
             {
                 ["timestamp"] = nextTimestamp,
                 ["prevRandao"] = prevRandao,
                 ["suggestedFeeRecipient"] = feeRecipient,
                 ["parentBeaconBlockRoot"] = parentBeaconBlockRoot,
-                ["withdrawals"] = blockData["withdrawals"] ?? new JArray() // Empty withdrawals array
+                ["withdrawals"] = withdrawals
             };
 
-            _logger.Debug($"Generated payload attributes: {payloadAttributes}");
+            _logger.Debug($"Generated payload attributes: {payloadAttributes.ToJsonString()}");
             return payloadAttributes;
         }
         catch (Exception ex)

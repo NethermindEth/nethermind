@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text;
+using System.Text.Json;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using System.Text;
 
 namespace Nethermind.EngineApiProxy.Utilities;
 
@@ -22,7 +22,7 @@ public class RequestForwarder(
     {
         try
         {
-            string requestJson = JsonConvert.SerializeObject(request);
+            string requestJson = JsonSerializer.Serialize(request);
             string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
             _logger.Debug($"Forwarding request to EL at: {targetHost}");
             if (logResponse)
@@ -135,7 +135,7 @@ public class RequestForwarder(
                 return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: EL error: {response.StatusCode}");
             }
 
-            JsonRpcResponse? jsonRpcResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseBody);
+            JsonRpcResponse? jsonRpcResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseBody);
             if (jsonRpcResponse is null)
             {
                 return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, "Proxy error: Invalid response from EL");

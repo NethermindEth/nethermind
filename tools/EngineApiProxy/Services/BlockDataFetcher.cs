@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.EngineApiProxy.Services;
 
@@ -33,8 +33,8 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
     /// Fetches block data from the execution client by hash
     /// </summary>
     /// <param name="blockHash">The block hash</param>
-    /// <returns>Block data as a JObject</returns>
-    public virtual async Task<JObject?> GetBlockByHash(string blockHash)
+    /// <returns>Block data as a JsonObject</returns>
+    public virtual async Task<JsonObject?> GetBlockByHash(string blockHash)
     {
         _logger.Debug($"Fetching block data for hash: {blockHash}");
 
@@ -47,7 +47,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
                 Guid.NewGuid().ToString());
 
             // Send request to EC
-            string requestJson = JsonConvert.SerializeObject(request);
+            string requestJson = JsonSerializer.Serialize(request);
             StringContent httpContent = new(requestJson, Encoding.UTF8, "application/json");
 
             // Create a request message instead of using PostAsync directly
@@ -86,9 +86,9 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
 
             string responseJson = await response.Content.ReadAsStringAsync();
             _logger.Debug($"EL -> PR|{request.Method}|V|{responseJson}");
-            JsonRpcResponse? jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
+            JsonRpcResponse? jsonResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseJson);
 
-            if (jsonResponse?.Result is JObject blockData)
+            if (jsonResponse?.Result is JsonObject blockData)
             {
                 _logger.Debug($"Successfully fetched block data for hash: {blockHash}");
                 return blockData;
@@ -107,8 +107,8 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
     /// <summary>
     /// Fetches the latest block from the execution client
     /// </summary>
-    /// <returns>Latest block data as a JObject</returns>
-    public virtual async Task<JObject?> GetLatestBlock()
+    /// <returns>Latest block data as a JsonObject</returns>
+    public virtual async Task<JsonObject?> GetLatestBlock()
     {
         _logger.Debug("Fetching latest block data");
 
@@ -121,7 +121,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
                 Guid.NewGuid().ToString());
 
             // Send request to EC
-            string requestJson = JsonConvert.SerializeObject(request);
+            string requestJson = JsonSerializer.Serialize(request);
             StringContent httpContent = new(requestJson, Encoding.UTF8, "application/json");
 
             // Create a request message instead of using PostAsync directly
@@ -158,9 +158,9 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
             }
 
             string responseJson = await response.Content.ReadAsStringAsync();
-            JsonRpcResponse? jsonResponse = JsonConvert.DeserializeObject<JsonRpcResponse>(responseJson);
+            JsonRpcResponse? jsonResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseJson);
 
-            if (jsonResponse?.Result is JObject blockData)
+            if (jsonResponse?.Result is JsonObject blockData)
             {
                 _logger.Debug("Successfully fetched latest block data");
                 return blockData;
@@ -176,12 +176,11 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
         }
     }
 
-
     /// <summary>
     /// Gets the head beacon block header from the consensus client
     /// </summary>
     /// <returns>Head beacon block header data or null if request fails</returns>
-    public virtual async Task<JObject?> GetBeaconBlockHeader()
+    public virtual async Task<JsonObject?> GetBeaconBlockHeader()
     {
         if (_consensusClient is null)
         {
@@ -206,7 +205,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
             string responseJson = await response.Content.ReadAsStringAsync();
             _logger.Info($"CL -> PR|B|/eth/v1/beacon/headers/head|{responseJson}");
 
-            JObject responseObj = JObject.Parse(responseJson);
+            JsonObject? responseObj = JsonNode.Parse(responseJson) as JsonObject;
             _logger.Debug("Successfully received head beacon block header");
 
             return responseObj;
@@ -223,7 +222,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
     /// </summary>
     /// <param name="blockId">Block identifier (root hash or slot number)</param>
     /// <returns>Beacon block data or null if request fails</returns>
-    public virtual async Task<JObject?> GetBeaconBlock(string blockId)
+    public virtual async Task<JsonObject?> GetBeaconBlock(string blockId)
     {
         if (_consensusClient is null)
         {
@@ -248,7 +247,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
             string responseJson = await response.Content.ReadAsStringAsync();
             _logger.Info($"CL -> PR|B|/eth/v1/beacon/blocks/{blockId}|{responseJson.Substring(0, Math.Min(200, responseJson.Length))}...");
 
-            JObject responseObj = JObject.Parse(responseJson);
+            JsonObject? responseObj = JsonNode.Parse(responseJson) as JsonObject;
             _logger.Debug($"Successfully received beacon block with ID: {blockId}");
 
             return responseObj;
