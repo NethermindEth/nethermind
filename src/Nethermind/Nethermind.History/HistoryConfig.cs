@@ -9,5 +9,4 @@ public class HistoryConfig : IHistoryConfig
     public uint RetentionEpochs { get; set; } = 82125;
     public uint PruningInterval { get; set; } = 8;
     public uint PruningTimeoutSeconds { get; set; } = 2;
-    public long MinDeletableBlockNumber { get; set; } = 1;
 }

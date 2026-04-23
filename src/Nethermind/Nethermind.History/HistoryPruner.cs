@@ -91,7 +91,7 @@ public class HistoryPruner : IHistoryPruner
         _epochLength = (long)blocksConfig.SecondsPerSlot * SlotsPerEpoch; // must be changed if slot length changes
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
-        _minDeletableBlockNumber = Math.Max(1, historyConfig.MinDeletableBlockNumber);
+        _minDeletableBlockNumber = _blockTree.Genesis?.Number ?? 0 + 1; //not not remove genesis
 
         CheckConfig();
 

@@ -133,67 +133,18 @@ public class HistoryPrunerTests
         CheckHeadPreserved(testBlockchain, blocks);
     }
 
+    // Pointer = max(genesis block number, persisted DB value) — persisted value wins when above genesis
     [Test]
-    public async Task MinDeletableBlockNumber_preserves_blocks_below_minimum()
+    public async Task Delete_pointer_is_not_reset_on_restart()
     {
         const int blocks = 100;
-        const int cutoff = 36;
-        const long minDeletable = 20;
+        const long storedPointer = 50;
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
-            PruningInterval = 0,
-            MinDeletableBlockNumber = minDeletable
-        };
-
-        List<Hash256> blockHashes = [];
-        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-
-        CheckOldestAndCutoff(minDeletable, cutoff, historyPruner);
-
-        historyPruner.TryPruneHistory(CancellationToken.None);
-
-        CheckGenesisPreserved(testBlockchain, blockHashes[0]);
-
-        for (int i = 1; i < minDeletable; i++)
-        {
-            CheckBlockPreserved(testBlockchain, blockHashes, i);
-        }
-
-        for (int i = (int)minDeletable; i <= blocks; i++)
-        {
-            if (i < cutoff)
-            {
-                CheckBlockPruned(testBlockchain, blockHashes, i);
-            }
-            else
-            {
-                CheckBlockPreserved(testBlockchain, blockHashes, i);
-            }
-        }
-
-        CheckHeadPreserved(testBlockchain, blocks);
-        CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
-    }
-
-    // Pointer = max(MinDeletableBlockNumber, persisted DB value):
-    //   stored < minDeletable → clamped up to minDeletable
-    //   stored > minDeletable → persisted value wins (no reset on restart)
-    [TestCase(20L, 5L, 20L, TestName = "MinDeletableBlockNumber_clamps_stale_db_pointer")]
-    [TestCase(1L, 50L, 50L, TestName = "MinDeletableBlockNumber_does_not_reset_pointer_on_restart")]
-    public async Task MinDeletableBlockNumber_pointer_load(long minDeletable, long storedPointer, long expectedOldest)
-    {
-        const int blocks = 100;
-
-        IHistoryConfig historyConfig = new HistoryConfig
-        {
-            Pruning = PruningModes.Rolling,
-            RetentionEpochs = 2,
-            PruningInterval = 0,
-            MinDeletableBlockNumber = minDeletable
+            PruningInterval = 0
         };
 
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
@@ -203,7 +154,7 @@ public class HistoryPrunerTests
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
-        Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(expectedOldest));
+        Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(storedPointer));
     }
 
     [TestCase(5u)]
