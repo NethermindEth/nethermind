@@ -5,8 +5,8 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.AuRa;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -37,13 +37,7 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
     {
-        // Skip forwarding only when the current head is already post-merge. We can't rely on
-        // IPoSSwitcher.HasEverReachedTerminalBlock() because it is true on a fresh archive DB as
-        // soon as Merge.FinalTotalDifficulty is set in config, even with head at genesis — skipping
-        // then would leave pre-merge AuRa finalization completely inert and break validator-set
-        // transitions (e.g. Gnosis block 1300).
-        BlockHeader? head = _blockTree.Head?.Header;
-        if (head is not null && _poSSwitcher.IsPostMerge(head)) return;
+        if (_poSSwitcher.IsHeadPostMerge(_blockTree)) return;
         _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
     }
 

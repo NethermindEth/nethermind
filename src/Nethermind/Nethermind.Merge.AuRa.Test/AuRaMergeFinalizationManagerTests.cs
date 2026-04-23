@@ -67,10 +67,8 @@ public class AuRaMergeFinalizationManagerTests
     [Test]
     public void SetMainBlockBranchProcessor_forwards_when_HasEverReachedTerminalBlock_but_head_is_genesis()
     {
-        // Regression for fresh Gnosis archive sync: PoSSwitcher.HasEverReachedTerminalBlock() is
-        // true on startup as soon as Merge.FinalTotalDifficulty is set in config (gnosis_archive.json),
-        // but the head is still at genesis and pre-merge AuRa finalization must still run so the
-        // validator-set transition at block 1300 is applied.
+        // Regression: HasEverReachedTerminalBlock() is true on fresh archive DB with FTD in config,
+        // but head is still genesis — must not skip forwarding in that case.
         (IManualBlockFinalizationManager manual, IAuRaBlockFinalizationManager aura, IPoSSwitcher posSwitcher, IBlockTree blockTree) = CreateMocks();
         Block genesis = Build.A.Block.Genesis.TestObject;
         blockTree.Head.Returns(genesis);
