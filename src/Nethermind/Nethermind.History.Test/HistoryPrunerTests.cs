@@ -114,6 +114,58 @@ public class HistoryPrunerTests
         CheckOldestAndCutoff(expectedPruneBelow, finalCutoff, historyPruner);
     }
 
+    [Test]
+    public async Task Can_find_oldest_block()
+    {
+        const int blocks = 100;
+        const int cutoff = 36;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 2,
+            PruningInterval = 0
+        };
+
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        CheckOldestAndCutoff(1, cutoff, historyPruner);
+
+        historyPruner.TryPruneHistory(CancellationToken.None);
+        historyPruner.SetDeletePointerToOldestBlock(); // recalculate oldest block with binary search
+
+        CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
+    }
+
+    [Test]
+    public async Task Does_not_prune_when_disabled()
+    {
+        const int blocks = 10;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Disabled,
+            PruningInterval = 0
+        };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, blockHashes: blockHashes);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        CheckGenesisPreserved(testBlockchain, blockHashes[0]);
+
+        for (int i = 1; i <= blocks; i++)
+        {
+            CheckBlockPreserved(testBlockchain, blockHashes, i);
+        }
+
+        CheckHeadPreserved(testBlockchain, blocks);
+    }
+
     [TestCase(0, 100000u, false)]
     [TestCase(100, 10u, true)]
     public void Validates_config(int minHistoryRetentionEpochs, uint retentionEpochs, bool shouldThrow)
