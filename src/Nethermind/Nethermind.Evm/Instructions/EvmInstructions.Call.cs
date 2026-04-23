@@ -263,6 +263,7 @@ public static partial class EvmInstructions
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
         [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 callValue, Address target, ExecutionType executionType)
         {
             vm.WorldState.AddToBalanceAndCreateIfNotExists(target, executionType, in callValue, spec);
@@ -273,13 +274,8 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
-
         [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         EvmExceptionType SlowCall(ref TGasPolicy gas)
         {
             // Take a snapshot of the state for potential rollback.
@@ -323,6 +319,12 @@ public static partial class EvmInstructions
 
             return EvmExceptionType.None;
         }
+
+        // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
     }
 
     /// <summary>
