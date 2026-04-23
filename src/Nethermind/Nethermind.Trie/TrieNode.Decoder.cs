@@ -51,9 +51,8 @@ namespace Nethermind.Trie
 
                 // Fast path: child was unresolved to a Hash256 (e.g. by pruning) — encode the hash directly
                 // without materializing a TrieNode via FindCachedOrUnknown + ResolveKey.
-                Hash256? childKeccak = item._nodeData[0] as Hash256;
                 TrieNode? nodeRef = null;
-                if (childKeccak is null)
+                if (item._nodeData[0] is not Hash256 childKeccak)
                 {
                     int previousLength = item.AppendChildPath(ref path, 0);
                     nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
