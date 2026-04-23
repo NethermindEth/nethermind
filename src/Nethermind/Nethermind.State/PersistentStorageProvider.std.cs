@@ -29,11 +29,11 @@ internal sealed partial class PersistentStorageProvider
             IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
             )> storages = new(_toUpdateRoots.Count);
 
-        foreach (KeyValuePair<AddressAsKey, PerContractState> kv in _storages)
+        foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
         {
-            if (_toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+            if (kv.Value && _storages.TryGetValue(kv.Key, out PerContractState? contractState))
             {
-                storages.Add((kv.Key, kv.Value, writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)));
+                storages.Add((kv.Key, contractState, writeBatch.CreateStorageWriteBatch(kv.Key, contractState.EstimatedChanges)));
             }
         }
 
