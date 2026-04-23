@@ -28,7 +28,6 @@ namespace Nethermind.State
 {
     internal class StateProvider(ILogManager logManager) : IJournal<int>
     {
-        private static readonly AddressAsKey s_trackedAddress = new(new Address("0x3f8f7689eebea7f8c3acc8166d23dc29df79a049"));
         private static readonly UInt256 _zero = UInt256.Zero;
 
         private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
@@ -688,11 +687,6 @@ namespace Nethermind.State
                 ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
                 if (change.Before != change.After)
                 {
-                    if (key.Equals(s_trackedAddress))
-                    {
-                        Console.WriteLine($"TRACK state-flush before={FormatAccount(change.Before)} after={FormatAccount(change.After)}");
-                    }
-
                     change.Before = change.After;
                     writeBatch.Set(key, change.After);
                     writes++;
@@ -708,11 +702,6 @@ namespace Nethermind.State
             if (skipped > 0)
                 Metrics.IncrementStateSkippedWrites(skipped);
         }
-
-        private static string FormatAccount(Account? account)
-            => account is null
-                ? "<null>"
-                : $"nonce={account.Nonce} balance={account.Balance} storage={account.StorageRoot}";
 
         public bool WarmUp(Address address)
             => GetState(address) is not null;

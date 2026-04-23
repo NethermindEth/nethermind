@@ -17,7 +17,6 @@ namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
-    private static readonly AddressAsKey s_trackedAddress = new(new Address("0x3f8f7689eebea7f8c3acc8166d23dc29df79a049"));
     private readonly record struct PendingStorageWrite(StorageCell Cell, byte[] Value, int ClearVersion);
 
     private const int InitialCapacity = 4096 * 8;
@@ -86,15 +85,7 @@ public class PreBlockCaches
     /// <summary>
     /// Buffer a state write for deferred carry-forward. Applied after prewarm completion.
     /// </summary>
-    public void EnqueueStateWrite(AddressAsKey key, Account? account)
-    {
-        if (key.Equals(s_trackedAddress))
-        {
-            Console.WriteLine($"TRACK enqueue-state account={FormatAccount(account)}");
-        }
-
-        _pendingStateWrites.Add((key, account));
-    }
+    public void EnqueueStateWrite(AddressAsKey key, Account? account) => _pendingStateWrites.Add((key, account));
 
     /// <summary>
     /// Buffer a storage write for deferred carry-forward. Thread-safe (called from parallel FlushToTree).
@@ -116,11 +107,6 @@ public class PreBlockCaches
         foreach ((AddressAsKey key, Account? account) in _pendingStateWrites)
         {
             _stateCache.Set(key, account);
-
-            if (key.Equals(s_trackedAddress))
-            {
-                Console.WriteLine($"TRACK flush-state block={Volatile.Read(ref _committedBlockNumber)} account={FormatAccount(account)}");
-            }
         }
         _pendingStateWrites.Clear();
 
@@ -147,11 +133,6 @@ public class PreBlockCaches
 
     private int GetStorageClearVersion(AddressAsKey address)
         => _storageClearVersions.TryGetValue(address, out int version) ? version : 0;
-
-    private static string FormatAccount(Account? account)
-        => account is null
-            ? "<null>"
-            : $"nonce={account.Nonce} balance={account.Balance} storage={account.StorageRoot}";
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
     {

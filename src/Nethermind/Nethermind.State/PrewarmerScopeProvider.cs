@@ -34,8 +34,6 @@ public class PrewarmerScopeProvider(
     bool populatePreBlockCache = true
 ) : IWorldStateScopeProvider, IPreBlockCaches
 {
-    private static readonly AddressAsKey s_trackedAddress = new(new Address("0x3f8f7689eebea7f8c3acc8166d23dc29df79a049"));
-
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
@@ -180,11 +178,6 @@ public class PrewarmerScopeProvider(
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
 
-                if (addressAsKey.Equals(s_trackedAddress))
-                {
-                    Console.WriteLine($"TRACK read populate={populatePreBlockCache} account={FormatAccount(account)}");
-                }
-
                 return account;
             }
 
@@ -193,21 +186,11 @@ public class PrewarmerScopeProvider(
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                 baseScope.HintGet(address, account);
                 Metrics.IncrementStateTreeCacheHits();
-
-                if (addressAsKey.Equals(s_trackedAddress))
-                {
-                    Console.WriteLine($"TRACK read populate={populatePreBlockCache} hit account={FormatAccount(account)}");
-                }
             }
             else
             {
                 account = GetFromBaseTree(in addressAsKey);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
-
-                if (addressAsKey.Equals(s_trackedAddress))
-                {
-                    Console.WriteLine($"TRACK read populate={populatePreBlockCache} miss account={FormatAccount(account)}");
-                }
             }
 
             return account;
@@ -219,11 +202,6 @@ public class PrewarmerScopeProvider(
         {
             return baseScope.Get(address);
         }
-
-        private static string FormatAccount(Account? account)
-            => account is null
-                ? "<null>"
-                : $"nonce={account.Nonce} balance={account.Balance} storage={account.StorageRoot}";
     }
 
     private sealed class StorageTreeWrapper : IWorldStateScopeProvider.IStorageTree
