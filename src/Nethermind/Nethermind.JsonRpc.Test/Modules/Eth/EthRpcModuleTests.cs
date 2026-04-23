@@ -1599,6 +1599,15 @@ public partial class EthRpcModuleTests
         Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
     }
 
+    [TestCase("0xd4", TestName = "IncompleteRlpList")]
+    [TestCase("0xFF63808459682f07825208943d504cb2b11a45e7d1f9646ede40c60d52deec2580802da0e06b96410c954281132f2b403c0d25e0b04dd83f4ac5dffef07eb800c01718b7a07dc8bc872a54a40547c033b78081fd417e64bb96cae12ed5ad50b82f951636dd", TestName = "TruncatedTransaction")]
+    public async Task Eth_sendRawTransaction_malformed_rlp_returns_invalid_params(string rawHex)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawHex);
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"rlp: value size exceeds available input length\"},\"id\":67}");
+    }
+
     [Test]
     public async Task eth_getTransactionByHash_returns_correct_values_on_SetCode_tx()
     {

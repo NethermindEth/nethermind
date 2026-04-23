@@ -351,7 +351,7 @@ public partial class EthRpcModule(
         }
         catch (RlpException)
         {
-            return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+            return ResultWrapper<Hash256>.Fail("rlp: value size exceeds available input length", ErrorCodes.InvalidParams);
         }
     }
 
