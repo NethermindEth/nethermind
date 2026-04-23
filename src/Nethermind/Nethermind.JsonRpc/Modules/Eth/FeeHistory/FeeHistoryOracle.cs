@@ -293,7 +293,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             foreach (double percentile in rewardPercentiles)
             {
                 double thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
-                while (txIndex < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
+                while (txIndex + 1 < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
                 {
                     txIndex++;
                     sumGasUsed += rewardsInBlock[txIndex].GasUsed;
