@@ -389,8 +389,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// Returns 0 when floor pricing is not active.
     /// </summary>
     public static long CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
-        spec.IsEip7981Enabled && transaction.AccessList is { Count: var count }
-            ? (count.AddressesCount * Address.Size + count.StorageKeysCount * AccessList.StorageKeySize) * spec.GasCosts.TxDataNonZeroMultiplier
+        spec.IsEip7981Enabled && transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) }
+            ? (addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize) * spec.GasCosts.TxDataNonZeroMultiplier
             : 0L;
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long floorTokensInAccessList)
