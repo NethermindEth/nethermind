@@ -110,10 +110,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task GetPayloadV3_should_fail_on_unknown_payload()
-    {
+    public async Task GetPayloadV3_should_fail_on_unknown_payload() =>
         await GetPayload_should_fail_on_unknown_payload(3);
-    }
 
     [Test]
     public async Task GetPayloadV3_should_return_all_the_blobs([Values(0, 1, 2, 3, 4)] int blobTxCount, [Values(true, false)] bool oneBlobPerTx)
@@ -125,7 +123,7 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
-        ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
+        ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
             getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V0);
         Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
     }
@@ -253,7 +251,7 @@ public partial class EngineModuleTests
                             """;
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), requestStr, "[]", "0x169630f535b4a41330164c6e5c92b1224c0c407f582d407d0ac3d206cd32fd52");
 
-        var rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
+        JsonRpcResponse rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
         JsonRpcErrorResponse? response = (rpcResponse) as JsonRpcErrorResponse;
         Assert.That(response?.Error, Is.Not.Null);
         Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
@@ -512,7 +510,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        for (var i = 1; i < BlockCount; i++)
+        for (int i = 1; i < BlockCount; i++)
         {
             await AddNewBlockV3(rpcModule, chain, 1);
         }
@@ -527,6 +525,41 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task ForkChoiceUpdatedV3_should_allow_lower_finalized_than_previous_when_building_payload()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadBlockProcessingTimeout = 1000
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ExecutionPayloadV3 block1 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block2 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block3 = await AddNewBlockV3(rpcModule, chain);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = block3.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE
+        };
+
+        ForkchoiceStateV1 higherFinalized = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block2.BlockHash, safeBlockHash: block2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpcModule.engine_forkchoiceUpdatedV3(higherFinalized, null);
+        higherFinalizedResult.ErrorCode.Should().Be(0);
+        higherFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        ForkchoiceStateV1 repeatedHead = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV3(repeatedHead, payloadAttributes);
+
+        result.ErrorCode.Should().Be(0);
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.PayloadId.Should().NotBeNull();
+    }
+
+    [Test]
     public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
@@ -535,7 +568,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new List<byte[]>(requestSize);
+        List<byte[]> request = new(requestSize);
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -639,7 +672,7 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+        List<byte[]> blobVersionedHashesRequest = new(requestSize);
         List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
 
         int actualIndex = 0;
@@ -734,8 +767,8 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payloadResultB2 = await AddNewBlockV3(rpcModuleB, chainB, 2);
         ExecutionPayloadV3 payloadResultB3 = await AddNewBlockV3(rpcModuleB, chainB, 1);
 
-        SyncPeerMock chainAPeer = new SyncPeerMock(chainA.BlockTree);
-        SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(chainAPeer), AllocationContexts.All);
+        SyncPeerMock chainAPeer = new(chainA.BlockTree);
+        SyncPeerAllocation alloc = new(new PeerInfo(chainAPeer), AllocationContexts.All);
         chainC.SyncPeerPool!.Allocate(
             Arg.Any<IPeerAllocationStrategy>(),
             Arg.Any<AllocationContexts>(),

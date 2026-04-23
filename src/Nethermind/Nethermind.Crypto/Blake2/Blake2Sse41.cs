@@ -21,31 +21,31 @@ public unsafe partial class Blake2Compression
     private static void ComputeSse41(ulong* sh, ulong* m, uint rounds)
     {
         ref byte rrm = ref MemoryMarshal.GetReference(Rormask);
-        var r24 = Unsafe.As<byte, Vector128<byte>>(ref rrm);
-        var r16 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref rrm, Vector128<byte>.Count));
+        Vector128<byte> r24 = Unsafe.As<byte, Vector128<byte>>(ref rrm);
+        Vector128<byte> r16 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref rrm, Vector128<byte>.Count));
 
-        var row1l = Sse2.LoadVector128(sh);
-        var row1h = Sse2.LoadVector128(sh + 2);
-        var row2l = Sse2.LoadVector128(sh + 4);
-        var row2h = Sse2.LoadVector128(sh + 6);
+        Vector128<ulong> row1l = Sse2.LoadVector128(sh);
+        Vector128<ulong> row1h = Sse2.LoadVector128(sh + 2);
+        Vector128<ulong> row2l = Sse2.LoadVector128(sh + 4);
+        Vector128<ulong> row2h = Sse2.LoadVector128(sh + 6);
 
         ref byte riv = ref MemoryMarshal.GetReference(Ivle);
-        var row3l = Unsafe.As<byte, Vector128<ulong>>(ref riv);
-        var row3h = Unsafe.As<byte, Vector128<ulong>>(ref Unsafe.Add(ref riv, 16));
-        var row4l = Unsafe.As<byte, Vector128<ulong>>(ref Unsafe.Add(ref riv, 32));
-        var row4h = Unsafe.As<byte, Vector128<ulong>>(ref Unsafe.Add(ref riv, 48));
+        Vector128<ulong> row3l = Unsafe.As<byte, Vector128<ulong>>(ref riv);
+        Vector128<ulong> row3h = Unsafe.As<byte, Vector128<ulong>>(ref Unsafe.Add(ref riv, 16));
+        Vector128<ulong> row4l = Unsafe.As<byte, Vector128<ulong>>(ref Unsafe.Add(ref riv, 32));
+        Vector128<ulong> row4h = Unsafe.As<byte, Vector128<ulong>>(ref Unsafe.Add(ref riv, 48));
 
         row4l = Sse2.Xor(row4l, Sse2.LoadVector128(sh + 8)); // t[]
         row4h = Sse2.Xor(row4h, Sse2.LoadVector128(sh + 10)); // f[]
 
-        var m0 = Sse2.LoadVector128(m);
-        var m1 = Sse2.LoadVector128(m + 2);
-        var m2 = Sse2.LoadVector128(m + 4);
-        var m3 = Sse2.LoadVector128(m + 6);
-        var m4 = Sse2.LoadVector128(m + 8);
-        var m5 = Sse2.LoadVector128(m + 10);
-        var m6 = Sse2.LoadVector128(m + 12);
-        var m7 = Sse2.LoadVector128(m + 14);
+        Vector128<ulong> m0 = Sse2.LoadVector128(m);
+        Vector128<ulong> m1 = Sse2.LoadVector128(m + 2);
+        Vector128<ulong> m2 = Sse2.LoadVector128(m + 4);
+        Vector128<ulong> m3 = Sse2.LoadVector128(m + 6);
+        Vector128<ulong> m4 = Sse2.LoadVector128(m + 8);
+        Vector128<ulong> m5 = Sse2.LoadVector128(m + 10);
+        Vector128<ulong> m6 = Sse2.LoadVector128(m + 12);
+        Vector128<ulong> m7 = Sse2.LoadVector128(m + 14);
         Vector128<ulong> t0;
         Vector128<ulong> t1;
         Vector128<ulong> b0;

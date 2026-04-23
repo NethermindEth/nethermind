@@ -3,6 +3,7 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -20,6 +21,7 @@ public class SyncDbTuner
     private readonly ITunableDb.TuneType _tuneType;
     private readonly ITunableDb.TuneType _blocksDbTuneType;
 
+    [ConstructorWithSideEffect]
     public SyncDbTuner(
         ISyncConfig syncConfig,
         ISyncFeed<SnapSyncBatch>? snapSyncFeed,

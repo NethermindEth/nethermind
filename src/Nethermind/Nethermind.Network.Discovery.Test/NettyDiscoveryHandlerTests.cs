@@ -172,12 +172,12 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void UndersizedPacketIsNotForwardedToDiscoveryManager()
         {
-            var (discoveryManagerMock, handler, ctx, _) = CreateHandler();
+            (IDiscoveryManager? discoveryManagerMock, NettyDiscoveryHandler? handler, IChannelHandlerContext? ctx, IMessageSerializationService _) = CreateHandler();
 
             // 50 bytes is well under the 98-byte minimum for a valid discovery v4 message
             byte[] data = new byte[50];
-            var from = IPEndPoint.Parse("127.0.0.1:10000");
-            var to = IPEndPoint.Parse("127.0.0.1:10003");
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10003");
             handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
 
             discoveryManagerMock.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
@@ -187,9 +187,9 @@ namespace Nethermind.Network.Discovery.Test
         public void ForwardsUnrecognizedMessageToNextHandler()
         {
             byte[] data = [1, 2, 3];
-            var from = IPEndPoint.Parse("127.0.0.1:10000");
-            var to = IPEndPoint.Parse("127.0.0.1:10003");
-            var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), from, to);
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10003");
+            DatagramPacket packet = new(Unpooled.WrappedBuffer(data), from, to);
 
             IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
             _discoveryHandlers[0].ChannelRead(ctx, packet);
@@ -216,7 +216,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task RateLimitedMessagesAreIgnored()
         {
-            var (discoveryManagerMock, handler, ctx, service) = CreateHandler(NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1)));
+            (IDiscoveryManager? discoveryManagerMock, NettyDiscoveryHandler? handler, IChannelHandlerContext? ctx, IMessageSerializationService? service) = CreateHandler(NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1)));
             SemaphoreSlim called = new(0);
             discoveryManagerMock.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => called.Release());
 
@@ -236,7 +236,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task DefaultInboundRateLimiter_Allows_ShortBurstFromSameIp()
         {
-            var (discoveryManagerMock, handler, ctx, service) = CreateHandler();
+            (IDiscoveryManager? discoveryManagerMock, NettyDiscoveryHandler? handler, IChannelHandlerContext? ctx, IMessageSerializationService? service) = CreateHandler();
 
             byte[] data = SerializePing(service);
 
@@ -251,7 +251,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task DefaultInboundRateLimiter_Drops_Message_AboveBurstLimit()
         {
-            var (discoveryManagerMock, handler, ctx, service) = CreateHandler();
+            (IDiscoveryManager? discoveryManagerMock, NettyDiscoveryHandler? handler, IChannelHandlerContext? ctx, IMessageSerializationService? service) = CreateHandler();
 
             byte[] data = SerializePing(service);
 
@@ -305,9 +305,6 @@ namespace Nethermind.Network.Discovery.Test
                 .AddLast(handler);
         }
 
-        private static async Task SleepWhileWaiting()
-        {
-            await Task.Delay((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
-        }
+        private static async Task SleepWhileWaiting() => await Task.Delay((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
     }
 }

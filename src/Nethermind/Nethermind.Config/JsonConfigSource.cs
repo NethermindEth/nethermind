@@ -14,17 +14,14 @@ public class JsonConfigSource : IConfigSource
 {
     private const string SchemaKey = "$schema";
 
-    public JsonConfigSource(string configFilePath)
-    {
-        LoadJsonConfig(configFilePath);
-    }
+    public JsonConfigSource(string configFilePath) => LoadJsonConfig(configFilePath);
 
     private void ApplyJsonConfig(string jsonContent)
     {
         try
         {
-            using var json = JsonDocument.Parse(jsonContent);
-            foreach (var moduleEntry in json.RootElement.EnumerateObject().Where(o => o.Name != SchemaKey))
+            using JsonDocument json = JsonDocument.Parse(jsonContent);
+            foreach (JsonProperty moduleEntry in json.RootElement.EnumerateObject().Where(o => o.Name != SchemaKey))
             {
                 LoadModule(moduleEntry.Name, moduleEntry.Value);
             }
@@ -72,14 +69,14 @@ public class JsonConfigSource : IConfigSource
 
     private void LoadModule(string moduleName, JsonElement configItems)
     {
-        var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+        Dictionary<string, string> itemsDict = new(StringComparer.InvariantCultureIgnoreCase);
 
-        foreach (var configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
+        foreach (JsonProperty configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
         {
-            var key = configItem.Name;
+            string key = configItem.Name;
             if (!itemsDict.ContainsKey(key))
             {
-                var value = configItem.Value;
+                JsonElement value = configItem.Value;
                 if (value.ValueKind == JsonValueKind.Number)
                 {
                     itemsDict[key] = value.GetInt64().ToString();
@@ -154,8 +151,5 @@ public class JsonConfigSource : IConfigSource
         return (isSet, isSet ? _values[category][name] : null);
     }
 
-    public IEnumerable<(string Category, string Name)> GetConfigKeys()
-    {
-        return _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
-    }
+    public IEnumerable<(string Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
 }

@@ -12,12 +12,10 @@ namespace Nethermind.Serialization.Rlp
     public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader> { }
     public interface IBlockHeaderDecoder<T> : IRlpValueDecoder<T>, IRlpStreamEncoder<T> where T : BlockHeader { }
 
-    public sealed class HeaderDecoder : RlpValueDecoder<BlockHeader>, IHeaderDecoder
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
+    public sealed class HeaderDecoder() : RlpValueDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
-        public HeaderDecoder() { }
 
         protected override BlockHeader? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)

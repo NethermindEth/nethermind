@@ -70,6 +70,7 @@ namespace Nethermind.Specs.Test
         public bool IsOpIsthmusEnabled { get; set; } = spec.IsOpIsthmusEnabled;
         public bool IsOpJovianEnabled { get; set; } = spec.IsOpJovianEnabled;
         public bool IsEip7623Enabled { get; set; } = spec.IsEip7623Enabled;
+        public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7918Enabled { get; set; } = spec.IsEip7918Enabled;
         public bool IsEip7883Enabled { get; set; } = spec.IsEip7883Enabled;
         public bool IsEip7934Enabled { get; set; } = spec.IsEip7934Enabled;
@@ -119,8 +120,6 @@ namespace Nethermind.Specs.Test
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => field ?? spec.EvmInstructionsNoTrace; set; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => field ?? spec.EvmInstructionsTraced; set; }
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
-        public bool IsEip7907Enabled { get; set; } = spec.IsEip7907Enabled;
-        public bool IsRip7728Enabled { get; set; } = spec.IsRip7728Enabled;
         public bool IsEip7928Enabled { get; set; } = spec.IsEip7928Enabled;
         public bool IsEip8037Enabled { get; set; } = spec.IsEip8037Enabled;
         public bool IsEip7708Enabled { get; set; } = spec.IsEip7708Enabled;

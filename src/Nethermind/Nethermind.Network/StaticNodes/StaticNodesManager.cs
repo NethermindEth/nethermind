@@ -88,10 +88,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
             yield return node;
         }
 
-        void handler(object? _, NodeEventArgs args)
-        {
-            ch.Writer.TryWrite(args.Node);
-        }
+        void handler(object? _, NodeEventArgs args) => ch.Writer.TryWrite(args.Node);
 
         try
         {

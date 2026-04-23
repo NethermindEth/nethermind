@@ -128,10 +128,7 @@ namespace Nethermind.Consensus.Clique
             return header.Author is not null;
         }
 
-        private bool IsEpochTransition(long number)
-        {
-            return (ulong)number % _cliqueConfig.Epoch == 0;
-        }
+        private bool IsEpochTransition(long number) => (ulong)number % _cliqueConfig.Epoch == 0;
 
         private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)
         {

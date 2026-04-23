@@ -10,15 +10,21 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Lifecycle;
 
-public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
+public class NodeLifecycleManagerFactory(INodeTable nodeTable,
+    IEvictionManager evictionManager,
+    INodeStatsManager nodeStatsManager,
+    NodeRecord self,
+    IDiscoveryConfig discoveryConfig,
+    ITimestamper timestamper,
+    ILogManager? logManager) : INodeLifecycleManagerFactory
 {
-    private readonly INodeTable _nodeTable;
-    private readonly ILogger _logger;
-    private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly ITimestamper _timestamper;
-    private readonly IEvictionManager _evictionManager;
-    private readonly INodeStatsManager _nodeStatsManager;
-    private readonly NodeRecord _selfNodeRecord;
+    private readonly INodeTable _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+    private readonly ILogger _logger = logManager?.GetClassLogger<NodeLifecycleManagerFactory>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
+    private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+    private readonly IEvictionManager _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));
+    private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+    private readonly NodeRecord _selfNodeRecord = self ?? throw new ArgumentNullException(nameof(self));
 
     public NodeLifecycleManagerFactory(INodeTable nodeTable,
         IEvictionManager evictionManager,
@@ -29,23 +35,6 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
         ILogManager? logManager)
         : this(nodeTable, evictionManager, nodeStatsManager, nodeRecordProvider.Current, discoveryConfig, timestamper, logManager)
     {
-    }
-
-    public NodeLifecycleManagerFactory(INodeTable nodeTable,
-        IEvictionManager evictionManager,
-        INodeStatsManager nodeStatsManager,
-        NodeRecord self,
-        IDiscoveryConfig discoveryConfig,
-        ITimestamper timestamper,
-        ILogManager? logManager)
-    {
-        _logger = logManager?.GetClassLogger<NodeLifecycleManagerFactory>() ?? throw new ArgumentNullException(nameof(logManager));
-        _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-        _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));
-        _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-        _selfNodeRecord = self ?? throw new ArgumentNullException(nameof(self));
     }
 
     public IDiscoveryManager? DiscoveryManager { private get; set; }

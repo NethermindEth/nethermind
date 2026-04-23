@@ -30,10 +30,10 @@ public class PeerPoolTests
     [Test]
     public async Task PeerPool_ShouldThrottleSource_WhenFull()
     {
-        var trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
 
-        TestNodeSource nodeSource = new TestNodeSource();
-        PeerPool pool = new PeerPool(
+        TestNodeSource nodeSource = new();
+        PeerPool pool = new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
             new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
@@ -45,8 +45,8 @@ public class PeerPoolTests
             LimboLogs.Instance,
             trustedNodesManager);
 
-        Random rand = new Random(0);
-        PrivateKeyGenerator keyGen = new PrivateKeyGenerator(new TestRandom((m) => rand.Next(m), (s) =>
+        Random rand = new(0);
+        PrivateKeyGenerator keyGen = new(new TestRandom((m) => rand.Next(m), (s) =>
         {
             byte[] buffer = new byte[s];
             rand.NextBytes(buffer);
@@ -56,7 +56,7 @@ public class PeerPoolTests
         for (int i = 0; i < 5; i++)
         {
             PublicKey key = keyGen.Generate().PublicKey;
-            Node node = new Node(key, "1.2.3.4", 1234);
+            Node node = new(key, "1.2.3.4", 1234);
             Peer peer = pool.GetOrAdd(node);
             pool.ActivePeers[key] = peer;
         }
@@ -66,7 +66,7 @@ public class PeerPoolTests
         for (int i = 0; i < 10; i++)
         {
             PublicKey key = keyGen.Generate().PublicKey;
-            Node node = new Node(key, "1.2.3.4", 1234);
+            Node node = new(key, "1.2.3.4", 1234);
             nodeSource.AddNode(node);
         }
 
@@ -78,18 +78,18 @@ public class PeerPoolTests
     [Test]
     public async Task PeerPool_RunPeerCommit_ShouldContinueAfterNoPendingChange()
     {
-        var trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        var nodeSource = new TestNodeSource();
-        var stats = Substitute.For<INodeStatsManager>();
-        var storage = new TestNetworkStorage();
-        var networkConfig = new NetworkConfig
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        TestNetworkStorage storage = new();
+        NetworkConfig networkConfig = new()
         {
             PeersPersistenceInterval = 50,
             MaxActivePeers = 0,
             MaxCandidatePeerCount = 0
         };
 
-        var pool = new PeerPool(nodeSource, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
+        PeerPool pool = new(nodeSource, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
 
         storage.Pending = false;
         pool.Start();
@@ -204,9 +204,7 @@ public class PeerPoolTests
         Assert.That(replacedPeer.Node.IsStatic, Is.False);
     }
 
-    private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount)
-    {
-        return new PeerPool(
+    private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
             new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
@@ -217,7 +215,6 @@ public class PeerPoolTests
             },
             LimboLogs.Instance,
             trustedNodesManager);
-    }
 
     private sealed class TestNetworkStorage : INetworkStorage
     {
@@ -227,9 +224,9 @@ public class PeerPoolTests
 
         public NetworkNode[] GetPersistedNodes() => Array.Empty<NetworkNode>();
         public int PersistedNodesCount => 0;
-        public void UpdateNode(NetworkNode node) { Pending = true; }
-        public void UpdateNodes(IEnumerable<NetworkNode> nodes) { Pending = true; }
-        public void RemoveNode(PublicKey nodeId) { Pending = true; }
+        public void UpdateNode(NetworkNode node) => Pending = true;
+        public void UpdateNodes(IEnumerable<NetworkNode> nodes) => Pending = true;
+        public void RemoveNode(PublicKey nodeId) => Pending = true;
         public void StartBatch() { Interlocked.Increment(ref _startBatchCountBacking); StartBatchCount = _startBatchCountBacking; }
         public void Commit() { Interlocked.Increment(ref _commitCountBacking); CommitCount = _commitCountBacking; }
         public bool AnyPendingChange() => Pending;

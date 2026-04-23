@@ -71,7 +71,7 @@ public class HistoryPrunerTests
         Assert.That(head, Is.Not.Null);
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
         CheckOldestAndCutoff(1, cutoff, historyPruner);
 
@@ -119,7 +119,7 @@ public class HistoryPrunerTests
         Assert.That(head, Is.Not.Null);
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
         CheckOldestAndCutoff(1, BeaconGenesisBlockNumber, historyPruner);
 
@@ -168,7 +168,7 @@ public class HistoryPrunerTests
         Assert.That(head, Is.Not.Null);
         testBlockchain.BlockTree.SyncPivot = (syncPivot, Hash256.Zero);
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
         CheckOldestAndCutoff(1, BeaconGenesisBlockNumber, historyPruner);
 
@@ -218,7 +218,7 @@ public class HistoryPrunerTests
         Assert.That(head, Is.Not.Null);
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
         CheckOldestAndCutoff(1, cutoff, historyPruner);
 
@@ -248,7 +248,7 @@ public class HistoryPrunerTests
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
-        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
@@ -270,7 +270,6 @@ public class HistoryPrunerTests
             RetentionEpochs = 100000,
         };
 
-        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 100 });
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
 

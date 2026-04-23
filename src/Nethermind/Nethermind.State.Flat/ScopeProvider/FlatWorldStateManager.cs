@@ -40,7 +40,7 @@ public class FlatWorldStateManager(
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapServer? SnapServer => _snapServer ??= new FlatSnapServer(
+    public ISnapServer SnapServer => _snapServer ??= new FlatSnapServer(
         flatDbManager,
         codeDb,
         flatStateRootIndex,
@@ -62,6 +62,8 @@ public class FlatWorldStateManager(
         add => flatDbManager.ReorgBoundaryReached += value;
         remove => flatDbManager.ReorgBoundaryReached -= value;
     }
+
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
     public IOverridableWorldScope CreateOverridableWorldScope() =>
         overridableWorldScopeFactory();

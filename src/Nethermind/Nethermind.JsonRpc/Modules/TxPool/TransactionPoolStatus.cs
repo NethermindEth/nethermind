@@ -4,17 +4,10 @@
 using System.Linq;
 using Nethermind.TxPool;
 
-namespace Nethermind.JsonRpc.Modules.TxPool
-{
-    public class TxPoolStatus
-    {
-        public TxPoolStatus(TxPoolInfo info)
-        {
-            Pending = info.Pending.Sum(static t => t.Value.Count);
-            Queued = info.Queued.Sum(static t => t.Value.Count);
-        }
+namespace Nethermind.JsonRpc.Modules.TxPool;
 
-        public int Pending { get; set; }
-        public int Queued { get; set; }
-    }
+public class TxPoolStatus(TxPoolInfo info)
+{
+    public ulong Pending { get; set; } = (ulong)info.Pending.Sum(static t => (long)t.Value.Count);
+    public ulong Queued { get; set; } = (ulong)info.Queued.Sum(static t => (long)t.Value.Count);
 }

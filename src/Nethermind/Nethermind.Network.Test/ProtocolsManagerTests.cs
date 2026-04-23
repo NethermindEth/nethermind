@@ -129,10 +129,7 @@ public class ProtocolsManagerTests
                 LimboLogs.Instance);
         }
 
-        private IProtocolHandlerFactory[] BuildProtocolHandlerFactories()
-        {
-            return
-            [
+        private IProtocolHandlerFactory[] BuildProtocolHandlerFactories() => [
                 new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
                     session => new P2PProtocolHandler(session, _rlpxHost.LocalNodeId, _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
                     Protocol.P2P),
@@ -157,7 +154,6 @@ public class ProtocolsManagerTests
                     Protocol.Eth,
                     70)
             ];
-        }
 
         public Context CreateIncomingSession()
         {
@@ -328,10 +324,7 @@ public class ProtocolsManagerTests
         }
 
 
-        public Context ReceiveHelloWrongEth()
-        {
-            return ReceiveHelloEth(65);
-        }
+        public Context ReceiveHelloWrongEth() => ReceiveHelloEth(65);
 
         public Context ReceiveStatusWrongChain(ulong networkId)
         {
@@ -359,33 +352,25 @@ public class ProtocolsManagerTests
     }
 
     [Test]
-    public void Sets_ping_sender_after_receiving_hello()
-    {
-        When
+    public void Sets_ping_sender_after_receiving_hello() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
             .Init()
             .ReceiveHello()
             .VerifyPingSenderSet();
-    }
 
     [Test]
-    public void Disconnects_on_p2p_before_version_4()
-    {
-        When
+    public void Disconnects_on_p2p_before_version_4() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
             .Init()
             .ReceiveHello(3)
             .VerifyDisconnected();
-    }
 
     [Test]
-    public void Disconnects_on_receiving_disconnect()
-    {
-        When
+    public void Disconnects_on_receiving_disconnect() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -393,35 +378,26 @@ public class ProtocolsManagerTests
             .ReceiveHello()
             .ReceiveDisconnect()
             .VerifyDisconnected();
-    }
 
     [Test]
-    public void Runs_ok_when_initializing_protocol_on_a_closing_session()
-    {
-        When
+    public void Runs_ok_when_initializing_protocol_on_a_closing_session() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
             .Init()
             .Disconnect()
             .ReceiveHello();
-    }
 
     [Test]
-    public void Can_initialize_a_session()
-    {
-        When
+    public void Can_initialize_a_session() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
             .Init()
             .VerifyInitialized();
-    }
 
     [Test]
-    public void Can_initialize_eth_protocol()
-    {
-        When
+    public void Can_initialize_eth_protocol() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -430,12 +406,9 @@ public class ProtocolsManagerTests
             .ReceiveHello()
             .ReceiveStatus()
             .VerifyEthInitialized();
-    }
 
     [Test]
-    public void Removes_sync_peers_on_disconnect()
-    {
-        When
+    public void Removes_sync_peers_on_disconnect() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -446,12 +419,9 @@ public class ProtocolsManagerTests
             .VerifyEthInitialized()
             .Disconnect()
             .VerifySyncPeersRemoved();
-    }
 
     [Test]
-    public void Disconnects_on_missing_eth()
-    {
-        When
+    public void Disconnects_on_missing_eth() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -459,12 +429,9 @@ public class ProtocolsManagerTests
             .VerifyInitialized()
             .ReceiveHelloNoEth()
             .VerifyDisconnected();
-    }
 
     [Test]
-    public void Disconnects_on_wrong_eth()
-    {
-        When
+    public void Disconnects_on_wrong_eth() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -472,13 +439,10 @@ public class ProtocolsManagerTests
             .VerifyInitialized()
             .ReceiveHelloWrongEth()
             .VerifyDisconnected();
-    }
 
     [TestCase(TestBlockchainIds.NetworkId + 1)]
     [TestCase(TestBlockchainIds.ChainId)]
-    public void Disconnects_on_wrong_network_id(ulong networkId)
-    {
-        When
+    public void Disconnects_on_wrong_network_id(ulong networkId) => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -488,12 +452,9 @@ public class ProtocolsManagerTests
             .ReceiveStatusWrongChain(networkId)
             .VerifyCompatibilityValidationType(CompatibilityValidationType.NetworkId)
             .VerifyDisconnected();
-    }
 
     [Test]
-    public void Disconnects_on_wrong_genesis_hash()
-    {
-        When
+    public void Disconnects_on_wrong_genesis_hash() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -502,12 +463,9 @@ public class ProtocolsManagerTests
             .ReceiveHello()
             .ReceiveStatusWrongGenesis()
             .VerifyDisconnected();
-    }
 
     [Test]
-    public void Initialized_with_eth68_only()
-    {
-        When
+    public void Initialized_with_eth68_only() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -515,16 +473,12 @@ public class ProtocolsManagerTests
             .VerifyInitialized()
             .ReceiveHelloEth(68)
             .VerifyInitialized();
-    }
 
     [Test]
-    public void Has_correct_highest_eth_protocol_version()
-    {
-        When
+    public void Has_correct_highest_eth_protocol_version() => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
             .Init()
             .VerifyProtocolVersion(Protocol.Eth, 68);
-    }
 }

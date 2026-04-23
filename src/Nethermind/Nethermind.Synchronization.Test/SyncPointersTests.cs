@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Test;
 using Nethermind.Db;
@@ -14,11 +13,11 @@ public class SyncPointersTests
     [Test]
     public void WhenReceiptNotStore_SetLowestInsertedReceiptTo0()
     {
-        SyncPointers pointers = new SyncPointers(new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), new TestMemDb(), new ReceiptConfig()
+        SyncPointers pointers = new(new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), new TestMemDb(), new ReceiptConfig()
         {
             StoreReceipts = false
         });
 
-        pointers.LowestInsertedReceiptBlockNumber.Should().Be(0);
+        Assert.That(pointers.LowestInsertedReceiptBlockNumber, Is.EqualTo(0));
     }
 }

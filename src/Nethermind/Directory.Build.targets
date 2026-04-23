@@ -3,11 +3,15 @@
   <Import Project="../../Directory.Build.targets" />
 
   <ItemGroup Condition="$(EnableZkEvm) == 'true'">
+    <Compile Remove="**/std/**/*.cs" />
+    <None Include="**/std/**/*.cs" />
     <Compile Remove="**/*.std.cs" />
     <None Include="**/*.std.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="$(EnableZkEvm) != 'true'">
+    <Compile Remove="**/zkevm/**/*.cs" />
+    <None Include="**/zkevm/**/*.cs" />
     <Compile Remove="**/*.zkevm.cs" />
     <None Include="**/*.zkevm.cs" />
   </ItemGroup>

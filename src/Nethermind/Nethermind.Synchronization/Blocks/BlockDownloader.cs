@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.Blocks
             }
             catch (Exception ex)
             {
-                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Unhandled exception in {nameof(BlockDownloader)}: {ex}");
+                _logger.DebugError($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
                 return null;
             }
             finally
@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
 
-                using var satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
+                using ArrayPoolList<BlockEntry> satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
 
                 if (satisfiedEntry.Count == 0)
                 {
@@ -255,15 +255,12 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        public void PruneDownloadBuffer()
-        {
-            _downloadRequests.Clear();
-        }
+        public void PruneDownloadBuffer() => _downloadRequests.Clear();
 
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
             HashSet<Hash256> currentHeaderHashes = currentHeaders.Select(h => h.Hash).ToHashSet();
-            foreach (var kv in _downloadRequests)
+            foreach (KeyValuePair<Hash256, BlockEntry> kv in _downloadRequests)
             {
                 if (!currentHeaderHashes.Contains(kv.Key))
                 {
@@ -276,9 +273,9 @@ namespace Nethermind.Synchronization.Blocks
         {
             bool? bodiesOnly = null; // Otherwise receipts only
 
-            ArrayPoolList<BlockHeader> receiptsToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
-            ArrayPoolList<BlockHeader> bodiesToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
-            ArrayPoolList<BlockHeader> blockAccessListsToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
+            ArrayPoolList<BlockHeader> receiptsToDownload = new(headers.Count);
+            ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
+            ArrayPoolList<BlockHeader> blockAccessListsToDownload = new(headers.Count);
 
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
@@ -291,7 +288,7 @@ namespace Nethermind.Synchronization.Blocks
                 ?? GethSyncLimits.MaxReceiptFetch;
 
             BlockHeader parentHeader = headers[0];
-            foreach (var blockHeader in headers.Skip(1))
+            foreach (BlockHeader blockHeader in headers.Skip(1))
             {
                 if (parentHeader.Hash != blockHeader.ParentHash)
                 {
@@ -367,7 +364,7 @@ namespace Nethermind.Synchronization.Blocks
             try
             {
                 satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
-                foreach (var blockHeader in headers.Skip(1))
+                foreach (BlockHeader blockHeader in headers.Skip(1))
                 {
                     if (blockHeader is null) break;
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
@@ -390,7 +387,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
         {
-            using var _ = response;
+            using BlocksRequest _ = response;
             BlockBody[]? bodies = response.OwnedBodies?.Bodies;
             response.OwnedBodies?.Disown();
             IOwnedReadOnlyList<byte[]>? blockAccessLists = response.BlockAccessLists;
@@ -432,7 +429,7 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                Block block = new Block(entry.Header, body)
+                Block block = new(entry.Header, body)
                 {
                     EncodedBlockAccessList = entry.EncodedAccessList
                 };
@@ -449,7 +446,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (bodiesCount > 0)
                 {
                     long txCount = 0;
-                    foreach (var block in blocks)
+                    foreach (Block block in blocks)
                     {
                         txCount += block.Transactions?.Length ?? 0;
                     }
@@ -594,10 +591,7 @@ namespace Nethermind.Synchronization.Blocks
             return receiptsRoot == block.ReceiptsRoot;
         }
 
-        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
-        {
-            return shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
-        }
+        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) => shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
 
         private bool SuggestBlock(
             PeerInfo bestPeer,
@@ -721,10 +715,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
-        private void InvokeEvent(SyncEventArgs args)
-        {
-            SyncEvent?.Invoke(this, args);
-        }
+        private void InvokeEvent(SyncEventArgs args) => SyncEvent?.Invoke(this, args);
 
         private void HandleSyncRequestResult(Task task, PeerInfo? peerInfo)
         {
@@ -744,7 +735,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                     else
                     {
-                        if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Block download from {peerInfo} failed. {t.Exception}");
+                        _logger.DebugError($"Block download from {peerInfo} failed. {t.Exception}");
                         // ReSharper disable once RedundantAssignment
                         reason = $"sync fault";
 #if DEBUG
@@ -788,29 +779,17 @@ namespace Nethermind.Synchronization.Blocks
             public bool HasReceipt => !Header.HasTransactions || Receipts?.Length > 0;
             private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;
-            public void MarkBlockRequestSent()
-            {
-                _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
-            }
-            public void RetryBlockRequest()
-            {
-                _blockRequestDeadline = DateTimeOffset.MinValue;
-            }
+            public void MarkBlockRequestSent() => _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
+            public void RetryBlockRequest() => _blockRequestDeadline = DateTimeOffset.MinValue;
 
             private DateTimeOffset _accessListRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedAccessListDownload =>
                 !HasAccessList &&
                 _accessListRequestDeadline < DateTimeOffset.Now;
 
-            public void MarkAccessListRequestSent()
-            {
-                _accessListRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
-            }
+            public void MarkAccessListRequestSent() => _accessListRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
 
-            public void RetryAccessListRequest()
-            {
-                _accessListRequestDeadline = DateTimeOffset.MinValue;
-            }
+            public void RetryAccessListRequest() => _accessListRequestDeadline = DateTimeOffset.MinValue;
 
             private DateTimeOffset _receiptRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedReceiptDownload =>
@@ -818,14 +797,8 @@ namespace Nethermind.Synchronization.Blocks
                 !HasReceipt &&
                 _receiptRequestDeadline < DateTimeOffset.Now;
 
-            public void MarkReceiptRequestSent()
-            {
-                _receiptRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
-            }
-            public void RetryReceiptRequest()
-            {
-                _receiptRequestDeadline = DateTimeOffset.MinValue;
-            }
+            public void MarkReceiptRequestSent() => _receiptRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
+            public void RetryReceiptRequest() => _receiptRequestDeadline = DateTimeOffset.MinValue;
 
             public PeerInfo? PeerInfo { get; set; } = PeerInfo;
             public Block? Block { get; set; } = Block;

@@ -32,8 +32,8 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_will_execute()
     {
-        TaskCompletionSource tcs = new TaskCompletionSource();
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
+        TaskCompletionSource tcs = new();
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
         scheduler.TryScheduleTask(1, (_, token) =>
         {
@@ -47,7 +47,7 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task DisposeAsync_should_complete_when_scheduler_is_idle()
     {
-        BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
+        BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
         Assert.DoesNotThrowAsync(
             async () => await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
@@ -57,11 +57,11 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_will_execute_concurrently_when_configured_so()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
 
         int counter = 0;
 
-        SemaphoreSlim waitSignal = new SemaphoreSlim(0);
+        SemaphoreSlim waitSignal = new(0);
         scheduler.TryScheduleTask(1, async (_, token) =>
         {
             Interlocked.Increment(ref counter);
@@ -82,11 +82,11 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_will_cancel_on_block_processing()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
 
         bool wasCancelled = false;
 
-        ManualResetEvent waitSignal = new ManualResetEvent(false);
+        ManualResetEvent waitSignal = new(false);
         scheduler.TryScheduleTask(1, async (_, token) =>
         {
             waitSignal.Set();

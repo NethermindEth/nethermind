@@ -13,7 +13,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface defining the properties for a call-like opcode.
@@ -130,10 +130,7 @@ internal static partial class EvmInstructions
         }
 
         // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
+        if (!stack.PopUInt256(out UInt256 dataOffset, out UInt256 dataLength, out UInt256 outputOffset, out UInt256 outputLength))
         {
             goto StackUnderflow;
         }
@@ -193,14 +190,6 @@ internal static partial class EvmInstructions
         // Retrieve code information for the call and schedule background analysis if needed.
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
-        // If contract is large, charge for access
-        if (spec.IsEip7907Enabled)
-        {
-            uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
-            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas))
-                goto OutOfGas;
-        }
-
         // Get remaining gas for 63/64 calculation
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
@@ -230,7 +219,7 @@ internal static partial class EvmInstructions
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst>();
 
             // Optionally report memory changes for refund tracing.
             if (vm.TxTracer.IsTracingRefunds)
@@ -252,7 +241,7 @@ internal static partial class EvmInstructions
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
-            return EvmExceptionType.None;
+            return pushResult;
         }
 
         // Take a snapshot of the state for potential rollback.
@@ -264,7 +253,8 @@ internal static partial class EvmInstructions
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
-            stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+            EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+            if (pushResult != EvmExceptionType.None) return pushResult;
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
             vm.AddTransferLog<TEip7708>(caller, target, transferValue);
             return FastCall(vm, spec, in transferValue, target);
@@ -324,18 +314,6 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
-    private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        if (accessTracer.WarmUpLargeContract(codeAddress))
-        {
-            long largeContractCost = GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !TGasPolicy.UpdateGas(ref gas, largeContractCost)) return false;
-        }
-
-        return true;
-    }
-
     /// <summary>
     /// Executes the RETURN opcode.
     /// Pops a memory offset and a length from the stack, updates memory cost, and sets the return data.
@@ -357,8 +335,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Pop memory position and length for the return data.
-        if (!stack.PopUInt256(out UInt256 position) ||
-            !stack.PopUInt256(out UInt256 length))
+        if (!stack.PopUInt256(out UInt256 position, out UInt256 length))
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.

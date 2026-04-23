@@ -14,14 +14,12 @@ namespace Nethermind.Xdc;
 
 internal class XdcSealer(ISigner signer) : ISealer
 {
-    private static readonly XdcHeaderDecoder _xdcHeaderDecoder = new XdcHeaderDecoder();
+    private static readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
     public Address Address => signer.Address;
 
-    public bool CanSeal(long blockNumber, Hash256 parentHash)
-    {
+    public bool CanSeal(long blockNumber, Hash256 parentHash) =>
         //We might want to add more logic here in the future
-        return true;
-    }
+        true;
 
     public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
     {
@@ -29,7 +27,7 @@ internal class XdcSealer(ISigner signer) : ISealer
             throw new ArgumentException("Only XDC headers are supported.");
         if (block.IsGenesis) throw new InvalidOperationException("Can't sign genesis block");
 
-        KeccakRlpStream hashStream = new KeccakRlpStream();
+        KeccakRlpStream hashStream = new();
         _xdcHeaderDecoder.Encode(hashStream, xdcBlockHeader, RlpBehaviors.ForSealing);
         xdcBlockHeader.Validator = signer.Sign(hashStream.GetValueHash()).BytesWithRecovery;
 

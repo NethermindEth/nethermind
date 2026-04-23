@@ -189,6 +189,23 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         in UInt256 length, VmState<TSelf> vmState);
 
     /// <summary>
+    /// Calculates and deducts the gas cost for accessing a specific memory region.
+    /// Overload for call sites that already have a native-sized length.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="position">The starting position in memory.</param>
+    /// <param name="length">The length of the memory region.</param>
+    /// <param name="vmState">The current EVM state.</param>
+    /// <returns><c>true</c> if sufficient gas was available and deducted; otherwise, <c>false</c>.</returns>
+    static virtual bool UpdateMemoryCost(ref TSelf gas,
+        in UInt256 position,
+        ulong length, VmState<TSelf> vmState)
+    {
+        UInt256 uint256Length = new(length);
+        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, vmState);
+    }
+
+    /// <summary>
     /// Deducts a specified gas cost from the available gas.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
@@ -246,6 +263,16 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
 
     /// <summary>
+    /// Discards state gas from block-state accounting without refunding it back into the
+    /// usable gas budget. This is used for reverted state charges that should remain paid
+    /// by the transaction but must not contribute to committed state gas.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="amount">Discarded state gas amount.</param>
+    /// <param name="stateGasFloor">Minimum state gas used after discarding.</param>
+    static virtual void DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) { }
+
+    /// <summary>
     /// Returns the regular gas portion of EIP-7702 code insert refunds (for end-of-tx refund cap).
     /// Pre-EIP-8037: (NewAccount - PerAuthBaseCost) per refund. EIP-8037: zero (state refund only).
     /// </summary>
@@ -253,8 +280,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         codeInsertRefunds > 0 ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0;
 
     /// <summary>
-    /// Applies EIP-7702 code insert refunds: state refund to reservoir + returns regular refund amount.
-    /// Only call on success paths (state gas accounting must not be modified on error).
+    /// Applies EIP-7702 code insert refunds: EIP-8037 state refund to reservoir + regular refund amount.
+    /// For EIP-8037 this is applied before execution so later state charges can consume the refunded reservoir.
     /// </summary>
     /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas), for clamping refunds.</param>
     static virtual long ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor) =>
@@ -404,10 +431,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
     }
 
-    protected static long CalculateFloorCost(long tokensInCallData, IReleaseSpec spec) =>
-        spec.IsEip7623Enabled
-            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
-            : 0L;
+    private static long CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
+        transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
+
+    /// <summary>
+    /// Calculates the calldata floor cost for a transaction.
+    /// </summary>
+    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData) => spec switch
+    {
+        { IsEip7976Enabled: true } => GasCostOf.Transaction + CalculateFloorTokensInCallData(transaction, spec) * spec.GasCosts.TotalCostFloorPerToken,
+        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
+        _ => 0L
+    };
 }
 
 /// <summary>

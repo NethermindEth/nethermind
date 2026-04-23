@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -14,14 +13,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks;
 
-public class BlockAccessListsSyncDispatcher : ISyncDownloader<BlockAccessListsSyncBatch>
+public class BlockAccessListsSyncDispatcher(ILogManager logManager) : ISyncDownloader<BlockAccessListsSyncBatch>
 {
-    private readonly ILogger Logger;
-
-    public BlockAccessListsSyncDispatcher(ILogManager logManager)
-    {
-        Logger = logManager.GetClassLogger();
-    }
+    private readonly ILogger Logger = logManager.GetClassLogger<BlockAccessListsSyncDispatcher>();
 
     public async Task Dispatch(PeerInfo peerInfo, BlockAccessListsSyncBatch batch, CancellationToken cancellationToken)
     {

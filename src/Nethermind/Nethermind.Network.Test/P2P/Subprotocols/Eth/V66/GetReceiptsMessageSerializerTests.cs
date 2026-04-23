@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Hash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
 
             Hash256[] hashes = { a, b };
-            using var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage(hashes.ToPooledList());
+            using Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage ethMessage = new(hashes.ToPooledList());
 
             GetReceiptsMessage message = new(1111, ethMessage);
 
@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void RoundTrip_negative_request_id()
         {
-            using var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage(new[] { Keccak.Zero }.ToPooledList());
+            using Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage ethMessage = new(new[] { Keccak.Zero }.ToPooledList());
             using GetReceiptsMessage message = new(-1, ethMessage);
             GetReceiptsMessageSerializer serializer = new();
 

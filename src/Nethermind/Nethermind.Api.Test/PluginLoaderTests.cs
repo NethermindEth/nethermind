@@ -39,7 +39,7 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
-        var expected = new List<Type>
+        List<Type> expected = new()
         {
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
@@ -67,7 +67,7 @@ public class PluginLoaderTests
             new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new()
         {
             typeof(HivePlugin),
             typeof(TestPlugin),
@@ -83,7 +83,7 @@ public class PluginLoaderTests
     public void throws_when_multiple_consensus_plugin()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        PluginLoader loader = new PluginLoader(
+        PluginLoader loader = new(
             string.Empty,
             fileSystem,
             new TestLogManager().GetClassLogger<PluginLoaderTests>(),
@@ -98,7 +98,7 @@ public class PluginLoaderTests
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
 
         IConfigProvider configProvider = new ConfigProvider();
-        ChainSpec chainSpec = new ChainSpec();
+        ChainSpec chainSpec = new();
         chainSpec.SealEngineType = SealEngineType.AuRa;
 
         loader.LoadPlugins(configProvider, chainSpec).Should().Throws<InvalidOperationException>();
@@ -115,7 +115,7 @@ public class PluginLoaderTests
             new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new()
         {
             typeof(HivePlugin),
             typeof(NethDevPlugin),
@@ -138,7 +138,7 @@ public class PluginLoaderTests
             new PluginConfig();
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new()
         {
             typeof(HealthChecksPlugin),
             typeof(EthashPlugin),
@@ -152,7 +152,7 @@ public class PluginLoaderTests
     [Test]
     public async Task Can_PassInConfig_And_OnlyLoadEnabledPlugins()
     {
-        PluginLoader loader = new PluginLoader(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
+        PluginLoader loader = new(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(TestPlugin1), typeof(TestPlugin2));
         loader.Load();
 
@@ -160,7 +160,7 @@ public class PluginLoaderTests
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         initConfig.DiscoveryEnabled = true;
         initConfig.PeerManagerEnabled = false;
-        ChainSpec chainSpec = new ChainSpec();
+        ChainSpec chainSpec = new();
         chainSpec.ChainId = 999;
 
         IList<INethermindPlugin> loadedPlugins = await loader.LoadPlugins(configProvider, chainSpec);
@@ -193,14 +193,9 @@ public class PluginLoaderTests
         public string Author => "TestPlugin2";
         public bool Enabled => true;
 
-        public IBlockProducer InitBlockProducer()
-        {
-            throw new NotImplementedException();
-        }
+        public IBlockProducer InitBlockProducer() => throw new NotImplementedException();
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
             throw new NotImplementedException();
-        }
     }
 }

@@ -7,26 +7,20 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 
-public class ReceiptsMessage70 : Eth66MessageBase
+public class ReceiptsMessage70(
+    IOwnedReadOnlyList<TxReceipt[]> txReceipts,
+    bool lastBlockIncomplete,
+    bool generateRandomRequestId = true)
+    : Eth66MessageBase(generateRandomRequestId)
 {
-    public IOwnedReadOnlyList<TxReceipt[]?> TxReceipts { get; }
-    public bool LastBlockIncomplete { get; set; }
+    public IOwnedReadOnlyList<TxReceipt[]?> TxReceipts { get; } = txReceipts ?? ArrayPoolList<TxReceipt[]>.Empty();
+    public bool LastBlockIncomplete { get; set; } = lastBlockIncomplete;
 
     public override int PacketType => Eth70MessageCode.Receipts;
     public override string Protocol => "eth";
 
-    public ReceiptsMessage70(IOwnedReadOnlyList<TxReceipt[]> txReceipts, bool lastBlockIncomplete, bool generateRandomRequestId = true)
-        : base(generateRandomRequestId)
-    {
-        TxReceipts = txReceipts ?? ArrayPoolList<TxReceipt[]>.Empty();
-        LastBlockIncomplete = lastBlockIncomplete;
-    }
-
     public ReceiptsMessage70(long requestId, IOwnedReadOnlyList<TxReceipt[]> txReceipts, bool lastBlockIncomplete)
-        : this(txReceipts, lastBlockIncomplete, false)
-    {
-        RequestId = requestId;
-    }
+        : this(txReceipts, lastBlockIncomplete, false) => RequestId = requestId;
 
     public override string ToString() => $"Receipts70({RequestId}, incomplete={LastBlockIncomplete}, {TxReceipts.Count})";
 

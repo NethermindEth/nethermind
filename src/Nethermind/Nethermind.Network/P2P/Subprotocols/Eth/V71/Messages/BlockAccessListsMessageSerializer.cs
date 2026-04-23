@@ -37,10 +37,8 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         return new BlockAccessListsMessage(requestId, blockAccessLists);
     }
 
-    protected override int GetLengthInternal(BlockAccessListsMessage message)
-    {
-        return Rlp.LengthOfSequence(GetBlockAccessListsContentLength(message.BlockAccessLists));
-    }
+    protected override int GetLengthInternal(BlockAccessListsMessage message) =>
+        Rlp.LengthOfSequence(GetBlockAccessListsContentLength(message.BlockAccessLists));
 
     private static int GetBlockAccessListsContentLength(IOwnedReadOnlyList<byte[]> blockAccessLists)
     {

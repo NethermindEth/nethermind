@@ -112,10 +112,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         return payloadId;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMultiStartRequest(string payloadId, long number)
-        {
-            _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
-        }
+        void LogMultiStartRequest(string payloadId, long number) => _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
     }
 
     protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
@@ -376,7 +373,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
         else if (t.IsFaulted)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Block improvement failed", t.Exception);
+            _logger.DebugError("Block improvement failed", t.Exception);
         }
         else if (t.IsCanceled)
         {
@@ -438,9 +435,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
     }
 
-    public void CancelBlockProduction(string payloadId)
-    {
+    public void CancelBlockProduction(string payloadId) =>
         // GetPayload cancels the request
         _ = GetPayload(payloadId);
-    }
 }

@@ -96,9 +96,6 @@ namespace Nethermind.Init.Steps
 
         private readonly TaskCompletionSource _blocksProcessedTaskSource = new();
 
-        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
-        {
-            _blocksProcessedTaskSource.SetResult();
-        }
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.SetResult();
     }
 }

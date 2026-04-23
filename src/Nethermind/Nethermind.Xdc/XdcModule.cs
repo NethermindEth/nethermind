@@ -86,6 +86,7 @@ public class XdcModule : Module
             .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
 
             // Validators
+            .AddSingleton<IBlockValidator, XdcBlockValidator>()
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
             .AddSingleton<ISealValidator, XdcSealValidator>()
             .AddSingleton<IUnclesValidator, MustBeEmptyUnclesValidator>()
@@ -130,14 +131,8 @@ public class XdcModule : Module
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-    {
-        return new SnapshotManager(db, blockTree, votingContract, specProvider);
-    }
-    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
-    {
-        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
-    }
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider) => new SnapshotManager(db, blockTree, votingContract, specProvider);
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager) => new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
 
     private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,

@@ -43,8 +43,8 @@ public static class ConsoleHelpers
         {
             // If using Cmd and not set in registry
             // enable ANSI escape sequences here
-            var handle = GetStdHandle(STD_OUTPUT_HANDLE);
-            GetConsoleMode(handle, out var mode);
+            nint handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            GetConsoleMode(handle, out uint mode);
             mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
             SetConsoleMode(handle, mode);
         }

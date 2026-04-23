@@ -199,10 +199,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         }
     }
 
-    private bool HasTtd()
-    {
-        return _api.SpecProvider?.TerminalTotalDifficulty is not null || mergeConfig.TerminalTotalDifficulty is not null;
-    }
+    private bool HasTtd() => _api.SpecProvider?.TerminalTotalDifficulty is not null || mergeConfig.TerminalTotalDifficulty is not null;
 
     public Task InitNetworkProtocol()
     {
@@ -240,10 +237,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
     }
 
-    protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager()
-    {
-        return new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
-    }
+    protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager() => new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
 
     public bool MustInitialize { get => true; }
 
@@ -256,9 +250,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 /// </summary>
 public class MergePluginModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
+    protected override void Load(ContainerBuilder builder) => builder
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
@@ -267,7 +259,6 @@ public class MergePluginModule : Module
             .AddDecorator<ISealer, MergeSealer>()
 
             .AddModule(new BaseMergePluginModule());
-    }
 }
 
 /// <summary>
@@ -276,9 +267,7 @@ public class MergePluginModule : Module
 /// </summary>
 public class BaseMergePluginModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
+    protected override void Load(ContainerBuilder builder) => builder
             // Sync related
             .AddModule(new MergeSynchronizerModule())
 
@@ -351,8 +340,11 @@ public class BaseMergePluginModule : Module
                         ctx.Resolve<ILogManager>());
                 })
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
+                .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
+
+            // Testing rpc
+            .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
-    }
 
     IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IComponentContext ctx)
     {

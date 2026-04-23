@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class ModExpPrecompileTests
+public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPrecompileTests>
 {
     // Data from https://github.com/ethereum/go-ethereum/blob/master/core/vm/testdata/precompiles/modexp.json
     [TestCase(
@@ -564,15 +562,5 @@ public class ModExpPrecompileTests
     )]
     public void TestEip7883(string input, string output, bool status) => Test(input, output, status);
 
-    private static void Test(string input, string output, bool status)
-    {
-        byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = ModExpPrecompile.Instance.Run(inputData, MuirGlacier.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
-        }
-    }
+    private void Test(string input, string output, bool status) => RunTest(input, output, status);
 }

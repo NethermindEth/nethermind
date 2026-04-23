@@ -5,14 +5,9 @@ using System;
 
 namespace Nethermind.Db.Blooms
 {
-    public class InMemoryDictionaryFileReader : IFileReader
+    public class InMemoryDictionaryFileReader(IFileStore store) : IFileReader
     {
-        private readonly IFileStore _store;
-
-        public InMemoryDictionaryFileReader(IFileStore store)
-        {
-            _store = store;
-        }
+        private readonly IFileStore _store = store;
 
         public void Dispose() { }
 

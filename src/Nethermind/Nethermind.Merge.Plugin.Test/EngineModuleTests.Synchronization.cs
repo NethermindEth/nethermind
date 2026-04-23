@@ -117,7 +117,7 @@ public partial class EngineModuleTests
         syncPeer
             .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(1) { block.Header }));
-        SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(syncPeer), AllocationContexts.All);
+        SyncPeerAllocation alloc = new(new PeerInfo(syncPeer), AllocationContexts.All);
         chain.SyncPeerPool
             .Allocate(
                 Arg.Any<IPeerAllocationStrategy>(),
@@ -164,7 +164,7 @@ public partial class EngineModuleTests
             .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Throws(new TimeoutException());
 
-        SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(syncPeer), AllocationContexts.All);
+        SyncPeerAllocation alloc = new(new PeerInfo(syncPeer), AllocationContexts.All);
         chain.SyncPeerPool
             .Allocate(
                 Arg.Any<IPeerAllocationStrategy>(),
@@ -227,7 +227,7 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(block.Header).Should().BeTrue();
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
-        BlockTreePointers pointers = new BlockTreePointers
+        BlockTreePointers pointers = new()
         {
             BestKnownNumber = 0,
             BestSuggestedHeader = chain.BlockTree.Genesis!,

@@ -61,7 +61,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         CancellationToken cancellationToken)
     {
         List<SimulateBlockResult<TTrace>> list = new();
-        SimulateOutput<TTrace> result = new SimulateOutput<TTrace>()
+        SimulateOutput<TTrace> result = new()
         {
             Items = list
         };
@@ -129,7 +129,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
                 BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
-                Block callBlock = new Block(callHeader, body);
+                Block callBlock = new(callHeader, body);
 
                 ProcessingOptions processingFlags = payload.Validation
                     ? SimulateProcessingOptions
@@ -181,7 +181,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             withdrawals = [];
         }
 
-        BlockBody body = new BlockBody(transactions, null, withdrawals);
+        BlockBody body = new(transactions, null, withdrawals);
         return body;
     }
 
@@ -250,7 +250,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockHeader parent,
         bool validate)
     {
-        BlockHeader result = new BlockHeader(
+        BlockHeader result = new(
             parent.Hash!,
             Keccak.OfAnEmptySequenceRlp,
             parent.Beneficiary,

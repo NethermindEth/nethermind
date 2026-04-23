@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -18,6 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ISpecProvider _specProvider;
 
 
+        [ConstructorWithSideEffect]
         public NewHeadSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             IBlockTree? blockTree,
@@ -35,15 +37,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
         }
 
-        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => ScheduleAction(async () =>
         {
-            ScheduleAction(async () =>
-            {
-                using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
-            });
-        }
+            using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
+            await JsonRpcDuplexClient.SendJsonRpcResult(result);
+            if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
+        });
 
         public override string Type => SubscriptionType.EthSubscription.NewHeads;
 

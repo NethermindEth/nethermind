@@ -233,6 +233,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
+    public long CumulativeRegularGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].Regular : 0;
 
     public ITxTracer InnerTracer => _currentTxTracer;
 
@@ -307,8 +308,5 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _otherTracer = blockTracer;
     }
 
-    public void Dispose()
-    {
-        _currentTxTracer.Dispose();
-    }
+    public void Dispose() => _currentTxTracer.Dispose();
 }

@@ -39,7 +39,7 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            var (value, length) = DecodeInt(data, position, packed);
+            (BigInteger value, int length) = DecodeInt(data, position, packed);
 
             return Length switch
             {
@@ -70,16 +70,13 @@ namespace Nethermind.Abi
 
         public override Type CSharpType { get; } = typeof(BigInteger);
 
-        private Type GetCSharpType()
+        private Type GetCSharpType() => Length switch
         {
-            return Length switch
-            {
-                { } n when n <= 8 => typeof(sbyte),
-                { } n when n <= 16 => typeof(short),
-                { } n when n <= 32 => typeof(int),
-                { } n when n <= 64 => typeof(long),
-                _ => typeof(BigInteger),
-            };
-        }
+            { } n when n <= 8 => typeof(sbyte),
+            { } n when n <= 16 => typeof(short),
+            { } n when n <= 32 => typeof(int),
+            { } n when n <= 64 => typeof(long),
+            _ => typeof(BigInteger),
+        };
     }
 }

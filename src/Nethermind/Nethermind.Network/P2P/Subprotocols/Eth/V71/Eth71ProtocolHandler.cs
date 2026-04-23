@@ -49,10 +49,8 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         ISpecProvider specProvider,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
-    {
+            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) =>
         _balRequests = new MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>(Send);
-    }
 
     public override string Name => "eth71";
 
@@ -63,7 +61,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     // Message IDs 0x00–0x13 → 20 codes
     public override int MessageIdSpaceSize => 20;
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override void HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -77,7 +75,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                 Handle(balMsg, size);
                 break;
             default:
-                base.HandleMessage(message);
+                base.HandleMessageCore(message);
                 break;
         }
     }

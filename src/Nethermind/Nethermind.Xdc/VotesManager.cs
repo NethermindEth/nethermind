@@ -56,15 +56,14 @@ internal class VotesManager(
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
-        XdcBlockHeader header = _blockTree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
-        if (header is null)
+        if (_blockTree.FindHeader(blockInfo.Hash) is not XdcBlockHeader header)
             throw new ArgumentException($"Cannot find block header for block {blockInfo.Hash}");
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        var vote = new Vote(blockInfo, (ulong)gapNumber, isMyVote: true);
+        Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
         Sign(vote);
 
@@ -88,8 +87,7 @@ internal class VotesManager(
         _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
-        XdcBlockHeader proposedHeader = _blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
-        if (proposedHeader is null)
+        if (_blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) is not XdcBlockHeader proposedHeader)
         {
             //This is a vote for a block we have not seen yet, just return for now
             return Task.CompletedTask;
@@ -123,7 +121,7 @@ internal class VotesManager(
 
             // At this point, the QC should be processed for this *round*.
             // Ensure this runs only once per round:
-            var round = vote.ProposedBlockInfo.Round;
+            ulong round = vote.ProposedBlockInfo.Round;
             if (!_qcBuildStartedByRound.TryAdd(round, 0))
                 return Task.CompletedTask;
             OnVotePoolThresholdReached(validSignatures, vote);
@@ -135,7 +133,7 @@ internal class VotesManager(
     {
         _votePool.EndRound(round);
 
-        foreach (var key in _qcBuildStartedByRound.Keys)
+        foreach (ulong key in _qcBuildStartedByRound.Keys)
             if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
     }
 
@@ -186,8 +184,8 @@ internal class VotesManager(
 
     public Task OnReceiveVote(Vote vote)
     {
-        var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
-        var currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+        long voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
+        long currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
         if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
@@ -236,8 +234,7 @@ internal class VotesManager(
 
         for (int i = 0; i < blockNumDiff; i++)
         {
-            XdcBlockHeader parentHeader = _blockTree.FindHeader(nextBlockHash) as XdcBlockHeader;
-            if (parentHeader is null)
+            if (_blockTree.FindHeader(nextBlockHash) is not XdcBlockHeader parentHeader)
                 return false;
 
             nextBlockHash = parentHeader.ParentHash;
@@ -248,14 +245,11 @@ internal class VotesManager(
 
     private Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        var masternodeSet = new HashSet<Address>(masternodes);
-        var signatures = new List<Signature>();
-        foreach (var vote in votes)
+        HashSet<Address> masternodeSet = new(masternodes);
+        List<Signature> signatures = new();
+        foreach (Vote vote in votes)
         {
-            if (vote.Signer is null)
-            {
-                vote.Signer = _ethereumEcdsa.RecoverVoteSigner(vote);
-            }
+            vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
 
             if (masternodeSet.Contains(vote.Signer))
             {
@@ -273,8 +267,5 @@ internal class VotesManager(
         vote.Signer = _signer.Address;
     }
 
-    public long GetVotesCount(Vote vote)
-    {
-        return _votePool.GetCount(vote);
-    }
+    public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
 }

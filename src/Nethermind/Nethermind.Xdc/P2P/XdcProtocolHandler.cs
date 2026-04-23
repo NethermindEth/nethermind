@@ -40,8 +40,8 @@ internal class XdcProtocolHandler(
     private readonly ITimeoutCertificateManager _timeoutCertificateManager = timeoutCertificateManager;
     private readonly IVotesManager _votesManager = votesManager;
     private readonly IBlockTree _blockTree = blockTree;
-    private ClockKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
-    private ClockKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
+    private AssociativeKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
+    private AssociativeKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
 
     public override string Name => "xdpos2";
 
@@ -52,16 +52,16 @@ internal class XdcProtocolHandler(
 
     protected override TimeSpan InitTimeout => base.InitTimeout;
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override void HandleMessageCore(ZeroPacket message)
     {
-        var size = message.Content.ReadableBytes;
+        int size = message.Content.ReadableBytes;
 
         int packetType = message.PacketType;
 
         (bool isSyncing, _, _) = _blockTree.IsSyncing();
         if (isSyncing) // ignore XDC updates while syncing
         {
-            base.HandleMessage(message);
+            base.HandleMessageCore(message);
             return;
         }
 
@@ -90,7 +90,7 @@ internal class XdcProtocolHandler(
                 }
             default:
                 {
-                    base.HandleMessage(message);
+                    base.HandleMessageCore(message);
                     break;
                 }
         }
@@ -101,14 +101,8 @@ internal class XdcProtocolHandler(
         // We do not want to add ForkId to status message in XDPoS
     }
 
-    private void Handle(VoteMsg voteMsg)
-    {
-        _ = _votesManager.OnReceiveVote(voteMsg.Vote);
-    }
-    private void Handle(TimeoutMsg timeoutMsg)
-    {
-        _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
-    }
+    private void Handle(VoteMsg voteMsg) => _ = _votesManager.OnReceiveVote(voteMsg.Vote);
+    private void Handle(TimeoutMsg timeoutMsg) => _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
         if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string error))
@@ -134,10 +128,7 @@ internal class XdcProtocolHandler(
         Send(new TimeoutMsg() { Timeout = timeout });
     }
 
-    public void SendSyncInfo(SyncInfo syncInfo)
-    {
-        Send(new SyncInfoMsg() { SyncInfo = syncInfo });
-    }
+    public void SendSyncInfo(SyncInfo syncInfo) => Send(new SyncInfoMsg() { SyncInfo = syncInfo });
 
     private bool ShouldNotifyVote(Vote vote)
     {

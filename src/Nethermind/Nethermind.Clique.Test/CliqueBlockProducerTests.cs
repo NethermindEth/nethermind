@@ -140,7 +140,7 @@ public class CliqueBlockProducerTests
             mainProcessingContext.BlockchainProcessor.Start();
 
             IBlockProducerEnvFactory envFactory = container.Resolve<IBlockProducerEnvFactory>();
-            IBlockProducerEnv producerEnv = envFactory.Create();
+            IBlockProducerEnv producerEnv = envFactory.CreatePersistent();
             IWorldState minerStateProvider = producerEnv.ReadOnlyStateProvider;
 
             if (withGenesisAlreadyProcessed)
@@ -161,7 +161,7 @@ public class CliqueBlockProducerTests
                 _cliqueConfig,
                 nodeLogManager);
 
-            CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+            CliqueBlockProducerRunner producerRunner = new(
                 blockTree,
                 _timestamper,
                 new CryptoRandom(),
@@ -172,7 +172,7 @@ public class CliqueBlockProducerTests
 
             producerRunner.Start();
 
-            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, producerRunner);
+            ProducedBlockSuggester suggester = new(blockTree, producerRunner);
 
             _producers.Add(privateKey, producerRunner);
 
@@ -278,7 +278,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis(PrivateKey nodeKey)
         {
-            using var _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             if (_logger.IsInfo) _logger.Info($"SUGGESTING GENESIS ON {nodeKey.Address}");
             _blockTrees[nodeKey].SuggestBlock(_genesis).Should().Be(AddBlockResult.Added);
             _blockEvents[nodeKey].WaitOne(_timeout);
@@ -287,7 +287,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis3Validators(PrivateKey nodeKey)
         {
-            using var _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             _blockTrees[nodeKey].SuggestBlock(_genesis3Validators);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
@@ -496,7 +496,7 @@ public class CliqueBlockProducerTests
         public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
         {
             // gas limit too high
-            Transaction transaction = new Transaction();
+            Transaction transaction = new();
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;
@@ -536,7 +536,7 @@ public class CliqueBlockProducerTests
 
         public void Dispose()
         {
-            foreach (var kv in _containers)
+            foreach (KeyValuePair<PrivateKey, IContainer> kv in _containers)
             {
                 kv.Value.Dispose();
             }
@@ -547,15 +547,13 @@ public class CliqueBlockProducerTests
 
     [Test]
     [Retry(3)]
-    public async Task Can_produce_block_with_transactions()
-    {
+    public async Task Can_produce_block_with_transactions() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .AddPendingTransaction(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1L)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
     public async Task IsProducingBlocks_returns_expected_results()
@@ -571,8 +569,7 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
-    public async Task When_producing_blocks_skips_queued_and_bad_transactions()
-    {
+    public async Task When_producing_blocks_skips_queued_and_bad_transactions() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .AddPendingTransaction(TestItem.PrivateKeyA)
@@ -583,22 +580,18 @@ public class CliqueBlockProducerTests
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Transaction_with_gas_limit_higher_than_block_gas_limit_should_not_be_send()
-    {
+    public async Task Transaction_with_gas_limit_higher_than_block_gas_limit_should_not_be_send() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .AddTransactionWithGasLimitToHigh(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertTransactionCount(TestItem.PrivateKeyA, 1, 0)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Produces_block_on_top_of_genesis()
-    {
+    public async Task Produces_block_on_top_of_genesis() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .CreateNode(TestItem.PrivateKeyB)
@@ -609,53 +602,43 @@ public class CliqueBlockProducerTests
             .AssertOutOfTurn(TestItem.PrivateKeyB, 1)
             .StopNode(TestItem.PrivateKeyA)
             .ContinueWith(static t => t.Result.StopNode(TestItem.PrivateKeyB));
-    }
 
     [Test]
-    public void Single_validator_can_produce_first_block_in_turn()
-    {
+    public void Single_validator_can_produce_first_block_in_turn() =>
         On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
             .AssertInTurn(TestItem.PrivateKeyA, 1);
-    }
 
     [Test]
-    public async Task Single_validator_can_produce_first_block_out_of_turn()
-    {
+    public async Task Single_validator_can_produce_first_block_out_of_turn() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyB)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
             .AssertOutOfTurn(TestItem.PrivateKeyB, 1)
             .StopNode(TestItem.PrivateKeyB);
-    }
 
     [Test]
-    public async Task Cannot_produce_blocks_when_not_on_signers_list()
-    {
+    public async Task Cannot_produce_blocks_when_not_on_signers_list() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyC)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 0)
             .StopNode(TestItem.PrivateKeyC);
-    }
 
     [Test]
-    public async Task Can_cast_vote_to_include()
-    {
+    public async Task Can_cast_vote_to_include() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressC)
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, TestItem.AddressC, true)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Can_uncast_vote_to()
-    {
+    public async Task Can_uncast_vote_to() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressC)
@@ -663,7 +646,6 @@ public class CliqueBlockProducerTests
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, Address.Zero, false)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
     public async Task Can_vote_a_validator_in()
@@ -747,37 +729,31 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
-    public async Task Can_cast_vote_to_exclude()
-    {
+    public async Task Can_cast_vote_to_exclude() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToExclude(TestItem.PrivateKeyA, TestItem.AddressB)
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, TestItem.AddressB, false)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Cannot_vote_to_exclude_node_that_is_not_on_the_list()
-    {
+    public async Task Cannot_vote_to_exclude_node_that_is_not_on_the_list() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToExclude(TestItem.PrivateKeyA, TestItem.AddressC)
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, Address.Zero, false)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Cannot_vote_to_include_node_that_is_already_on_the_list()
-    {
+    public async Task Cannot_vote_to_include_node_that_is_already_on_the_list() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressB)
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, Address.Zero, false)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
     [Retry(3)]

@@ -33,10 +33,7 @@ namespace Nethermind.Init.Steps
         private readonly INethermindApi _api = api;
         protected readonly ITxGossipPolicy _txGossipPolicy = txGossipPolicy;
 
-        public async Task Execute(CancellationToken _)
-        {
-            await InitBlockchain();
-        }
+        public async Task Execute(CancellationToken _) => await InitBlockchain();
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         protected virtual Task InitBlockchain()
@@ -66,9 +63,9 @@ namespace Nethermind.Init.Steps
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
-            var mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
+            IBranchProcessor mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
 
-            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+            BackgroundTaskScheduler backgroundTaskScheduler = new(
                 mainBranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,

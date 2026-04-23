@@ -21,10 +21,7 @@ namespace Nethermind.Synchronization.Blocks
         public Task DownloadTask { get; set; }
         bool _disposed;
 
-        public override string ToString()
-        {
-            return $"Blocks Request: {BodiesRequests.Count} Bodies, {BlockAccessListsRequests.Count} Block Access Lists, {ReceiptsRequests.Count} Receipts";
-        }
+        public override string ToString() => $"Blocks Request: {BodiesRequests.Count} Bodies, {BlockAccessListsRequests.Count} Block Access Lists, {ReceiptsRequests.Count} Receipts";
 
         public void Dispose()
         {

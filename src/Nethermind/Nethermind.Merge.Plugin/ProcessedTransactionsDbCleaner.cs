@@ -67,8 +67,5 @@ public class ProcessedTransactionsDbCleaner : IDisposable
         }
     }
 
-    public void Dispose()
-    {
-        _finalizationManager.BlocksFinalized -= OnBlocksFinalized;
-    }
+    public void Dispose() => _finalizationManager.BlocksFinalized -= OnBlocksFinalized;
 }

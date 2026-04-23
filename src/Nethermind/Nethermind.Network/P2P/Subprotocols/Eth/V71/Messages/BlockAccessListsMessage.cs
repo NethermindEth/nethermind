@@ -11,26 +11,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 /// Response to GetBlockAccessLists. Each element corresponds to a block hash from the request, in order.
 /// Elements are RLP-encoded BALs (raw bytes). Empty bytes (0xc0) for blocks where the BAL is unavailable.
 /// </summary>
-public class BlockAccessListsMessage : Eth66MessageBase
+public class BlockAccessListsMessage(IOwnedReadOnlyList<byte[]> blockAccessLists, bool generateRandomRequestId = true)
+    : Eth66MessageBase(generateRandomRequestId)
 {
     public static readonly byte[] EmptyBal = [0xc0];
 
-    public IOwnedReadOnlyList<byte[]> BlockAccessLists { get; }
+    public IOwnedReadOnlyList<byte[]> BlockAccessLists { get; } = blockAccessLists ?? throw new ArgumentNullException(nameof(blockAccessLists));
 
     public override int PacketType => Eth71MessageCode.BlockAccessLists;
     public override string Protocol => "eth";
 
-    public BlockAccessListsMessage(IOwnedReadOnlyList<byte[]> blockAccessLists, bool generateRandomRequestId = true)
-        : base(generateRandomRequestId)
-    {
-        BlockAccessLists = blockAccessLists ?? throw new ArgumentNullException(nameof(blockAccessLists));
-    }
-
     public BlockAccessListsMessage(long requestId, IOwnedReadOnlyList<byte[]> blockAccessLists)
-        : this(blockAccessLists, false)
-    {
-        RequestId = requestId;
-    }
+        : this(blockAccessLists, false) => RequestId = requestId;
 
     public override string ToString() => $"BlockAccessLists({RequestId}, {BlockAccessLists.Count})";
 

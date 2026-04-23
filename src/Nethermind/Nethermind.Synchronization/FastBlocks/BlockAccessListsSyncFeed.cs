@@ -61,7 +61,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         ISyncReport syncReport,
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         ILogManager logManager)
-        : base(metadataDb, specProvider, logManager?.GetClassLogger() ?? default)
+        : base(metadataDb, specProvider, logManager?.GetClassLogger<BlockAccessListsSyncFeed>() ?? default)
     {
         _blockAccessListStore = blockAccessListStore;
         _syncPointers = syncPointers;
@@ -92,14 +92,12 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncReport.FastBlocksAccessLists.Reset(0, _pivotNumber - _syncConfig.AncientAccessListsBarrierCalc);
     }
 
-    private void ResetSyncStatusList()
-    {
+    private void ResetSyncStatusList() =>
         _syncStatusList = new SyncStatusList(
             _blockTree,
             _pivotNumber,
             _syncPointers.LowestInsertedAccessListBlockNumber,
             _syncConfig.AncientAccessListsBarrier);
-    }
 
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.FastAccessLists & ~SyncMode.FastBlocks;
@@ -259,10 +257,6 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private class AccessListDownloadStrategy : IBlockDownloadStrategy
     {
-        public bool ShouldDownloadBlock(BlockInfo info)
-        {
-            // Always download - we don't have a way to validate without fetching
-            return true;
-        }
+        public bool ShouldDownloadBlock(BlockInfo info) => true;
     }
 }

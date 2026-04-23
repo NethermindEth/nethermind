@@ -176,7 +176,7 @@ public partial class EngineModuleTests
 
             getTransactionsCalled.TrySetResult();
 
-            foreach (var item in transactions)
+            foreach (Transaction item in transactions)
             {
                 if (delay.TotalMilliseconds > 0)
                     Thread.Sleep(delay);
@@ -419,7 +419,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        var improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
+        StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
@@ -472,7 +472,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(tx2);
         await improvedBlockWait;
 
-        var improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
+        StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
@@ -543,7 +543,7 @@ public partial class EngineModuleTests
 
         // we added transactions
         chain.AddTransactions(BuildTransactions(chain, block30.CalculateHash(), TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
-        PayloadAttributes payloadAttributesBlock31A = new PayloadAttributes
+        PayloadAttributes payloadAttributesBlock31A = new()
         {
             Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks,
             PrevRandao = TestItem.KeccakA,
@@ -677,7 +677,6 @@ public partial class EngineModuleTests
     [Test]
     public async Task Empty_block_is_valid_V1()
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
@@ -701,7 +700,6 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task Empty_block_is_valid_with_withdrawals_V2()
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
@@ -743,9 +741,8 @@ public partial class EngineModuleTests
     private Func<IBlockProducer, ITxPool, IBlockImprovementContextFactory, ITimerFactory, ILogManager, IPayloadPreparationService> ConfigurePayloadPreparationService(
         TimeSpan timePerSlot,
         TimeSpan? delay = null
-    )
-    {
-        return (producer, txPool, ctxFactory, timer, logManager) => new PayloadPreparationService(
+    ) =>
+        (producer, txPool, ctxFactory, timer, logManager) => new PayloadPreparationService(
             producer,
             txPool,
             ctxFactory,
@@ -753,7 +750,6 @@ public partial class EngineModuleTests
             logManager,
             timePerSlot,
             improvementDelay: delay);
-    }
 
     [TestCaseSource(nameof(OsakaTransitionInvalidatedTransactionsTestCaseSource))]
     public async Task Lightweight_transaction_validation_is_applied_on_new_head(Transaction tx, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)

@@ -8,24 +8,16 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 
-public class GetBlockAccessListsMessage : Eth66MessageBase
+public class GetBlockAccessListsMessage(IOwnedReadOnlyList<Hash256> blockHashes, bool generateRandomRequestId = true)
+    : Eth66MessageBase(generateRandomRequestId)
 {
-    public IOwnedReadOnlyList<Hash256> Hashes { get; }
+    public IOwnedReadOnlyList<Hash256> Hashes { get; } = blockHashes ?? throw new ArgumentNullException(nameof(blockHashes));
 
     public override int PacketType => Eth71MessageCode.GetBlockAccessLists;
     public override string Protocol => "eth";
 
-    public GetBlockAccessListsMessage(IOwnedReadOnlyList<Hash256> blockHashes, bool generateRandomRequestId = true)
-        : base(generateRandomRequestId)
-    {
-        Hashes = blockHashes ?? throw new ArgumentNullException(nameof(blockHashes));
-    }
-
     public GetBlockAccessListsMessage(long requestId, IOwnedReadOnlyList<Hash256> blockHashes)
-        : this(blockHashes, false)
-    {
-        RequestId = requestId;
-    }
+        : this(blockHashes, false) => RequestId = requestId;
 
     public override void Dispose()
     {

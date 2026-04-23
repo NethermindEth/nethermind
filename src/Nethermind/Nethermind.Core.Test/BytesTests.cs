@@ -51,10 +51,7 @@ namespace Nethermind.Core.Test
         }
 
         [TestCase(null)]
-        public void FromHexStringThrows(string? hexString)
-        {
-            Assert.That(() => Bytes.FromHexString(hexString!), Throws.TypeOf<ArgumentNullException>());
-        }
+        public void FromHexStringThrows(string? hexString) => Assert.That(() => Bytes.FromHexString(hexString!), Throws.TypeOf<ArgumentNullException>());
 
         [TestCase("0x07", "0x7", true, true)]
         [TestCase("0x07", "7", false, true)]
@@ -124,7 +121,7 @@ namespace Nethermind.Core.Test
 
             try
             {
-                using (var ms = new MemoryStream())
+                using (MemoryStream ms = new())
                 {
                     sw = new StreamWriter(ms);
                     sr = new StreamReader(ms);
@@ -248,10 +245,7 @@ namespace Nethermind.Core.Test
         [TestCase(128, 8)]
         [TestCase(255, 8)]
         [TestCase(79, 7)]
-        public void Can_get_highest_bit_set(byte value, int expectedResult)
-        {
-            Assert.That(value.GetHighestSetBitIndex(), Is.EqualTo(expectedResult));
-        }
+        public void Can_get_highest_bit_set(byte value, int expectedResult) => Assert.That(value.GetHighestSetBitIndex(), Is.EqualTo(expectedResult));
 
         [TestCase(255, 0, true)]
         [TestCase(255, 1, true)]
@@ -269,10 +263,7 @@ namespace Nethermind.Core.Test
         [TestCase(0, 5, false)]
         [TestCase(0, 6, false)]
         [TestCase(0, 7, false)]
-        public void Get_bit_works(byte value, int position, bool expectedResult)
-        {
-            Assert.That(value.GetBit(position), Is.EqualTo(expectedResult));
-        }
+        public void Get_bit_works(byte value, int position, bool expectedResult) => Assert.That(value.GetBit(position), Is.EqualTo(expectedResult));
 
         [TestCase("0x", 0)]
         [TestCase("0x1000", 1)]
@@ -285,20 +276,14 @@ namespace Nethermind.Core.Test
         [TestCase("0x100000000000000000", 8)]
         [TestCase("0x0000", 2)]
         [TestCase("0x000100", 1)]
-        public void Trailing_zeros_count_works(string hex, int expectedResult)
-        {
-            Assert.That(Bytes.FromHexString(hex).TrailingZerosCount(), Is.EqualTo(expectedResult));
-        }
+        public void Trailing_zeros_count_works(string hex, int expectedResult) => Assert.That(Bytes.FromHexString(hex).TrailingZerosCount(), Is.EqualTo(expectedResult));
 
         [TestCase("0x", 0, "0")]
         [TestCase("0x1000", 2, "4096")]
         [TestCase("0x0000", 2, "0")]
         [TestCase("0x000100", 3, "256")]
         [TestCase("0x000100", 32, "256")]
-        public void To_signed_big_int(string hex, int length, string expectedResult)
-        {
-            Assert.That(Bytes.FromHexString(hex).ToSignedBigInteger(length), Is.EqualTo(BigInteger.Parse(expectedResult)));
-        }
+        public void To_signed_big_int(string hex, int length, string expectedResult) => Assert.That(Bytes.FromHexString(hex).ToSignedBigInteger(length), Is.EqualTo(BigInteger.Parse(expectedResult)));
 
         [TestCase("0x0123456789abcdef0123456789abcdef", "0xefcdab8967452301efcdab8967452301")]
         [TestCase(
@@ -312,10 +297,7 @@ namespace Nethermind.Core.Test
         }
 
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
-        public void Can_create_bit_array_from_bytes(string hex)
-        {
-            _ = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
-        }
+        public void Can_create_bit_array_from_bytes(string hex) => _ = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
 
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031", "0x3130292827262524232221201918171615141312111009080706050403020100")]
         public void Can_create_bit_array_from_bytes(string hex, string expectedResult)
@@ -328,7 +310,7 @@ namespace Nethermind.Core.Test
         [TestCase]
         public void Can_roundtrip_utf8_hex_conversion()
         {
-            for (var i = 0; i < 2048; i++)
+            for (int i = 0; i < 2048; i++)
             {
                 byte[] input = new byte[i];
                 byte[] hex = new byte[i * 2];
@@ -360,7 +342,7 @@ namespace Nethermind.Core.Test
 
             Bytes.OutputBytesToByteHex(input, hex, extraNibble: false);
 
-            for (var i = 0; i < hex.Length; i++)
+            for (int i = 0; i < hex.Length; i++)
             {
                 byte b = hex[i];
 
@@ -456,7 +438,7 @@ namespace Nethermind.Core.Test
             {
                 byte[] GenerateRandom(int length)
                 {
-                    var bytes = new byte[length];
+                    byte[] bytes = new byte[length];
                     TestContext.CurrentContext.Random.NextBytes(bytes);
                     return bytes;
                 }
@@ -540,10 +522,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void NullableComparison()
-        {
-            Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
-        }
+        public void NullableComparison() => Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
 
         [Test]
         public void FastHash_EmptyInput_ReturnsZero()
@@ -739,7 +718,7 @@ namespace Nethermind.Core.Test
             }
 
             int expected = 0;
-            foreach (var t in data)
+            foreach (byte t in data)
             {
                 if (t == 0) expected++;
             }

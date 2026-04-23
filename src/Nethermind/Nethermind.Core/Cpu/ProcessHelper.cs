@@ -17,7 +17,7 @@ internal static class ProcessHelper
     /// </summary>
     internal static string? RunAndReadOutput(string fileName, string arguments = "")
     {
-        var processStartInfo = new ProcessStartInfo
+        ProcessStartInfo processStartInfo = new()
         {
             FileName = fileName,
             WorkingDirectory = "",
@@ -27,7 +27,8 @@ internal static class ProcessHelper
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
-        using (var process = new Process { StartInfo = processStartInfo })
+        using (Process process = new()
+        { StartInfo = processStartInfo })
         using (new ConsoleExitHandler(process))
         {
             try

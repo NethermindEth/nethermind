@@ -127,15 +127,9 @@ public class OptimismCompactReceiptStorageDecoder :
     }
 
     public void DecodeLogEntryStructRef(scoped ref ValueDecoderContext decoderContext, RlpBehaviors none,
-        out LogEntryStructRef current)
-    {
-        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
-    }
+        out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-    public Hash256[] DecodeTopics(ValueDecoderContext valueDecoderContext)
-    {
-        return CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
-    }
+    public Hash256[] DecodeTopics(ValueDecoderContext valueDecoderContext) => CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
 
     // Refstruct decode does not generate bloom
     public bool CanDecodeBloom => false;
@@ -247,23 +241,11 @@ public class OptimismCompactReceiptStorageDecoder :
         return LengthOfSequence(Total);
     }
 
-    public void Encode(RlpStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Encode(stream, (OptimismTxReceipt)item, rlpBehaviors);
-    }
+    public void Encode(RlpStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Encode(stream, (OptimismTxReceipt)item, rlpBehaviors);
 
-    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
-    {
-        return GetLength((OptimismTxReceipt)item, rlpBehaviors);
-    }
+    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors) => GetLength((OptimismTxReceipt)item, rlpBehaviors);
 
-    TxReceipt IRlpValueDecoder<TxReceipt>.Decode(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
-    {
-        return Decode(ref decoderContext, rlpBehaviors);
-    }
+    TxReceipt IRlpValueDecoder<TxReceipt>.Decode(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors) => Decode(ref decoderContext, rlpBehaviors);
 
-    public Rlp Encode(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Encode((OptimismTxReceipt?)item, rlpBehaviors);
-    }
+    public Rlp Encode(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Encode((OptimismTxReceipt?)item, rlpBehaviors);
 }

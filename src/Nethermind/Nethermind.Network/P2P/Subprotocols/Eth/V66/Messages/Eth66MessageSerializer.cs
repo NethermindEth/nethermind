@@ -13,10 +13,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     {
         private readonly IZeroInnerMessageSerializer<TEthMessage> _ethMessageSerializer;
 
-        protected Eth66MessageSerializer(IZeroInnerMessageSerializer<TEthMessage> ethMessageSerializer)
-        {
-            _ethMessageSerializer = ethMessageSerializer;
-        }
+        protected Eth66MessageSerializer(IZeroInnerMessageSerializer<TEthMessage> ethMessageSerializer) => _ethMessageSerializer = ethMessageSerializer;
 
         public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
         {

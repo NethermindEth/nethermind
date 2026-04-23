@@ -77,7 +77,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
         // Yep... this global thing need to work.
         builder.RegisterBuildCallback((_) =>
         {
-            var assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
             if (assembly is not null)
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
         });
@@ -88,7 +88,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
         readonly Dictionary<Hash256, Address[]> _penaltiesCache = new();
         public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)
         {
-            var spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
+            IXdcReleaseSpec spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
             if (number == spec.SwitchBlock)
             {
                 return Array.Empty<Address>();
@@ -97,7 +97,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             {
                 return _penaltiesCache[currentHash];
             }
-            var nodesCount = candidates.Length;
+            int nodesCount = candidates.Length;
             List<Address> penalized = new();
 
             Random rand = new();
@@ -116,44 +116,28 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
     internal class TrustyForensics : IForensicsProcessor
     {
-        public Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool)
-        {
-            return Task.CompletedTask;
-        }
+        public Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool) =>
+            Task.CompletedTask;
 
-        public (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath) FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo)
-        {
-            return (Hash256.Zero, new List<string>(), new List<string>());
-        }
+        public (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath) FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo) =>
+            (Hash256.Zero, new List<string>(), new List<string>());
 
-        public Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
+        public Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC) =>
+            Task.CompletedTask;
 
-        public Task ProcessForensics(QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
+        public Task ProcessForensics(QuorumCertificate incomingQC) =>
+            Task.CompletedTask;
 
-        public Task ProcessVoteEquivocation(Vote incomingVote)
-        {
-            return Task.CompletedTask;
-        }
+        public Task ProcessVoteEquivocation(Vote incomingVote) =>
+            Task.CompletedTask;
 
-        public Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc)
-        {
-            return Task.CompletedTask;
-        }
+        public Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc) =>
+            Task.CompletedTask;
 
-        public Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer)
-        {
-            return Task.CompletedTask;
-        }
+        public Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer) =>
+            Task.CompletedTask;
 
-        public Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
+        public Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC) =>
+            Task.CompletedTask;
     }
 }

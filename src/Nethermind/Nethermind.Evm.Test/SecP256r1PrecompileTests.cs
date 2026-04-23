@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1PrecompileTests>, IPrecompileTests
+    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1Precompile, SecP256r1PrecompileTests>
     {
         private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 
@@ -20,8 +20,6 @@ namespace Nethermind.Evm.Test
         {
             yield return "p256Verify.json";
         }
-
-        public static IPrecompile Precompile() => SecP256r1Precompile.Instance;
 
         [Test]
         [TestCase(
@@ -35,8 +33,8 @@ namespace Nethermind.Evm.Test
         )]
         public void Produces_Empty_Output_On_Invalid_Input(string input)
         {
-            var bytes = Bytes.FromHexString(input);
-            (ReadOnlyMemory<byte> output, var success) = Precompile().Run(bytes, Prague.Instance);
+            byte[] bytes = Bytes.FromHexString(input);
+            (ReadOnlyMemory<byte> output, bool success) = Instance.Run(bytes, Prague.Instance);
 
             using (Assert.EnterMultipleScope())
             {
@@ -48,7 +46,7 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(RandomECDsaInputs))]
         public void Verifies_random_valid_signature(byte[] input)
         {
-            (ReadOnlyMemory<byte> output, var success) = SecP256r1Precompile.Instance.Run(input, Prague.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = SecP256r1Precompile.Instance.Run(input, Prague.Instance);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
@@ -58,12 +56,12 @@ namespace Nethermind.Evm.Test
 
         public static IEnumerable<TestCaseData> RandomECDsaInputs()
         {
-            var rng = RandomNumberGenerator.Create();
-            var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            RandomNumberGenerator rng = RandomNumberGenerator.Create();
+            ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
-            for (var i = 0; i < 100; i++)
+            for (int i = 0; i < 100; i++)
             {
-                var hash = new byte[32];
+                byte[] hash = new byte[32];
                 rng.GetBytes(hash);
 
                 ECParameters pub = ecdsa.ExportParameters(false);
