@@ -6,6 +6,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.AuRa;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -13,12 +14,14 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 {
     private readonly IAuRaBlockFinalizationManager _auRaBlockFinalizationManager;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IBlockTree _blockTree;
 
-    public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher)
+    public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher, IBlockTree blockTree)
         : base(manualBlockFinalizationManager, blockFinalizationManager, poSSwitcher)
     {
         _auRaBlockFinalizationManager = blockFinalizationManager;
         _poSSwitcher = poSSwitcher;
+        _blockTree = blockTree;
         _auRaBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
     }
 
@@ -34,9 +37,7 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
     {
-        // Skip forwarding post-merge so the inner manager never subscribes to block events
-        // nor runs the startup catch-up walk — AuRa finalization is not active post-merge.
-        if (_poSSwitcher.HasEverReachedTerminalBlock()) return;
+        if (_poSSwitcher.IsHeadPostMerge(_blockTree)) return;
         _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
     }
 

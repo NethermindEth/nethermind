@@ -50,6 +50,34 @@ namespace Nethermind.AuRa.Test
             finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
         }
 
+        [Test]
+        public void repeated_SetMainBlockBranchProcessor_with_same_processor_is_idempotent()
+        {
+            // The merge plugin can call SetMainBlockBranchProcessor via both the direct init step
+            // and the wrapper, depending on ordering. The inner manager must tolerate that.
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(3, 1, 1);
+            FinalizeToLevel(1, blockTreeBuilder.ChainLevelInfoRepository);
+
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _validSealerStrategy, _logManager);
+            finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
+            finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
+
+            finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
+        }
+
+        [Test]
+        public void SetMainBlockBranchProcessor_with_different_processor_throws()
+        {
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(3, 1, 1);
+            FinalizeToLevel(1, blockTreeBuilder.ChainLevelInfoRepository);
+
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _validSealerStrategy, _logManager);
+            finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
+
+            IBranchProcessor other = Substitute.For<IBranchProcessor>();
+            Assert.Throws<InvalidOperationException>(() => finalizationManager.SetMainBlockBranchProcessor(other));
+        }
+
         private void FinalizeToLevel(long upperLevel, IChainLevelInfoRepository chainLevelInfoRepository)
         {
             for (long i = 0; i <= upperLevel; i++)
