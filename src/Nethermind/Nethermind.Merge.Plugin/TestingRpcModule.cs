@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -21,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using ILogger = Nethermind.Logging.ILogger;
@@ -33,6 +33,7 @@ public class TestingRpcModule(
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
+    IJsonSerializer jsonSerializer,
     ILogManager logManager)
     : ITestingRpcModule
 {
@@ -116,7 +117,7 @@ public class TestingRpcModule(
             try
             {
                 string fileName = $"{processedBlock.Number}.json";
-                string jsonContent = JsonSerializer.Serialize(getPayloadV5Result);
+                string jsonContent = jsonSerializer.Serialize(getPayloadV5Result);
                 await File.WriteAllTextAsync(fileName, jsonContent);
                 if (_logger.IsDebug) _logger.Debug($"Saved payload to {fileName}");
             }
