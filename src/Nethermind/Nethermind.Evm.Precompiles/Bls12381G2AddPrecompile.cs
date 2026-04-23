@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,7 +12,7 @@ namespace Nethermind.Evm.Precompiles;
 /// </summary>
 public partial class Bls12381G2AddPrecompile : IPrecompile<Bls12381G2AddPrecompile>
 {
-    public static readonly Bls12381G2AddPrecompile Instance = new();
+    public static Bls12381G2AddPrecompile Instance { get; } = new();
 
     private Bls12381G2AddPrecompile() { }
 

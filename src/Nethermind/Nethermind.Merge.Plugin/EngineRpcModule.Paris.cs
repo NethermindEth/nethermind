@@ -103,7 +103,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             catch (BlockchainException exception)
             {
-                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR engine_newPayloadV{version} failed: {exception}");
+                _logger.DebugError($"engine_newPayloadV{version} failed: {exception}");
                 return ResultWrapper<PayloadStatusV1>.Fail(exception.Message, ErrorCodes.UnknownBlockError);
             }
             catch (Exception exception)

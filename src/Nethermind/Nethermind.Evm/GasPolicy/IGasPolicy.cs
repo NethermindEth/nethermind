@@ -431,10 +431,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
     }
 
-    protected static long CalculateFloorCost(long tokensInCallData, IReleaseSpec spec) =>
-        spec.IsEip7623Enabled
-            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
-            : 0L;
+    private static long CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
+        transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
+
+    /// <summary>
+    /// Calculates the calldata floor cost for a transaction.
+    /// </summary>
+    protected static long CalculateFloorCost(Transaction transaction, IReleaseSpec spec, long tokensInCallData) => spec switch
+    {
+        { IsEip7976Enabled: true } => GasCostOf.Transaction + CalculateFloorTokensInCallData(transaction, spec) * spec.GasCosts.TotalCostFloorPerToken,
+        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
+        _ => 0L
+    };
 }
 
 /// <summary>

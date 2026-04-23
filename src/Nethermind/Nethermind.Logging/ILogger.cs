@@ -79,6 +79,100 @@ public struct ILogger : IEquatable<ILogger>
         if (IsWarn) _logger.Warn(text);
     }
 
+    /// <summary>
+    /// Logs at <see cref="InterfaceLogger.Error"/> severity, but only when <see cref="IsDebug"/> is true.
+    /// Replaces the manual <c>if (logger.IsDebug) logger.Error($"DEBUG/ERROR: ...")</c> idiom.
+    /// Interpolation of the message is skipped entirely when <see cref="IsDebug"/> is false,
+    /// so the callsite pays no allocation cost in the common (disabled) case.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void DebugError(
+        [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler,
+        Exception ex = null)
+    {
+        if (IsDebug) _logger.Error("DEBUG/ERROR: " + handler.ToStringAndClear(), LogEventKind.DebugError, ex);
+    }
+
+    /// <summary>
+    /// Plain-string overload of <see cref="DebugError(ref DebugInterpolatedStringHandler, Exception)"/>
+    /// for callers that pass a literal message with no interpolation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void DebugError(string text, Exception ex = null)
+    {
+        if (IsDebug) _logger.Error("DEBUG/ERROR: " + text, LogEventKind.DebugError, ex);
+    }
+
+    /// <summary>
+    /// Logs at <see cref="InterfaceLogger.Warn"/> severity, but only when <see cref="IsDebug"/> is true.
+    /// Replaces the manual <c>if (logger.IsDebug) logger.Warn($"DEBUG/WARN: ...")</c> idiom.
+    /// Interpolation of the message is skipped entirely when <see cref="IsDebug"/> is false,
+    /// so the callsite pays no allocation cost in the common (disabled) case.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void DebugWarn(
+        [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler)
+    {
+        if (IsDebug) _logger.Warn("DEBUG/WARN: " + handler.ToStringAndClear(), LogEventKind.DebugWarn);
+    }
+
+    /// <summary>
+    /// Plain-string overload of <see cref="DebugWarn(ref DebugInterpolatedStringHandler)"/>
+    /// for callers that pass a literal message with no interpolation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void DebugWarn(string text)
+    {
+        if (IsDebug) _logger.Warn("DEBUG/WARN: " + text, LogEventKind.DebugWarn);
+    }
+
+    /// <summary>
+    /// Logs at <see cref="InterfaceLogger.Error"/> severity, but only when <see cref="IsTrace"/> is true.
+    /// Replaces the manual <c>if (logger.IsTrace) logger.Error($"TRACE/ERROR: ...")</c> idiom.
+    /// Interpolation of the message is skipped entirely when <see cref="IsTrace"/> is false,
+    /// so the callsite pays no allocation cost in the common (disabled) case.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void TraceError(
+        [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler,
+        Exception ex = null)
+    {
+        if (IsTrace) _logger.Error("TRACE/ERROR: " + handler.ToStringAndClear(), LogEventKind.TraceError, ex);
+    }
+
+    /// <summary>
+    /// Plain-string overload of <see cref="TraceError(ref TraceInterpolatedStringHandler, Exception)"/>
+    /// for callers that pass a literal message with no interpolation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void TraceError(string text, Exception ex = null)
+    {
+        if (IsTrace) _logger.Error("TRACE/ERROR: " + text, LogEventKind.TraceError, ex);
+    }
+
+    /// <summary>
+    /// Logs at <see cref="InterfaceLogger.Warn"/> severity, but only when <see cref="IsTrace"/> is true.
+    /// Replaces the manual <c>if (logger.IsTrace) logger.Warn($"TRACE/WARN: ...")</c> idiom.
+    /// Interpolation of the message is skipped entirely when <see cref="IsTrace"/> is false,
+    /// so the callsite pays no allocation cost in the common (disabled) case.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void TraceWarn(
+        [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler)
+    {
+        if (IsTrace) _logger.Warn("TRACE/WARN: " + handler.ToStringAndClear(), LogEventKind.TraceWarn);
+    }
+
+    /// <summary>
+    /// Plain-string overload of <see cref="TraceWarn(ref TraceInterpolatedStringHandler)"/>
+    /// for callers that pass a literal message with no interpolation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void TraceWarn(string text)
+    {
+        if (IsTrace) _logger.Warn("TRACE/WARN: " + text, LogEventKind.TraceWarn);
+    }
+
     [Flags]
     private enum LogLevel
     {
