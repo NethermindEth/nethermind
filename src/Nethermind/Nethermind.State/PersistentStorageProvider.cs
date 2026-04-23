@@ -457,11 +457,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             if (!storageCell.IsHash)
             {
-                if (BlockChange.EstimatedSize > 1)
-                {
-                    EnsureStorageTree();
-                    _backend.HintGet(storageCell.Index, value);
-                }
+                EnsureStorageTree();
+                _backend.HintGet(storageCell.Index, value);
             }
         }
 
