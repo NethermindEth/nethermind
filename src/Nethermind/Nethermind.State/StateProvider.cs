@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -624,18 +625,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             {
                 using (IWorldStateScopeProvider.ICodeSetter batch = codeDb.BeginCodeWrite())
                 {
-                    using ArrayPoolList<KeyValuePair<Hash256AsKey, byte[]>> sortedCodeBatch = new(dict.Count);
-                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict)
-                    {
-                        sortedCodeBatch.Add(kvp);
-                    }
-
                     // Insert ordered for improved performance
-                    sortedCodeBatch.Sort(static (a, b) => a.Key.CompareTo(b.Key));
-                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in sortedCodeBatch.AsSpan())
-                    {
+                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict.OrderBy(static kvp => kvp.Key))
                         batch.Set(kvp.Key.Value, kvp.Value);
-                    }
                 }
 
                 // Mark all inserted codes as persisted

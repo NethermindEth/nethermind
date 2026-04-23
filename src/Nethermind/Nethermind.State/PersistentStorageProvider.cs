@@ -228,16 +228,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
         {
-            if (!kvp.Value || !_storages.TryGetValue(kvp.Key, out PerContractState? contractState))
+            if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
             {
                 // Wasn't updated don't recalculate
                 continue;
             }
 
+            PerContractState contractState = kvp.Value;
+
             (int writes, int skipped) = contractState.ProcessStorageChanges(
-                writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges));
+                writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
 
             ReportMetrics(writes, skipped);
         }
