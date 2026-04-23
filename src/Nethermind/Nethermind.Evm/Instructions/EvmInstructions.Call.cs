@@ -21,15 +21,16 @@ public static partial class EvmInstructions
     /// </summary>
     public interface IOpCall
     {
-        /// <summary>
-        /// Indicates if the call is static.
-        /// Static calls cannot modify state.
-        /// </summary>
+        /// <summary>Static calls cannot modify state.</summary>
         virtual static bool IsStatic => false;
 
-        /// <summary>
-        /// Returns the specific execution type of the call.
-        /// </summary>
+        /// <summary>DELEGATECALL inherits caller and value; no value transfer.</summary>
+        virtual static bool IsDelegateCall => false;
+
+        /// <summary>CALLCODE executes target's code in caller's context; target is caller.</summary>
+        virtual static bool IsCallCode => false;
+
+        /// <summary>Returns the specific execution type of the call.</summary>
         abstract static ExecutionType ExecutionType { get; }
     }
 
@@ -46,6 +47,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpCallCode : IOpCall
     {
+        public static bool IsCallCode => true;
         public static ExecutionType ExecutionType => ExecutionType.CALLCODE;
     }
 
@@ -54,6 +56,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpDelegateCall : IOpCall
     {
+        public static bool IsDelegateCall => true;
         public static ExecutionType ExecutionType => ExecutionType.DELEGATECALL;
     }
 
@@ -114,12 +117,12 @@ public static partial class EvmInstructions
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
-        if (typeof(TOpCall) == typeof(OpStaticCall))
+        if (TOpCall.IsStatic)
         {
             // Static calls cannot transfer value.
             callValue = UInt256.Zero;
         }
-        else if (typeof(TOpCall) == typeof(OpDelegateCall))
+        else if (TOpCall.IsDelegateCall)
         {
             // Delegate calls use the value from the current execution context.
             callValue = env.Value;
@@ -135,16 +138,17 @@ public static partial class EvmInstructions
             goto StackUnderflow;
         }
 
-        bool hasValueTransfer = typeof(TOpCall) != typeof(OpDelegateCall) && !callValue.IsZero;
+        bool hasValueTransfer = !TOpCall.IsDelegateCall && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
-        if (vm.VmState.IsStatic && hasValueTransfer && typeof(TOpCall) != typeof(OpCallCode))
+        if (vm.VmState.IsStatic && hasValueTransfer && !TOpCall.IsCallCode)
             return EvmExceptionType.StaticCallViolation;
 
         // Determine caller and target based on the call type.
-        Address caller = typeof(TOpCall) == typeof(OpDelegateCall) ? env.Caller : env.ExecutingAccount;
-        Address target = (typeof(TOpCall) == typeof(OpCall) || typeof(TOpCall) == typeof(OpStaticCall))
-            ? codeSource
-            : env.ExecutingAccount;
+        Address caller = TOpCall.IsDelegateCall ? env.Caller : env.ExecutingAccount;
+        // CALL/STATICCALL target the code source; CALLCODE/DELEGATECALL execute in the caller's context.
+        Address target = (TOpCall.IsDelegateCall || TOpCall.IsCallCode)
+            ? env.ExecutingAccount
+            : codeSource;
 
         // Add extra gas cost if value is transferred.
         if (hasValueTransfer)
@@ -162,16 +166,20 @@ public static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
 
+        // Cache once; VirtualMachine._codeInfoRepository is set from TxExecutionContext at transaction entry.
+        ICodeInfoRepository codeInfoRepository = vm.CodeInfoRepository;
+        bool tracingAccess = vm.TxTracer.IsTracingAccess;
+        ref readonly StackAccessTracker accessTracker = ref vm.VmState.AccessTracker;
+
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
-        bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in accessTracker,
+                tracingAccess, codeSource)) goto OutOfGas;
+        bool _ = codeInfoRepository.TryGetDelegation(codeSource, spec, out Address delegated);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {
-            if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                    vm.TxTracer.IsTracingAccess, delegated)) goto OutOfGas;
+            if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in accessTracker,
+                    tracingAccess, delegated)) goto OutOfGas;
         }
 
         // Charge additional gas if the target account is new or considered empty.
@@ -187,7 +195,7 @@ public static partial class EvmInstructions
 
 
         // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // Get remaining gas for 63/64 calculation
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
