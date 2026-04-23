@@ -234,18 +234,30 @@ internal sealed class StateCompositionVisitor(
         };
     }
 
+    /// <summary>
+    /// Progress-logger snapshot. Runs on the 8-second timer thread while scan
+    /// workers write the same counters without locks — Volatile.Read guarantees
+    /// torn-free 64-bit loads on every .NET runtime, not just x64. Values are
+    /// inherently best-effort (no happens-before across counters) and fine for
+    /// log-line rendering; correctness-critical totals flow through GetStats()
+    /// after the scan has joined all workers.
+    /// </summary>
     public ScanSnapshot GetSnapshot()
     {
         long accounts = 0, contracts = 0, withStorage = 0, slots = 0, nodes = 0, bytes = 0;
         foreach (VisitorCounters c in _localCounters.Values)
         {
-            accounts += c.AccountsTotal;
-            contracts += c.ContractsTotal;
-            withStorage += c.ContractsWithStorage;
-            slots += c.StorageSlotsTotal;
-            nodes += c.AccountFullNodes + c.AccountShortNodes + c.AccountValueNodes
-                   + c.StorageFullNodes + c.StorageShortNodes + c.StorageValueNodes;
-            bytes += c.AccountNodeBytes + c.StorageNodeBytes;
+            accounts += Volatile.Read(ref c.AccountsTotal);
+            contracts += Volatile.Read(ref c.ContractsTotal);
+            withStorage += Volatile.Read(ref c.ContractsWithStorage);
+            slots += Volatile.Read(ref c.StorageSlotsTotal);
+            nodes += Volatile.Read(ref c.AccountFullNodes)
+                   + Volatile.Read(ref c.AccountShortNodes)
+                   + Volatile.Read(ref c.AccountValueNodes)
+                   + Volatile.Read(ref c.StorageFullNodes)
+                   + Volatile.Read(ref c.StorageShortNodes)
+                   + Volatile.Read(ref c.StorageValueNodes);
+            bytes += Volatile.Read(ref c.AccountNodeBytes) + Volatile.Read(ref c.StorageNodeBytes);
         }
 
         return new ScanSnapshot(accounts, contracts, withStorage, slots, nodes, bytes);

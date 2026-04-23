@@ -54,14 +54,16 @@ internal sealed class StateCompositionStateHolder
     public CumulativeTrieStats IncrementalStats { get { lock (_lock) return _incrementalStats; } }
 
     /// <summary>
-    /// Returns the live cumulative depth stats reference. Single-writer invariant:
-    /// mutations happen under <see cref="_lock"/> by either <c>PublishScanResults</c>
-    /// or <see cref="ApplyIncrementalDiffAndUpdate"/>, both of which run serialized.
-    /// Readers (metrics publishers) iterate immediately after receiving the ref and
-    /// do not cache it past the publish, so returning the instance avoids an O(9x16)
-    /// copy on every diff.
+    /// Returns the live cumulative depth stats reference. Callers MUST hold
+    /// <c>StateCompositionService._diffLock</c> for the whole duration they
+    /// read the returned instance; that is the only thing excluding the two
+    /// writers, <see cref="ApplyIncrementalDiffAndUpdate"/> and
+    /// <see cref="PublishScanBaseline"/>, which themselves run inside <c>_diffLock</c>
+    /// critical sections in <c>RunIncrementalDiff</c> and <c>PublishScanResults</c>.
+    /// Returning the live ref (instead of copying) avoids an O(9×16) copy on every
+    /// diff; readers iterate immediately and do not cache the reference past publish.
     /// </summary>
-    public CumulativeDepthStats CurrentDepthStats => _currentDepthStats;
+    internal CumulativeDepthStats CurrentDepthStats => _currentDepthStats;
 
     public long IncrementalBlock { get { lock (_lock) return _incrementalBlock; } }
 
@@ -136,6 +138,79 @@ internal sealed class StateCompositionStateHolder
                 Duration = duration,
                 IsComplete = isComplete,
             };
+        }
+    }
+
+    /// <summary>
+    /// Atomically publish a fresh scan's baseline. Coalesces the three mutations
+    /// (<see cref="SetBaseline"/>, <see cref="MarkScanCompleted"/>, <see cref="InitializeIncremental"/>)
+    /// under a single <c>_lock</c> acquisition so <see cref="BuildReport"/> cannot
+    /// observe a torn state in which the new distribution and scan metadata are
+    /// visible but <c>_incrementalStats</c> still reflects the pre-scan cumulative
+    /// state.
+    /// </summary>
+    public void PublishScanBaseline(
+        StateCompositionStats stats,
+        TrieDepthDistribution dist,
+        long blockNumber,
+        Hash256 stateRoot,
+        TimeSpan duration,
+        bool isComplete,
+        CumulativeTrieStats cumulativeBaseline,
+        Dictionary<ValueHash256, long>? slotCountByAddress = null,
+        Dictionary<ValueHash256, int>? codeHashRefcounts = null,
+        Dictionary<ValueHash256, int>? codeHashSizes = null)
+    {
+        lock (_lock)
+        {
+            _currentStats = stats;
+            _currentDistribution = dist;
+            _hasScanBaseline = true;
+
+            _lastScanMetadata = new ScanMetadata
+            {
+                BlockNumber = blockNumber,
+                StateRoot = stateRoot,
+                CompletedAt = DateTimeOffset.UtcNow,
+                Duration = duration,
+                IsComplete = isComplete,
+            };
+
+            _incrementalStats = cumulativeBaseline;
+            _hasIncrementalBaseline = true;
+            _incrementalBlock = blockNumber;
+            _diffsSinceBaseline = 0;
+            _lastProcessedStateRoot = stateRoot;
+            _currentDepthStats.Reset();
+            _currentDepthStats.SeedFromScan(dist);
+
+            _slotCountByAddress = slotCountByAddress ?? [];
+            _codeHashRefcounts = codeHashRefcounts ?? [];
+            _codeHashSizes = codeHashSizes ?? [];
+        }
+    }
+
+    /// <summary>
+    /// Atomic read of the state queried during shutdown flush. Returns <c>false</c>
+    /// when no incremental baseline is present or the state root has been
+    /// invalidated (<see cref="Hash256.Zero"/> sentinel).
+    /// </summary>
+    public bool TryGetShutdownSnapshot(out Hash256 stateRoot, out long blockNumber, out CumulativeTrieStats stats)
+    {
+        lock (_lock)
+        {
+            if (!_hasIncrementalBaseline || _lastProcessedStateRoot == Hash256.Zero)
+            {
+                stateRoot = Hash256.Zero;
+                blockNumber = 0;
+                stats = default;
+                return false;
+            }
+
+            stateRoot = _lastProcessedStateRoot;
+            blockNumber = _incrementalBlock;
+            stats = _incrementalStats;
+            return true;
         }
     }
 

@@ -255,8 +255,6 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
 
     private void PublishScanResults(StateCompositionStats stats, TrieDepthDistribution dist, BlockHeader header, Stopwatch sw, bool isComplete)
     {
-        _stateHolder.SetBaseline(stats, dist);
-        _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed, isComplete);
         CumulativeTrieStats cumulativeBaseline = CumulativeTrieStats.FromScanStats(stats);
 
         // Seed and publish under _diffLock so a concurrent incremental diff cannot
@@ -265,8 +263,9 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         // _diffLock, so the nested acquire is deadlock-free.
         lock (_diffLock)
         {
-            _stateHolder.InitializeIncremental(
-                cumulativeBaseline, header.Number, header.StateRoot!, dist,
+            _stateHolder.PublishScanBaseline(
+                stats, dist, header.Number, header.StateRoot!, sw.Elapsed, isComplete,
+                cumulativeBaseline,
                 slotCountByAddress: stats.SlotCountByAddress,
                 codeHashRefcounts: stats.CodeHashRefcounts,
                 codeHashSizes: stats.CodeHashSizes);
@@ -325,12 +324,8 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         {
             lock (_diffLock)
             {
-                if (!_stateHolder.HasIncrementalBaseline) return;
-                Hash256 stateRoot = _stateHolder.LastProcessedStateRoot;
-                if (stateRoot == Hash256.Zero) return;
-
-                CumulativeTrieStats stats = _stateHolder.IncrementalStats;
-                long blockNumber = _stateHolder.IncrementalBlock;
+                if (!_stateHolder.TryGetShutdownSnapshot(out Hash256 stateRoot, out long blockNumber, out CumulativeTrieStats stats))
+                    return;
 
                 if (_logger.IsInfo)
                     _logger.Info($"StateComposition: shutdown flush — writing snapshot at block {blockNumber}");
