@@ -405,12 +405,11 @@ namespace Nethermind.Synchronization.Test.FastSync
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
             ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
-            ISimpleSyncFeed<StateSyncBatch> feed = container.Resolve<ISimpleSyncFeed<StateSyncBatch>>();
 
-            using StateSyncBatch? request = await feed.PrepareRequest(ctx.CancellationToken);
+            using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
             request.Should().NotBeNull();
 
-            feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>()))
+            ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>()))
                 .Should().Be(SyncResponseHandlingResult.LesserQuality);
         }
 
@@ -425,12 +424,11 @@ namespace Nethermind.Synchronization.Test.FastSync
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
             ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
-            ISimpleSyncFeed<StateSyncBatch> feed = container.Resolve<ISimpleSyncFeed<StateSyncBatch>>();
 
-            using StateSyncBatch? request = await feed.PrepareRequest(ctx.CancellationToken);
+            using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
             request.Should().NotBeNull();
 
-            feed.HandleResponse(request, peer: null)
+            ctx.Feed.HandleResponse(request, peer: null)
                 .Should().Be(SyncResponseHandlingResult.NotAssigned);
         }
 
@@ -552,17 +550,16 @@ namespace Nethermind.Synchronization.Test.FastSync
             await using IContainer container = PrepareDownloader(remote);
             SafeContext ctx = container.Resolve<SafeContext>();
             ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
-            ISimpleSyncFeed<StateSyncBatch> feed = container.Resolve<ISimpleSyncFeed<StateSyncBatch>>();
             ISyncDownloader<StateSyncBatch> downloader = container.Resolve<ISyncDownloader<StateSyncBatch>>();
 
             async Task<int> RunOneRequest()
             {
-                using StateSyncBatch? request = await feed.PrepareRequest(cancellation);
+                using StateSyncBatch? request = await ctx.Feed.PrepareRequest(cancellation);
                 if (request is null) return 0;
                 PeerInfo peer = new(ctx.SyncPeerMocks[0]);
                 await downloader.Dispatch(peer, request!, cancellation);
                 int requestCount = request.RequestedNodes?.Count ?? 0;
-                feed.HandleResponse(request, peer);
+                ctx.Feed.HandleResponse(request, peer);
                 return requestCount;
             }
 

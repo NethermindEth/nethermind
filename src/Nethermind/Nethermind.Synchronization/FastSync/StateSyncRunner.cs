@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -98,7 +97,11 @@ public class StateSyncRunner(
         while (!token.IsCancellationRequested)
         {
             long header = syncProgressResolver.FindBestHeader();
-            long peerBlock = syncPeerPool.InitializedPeers.Select(p => p.HeadNumber).DefaultIfEmpty(0).Max();
+            long peerBlock = 0;
+            foreach (PeerInfo p in syncPeerPool.InitializedPeers)
+            {
+                if (p.HeadNumber > peerBlock) peerBlock = p.HeadNumber;
+            }
             long targetBlock = beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
 
             if (targetBlock >= header && (targetBlock - header) <= totalSyncLag)

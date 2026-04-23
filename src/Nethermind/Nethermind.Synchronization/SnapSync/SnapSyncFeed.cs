@@ -48,6 +48,10 @@ namespace Nethermind.Synchronization.SnapSync
 
                 return EmptyBatch;
             }
+            catch (OperationCanceledException)
+            {
+                return EmptyBatch;
+            }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);

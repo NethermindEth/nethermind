@@ -176,13 +176,15 @@ public abstract class StateSyncFeedTestsBase(
         Lazy<TreeSync> treeSync,
         Lazy<IStateSyncRunner> stateSyncRunner,
         Lazy<IBlockProcessingQueue> blockProcessingQueue,
-        IBlockTree blockTree
+        IBlockTree blockTree,
+        Lazy<ISimpleSyncFeed<StateSyncBatch>> feed
     ) : IDisposable
     {
         public SyncPeerMock[] SyncPeerMocks => syncPeerMocks.Value;
         public ISyncPeerPool Pool => syncPeerPool.Value;
         public TreeSync TreeFeed => treeSync.Value;
         public IBlockProcessingQueue BlockProcessingQueue => blockProcessingQueue.Value;
+        public ISimpleSyncFeed<StateSyncBatch> Feed => feed.Value;
 
         private readonly AutoCancelTokenSource _autoCancelTokenSource = new();
         public CancellationToken CancellationToken => _autoCancelTokenSource.Token;

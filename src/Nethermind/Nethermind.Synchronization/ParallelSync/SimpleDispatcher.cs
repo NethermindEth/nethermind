@@ -72,7 +72,7 @@ public class SimpleDispatcher<T>(
                 {
                     semaphore.Release();
                 }
-            }, token);
+            });
         }
 
         // Wait for in-flight tasks to complete. Drain with CancellationToken.None so that
