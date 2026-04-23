@@ -21,7 +21,8 @@ namespace Nethermind.State.Flat;
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
-    bool recordDetailedMetrics)
+    bool recordDetailedMetrics,
+    ITrieNodeCache? trieNodeCache = null)
     : RefCountingDisposable
 {
     public int SnapshotCount => snapshots.Count;
@@ -127,7 +128,7 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStateNodes(path, out node);
+        trieNodeCache?.TryGet(null, path, hash, out node) == true || TryFindStateNodes(path, out node);
 
     public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
@@ -151,7 +152,7 @@ public sealed class ReadOnlySnapshotBundle(
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed.
     public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStorageNodes((address, path), out node);
+        trieNodeCache?.TryGet(address, path, hash, out node) == true || TryFindStorageNodes((address, path), out node);
 
     public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
