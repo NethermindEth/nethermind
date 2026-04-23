@@ -35,8 +35,7 @@ public class BlockOverride
         {
             // Set Author as well because GasBeneficiary = Author ?? Beneficiary.
             // Mirrors geth: blockCtx.Coinbase = *o.FeeRecipient.
-            result.Author = FeeRecipient;
-            result.Beneficiary = FeeRecipient;
+            result.Beneficiary = result.Author = FeeRecipient;
         }
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
         if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
