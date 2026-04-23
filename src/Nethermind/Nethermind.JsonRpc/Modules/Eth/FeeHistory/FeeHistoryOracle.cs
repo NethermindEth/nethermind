@@ -113,15 +113,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ulong maxBlobGasPerBlock = spec.GasCosts.MaxBlobGasPerBlock;
                 double blobGasUsedRatio = maxBlobGasPerBlock == 0 ? 0 : (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlock;
 
-                UInt256 nextFeePerBlobGas = UInt256.Zero;
-                if (b.Header.ExcessBlobGas.HasValue)
-                {
-                    // Uses parent-block spec for BlobBaseFeeUpdateFraction, matching Geth's feehistory.go.
-                    // At hard-fork boundaries this is one block off, but it is intentional for compatibility.
-                    ulong nextExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(b.Header, spec) ?? 0;
-                    if (!BlobGasCalculator.TryCalculateFeePerBlobGas(nextExcessBlobGas, spec.BlobBaseFeeUpdateFraction, out nextFeePerBlobGas))
-                        nextFeePerBlobGas = UInt256.Zero;
-                }
+                // Uses parent-block spec for BlobBaseFeeUpdateFraction, matching Geth's feehistory.go.
+                // At hard-fork boundaries this is one block off, but it is intentional for compatibility.
+                UInt256 nextFeePerBlobGas =
+                    b.Header.ExcessBlobGas.HasValue &&
+                    BlobGasCalculator.TryCalculateFeePerBlobGas(BlobGasCalculator.CalculateExcessBlobGas(b.Header, spec) ?? 0, spec.BlobBaseFeeUpdateFraction, out UInt256 fee)
+                    ? fee
+                    : UInt256.Zero;
 
                 return new(
                     b.Number,
@@ -242,16 +240,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private static ArrayPoolList<UInt256>? CalculateRewardsPercentiles(
             BlockFeeHistorySearchInfo blockInfo,
-            double[] rewardPercentiles)
-        {
-            if (blockInfo.BlockTransactionsLength != 0)
-                return CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
-
-            ArrayPoolList<UInt256> zeros = new(rewardPercentiles.Length);
-            for (int i = 0; i < rewardPercentiles.Length; i++)
-                zeros.Add(UInt256.Zero);
-            return zeros;
-        }
+            double[] rewardPercentiles) => blockInfo.BlockTransactionsLength == 0
+                ? new ArrayPoolList<UInt256>(rewardPercentiles.Length, rewardPercentiles.Length)
+                : CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
 
         private List<RewardInfo> GetRewardsInBlock(Block block)
         {

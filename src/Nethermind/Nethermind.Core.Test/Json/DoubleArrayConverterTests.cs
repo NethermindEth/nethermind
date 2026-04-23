@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class DoubleArrayConverterTests : ConverterTestBase<double[]>
 {
-    static readonly DoubleArrayConverter _converter = new();
+    private static readonly DoubleArrayConverter _converter = new();
 
     [TestCaseSource(nameof(RoundtripTestCases))]
     public void Test_roundtrip(double[] value) => TestConverter(value, static (a, b) => a.AsSpan().SequenceEqual(b), _converter);

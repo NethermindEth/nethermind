@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -23,8 +24,12 @@ namespace Nethermind.Serialization.Json
             JsonSerializerOptions options)
         {
             if (double.IsNaN(value) || double.IsInfinity(value))
-                throw new JsonException($"The value '{value}' is not a valid JSON number.");
+                ThrowNotFiniteJsonException(value);
             writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
         }
+
+        [DoesNotReturn]
+        private static void ThrowNotFiniteJsonException(double value) =>
+            throw new JsonException($"The value '{value}' is not a valid JSON number.");
     }
 }
