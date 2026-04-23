@@ -31,29 +31,59 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
-    bool populatePreBlockCache = true
+    bool populatePreBlockCache = true,
+    CrossBlockCaches? crossBlockCaches = null
 ) : IWorldStateScopeProvider, IPreBlockCaches
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache, crossBlockCaches, baseBlock);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper : IWorldStateScopeProvider.IScope
     {
-        private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
-        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
-        private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
-        private readonly bool populatePreBlockCache = populatePreBlockCache;
+        private readonly IWorldStateScopeProvider.IScope baseScope;
+        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache;
+        private readonly SeqlockCache<StorageCell, byte[]> storageCache;
+        private readonly CrossBlockCaches? crossBlockCaches;
+        private readonly bool populatePreBlockCache;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
-        private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+        private readonly PrewarmerGetTimeLabels _labels;
         private long _writeBatchTime = 0;
+        private bool _committed;
+        private volatile bool _pendingStorageClear;
+
+        public ScopeWrapper(
+            IWorldStateScopeProvider.IScope baseScope,
+            PreBlockCaches preBlockCaches,
+            bool populatePreBlockCache,
+            CrossBlockCaches? crossBlockCaches,
+            BlockHeader? baseBlock)
+        {
+            this.baseScope = baseScope;
+            preBlockCache = preBlockCaches.StateCache;
+            storageCache = preBlockCaches.StorageCache;
+            this.crossBlockCaches = crossBlockCaches;
+            this.populatePreBlockCache = populatePreBlockCache;
+            _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+
+            if (!populatePreBlockCache && crossBlockCaches is not null && baseBlock is not null &&
+                baseBlock.Number != crossBlockCaches.LastCommittedBlockNumber)
+            {
+                crossBlockCaches.StorageCache.Clear();
+            }
+        }
 
         public void Dispose()
         {
+            if (!_committed && crossBlockCaches is not null)
+            {
+                crossBlockCaches.StorageCache.Clear();
+            }
+
             if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
@@ -64,38 +94,65 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTreeWrapper(
-                baseScope.CreateStorageTree(address),
-                storageCache,
-                address,
-                populatePreBlockCache);
+            baseScope.CreateStorageTree(address),
+            storageCache,
+            address,
+            populatePreBlockCache,
+            crossBlockCaches?.StorageCache);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
+            if (crossBlockCaches is not null)
+            {
+                batch = new CacheUpdatingWriteBatch(batch, this, crossBlockCaches.StorageCache);
+            }
+
             if (!_measureMetric)
             {
-                return baseScope.StartWriteBatch(estimatedAccountNum);
+                return batch;
             }
 
             _writeBatchTime = Stopwatch.GetTimestamp();
             long sw = Stopwatch.GetTimestamp();
             return new WriteBatchLifetimeMeasurer(
-                baseScope.StartWriteBatch(estimatedAccountNum),
+                batch,
                 _metricObserver,
                 sw,
                 populatePreBlockCache);
         }
+
+        internal void BufferStorageClear() => _pendingStorageClear = true;
 
         public void Commit(long blockNumber)
         {
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
+                FinalizeCommit(blockNumber);
                 return;
             }
 
             long sw = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
+            FinalizeCommit(blockNumber);
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
+        }
+
+        private void FinalizeCommit(long blockNumber)
+        {
+            if (crossBlockCaches is null)
+            {
+                return;
+            }
+
+            if (_pendingStorageClear)
+            {
+                crossBlockCaches.StorageCache.Clear();
+            }
+
+            _committed = true;
+            crossBlockCaches.LastCommittedBlockNumber = blockNumber;
         }
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -158,12 +215,14 @@ public class PrewarmerScopeProvider(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
-        bool populatePreBlockCache) : IWorldStateScopeProvider.IStorageTree
+        bool populatePreBlockCache,
+        SeqlockCache<StorageCell, byte[], LargeCacheSets>? crossBlockStorageCache) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool populatePreBlockCache = populatePreBlockCache;
+        private readonly SeqlockCache<StorageCell, byte[], LargeCacheSets>? crossBlockStorageCache = crossBlockStorageCache;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
@@ -197,9 +256,15 @@ public class PrewarmerScopeProvider(
                     baseStorageTree.HintGet(in index, value);
                     Db.Metrics.IncrementStorageTreeCache();
                 }
+                else if (crossBlockStorageCache is not null && crossBlockStorageCache.TryGetValue(in storageCell, out value))
+                {
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
+                    Db.Metrics.IncrementStorageTreeCache();
+                }
                 else
                 {
                     value = LoadFromTreeStorage(in storageCell);
+                    crossBlockStorageCache?.Set(in storageCell, value);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;
@@ -241,5 +306,45 @@ public class PrewarmerScopeProvider(
         public void Set(Address key, Account? account) => baseWriteBatch.Set(key, account);
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries);
+    }
+
+    private sealed class CacheUpdatingWriteBatch(
+        IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
+        ScopeWrapper scope,
+        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    {
+        public void Dispose() => baseBatch.Dispose();
+
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
+        {
+            add => baseBatch.OnAccountUpdated += value;
+            remove => baseBatch.OnAccountUpdated -= value;
+        }
+
+        public void Set(Address key, Account? account) => baseBatch.Set(key, account);
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
+            => new CacheUpdatingStorageWriteBatch(baseBatch.CreateStorageWriteBatch(key, estimatedEntries), scope, crossBlockStorageCache, key);
+    }
+
+    private sealed class CacheUpdatingStorageWriteBatch(
+        IWorldStateScopeProvider.IStorageWriteBatch baseBatch,
+        ScopeWrapper scope,
+        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache,
+        Address address) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Set(in UInt256 index, byte[] value)
+        {
+            baseBatch.Set(in index, value);
+            crossBlockStorageCache.Set(new StorageCell(address, in index), value);
+        }
+
+        public void Clear()
+        {
+            baseBatch.Clear();
+            scope.BufferStorageClear();
+        }
+
+        public void Dispose() => baseBatch.Dispose();
     }
 }
