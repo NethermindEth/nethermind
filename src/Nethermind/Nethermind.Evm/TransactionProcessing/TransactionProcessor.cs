@@ -289,8 +289,8 @@ namespace Nethermind.Evm.TransactionProcessing
             using ExecutionEnvironment env = e;
 
             int statusCode = !tracer.IsTracingInstructions ?
-                ExecuteEvmCall<OffFlag>(tx, spec, tracer, header, opts, delegationRefunds, in state.IntrinsicGas, accessTracker, ref state.GasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
-                ExecuteEvmCall<OnFlag>(tx, spec, tracer, header, opts, delegationRefunds, in state.IntrinsicGas, accessTracker, ref state.GasAvailable, env, out substate, out spentGas);
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, in state.IntrinsicGas, accessTracker, state.GasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, in state.IntrinsicGas, accessTracker, state.GasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, state.PremiumPerGas, state.BlobBaseFee, statusCode);
 
@@ -897,14 +897,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private int ExecuteEvmCall<TTracingInst>(
             Transaction tx,
+            BlockHeader header,
             IReleaseSpec spec,
             ITxTracer tracer,
-            BlockHeader header,
             ExecutionOptions opts,
             int delegationRefunds,
             in IntrinsicGas<TGasPolicy> gas,
             in StackAccessTracker accessedItems,
-            ref TGasPolicy gasAvailable,
+            TGasPolicy gasAvailable,
             ExecutionEnvironment env,
             out TransactionSubstate substate,
             out GasConsumed gasConsumed)
