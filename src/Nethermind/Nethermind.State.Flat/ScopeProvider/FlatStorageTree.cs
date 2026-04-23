@@ -82,6 +82,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         return value!;
     }
 
+    // Note: VERY hot code.
+    // Most storage reads come through the prewarmer rather than this method directly, so any extra work here amplifies quickly.
+    // Trying to feed every read back into the snapshot bundle from this path was a measurable regression, while async variants
+    // were timing-sensitive and previously led to invalid blocks.
     public void HintGet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
 
     private void WarmUpSlot(UInt256 index)
