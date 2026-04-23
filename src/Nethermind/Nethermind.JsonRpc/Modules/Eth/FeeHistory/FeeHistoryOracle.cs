@@ -147,9 +147,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         public ResultWrapper<FeeHistoryResults> GetFeeHistory(
             int blockCount,
             BlockParameter newestBlock,
-            double[]? rewardPercentiles = null)
+            double[]? rewardPercentiles)
         {
-            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(ref blockCount, newestBlock, rewardPercentiles);
+            if (rewardPercentiles is null)
+                return ResultWrapper<FeeHistoryResults>.Fail("missing value for required argument 2", ErrorCodes.InvalidParams);
+
+            if (blockCount > MaxBlockCount)
+                blockCount = MaxBlockCount;
+
+            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, newestBlock, rewardPercentiles);
             if (initialCheckResult.Result.ResultType == ResultType.Failure)
             {
                 return initialCheckResult;
@@ -172,7 +178,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             ArrayPoolList<UInt256> baseFeePerBlobGas = new(tempBlockCount, tempBlockCount);
             ArrayPoolList<double> gasUsedRatio = new(effectiveBlockCount, effectiveBlockCount);
             ArrayPoolList<double> blobGasUsedRatio = new(effectiveBlockCount, effectiveBlockCount);
-            ArrayPoolList<ArrayPoolList<UInt256>>? rewards = rewardPercentiles?.Length > 0
+            ArrayPoolList<ArrayPoolList<UInt256>>? rewards = rewardPercentiles.Length > 0
                 ? new ArrayPoolList<ArrayPoolList<UInt256>>(effectiveBlockCount, effectiveBlockCount)
                 : null;
 
@@ -232,9 +238,16 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private static ArrayPoolList<UInt256>? CalculateRewardsPercentiles(
             BlockFeeHistorySearchInfo blockInfo,
-            double[] rewardPercentiles) => blockInfo.BlockTransactionsLength == 0
-                ? new ArrayPoolList<UInt256>(rewardPercentiles.Length, Enumerable.Repeat(UInt256.Zero, rewardPercentiles.Length))
-                : CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
+            double[] rewardPercentiles)
+        {
+            if (blockInfo.BlockTransactionsLength != 0)
+                return CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
+
+            ArrayPoolList<UInt256> zeros = new(rewardPercentiles.Length);
+            for (int i = 0; i < rewardPercentiles.Length; i++)
+                zeros.Add(UInt256.Zero);
+            return zeros;
+        }
 
         private List<RewardInfo> GetRewardsInBlock(Block block)
         {
@@ -294,51 +307,44 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return percentileValues;
         }
 
-        private static ResultWrapper<FeeHistoryResults> Validate(ref int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
+        private static ResultWrapper<FeeHistoryResults> Validate(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles)
         {
             if (newestBlock.Type == BlockParameterType.BlockHash)
             {
                 return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
             }
 
-            switch (blockCount)
+            if (blockCount < 1)
             {
-                case < 1:
-                    return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", ErrorCodes.InvalidParams);
-                case > MaxBlockCount:
-                    blockCount = MaxBlockCount;
-                    break;
+                return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", ErrorCodes.InvalidParams);
             }
 
-            if (rewardPercentiles is not null)
+            if (rewardPercentiles.Length > RewardPercentilesLengthLimit)
             {
-                if (rewardPercentiles.Length > RewardPercentilesLengthLimit)
+                return ResultWrapper<FeeHistoryResults>.Fail(
+                    $"rewardPercentiles: {rewardPercentiles.Length} is over the query limit {RewardPercentilesLengthLimit}.",
+                    ErrorCodes.InvalidParams);
+            }
+
+            double previousPercentile = -1;
+            for (int i = 0; i < rewardPercentiles.Length; i++)
+            {
+                double currentPercentile = rewardPercentiles[i];
+                if (currentPercentile is > 100 or < 0)
                 {
                     return ResultWrapper<FeeHistoryResults>.Fail(
-                        $"rewardPercentiles: {rewardPercentiles.Length} is over the query limit {RewardPercentilesLengthLimit}.",
+                        "rewardPercentiles: Some values are below 0 or greater than 100.",
                         ErrorCodes.InvalidParams);
                 }
 
-                double previousPercentile = -1;
-                for (int i = 0; i < rewardPercentiles.Length; i++)
+                if (currentPercentile <= previousPercentile)
                 {
-                    double currentPercentile = rewardPercentiles[i];
-                    if (currentPercentile is > 100 or < 0)
-                    {
-                        return ResultWrapper<FeeHistoryResults>.Fail(
-                            "rewardPercentiles: Some values are below 0 or greater than 100.",
-                            ErrorCodes.InvalidParams);
-                    }
-
-                    if (currentPercentile <= previousPercentile)
-                    {
-                        return ResultWrapper<FeeHistoryResults>.Fail(
-                            $"rewardPercentiles: Value at index {i}: {currentPercentile} is less than or equal to the value at previous index {i - 1}: {rewardPercentiles[i - 1]}.",
-                            ErrorCodes.InvalidParams);
-                    }
-
-                    previousPercentile = currentPercentile;
+                    return ResultWrapper<FeeHistoryResults>.Fail(
+                        $"rewardPercentiles: Value at index {i}: {currentPercentile} is less than or equal to the value at previous index {i - 1}: {rewardPercentiles[i - 1]}.",
+                        ErrorCodes.InvalidParams);
                 }
+
+                previousPercentile = currentPercentile;
             }
 
             return _success;

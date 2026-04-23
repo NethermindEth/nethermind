@@ -127,7 +127,7 @@ public partial class EthRpcModule(
         return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
     }
 
-    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
+    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
 
     public ResultWrapper<IEnumerable<Address>> eth_accounts()
     {
