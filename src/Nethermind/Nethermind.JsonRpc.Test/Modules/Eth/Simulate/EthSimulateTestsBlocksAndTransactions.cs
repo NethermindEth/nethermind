@@ -16,7 +16,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
