@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using FluentAssertions;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -12,10 +13,10 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class DoubleArrayConverterTests : ConverterTestBase<double[]>
 {
-    static readonly DoubleArrayConverter converter = new();
+    static readonly DoubleArrayConverter _converter = new();
 
     [TestCaseSource(nameof(RoundtripTestCases))]
-    public void Test_roundtrip(double[] value) => TestConverter(value, static (a, b) => a.AsSpan().SequenceEqual(b), converter);
+    public void Test_roundtrip(double[] value) => TestConverter(value, static (a, b) => a.AsSpan().SequenceEqual(b), _converter);
 
     static IEnumerable<TestCaseData> RoundtripTestCases()
     {
@@ -32,8 +33,8 @@ public class DoubleArrayConverterTests : ConverterTestBase<double[]>
     [TestCase(0.3333333333333333, "[0.3333333333333333]")]
     public void Write_PreservesFullIeee754Precision(double value, string expectedJson)
     {
-        JsonSerializerOptions options = new() { Converters = { converter } };
-        string json = System.Text.Json.JsonSerializer.Serialize(new[] { value }, options);
-        Assert.That(json, Is.EqualTo(expectedJson));
+        JsonSerializerOptions options = new() { Converters = { _converter } };
+        string json = JsonSerializer.Serialize(new[] { value }, options);
+        json.Should().Be(expectedJson, "double array serialization must preserve full IEEE 754 round-trip precision");
     }
 }

@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
     public class FeeHistoryOracle : IFeeHistoryOracle, IDisposable
     {
-        private static readonly ResultWrapper<FeeHistoryResults> _success = ResultWrapper<FeeHistoryResults>.Success(null);
+        private static readonly ResultWrapper<FeeHistoryResults> _validationPassed = ResultWrapper<FeeHistoryResults>.Success(null);
         private const int MaxBlockCount = 1024;
         private const int RewardPercentilesLengthLimit = 100;
         private readonly int _oldestBlockDistanceFromHeadAllowedInCache;
@@ -147,11 +147,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         public ResultWrapper<FeeHistoryResults> GetFeeHistory(
             int blockCount,
             BlockParameter newestBlock,
-            double[]? rewardPercentiles)
+            double[] rewardPercentiles)
         {
-            if (rewardPercentiles is null)
-                return ResultWrapper<FeeHistoryResults>.Fail("missing value for required argument 2", ErrorCodes.InvalidParams);
-
             if (blockCount > MaxBlockCount)
                 blockCount = MaxBlockCount;
 
@@ -347,7 +344,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 previousPercentile = currentPercentile;
             }
 
-            return _success;
+            return _validationPassed;
         }
 
         public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;

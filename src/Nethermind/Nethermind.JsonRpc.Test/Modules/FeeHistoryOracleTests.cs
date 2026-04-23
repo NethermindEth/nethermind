@@ -102,8 +102,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
         }
 
-        [TestCase(new double[] { -1, 1, 2 })]
-        [TestCase(new[] { 1, 2.2, 101, 102 })]
+        [TestCase(new double[] { -1, 1, 2 }, TestName = "NegativePercentile")]
+        [TestCase(new[] { 1, 2.2, 101, 102 }, TestName = "PercentileOver100")]
         public void GetFeeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure(double[] rewardPercentiles)
         {
             int blockCount = 10;
@@ -217,7 +217,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(5, 3, 0)]
         public void GetFeeHistory_GivenValidInputs_FirstBlockNumberCalculatedCorrectly(int blockCount, long newestBlockNumber, long expectedOldestBlockNumber)
         {
-            // BlockParameter lastBlockNumber = new(newestBlockNumber);
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
                                                    BlockTreeLookupOptions.TotalDifficultyNotNeeded |

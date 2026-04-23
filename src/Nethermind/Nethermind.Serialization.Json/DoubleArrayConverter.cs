@@ -1,0 +1,63 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
+
+namespace Nethermind.Serialization.Json
+{
+    public class DoubleArrayConverter : JsonConverter<double[]>
+    {
+        public override double[] Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                string? s = reader.GetString();
+                if (s is null) throw new JsonException("Expected a JSON array string, got null.");
+                return JsonSerializer.Deserialize<double[]>(s, options)
+                    ?? throw new JsonException($"Could not deserialize double array from string: {s}");
+            }
+
+            if (reader.TokenType != JsonTokenType.StartArray)
+            {
+                throw new JsonException();
+            }
+            using ArrayPoolListRef<double> values = new(16);
+            while (reader.Read() && reader.TokenType == JsonTokenType.Number)
+            {
+                values.Add(reader.GetDouble());
+            }
+            if (reader.TokenType != JsonTokenType.EndArray)
+            {
+                throw new JsonException();
+            }
+
+            if (values.Count == 0) return [];
+
+            double[] result = new double[values.Count];
+            values.CopyTo(result, 0);
+            return result;
+        }
+
+        [SkipLocalsInit]
+        public override void Write(
+            Utf8JsonWriter writer,
+            double[] values,
+            JsonSerializerOptions options)
+        {
+            writer.WriteStartArray();
+            foreach (double value in values)
+            {
+                writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
+            }
+            writer.WriteEndArray();
+        }
+    }
+}
