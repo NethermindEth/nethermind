@@ -732,7 +732,6 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     {
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
         accountChanges.After = account;
-        _tree?.HintGet(address, account);
         _needsStateRootUpdate = true;
     }
 
