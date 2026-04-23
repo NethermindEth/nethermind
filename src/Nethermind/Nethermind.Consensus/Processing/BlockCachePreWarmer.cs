@@ -272,7 +272,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         for (int i = 0; i < transactions.Length; i++)
         {
-            if (!senders.Add(transactions[i].SenderAddress!))
+            if (transactions[i].SenderAddress is { } sender && !senders.Add(sender))
             {
                 return true;
             }

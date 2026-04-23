@@ -43,4 +43,33 @@ public class ParallelUnbalancedWorkTests
 
         Assert.That(initialized, Is.EqualTo(3));
     }
+
+    [Test]
+    public void Thread_local_loop_does_not_execute_work_for_empty_range()
+    {
+        int initialized = 0;
+        int executed = 0;
+
+        ParallelUnbalancedWork.For(
+            5,
+            5,
+            new ParallelOptions { MaxDegreeOfParallelism = 16 },
+            () =>
+            {
+                Interlocked.Increment(ref initialized);
+                return 0;
+            },
+            (_, state) =>
+            {
+                Interlocked.Increment(ref executed);
+                return state;
+            },
+            static _ => { });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(initialized, Is.EqualTo(1));
+            Assert.That(executed, Is.EqualTo(0));
+        });
+    }
 }

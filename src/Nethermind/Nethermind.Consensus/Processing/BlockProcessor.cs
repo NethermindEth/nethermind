@@ -129,6 +129,8 @@ public partial class BlockProcessor(
         stateProvider.Commit(spec, commitRoots: false);
 
         CalculateBlooms(receipts);
+        // IMPORTANT: receipts must remain read-only until receiptsRootTask completes.
+        // GetReceiptsRoot runs concurrently with ProcessExecutionRequests and EndBlockTrace.
         Task<Hash256> receiptsRootTask = Task.Run(() => ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot));
 
         if (spec.IsEip4844Enabled)
