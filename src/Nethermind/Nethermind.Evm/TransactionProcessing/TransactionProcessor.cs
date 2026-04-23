@@ -218,7 +218,15 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             Address? executingAccount = tx.To;
-            bool useSimpleTransferFastPath = executingAccount is not null && IsSimpleTransferToAccountWithoutCode(tx, spec, executingAccount);
+            CodeInfo? preloadedCodeInfo = null;
+            Address? preloadedDelegationAddress = null;
+            bool useSimpleTransferFastPath = false;
+            if (executingAccount is not null && IsSimpleTransferFastPathCandidate(tx))
+            {
+                preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(executingAccount, spec, out preloadedDelegationAddress);
+                useSimpleTransferFastPath = HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
+            }
+
             // Simple transfers have no execution snapshot to roll back, so the final commit can include upfront gas and nonce changes.
             bool commitBeforeExecution = commit && (!useSimpleTransferFastPath || restore || tracer.IsTracingState);
             if (commitBeforeExecution) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
@@ -238,7 +246,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
 
-            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
+            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
             int statusCode = !tracer.IsTracingInstructions ?
@@ -276,11 +284,10 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool IsSimpleTransferToAccountWithoutCode(Transaction tx, IReleaseSpec spec, Address recipient) =>
-            !_isOverridableCodeInfoRepository &&
-            tx.AuthorizationList is null &&
-            !WorldState.IsContract(recipient) &&
-            !spec.IsPrecompile(recipient);
+        private bool IsSimpleTransferFastPathCandidate(Transaction tx) => !_isOverridableCodeInfoRepository && tx.AuthorizationList is null;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress) => codeInfo.IsEmpty && delegationAddress is null;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private int ExecuteSimpleTransfer(Transaction tx, Address recipient, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in UInt256 gasPrice, TGasPolicy gasAvailable, out TransactionSubstate substate, out GasConsumed spentGas)
@@ -807,6 +814,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ICodeInfoRepository codeInfoRepository,
             in StackAccessTracker accessTracker,
+            CodeInfo? preloadedCodeInfo,
+            Address? preloadedDelegationAddress,
             out ExecutionEnvironment env)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
@@ -819,7 +828,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, spec, out Address? delegationAddress);
+                Address? delegationAddress = preloadedDelegationAddress;
+                codeInfo = preloadedCodeInfo ?? codeInfoRepository.GetCachedCodeInfo(recipient, spec, out delegationAddress);
 
                 //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.Intrinsics;
 using FluentAssertions;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
@@ -14,6 +15,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     [TestFixture]
     public class CodeInfoTests
     {
+        [Test]
+        public void Empty_singleton_reports_empty() =>
+            CodeInfo.Empty.IsEmpty.Should().BeTrue();
+
+        [Test]
+        public void Precompile_is_not_empty() =>
+            new CodeInfo(IdentityPrecompile.Instance).IsEmpty.Should().BeFalse();
+
         [TestCase(-1, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]
