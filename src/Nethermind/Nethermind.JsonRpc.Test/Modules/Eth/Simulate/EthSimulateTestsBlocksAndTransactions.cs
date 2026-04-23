@@ -452,11 +452,6 @@ public class EthSimulateTestsBlocksAndTransactions
         ErrorCodes.MovePrecompileSelfReference,
         "MovePrecompileToAddress referenced itself in replacement",
         TestName = "SelfReference_38022")]
-    [TestCase(
-        """{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000001":{"MovePrecompileToAddress":"0xc200000000000000000000000000000000000000"},"0x0000000000000000000000000000000000000002":{"MovePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}}]}""",
-        ErrorCodes.MovePrecompileDuplicateDestination,
-        "Multiple MovePrecompileToAddress referencing the same address to replace",
-        TestName = "DuplicateDestination_38023")]
     public async Task eth_simulateV1_MovePrecompileToAddress_invalid_override_returns_error(string payloadJson, int expectedErrorCode, string expectedMessage)
     {
         EthereumJsonSerializer serializer = new();

@@ -98,11 +98,6 @@ namespace Nethermind.JsonRpc
         public const int MovePrecompileSelfReference = -38022;
 
         /// <summary>
-        /// Multiple MovePrecompileToAddress referencing the same address to replace
-        /// </summary>
-        public const int MovePrecompileDuplicateDestination = -38023;
-
-        /// <summary>
         /// Invalid RPC simulate call containing too many blocks
         /// </summary>
         public const int InvalidInputTooManyBlocks = -38026;

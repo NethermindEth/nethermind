@@ -171,25 +171,15 @@ public class SimulateTxExecutor<TTrace>(
 
                 if (blockToSimulate.StateOverrides is not null)
                 {
-                    IReleaseSpec spec = specProvider.GetSpec(header);
-                    HashSet<Address> moveDestinations = [];
+                    IReleaseSpec spec = specProvider.GetSpec((long)givenNumber, blockToSimulate.BlockOverrides.Time);
                     foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
                     {
                         if (accountOverride.MovePrecompileToAddress is null) continue;
 
-                        if (accountOverride.MovePrecompileToAddress == address)
-                        {
+                        if (spec.IsPrecompile(address) && accountOverride.MovePrecompileToAddress == address)
                             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                                 "MovePrecompileToAddress referenced itself in replacement",
                                 ErrorCodes.MovePrecompileSelfReference);
-                        }
-
-                        if (spec.IsPrecompile(address) && !moveDestinations.Add(accountOverride.MovePrecompileToAddress))
-                        {
-                            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                                "Multiple MovePrecompileToAddress referencing the same address to replace",
-                                ErrorCodes.MovePrecompileDuplicateDestination);
-                        }
                     }
                 }
 
