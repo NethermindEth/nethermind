@@ -199,6 +199,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (missingParamsCount != 0)
         {
             bool hasIncorrectParameters = true;
+            int firstMissingRequiredIndex = -1;
             if (missingParamsCount > 0)
             {
                 hasIncorrectParameters = false;
@@ -215,9 +216,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     {
                         explicitNullableParamsCount += 1;
                     }
-                    if (!method.ExpectedParameters[method.ExpectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
+                    if (!method.ExpectedParameters[parameterIndex].IsOptional && !nullable)
                     {
                         hasIncorrectParameters = true;
+                        firstMissingRequiredIndex = parameterIndex;
                         break;
                     }
                 }
@@ -225,7 +227,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             if (hasIncorrectParameters)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {method.ExpectedParameters.Length}, actual: {method.ExpectedParameters.Length - missingParamsCount}", request.Id);
+                string message = firstMissingRequiredIndex >= 0
+                    ? $"missing value for required argument {firstMissingRequiredIndex}"
+                    : "Invalid params";
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, request.Id);
             }
         }
 

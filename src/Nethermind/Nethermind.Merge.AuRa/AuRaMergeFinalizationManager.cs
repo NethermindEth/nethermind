@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.AuRa;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -14,15 +15,17 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 {
     private readonly IAuRaBlockFinalizationManager _auRaBlockFinalizationManager;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IBlockTree _blockTree;
 
-    public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher)
+    public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher, IBlockTree blockTree)
         : base(manualBlockFinalizationManager, blockFinalizationManager, poSSwitcher)
     {
         _auRaBlockFinalizationManager = blockFinalizationManager;
         _poSSwitcher = poSSwitcher;
+        _blockTree = blockTree;
         _auRaBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
 
-        if (poSSwitcher.HasEverReachedTerminalBlock())
+        if (poSSwitcher.IsHeadPostMerge(blockTree))
         {
             _auRaBlockFinalizationManager.Dispose();
         }
@@ -45,8 +48,11 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     public long? GetFinalizationLevel(long level) => _auRaBlockFinalizationManager.GetFinalizationLevel(level);
 
-    public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor) =>
+    public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
+    {
+        if (_poSSwitcher.IsHeadPostMerge(_blockTree)) return;
         _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
+    }
 
     public override long LastFinalizedBlockLevel => IsPostMerge
         ? _manualBlockFinalizationManager.LastFinalizedBlockLevel
