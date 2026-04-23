@@ -22,7 +22,7 @@ public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
-    SeqlockCache<Hash256AsKey, byte[], HugeCacheSets>? sharedNodeRlpCache = null)
+    SeqlockCache<Hash256AsKey, byte[], LargeCacheSets>? sharedNodeRlpCache = null)
     : RefCountingDisposable
 {
     public int SnapshotCount => snapshots.Count;

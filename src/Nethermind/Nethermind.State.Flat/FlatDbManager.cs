@@ -27,7 +27,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
-    private readonly SeqlockCache<Hash256AsKey, byte[], HugeCacheSets> _sharedNodeRlpCache = new();
+    private readonly SeqlockCache<Hash256AsKey, byte[], LargeCacheSets> _sharedNodeRlpCache = new();
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
