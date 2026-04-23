@@ -611,10 +611,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCostForMsg);
-                UInt256.AddOverflow(gasCostForMsg, tx.Value, out UInt256 wantForMsg);
-                return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
-                    $"err: insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {wantForMsg} (supplied gas {tx.GasLimit})");
+                return BuildInsufficientFundsResult(tx, senderBalance, effectiveGasPrice);
             }
 
             bool overflows;
@@ -651,15 +648,20 @@ namespace Nethermind.Evm.TransactionProcessing
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCostForMsg);
-                UInt256.AddOverflow(gasCostForMsg, tx.Value, out UInt256 wantForMsg);
-                return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
-                    $"err: insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {wantForMsg} (supplied gas {tx.GasLimit})");
+                return BuildInsufficientFundsResult(tx, senderBalance, effectiveGasPrice);
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
             return TransactionResult.Ok;
+        }
+
+        private static TransactionResult BuildInsufficientFundsResult(Transaction tx, UInt256 senderBalance, UInt256 effectiveGasPrice)
+        {
+            UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCost);
+            UInt256.AddOverflow(gasCost, tx.Value, out UInt256 want);
+            return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
+                $"err: insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want} (supplied gas {tx.GasLimit})");
         }
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
