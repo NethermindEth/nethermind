@@ -87,17 +87,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
     private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded = ResultWrapper<UInt256?>.Fail("lookback limit exceeded");
 
-    // Saved to inject into TaikoExecutionPayload before forwarding to the base handler so
-    // that TryGetBlock can look up the active spec at the payload's timestamp and restore
-    // header fields V2 payloads don't carry: ParentBeaconBlockRoot (EIP-4788, [JsonIgnore])
-    // and RequestsHash (EIP-7685, not a payload field).
-    private readonly ISpecProvider _taikoSpecProvider = specProvider;
-
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(TaikoExecutionPayload executionPayload)
     {
-        executionPayload.AttachSpecProvider(_taikoSpecProvider);
+        // Inject the spec provider so TryGetBlock can restore header fields V2 payloads don't
+        // carry: ParentBeaconBlockRoot (EIP-4788, [JsonIgnore]) and RequestsHash (EIP-7685, not a payload field).
+        executionPayload.AttachSpecProvider(_specProvider);
         return base.engine_newPayloadV1(executionPayload);
     }
 
@@ -105,7 +101,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(TaikoExecutionPayload executionPayload)
     {
-        executionPayload.AttachSpecProvider(_taikoSpecProvider);
+        executionPayload.AttachSpecProvider(_specProvider);
         return base.engine_newPayloadV2(executionPayload);
     }
 
