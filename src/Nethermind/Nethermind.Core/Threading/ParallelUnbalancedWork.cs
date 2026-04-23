@@ -13,7 +13,7 @@ namespace Nethermind.Core.Threading;
 /// </summary>
 public class ParallelUnbalancedWork : IThreadPoolWorkItem
 {
-    public static readonly ParallelOptions DefaultOptions = new() { MaxDegreeOfParallelism = Cpu.RuntimeInformation.ProcessorCount };
+    public static readonly ParallelOptions DefaultOptions = new() { MaxDegreeOfParallelism = Math.Min(Cpu.RuntimeInformation.PhysicalCoreCount, 16) };
     private readonly Data _data;
 
     /// <summary>
