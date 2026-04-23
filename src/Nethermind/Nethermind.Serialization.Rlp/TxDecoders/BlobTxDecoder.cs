@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,7 +14,8 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(128, nameof(Transaction.BlobVersionedHashes));
     private static readonly RlpLimit WrapperBlobsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(128, nameof(ShardBlobNetworkWrapper.Blobs));
     private static readonly RlpLimit WrapperCommitmentsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(128, nameof(ShardBlobNetworkWrapper.Commitments));
-    private static readonly RlpLimit WrapperProofsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(128 * Ckzg.CellsPerExtBlob, nameof(ShardBlobNetworkWrapper.Proofs));
+    private static readonly RlpLimit WrapperProofsV0CountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(128, nameof(ShardBlobNetworkWrapper.Proofs));
+    private static readonly RlpLimit WrapperProofsV1CountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(128 * Ckzg.CellsPerExtBlob, nameof(ShardBlobNetworkWrapper.Proofs));
 
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -116,7 +117,10 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
         byte[][] blobs = decoderContext.DecodeByteArrays(WrapperBlobsCountLimit);
         byte[][] commitments = decoderContext.DecodeByteArrays(WrapperCommitmentsCountLimit);
-        byte[][] proofs = decoderContext.DecodeByteArrays(WrapperProofsCountLimit);
+        RlpLimit wrapperProofsCountLimit = version is ProofVersion.V0
+            ? WrapperProofsV0CountLimit
+            : WrapperProofsV1CountLimit;
+        byte[][] proofs = decoderContext.DecodeByteArrays(wrapperProofsCountLimit);
 
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
