@@ -200,8 +200,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
-
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
@@ -238,6 +236,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 int fastStatusCode = ExecuteSimpleTransfer(tx, executingAccount!, header, spec, tracer, opts, in intrinsicGas, in premiumPerGas, in blobBaseFee, in opcodeGasPrice, gasAvailable, out TransactionSubstate fastSubstate, out GasConsumed fastSpentGas);
                 return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, executingAccount!, fastStatusCode, in fastSubstate, in fastSpentGas);
             }
+
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
