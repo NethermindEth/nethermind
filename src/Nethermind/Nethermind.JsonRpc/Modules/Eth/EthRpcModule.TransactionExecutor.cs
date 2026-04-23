@@ -72,8 +72,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
             {
-                if (blockOverride?.GasLimit > (ulong)long.MaxValue)
-                    return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {long.MaxValue}", ErrorCodes.InvalidInput);
+                if (blockOverride?.GasLimit > (ulong)_rpcConfig.GasCap!.Value)
+                    return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {_rpcConfig.GasCap.Value}", ErrorCodes.InvalidInput);
                 _blockOverride = blockOverride;
                 return Execute(transactionCall, blockParameter, stateOverride);
             }
