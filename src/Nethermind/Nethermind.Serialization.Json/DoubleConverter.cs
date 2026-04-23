@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Json
         public override void Write(
             Utf8JsonWriter writer,
             double value,
-            JsonSerializerOptions options) => writer.WriteRawValue(value.ToString("0.##########", CultureInfo.InvariantCulture), skipInputValidation: true);
+            JsonSerializerOptions options) => writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
     }
 
     public class DoubleArrayConverter : JsonConverter<double[]>
@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Json
             writer.WriteStartArray();
             foreach (double value in values)
             {
-                writer.WriteRawValue(value.ToString("0.0#########", CultureInfo.InvariantCulture), skipInputValidation: true);
+                writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
             }
             writer.WriteEndArray();
         }

@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using Nethermind.Serialization.Json;
-
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json;
@@ -23,5 +23,17 @@ public class DoubleArrayConverterTests : ConverterTestBase<double[]>
         yield return new TestCaseData(new double[] { 1, 1, 1, 1 }).SetName("All ones");
         yield return new TestCaseData(new double[] { 0, 0, 0, 0 }).SetName("All zeros");
         yield return new TestCaseData(Array.Empty<double>()).SetName("Empty array");
+        yield return new TestCaseData(new double[] { 1.0 / 3.0, 1.0 / 6.0, 0.678584082336891, 0.9985787551520126 }).SetName("Full precision values");
+    }
+
+    [TestCase(0.678584082336891, "[0.678584082336891]")]
+    [TestCase(0.9985787551520126, "[0.9985787551520126]")]
+    [TestCase(0.16666666666666666, "[0.16666666666666666]")]
+    [TestCase(0.3333333333333333, "[0.3333333333333333]")]
+    public void Write_PreservesFullIeee754Precision(double value, string expectedJson)
+    {
+        JsonSerializerOptions options = new() { Converters = { converter } };
+        string json = System.Text.Json.JsonSerializer.Serialize(new[] { value }, options);
+        Assert.That(json, Is.EqualTo(expectedJson));
     }
 }
