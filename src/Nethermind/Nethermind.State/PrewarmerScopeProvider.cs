@@ -158,6 +158,7 @@ public class PrewarmerScopeProvider(
         public Account? Get(Address address)
         {
             AddressAsKey addressAsKey = address;
+            SeqlockCache<AddressAsKey, Account, LargeCacheSets>? crossBlockAccountCache = crossBlockCaches?.AccountCache;
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (populatePreBlockCache)
             {
@@ -166,10 +167,17 @@ public class PrewarmerScopeProvider(
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                     Metrics.IncrementStateTreeCacheHits();
                 }
+                else if (crossBlockAccountCache is not null && crossBlockAccountCache.TryGetValue(in addressAsKey, out account))
+                {
+                    preBlockCache.Set(in addressAsKey, account);
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
+                    Metrics.IncrementStateTreeCacheHits();
+                }
                 else
                 {
                     account = GetFromBaseTree(in addressAsKey);
                     preBlockCache.Set(in addressAsKey, account);
+                    crossBlockAccountCache?.Set(in addressAsKey, account);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
@@ -182,9 +190,16 @@ public class PrewarmerScopeProvider(
                     baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
                 }
+                else if (crossBlockAccountCache is not null && crossBlockAccountCache.TryGetValue(in addressAsKey, out account))
+                {
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
+                    baseScope.HintGet(address, account);
+                    Metrics.IncrementStateTreeCacheHits();
+                }
                 else
                 {
                     account = GetFromBaseTree(in addressAsKey);
+                    crossBlockAccountCache?.Set(in addressAsKey, account);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
