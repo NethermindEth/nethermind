@@ -103,6 +103,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task EthFeeHistory_WhenRewardPercentilesIsMissing_ReturnsInvalidParams()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_feeHistory", "0x1", "latest");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 2\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_transaction_by_block_hash_and_index()
     {
         using Context ctx = await Context.Create();

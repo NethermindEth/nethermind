@@ -17,60 +17,67 @@ using Nito.Collections;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockFinalizationManager : IAuRaBlockFinalizationManager
+    public class AuRaBlockFinalizationManager(
+        IBlockTree blockTree,
+        IChainLevelInfoRepository chainLevelInfoRepository,
+        IValidatorStore validatorStore,
+        ILogManager logManager,
+        long twoThirdsMajorityTransition = long.MaxValue) : IAuRaBlockFinalizationManager
     {
         private static readonly List<BlockHeader> Empty = new();
-        private readonly IBlockTree _blockTree;
-        private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-        private readonly ILogger _logger;
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+        private readonly ILogger _logger = logManager?.GetClassLogger<AuRaBlockFinalizationManager>() ?? throw new ArgumentNullException(nameof(logManager));
         private IBranchProcessor? _branchProcessor;
-        private readonly IValidatorStore _validatorStore;
-        private readonly long _twoThirdsMajorityTransition;
+        private readonly IValidatorStore _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
+        private bool _branchProcessorWired;
         private Hash256 _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new();
 
-        public AuRaBlockFinalizationManager(
-            IBlockTree blockTree,
-            IChainLevelInfoRepository chainLevelInfoRepository,
-            IValidatorStore validatorStore,
-            ILogManager logManager,
-            long twoThirdsMajorityTransition = long.MaxValue)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _logger = logManager?.GetClassLogger<AuRaBlockFinalizationManager>() ?? throw new ArgumentNullException(nameof(logManager));
-            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
-            _twoThirdsMajorityTransition = twoThirdsMajorityTransition;
-            Initialize();
-        }
+        // Must be computed eagerly: MultiValidator.SetFinalizationManager reads LastFinalizedBlockLevel
+        // during DI resolution (inside InitializeBlockchain, before SetMainBlockBranchProcessor runs)
+        // to pick the active validator. Reading 0 produces state-root divergence on archive sync when
+        // crossing a validator-contract transition. This scan only reads ChainLevelInfo metadata and
+        // does not allocate BlockHeaders — cheap even on long post-merge chains.
+        private long _lastFinalizedBlockLevel = LoadInitialLastFinalizedBlockLevel(blockTree, chainLevelInfoRepository);
 
         public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
         {
+            if (_branchProcessorWired)
+            {
+                if (!ReferenceEquals(_branchProcessor, branchProcessor))
+                    throw new InvalidOperationException($"{nameof(SetMainBlockBranchProcessor)} called with a different {nameof(IBranchProcessor)} instance after initialization.");
+                return;
+            }
+
+            _branchProcessorWired = true;
             _branchProcessor = branchProcessor;
             _branchProcessor.BlockProcessed += OnBlockProcessed;
             _branchProcessor.BlocksProcessing += OnBlocksProcessing;
+
+            // Catch up if processing was stopped between processing last block and running finalization logic.
+            // Deferred out of construction because on post-merge chains the walk from head iterates every
+            // un-finalized ancestor, allocating millions of BlockHeaders — see InitializeBlockchainAuRaMerge
+            // for the post-merge skip.
+            if (_blockTree.Head is not null)
+            {
+                FinalizeBlocks(_blockTree.Head.Header);
+            }
         }
 
-
-        private void Initialize()
+        private static long LoadInitialLastFinalizedBlockLevel(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository)
         {
-            bool hasHead = _blockTree.Head is not null;
-            long level = hasHead ? _blockTree.Head.Number + 1 : 0;
+            bool hasHead = blockTree.Head is not null;
+            long level = hasHead ? blockTree.Head!.Number + 1 : 0;
             ChainLevelInfo chainLevel;
             do
             {
                 level--;
-                chainLevel = _chainLevelInfoRepository.LoadLevel(level);
+                chainLevel = chainLevelInfoRepository.LoadLevel(level);
             }
             while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
 
-            LastFinalizedBlockLevel = level;
-
-            // This is needed if processing was stopped between processing last block and running finalization logic
-            if (hasHead)
-            {
-                FinalizeBlocks(_blockTree.Head?.Header);
-            }
+            return level;
         }
 
         private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
@@ -128,9 +135,9 @@ namespace Nethermind.Consensus.AuRa
 
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
-            if (block.Number == _twoThirdsMajorityTransition)
+            if (block.Number == twoThirdsMajorityTransition)
             {
-                if (_logger.IsInfo) _logger.Info($"Block {_twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
+                if (_logger.IsInfo) _logger.Info($"Block {twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
             }
 
             int minSealersForFinalization = GetMinSealersForFinalization(block.Number);
@@ -335,16 +342,16 @@ namespace Nethermind.Consensus.AuRa
         private int GetMinSealersForFinalization(long blockNumber) =>
             blockNumber == 0
                 ? 1
-                : _validatorStore.GetValidators(blockNumber).MinSealersForFinalization(blockNumber >= _twoThirdsMajorityTransition);
+                : _validatorStore.GetValidators(blockNumber).MinSealersForFinalization(blockNumber >= twoThirdsMajorityTransition);
 
         public long LastFinalizedBlockLevel
         {
-            get;
+            get => _lastFinalizedBlockLevel;
             private set
             {
-                if (field < value)
+                if (_lastFinalizedBlockLevel < value)
                 {
-                    field = value;
+                    _lastFinalizedBlockLevel = value;
                     if (_logger.IsTrace) _logger.Trace($"Setting {nameof(LastFinalizedBlockLevel)} to {value}.");
                 }
             }
