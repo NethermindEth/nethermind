@@ -237,6 +237,39 @@ namespace Nethermind.Evm.TransactionProcessing
                 return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, executingAccount!, fastStatusCode, in fastSubstate, in fastSpentGas);
             }
 
+            // Extracted so the fast-path above doesn't carry the two `using` block frames and larger local set.
+            return ExecuteEvmTransaction(
+                tx, header, spec, tracer, opts,
+                restore, commit, deleteCallerAccount,
+                in intrinsicGas,
+                in premiumPerGas,
+                in senderReservedGasPayment,
+                in blobBaseFee,
+                in opcodeGasPrice,
+                gasAvailable,
+                preloadedCodeInfo,
+                preloadedDelegationAddress);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private TransactionResult ExecuteEvmTransaction(
+            Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            ExecutionOptions opts,
+            bool restore,
+            bool commit,
+            bool deleteCallerAccount,
+            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            in UInt256 premiumPerGas,
+            in UInt256 senderReservedGasPayment,
+            in UInt256 blobBaseFee,
+            in UInt256 opcodeGasPrice,
+            TGasPolicy gasAvailable,
+            CodeInfo? preloadedCodeInfo,
+            Address? preloadedDelegationAddress)
+        {
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
@@ -246,6 +279,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
 
+            TransactionResult result;
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
