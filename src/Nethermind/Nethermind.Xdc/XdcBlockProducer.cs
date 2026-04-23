@@ -97,7 +97,7 @@ internal class XdcBlockProducer(
         }
         return xdcBlockHeader;
     }
-    
+
     protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
     {
         BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
