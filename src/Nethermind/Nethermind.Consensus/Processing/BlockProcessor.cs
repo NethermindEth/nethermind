@@ -130,8 +130,10 @@ public partial class BlockProcessor(
 
         CalculateBlooms(receipts);
         // IMPORTANT: receipts must remain read-only until receiptsRootTask completes.
-        // GetReceiptsRoot runs concurrently with ProcessExecutionRequests and EndBlockTrace.
-        Task<Hash256> receiptsRootTask = Task.Run(() => ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot));
+        // For blocks with multiple receipts, GetReceiptsRoot runs concurrently with ProcessExecutionRequests and EndBlockTrace.
+        Task<Hash256>? receiptsRootTask = receipts.Length > 1
+            ? Task.Run(() => ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot))
+            : null;
 
         if (spec.IsEip4844Enabled)
         {
@@ -164,7 +166,8 @@ public partial class BlockProcessor(
             header.StateRoot = stateProvider.StateRoot;
         }
 
-        header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
+        header.ReceiptsRoot = receiptsRootTask?.GetAwaiter().GetResult()
+            ?? ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         header.Hash = header.CalculateHash();
 
         return receipts;

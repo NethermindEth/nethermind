@@ -26,6 +26,8 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
+    private const int SmallBlockLinearDedupThreshold = 8;
+
     private readonly int _concurrencyLevel;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
     private readonly ILogger _logger;
@@ -268,6 +270,28 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private static bool HasDuplicateSenders(Transaction[] transactions)
     {
+        if (transactions.Length <= SmallBlockLinearDedupThreshold)
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Address? sender = transactions[i].SenderAddress;
+                if (sender is null)
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < i; j++)
+                {
+                    if (transactions[j].SenderAddress == sender)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         HashSet<AddressAsKey> senders = new(transactions.Length);
 
         for (int i = 0; i < transactions.Length; i++)
@@ -488,26 +512,49 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private static ArrayPoolList<AddressAsKey> CollectWarmupAddresses(Block block)
         {
             Transaction[] transactions = block.Transactions;
-            ArrayPoolList<AddressAsKey> addresses = new(transactions.Length * 2);
-            HashSet<AddressAsKey> seen = new(transactions.Length * 2);
+            int estimatedAddressCount = transactions.Length * 2;
+            ArrayPoolList<AddressAsKey> addresses = new(estimatedAddressCount);
+            HashSet<AddressAsKey>? seen = transactions.Length > SmallBlockLinearDedupThreshold
+                ? new(estimatedAddressCount)
+                : null;
 
             for (int i = 0; i < transactions.Length; i++)
             {
                 Transaction tx = transactions[i];
-                Address? sender = tx.SenderAddress;
-                if (sender is not null && seen.Add(sender))
-                {
-                    addresses.Add(sender);
-                }
-
-                Address? to = tx.To;
-                if (to is not null && seen.Add(to))
-                {
-                    addresses.Add(to);
-                }
+                AddWarmupAddress(addresses, seen, tx.SenderAddress);
+                AddWarmupAddress(addresses, seen, tx.To);
             }
 
             return addresses;
+        }
+
+        private static void AddWarmupAddress(ArrayPoolList<AddressAsKey> addresses, HashSet<AddressAsKey>? seen, Address? address)
+        {
+            if (address is null)
+            {
+                return;
+            }
+
+            AddressAsKey addressKey = address;
+            if (seen is not null)
+            {
+                if (seen.Add(addressKey))
+                {
+                    addresses.Add(addressKey);
+                }
+
+                return;
+            }
+
+            for (int i = 0; i < addresses.Count; i++)
+            {
+                if (addresses[i].Equals(addressKey))
+                {
+                    return;
+                }
+            }
+
+            addresses.Add(addressKey);
         }
     }
 

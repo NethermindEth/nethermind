@@ -90,7 +90,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         Account? account = _snapshotBundle.GetAccount(address);
 
-        _snapshotBundle.SetAccount(address, account);
+        HintGet(address, account);
 
         if (_configuration.VerifyWithTrie)
         {
