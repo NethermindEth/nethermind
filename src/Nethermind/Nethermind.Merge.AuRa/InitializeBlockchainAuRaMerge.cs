@@ -9,17 +9,16 @@ using Nethermind.TxPool;
 namespace Nethermind.Merge.AuRa;
 
 /// <summary>
-/// Merge-aware variant of <see cref="InitializeBlockchainAuRa"/>. Skips wiring the branch processor
-/// into the AuRa finalization manager on post-merge chains — AuRa finalization is no longer active
-/// there, and otherwise the startup catch-up walk in <c>AuRaBlockFinalizationManager.Initialize</c>
-/// allocates millions of BlockHeaders on long post-merge chains like Gnosis.
+/// Skips wiring the branch processor on post-merge heads to avoid the multi-million-header
+/// startup walk in <see cref="AuRaBlockFinalizationManager"/>. Pre-merge heads (archive sync
+/// from genesis) still wire so validator-set transitions fire.
 /// </summary>
 public class InitializeBlockchainAuRaMerge(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
     : InitializeBlockchainAuRa(api, chainHeadInfoProvider, txGossipPolicy)
 {
     protected override void WireFinalizationBranchProcessor()
     {
-        if (!Api.Context.Resolve<IPoSSwitcher>().HasEverReachedTerminalBlock())
+        if (!Api.Context.Resolve<IPoSSwitcher>().IsHeadPostMerge(Api.BlockTree!))
             base.WireFinalizationBranchProcessor();
     }
 }
