@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
@@ -1715,7 +1716,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
-        if (node!.FullRlp.IsNull)
+        CappedArray<byte> fullRlp = node!.FullRlp;
+        if (fullRlp.IsNull)
         {
             // // this happens in SyncProgressResolver
             // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
@@ -1723,7 +1725,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
 
         // we returning a copy to avoid multithreaded access
-        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, node.FullRlp);
+        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, fullRlp.AsSpan());
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
         trieNode.Keccak = key.Keccak;
         return trieNode;
