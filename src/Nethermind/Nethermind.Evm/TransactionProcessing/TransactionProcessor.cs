@@ -610,8 +610,12 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return TransactionResult.InsufficientSenderBalance;
+                if (validate)
+                {
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                    return TransactionResult.InsufficientSenderBalance;
+                }
+                balanceLeft = UInt256.Zero;
             }
 
             bool overflows;
@@ -922,7 +926,14 @@ namespace Nethermind.Evm.TransactionProcessing
             return true;
         }
 
-        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts) => WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
+        {
+            // When validation is skipped (e.g. eth_simulateV1 with validation:false), bypass balance enforcement
+            // so simulations from zero-balance addresses succeed rather than throw InsufficientBalanceException.
+            if (opts.HasFlag(ExecutionOptions.SkipValidation) && WorldState.GetBalance(tx.SenderAddress!) < tx.ValueRef)
+                return;
+            WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+        }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {

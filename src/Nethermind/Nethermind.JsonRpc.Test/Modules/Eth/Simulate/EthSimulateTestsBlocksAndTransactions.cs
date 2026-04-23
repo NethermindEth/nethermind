@@ -445,4 +445,42 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
+
+    [Test]
+    public async Task Test_eth_simulate_no_validation_skips_balance_check()
+    {
+        // Regression: eth_simulateV1 with validation:false must not return -38014 (InsufficientFunds)
+        // for a value transfer from a zero-balance address.
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = 1_000_000.Ether,
+                            Gas = 21_000,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ],
+            Validation = false
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        Assert.That(result.Data, Has.Count.EqualTo(1));
+        Assert.That(result.Data[0].Calls, Has.Count.EqualTo(1));
+        Assert.That(result.Data[0].Calls.First().Error, Is.Null);
+    }
 }
