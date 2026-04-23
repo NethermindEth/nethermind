@@ -390,7 +390,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     public static long CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
         spec.IsEip7981Enabled && transaction.AccessList is { Count: var count }
-            ? (count.AddressesCount * 20L + count.StorageKeysCount * 32L) * spec.GasCosts.TxDataNonZeroMultiplier
+            ? (count.AddressesCount * Address.Size + count.StorageKeysCount * AccessList.StorageKeySize) * spec.GasCosts.TxDataNonZeroMultiplier
             : 0L;
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec spec, long floorTokensInAccessList)
