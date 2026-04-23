@@ -362,30 +362,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                AddressWarmingState baseState = new(envPool, block, parent);
+                using ArrayPoolList<AddressAsKey> addresses = CollectWarmupAddresses(block);
+                if (addresses.Count == 0) return;
+
+                AddressWarmingState baseState = new(envPool, addresses, parent);
 
                 ParallelUnbalancedWork.For(
                     0,
-                    block.Transactions.Length,
+                    addresses.Count,
                     parallelOptions,
                     baseState.InitThreadState,
                 static (i, state) =>
                 {
-                    Transaction tx = state.Block.Transactions[i];
-                    Address? sender = tx.SenderAddress;
-
                     try
                     {
-                        if (sender is not null)
-                        {
-                            state.Scope!.WorldState.WarmUp(sender);
-                        }
-
-                        Address to = tx.To;
-                        if (to is not null)
-                        {
-                            state.Scope!.WorldState.WarmUp(to);
-                        }
+                        state.Scope!.WorldState.WarmUp(state.Addresses.GetRef(i));
                     }
                     catch (MissingTrieNodeException)
                     {
@@ -400,18 +391,43 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // Ignore, block completed cancel
             }
         }
+
+        private static ArrayPoolList<AddressAsKey> CollectWarmupAddresses(Block block)
+        {
+            Transaction[] transactions = block.Transactions;
+            ArrayPoolList<AddressAsKey> addresses = new(transactions.Length * 2);
+            HashSet<AddressAsKey> seen = new(transactions.Length * 2);
+
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Transaction tx = transactions[i];
+                Address? sender = tx.SenderAddress;
+                if (sender is not null && seen.Add(sender))
+                {
+                    addresses.Add(sender);
+                }
+
+                Address? to = tx.To;
+                if (to is not null && seen.Add(to))
+                {
+                    addresses.Add(to);
+                }
+            }
+
+            return addresses;
+        }
     }
 
-    private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent) : IDisposable
+    private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, ArrayPoolList<AddressAsKey> addresses, BlockHeader parent) : IDisposable
     {
         public static Action<AddressWarmingState> FinallyAction { get; } = DisposeThreadState;
 
         private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
         private readonly IReadOnlyTxProcessorSource? Env;
-        public readonly Block Block = block;
+        public readonly ArrayPoolList<AddressAsKey> Addresses = addresses;
         public readonly IReadOnlyTxProcessingScope? Scope;
 
-        private AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, parent)
+        private AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, ArrayPoolList<AddressAsKey> addresses, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, addresses, parent)
         {
             Env = env;
             Scope = scope;
@@ -420,7 +436,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public AddressWarmingState InitThreadState()
         {
             IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Block, parent, env, scope: env.Build(parent));
+            return new(EnvPool, Addresses, parent, env, scope: env.Build(parent));
         }
 
         public void Dispose()
