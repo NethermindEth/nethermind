@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Json
             {
                 string s = reader.GetString();
                 if (s is null) throw new JsonException("Expected a JSON array string, got null.");
-                return JsonSerializer.Deserialize<double[]>(s, options)
+                return JsonSerializer.Deserialize<double[]>(s)
                     ?? throw new JsonException($"Could not deserialize double array from string: {s}");
             }
 
@@ -55,6 +55,8 @@ namespace Nethermind.Serialization.Json
             writer.WriteStartArray();
             foreach (double value in values)
             {
+                if (double.IsNaN(value) || double.IsInfinity(value))
+                    throw new JsonException($"The value '{value}' is not a valid JSON number.");
                 writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
             }
             writer.WriteEndArray();

@@ -20,6 +20,11 @@ namespace Nethermind.Serialization.Json
         public override void Write(
             Utf8JsonWriter writer,
             double value,
-            JsonSerializerOptions options) => writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
+            JsonSerializerOptions options)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+                throw new JsonException($"The value '{value}' is not a valid JSON number.");
+            writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
+        }
     }
 }

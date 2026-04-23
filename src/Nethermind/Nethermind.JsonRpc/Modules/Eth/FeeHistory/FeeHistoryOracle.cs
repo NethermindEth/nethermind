@@ -149,6 +149,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockParameter newestBlock,
             double[] rewardPercentiles)
         {
+            ArgumentNullException.ThrowIfNull(rewardPercentiles);
             if (blockCount > MaxBlockCount)
                 blockCount = MaxBlockCount;
 

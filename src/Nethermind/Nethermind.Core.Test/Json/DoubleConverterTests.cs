@@ -13,7 +13,7 @@ public class DoubleConverterTests
 {
     static readonly DoubleConverter _converter = new();
 
-    static JsonSerializerOptions Options => new() { Converters = { _converter } };
+    static readonly JsonSerializerOptions Options = new() { Converters = { _converter } };
 
     [TestCase(0.678584082336891, "0.678584082336891")]
     [TestCase(0.9985787551520126, "0.9985787551520126")]
