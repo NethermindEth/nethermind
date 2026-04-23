@@ -80,8 +80,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
-                // Run system access-list warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, warmTransactionAddresses: false, this);
+                // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
                 return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
@@ -289,13 +289,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, bool warmTransactionAddresses, BlockCachePreWarmer preWarmer)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
-        private readonly bool WarmTransactionAddresses = warmTransactionAddresses;
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
         public void Wait() => _doneEvent.Wait();
@@ -362,8 +361,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         SystemTxAccessLists.Dispose();
                     }
                 }
-
-                if (!WarmTransactionAddresses) return;
 
                 using ArrayPoolList<AddressAsKey> addresses = CollectWarmupAddresses(block);
                 if (addresses.Count == 0) return;
