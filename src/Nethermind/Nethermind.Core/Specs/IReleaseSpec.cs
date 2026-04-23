@@ -380,6 +380,11 @@ namespace Nethermind.Core.Specs
         int Eip7934MaxRlpBlockSize { get; }
 
         /// <summary>
+        ///  Increase Calldata Floor Cost
+        /// </summary>
+        bool IsEip7976Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

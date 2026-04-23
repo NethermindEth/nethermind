@@ -2092,8 +2092,7 @@ namespace Nethermind.TxPool.Test
             //Submit a replacement tx of each type with current nonce
             foreach (byte type in ((byte[])Enum.GetValues(typeof(TxType))))
             {
-                UInt256 feeCap;
-                1.GWei.Multiply((UInt256)type, out feeCap);
+                1.GWei.Multiply((UInt256)type, out UInt256 feeCap);
                 TransactionBuilder<Transaction> builder = Build.A.Transaction
                 .WithNonce(0)
                 .WithType((TxType)type)

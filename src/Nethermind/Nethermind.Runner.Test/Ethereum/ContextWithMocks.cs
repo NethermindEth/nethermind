@@ -62,8 +62,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     return [];
                 }
 
-                IServiceWithType swt = service as IServiceWithType;
-                if (registrationAccessor(service).Any() || swt == null || !swt.ServiceType.IsInterface)
+                if (registrationAccessor(service).Any() || service is not IServiceWithType swt || !swt.ServiceType.IsInterface)
                 {
                     // It's not a request for the base handler type, so skip it.
                     return [];

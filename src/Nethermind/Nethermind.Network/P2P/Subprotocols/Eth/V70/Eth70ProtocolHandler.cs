@@ -52,7 +52,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     public new static byte Version => EthVersions.Eth70;
     public override byte ProtocolVersion => Version;
 
-    public override void HandleMessage(ZeroPacket message)
+    protected override void HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -66,7 +66,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 HandleInBackground<GetReceiptsMessage70, ReceiptsMessage70>(message, Handle);
                 break;
             default:
-                base.HandleMessage(message);
+                base.HandleMessageCore(message);
                 break;
         }
     }
@@ -90,7 +90,13 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             ulong sizeEstimate = 0;
             for (int blockIndex = 0; blockIndex < getReceiptsMessage.EthMessage.Hashes.Count; blockIndex++)
             {
-                TxReceipt[] receipts = SyncServer.GetReceipts(getReceiptsMessage.EthMessage.Hashes[blockIndex]);
+                Hash256 blockHash = getReceiptsMessage.EthMessage.Hashes[blockIndex];
+                if (SyncServer.FindHeader(blockHash) is null)
+                {
+                    break;
+                }
+
+                TxReceipt[] receipts = SyncServer.GetReceipts(blockHash);
                 int startIndex = blockIndex == 0 ? checked((int)getReceiptsMessage.FirstBlockReceiptIndex) : 0;
 
                 if (receipts.Length == 0)

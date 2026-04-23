@@ -232,6 +232,7 @@ public class SimulateTxExecutor<TTrace>(
                 TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
                     or TransactionResult.ErrorType.InsufficientSenderBalance => ErrorCodes.InsufficientFunds,
                 TransactionResult.ErrorType.MalformedTransaction => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee => ErrorCodes.InvalidParams,
                 TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.InvalidParams,
                 TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
                 TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,

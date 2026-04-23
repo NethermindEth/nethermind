@@ -190,7 +190,7 @@ public class NettyDiscoveryHandler(
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error while processing message, type: {type}, sender: {address}, message: {msg}", e);
+            _logger.DebugError($"Error while processing message, type: {type}, sender: {address}, message: {msg}", e);
         }
     }
 
