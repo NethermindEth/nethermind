@@ -73,6 +73,7 @@ public class PrewarmerScopeProvider(
             if (!populatePreBlockCache && crossBlockCaches is not null && baseBlock is not null &&
                 baseBlock.Number != crossBlockCaches.LastCommittedBlockNumber)
             {
+                crossBlockCaches.AccountCache.Clear();
                 crossBlockCaches.StorageCache.Clear();
             }
         }
@@ -81,6 +82,7 @@ public class PrewarmerScopeProvider(
         {
             if (!_committed && crossBlockCaches is not null)
             {
+                crossBlockCaches.AccountCache.Clear();
                 crossBlockCaches.StorageCache.Clear();
             }
 
@@ -105,7 +107,7 @@ public class PrewarmerScopeProvider(
             IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
             if (crossBlockCaches is not null)
             {
-                batch = new CacheUpdatingWriteBatch(batch, this, crossBlockCaches.StorageCache);
+                batch = new CacheUpdatingWriteBatch(batch, this, crossBlockCaches.StorageCache, crossBlockCaches.AccountCache);
             }
 
             if (!_measureMetric)
@@ -197,9 +199,16 @@ public class PrewarmerScopeProvider(
                     baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
                 }
+                else if (crossBlockCaches is not null && crossBlockCaches.AccountCache.TryGetValue(in addressAsKey, out account))
+                {
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
+                    baseScope.HintGet(address, account);
+                    Metrics.IncrementStateTreeCacheHits();
+                }
                 else
                 {
                     account = GetFromBaseTree(in addressAsKey);
+                    crossBlockCaches?.AccountCache.Set(in addressAsKey, account);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
@@ -308,23 +317,42 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries);
     }
 
-    private sealed class CacheUpdatingWriteBatch(
-        IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
-        ScopeWrapper scope,
-        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    private sealed class CacheUpdatingWriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        public void Dispose() => baseBatch.Dispose();
+        private readonly IWorldStateScopeProvider.IWorldStateWriteBatch _baseBatch;
+        private readonly ScopeWrapper _scope;
+        private readonly SeqlockCache<StorageCell, byte[], LargeCacheSets> _crossBlockStorageCache;
+        private readonly SeqlockCache<AddressAsKey, Account>? _crossBlockAccountCache;
+
+        public CacheUpdatingWriteBatch(
+            IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
+            ScopeWrapper scope,
+            SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache,
+            SeqlockCache<AddressAsKey, Account> crossBlockAccountCache)
+        {
+            _baseBatch = baseBatch;
+            _scope = scope;
+            _crossBlockStorageCache = crossBlockStorageCache;
+            _crossBlockAccountCache = crossBlockAccountCache;
+            _baseBatch.OnAccountUpdated += (_, updated) => _crossBlockAccountCache?.Set((AddressAsKey)updated.Address, updated.Account);
+        }
+
+        public void Dispose() => _baseBatch.Dispose();
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
         {
-            add => baseBatch.OnAccountUpdated += value;
-            remove => baseBatch.OnAccountUpdated -= value;
+            add => _baseBatch.OnAccountUpdated += value;
+            remove => _baseBatch.OnAccountUpdated -= value;
         }
 
-        public void Set(Address key, Account? account) => baseBatch.Set(key, account);
+        public void Set(Address key, Account? account)
+        {
+            _baseBatch.Set(key, account);
+            _crossBlockAccountCache?.Set((AddressAsKey)key, account);
+        }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
-            => new CacheUpdatingStorageWriteBatch(baseBatch.CreateStorageWriteBatch(key, estimatedEntries), scope, crossBlockStorageCache, key);
+            => new CacheUpdatingStorageWriteBatch(_baseBatch.CreateStorageWriteBatch(key, estimatedEntries), _scope, _crossBlockStorageCache, key);
     }
 
     private sealed class CacheUpdatingStorageWriteBatch(

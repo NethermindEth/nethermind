@@ -266,6 +266,83 @@ public class ScopeProviderTests(bool useFlat)
         baseProvider.StorageReads.Should().Be(1);
     }
 
+    [Test]
+    public void Cross_block_account_cache_uses_write_through_value_on_next_block()
+    {
+        RecordingScopeProvider baseProvider = new();
+        PrewarmerScopeProvider provider = new(baseProvider, new PreBlockCaches(), populatePreBlockCache: false, new CrossBlockCaches());
+        Account updatedAccount = new(2, 3);
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            writeBatch.Set(TestItem.AddressA, updatedAccount);
+            scope.Commit(1);
+        }
+
+        baseProvider.ResetStats();
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(Build.A.BlockHeader.WithNumber(1).TestObject))
+        {
+            scope.Get(TestItem.AddressA).Should().BeSameAs(updatedAccount);
+        }
+
+        baseProvider.AccountReads.Should().Be(0);
+        baseProvider.AccountHintGets.Should().Be(1);
+    }
+
+    [Test]
+    public void Cross_block_account_cache_discards_uncommitted_writes()
+    {
+        RecordingScopeProvider baseProvider = new();
+        PrewarmerScopeProvider provider = new(baseProvider, new PreBlockCaches(), populatePreBlockCache: false, new CrossBlockCaches());
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            writeBatch.Set(TestItem.AddressA, new Account(1, 2));
+            scope.Commit(1);
+        }
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(Build.A.BlockHeader.WithNumber(1).TestObject))
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            writeBatch.Set(TestItem.AddressA, new Account(9, 9));
+        }
+
+        baseProvider.ResetStats();
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(Build.A.BlockHeader.WithNumber(1).TestObject))
+        {
+            scope.Get(TestItem.AddressA).Should().BeEquivalentTo(new Account(1, 2));
+        }
+
+        baseProvider.AccountReads.Should().Be(1);
+    }
+
+    [Test]
+    public void Cross_block_account_cache_clears_on_discontinuity()
+    {
+        RecordingScopeProvider baseProvider = new();
+        PrewarmerScopeProvider provider = new(baseProvider, new PreBlockCaches(), populatePreBlockCache: false, new CrossBlockCaches());
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            writeBatch.Set(TestItem.AddressA, new Account(1, 2));
+            scope.Commit(1);
+        }
+
+        baseProvider.ResetStats();
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(Build.A.BlockHeader.WithNumber(0).TestObject))
+        {
+            scope.Get(TestItem.AddressA).Should().BeEquivalentTo(new Account(1, 2));
+        }
+
+        baseProvider.AccountReads.Should().Be(1);
+    }
+
     private sealed class RecordingScopeProvider : IWorldStateScopeProvider
     {
         private readonly Dictionary<Address, Account?> _accounts = [];
@@ -273,6 +350,8 @@ public class ScopeProviderTests(bool useFlat)
 
         public int StorageReads { get; private set; }
         public int StorageHintGets { get; private set; }
+        public int AccountReads { get; private set; }
+        public int AccountHintGets { get; private set; }
 
         public bool HasRoot(BlockHeader? baseBlock) => true;
 
@@ -282,7 +361,17 @@ public class ScopeProviderTests(bool useFlat)
         {
             StorageReads = 0;
             StorageHintGets = 0;
+            AccountReads = 0;
+            AccountHintGets = 0;
         }
+
+        private Account? ReadAccount(Address address)
+        {
+            AccountReads++;
+            return _accounts.GetValueOrDefault(address);
+        }
+
+        private void NoteAccountHint() => AccountHintGets++;
 
         private sealed class Scope(RecordingScopeProvider owner) : IWorldStateScopeProvider.IScope
         {
@@ -300,11 +389,9 @@ public class ScopeProviderTests(bool useFlat)
             {
             }
 
-            public Account? Get(Address address) => owner._accounts.GetValueOrDefault(address);
+            public Account? Get(Address address) => owner.ReadAccount(address);
 
-            public void HintGet(Address address, Account? account)
-            {
-            }
+            public void HintGet(Address address, Account? account) => owner.NoteAccountHint();
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => NoCodeDb.Instance;
 

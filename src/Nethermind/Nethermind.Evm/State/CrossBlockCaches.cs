@@ -9,13 +9,15 @@ namespace Nethermind.Evm.State;
 
 /// <summary>
 /// Cross-block caches that survive block boundaries on the canonical chain.
-/// Only storage-slot values are kept here; account objects are intentionally excluded.
+/// Values are kept conservative and must be invalidated on discontinuity or aborted execution.
 /// </summary>
 public class CrossBlockCaches
 {
+    private readonly SeqlockCache<AddressAsKey, Account> _accountCache = new();
     private readonly SeqlockCache<StorageCell, byte[], LargeCacheSets> _storageCache = new();
     private long _lastCommittedBlockNumber = -1;
 
+    public SeqlockCache<AddressAsKey, Account> AccountCache => _accountCache;
     public SeqlockCache<StorageCell, byte[], LargeCacheSets> StorageCache => _storageCache;
 
     public long LastCommittedBlockNumber
