@@ -271,6 +271,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public void ResetTransient()
         => _innerWorldState.ResetTransient();
 
+    public void CreateEmptyAccountIfDeleted(Address address)
+        => _innerWorldState.CreateEmptyAccountIfDeleted(address);
+
     private UInt256 GetBalanceInternal(Address address)
         => GetBalanceCurrent(address) ?? _innerWorldState.GetBalance(address);
 
