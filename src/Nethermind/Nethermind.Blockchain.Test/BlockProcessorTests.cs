@@ -110,6 +110,14 @@ public class BlockProcessorTests
         balManager.Setup(block);
     }
 
+    private static BlockProcessor.BlockAccessListSystemContractHandler CreateBalSystemContractHandler(BlockAccessListManager balManager) =>
+        new(
+            Substitute.For<IBeaconBlockRootHandler>(),
+            Substitute.For<IBlockhashStore>(),
+            Substitute.For<IWithdrawalProcessor>(),
+            Substitute.For<IExecutionRequestsProcessor>(),
+            balManager);
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
@@ -413,8 +421,9 @@ public class BlockProcessorTests
         using (IDisposable _ = stateWithPreExecutionCall.BeginScope(blockWithPreExecutionCall.Header))
         {
             BlockAccessListManager balManagerWithPreExecutionCall = CreateBalManager(stateWithPreExecutionCall, spec);
+            BlockProcessor.BlockAccessListSystemContractHandler systemContractHandler = CreateBalSystemContractHandler(balManagerWithPreExecutionCall);
             SetupBalManager(balManagerWithPreExecutionCall, blockWithPreExecutionCall, spec);
-            balManagerWithPreExecutionCall.ApplyBlockhashStateChanges(blockWithPreExecutionCall.Header, spec);
+            systemContractHandler.ApplyBlockhashStateChanges(blockWithPreExecutionCall.Header, spec);
             balManagerWithPreExecutionCall.NextTransaction();
 
             using (Assert.EnterMultipleScope())

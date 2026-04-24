@@ -34,7 +34,6 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void SetBlockAccessList(Block block) { }
     public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true) { }
     public void StoreBeaconRoot(Block block, IReleaseSpec spec) { }
-    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }
     public void ProcessWithdrawals(Block block, IReleaseSpec spec) { }
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec) { }
     public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress) { }

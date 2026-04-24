@@ -26,7 +26,17 @@ public partial class BlockProcessor
             => balManager.StoreBeaconRoot(block, spec);
 
         public override void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
-            => balManager.ApplyBlockhashStateChanges(blockHeader, spec);
+        {
+            if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null)
+            {
+                return;
+            }
+
+            Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+            SystemCall systemTx = new(eip2935Account, blockHeader.ParentHash.Bytes.ToArray());
+
+            balManager.GetTxProcessor(0).Execute(systemTx, NullTxTracer.Instance);
+        }
 
         public override void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
             => balManager.ProcessExecutionRequests(block, receipts, spec);

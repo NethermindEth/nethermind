@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Specs;
+using static Nethermind.Consensus.Processing.BlockProcessor;
 using static Nethermind.State.BlockAccessListBasedWorldState;
 using System.Threading;
 
@@ -119,7 +120,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         int len = block.Transactions.Length;
         _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
@@ -349,19 +350,6 @@ public class BlockAccessListManager(
     {
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
-    }
-
-    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
-    {
-        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null)
-        {
-            return;
-        }
-
-        Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        SystemCall systemTx = new(eip2935Account, header.ParentHash.Bytes.ToArray());
-
-        _txProcessorWithWorldStateManager.GetPreExecution().TxProcessor.Execute(systemTx, NullTxTracer.Instance);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)

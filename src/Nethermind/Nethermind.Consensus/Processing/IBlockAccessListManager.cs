@@ -31,7 +31,6 @@ public interface IBlockAccessListManager
     void SetBlockAccessList(Block block);
     void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
-    void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
     void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress);
