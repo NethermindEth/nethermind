@@ -206,7 +206,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
         if (_config.WithLog)
         {
-            ClearFailedLogs(firstCallFrame, false);
+            ClearFailedLogs(firstCallFrame, true);
         }
     }
 
