@@ -99,11 +99,15 @@ public class PreBlockCaches
     }
 
     /// <summary>
-    /// Overlay buffered carry-forward writes onto existing caches (prewarmed reads survive).
+    /// Flush buffered carry-forward writes into the SeqlockCaches.
+    /// State cache is rebuilt from scratch (accounts are few, correctness is critical).
+    /// Storage cache preserves prewarmed reads and overlays writes (main perf benefit).
     /// Called from BranchProcessor after the prewarm task is complete and state is reset.
     /// </summary>
     public void FlushCarryForwardWrites()
     {
+        _stateCache.Clear();
+
         foreach ((AddressAsKey key, Account? account) in _pendingStateWrites)
         {
             _stateCache.Set(key, account);

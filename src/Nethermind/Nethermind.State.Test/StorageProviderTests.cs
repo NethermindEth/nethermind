@@ -606,7 +606,7 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void FlushCarryForwardWrites_preserves_existing_cache_and_overlays_writes()
+    public void FlushCarryForwardWrites_replaces_state_cache_with_current_block_entries()
     {
         PreBlockCaches caches = new();
         Account oldAccount = new((UInt256)1, (UInt256)1);
@@ -616,8 +616,7 @@ public class StorageProviderTests(bool useFlat)
         caches.EnqueueStateWrite((AddressAsKey)TestItem.AddressB, currentAccount);
         caches.FlushCarryForwardWrites();
 
-        caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out Account cachedOld).Should().BeTrue();
-        cachedOld.Should().BeSameAs(oldAccount);
+        caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out _).Should().BeFalse();
         caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressB, out Account account).Should().BeTrue();
         account.Should().BeSameAs(currentAccount);
     }
