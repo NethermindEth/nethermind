@@ -30,10 +30,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
-    {
-        _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
-    }
+        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager) => _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -60,7 +57,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired) => TransactionResult.Ok;
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired, bool validate) => TransactionResult.Ok;
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 

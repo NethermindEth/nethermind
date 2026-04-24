@@ -8,18 +8,11 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Nethermind.Db.Blooms
 {
-    public class FixedSizeFileStore : IFileStore
+    public class FixedSizeFileStore(string path, int elementSize) : IFileStore
     {
-        private readonly string _path;
-        private readonly int _elementSize;
-        private readonly SafeFileHandle _file;
-
-        public FixedSizeFileStore(string path, int elementSize)
-        {
-            _path = path;
-            _elementSize = elementSize;
-            _file = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
-        }
+        private readonly string _path = path;
+        private readonly int _elementSize = elementSize;
+        private readonly SafeFileHandle _file = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
 
         public void Write(long index, ReadOnlySpan<byte> element)
         {
@@ -49,21 +42,12 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        public int Read(long index, Span<byte> element)
-        {
-            return RandomAccess.Read(_file, element, GetPosition(index));
-        }
+        public int Read(long index, Span<byte> element) => RandomAccess.Read(_file, element, GetPosition(index));
 
-        public IFileReader CreateFileReader()
-        {
-            return new FileReader(_path, _elementSize);
-        }
+        public IFileReader CreateFileReader() => new FileReader(_path, _elementSize);
 
         private long GetPosition(long index) => index * _elementSize;
 
-        public void Dispose()
-        {
-            _file.Dispose();
-        }
+        public void Dispose() => _file.Dispose();
     }
 }

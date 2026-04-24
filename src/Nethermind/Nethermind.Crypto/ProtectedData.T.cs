@@ -37,7 +37,7 @@ namespace Nethermind.Crypto
 
         public T Unprotect()
         {
-            var data = Unprotect(_encryptedData, _entropy, DataProtectionScope.CurrentUser);
+            byte[] data = Unprotect(_encryptedData, _entropy, DataProtectionScope.CurrentUser);
             CheckReProtect(data);
             return CreateUnprotected(data);
         }

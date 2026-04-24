@@ -71,7 +71,7 @@ namespace Nethermind.Consensus.Producers
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
-            Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            Logger = logManager?.GetClassLogger<BlockProducerBase>() ?? throw new ArgumentNullException(nameof(logManager));
             _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
             BlockProductionTimeoutMs = _blocksConfig.BlockProductionTimeoutMs;
@@ -190,10 +190,7 @@ namespace Nethermind.Consensus.Producers
             Sealer.SealBlock(block, token);
 
         protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
-            CancellationToken token = default)
-        {
-            return Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);
-        }
+            CancellationToken token = default) => Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);
 
         private bool PreparedBlockCanBeMined(Block? block)
         {

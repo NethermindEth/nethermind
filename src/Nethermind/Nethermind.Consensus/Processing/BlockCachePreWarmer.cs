@@ -24,17 +24,13 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockCachePreWarmer(
-    PrewarmerEnvFactory envFactory,
-    int concurrency,
-    NodeStorageCache nodeStorageCache,
-    PreBlockCaches preBlockCaches,
-    ILogManager logManager
-) : IBlockCachePreWarmer
+public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
-    private readonly int _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
-    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
-    private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private readonly int _concurrencyLevel;
+    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
+    private readonly ILogger _logger;
+    private readonly PreBlockCaches _preBlockCaches;
+    private readonly NodeStorageCache _nodeStorageCache;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -43,7 +39,8 @@ public sealed class BlockCachePreWarmer(
         PreBlockCaches preBlockCaches,
         ILogManager logManager
     ) : this(
-        envFactory,
+        new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
+        Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
         nodeStorageCache,
         preBlockCaches,
@@ -51,13 +48,32 @@ public sealed class BlockCachePreWarmer(
     {
     }
 
+    internal BlockCachePreWarmer(
+        IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
+        int maxPoolSize,
+        int concurrency,
+        NodeStorageCache nodeStorageCache,
+        PreBlockCaches preBlockCaches,
+        ILogManager logManager)
+    {
+        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
+        _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
+        _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+        _preBlockCaches = preBlockCaches;
+        _nodeStorageCache = nodeStorageCache;
+    }
+
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (preBlockCaches is not null)
+        if (_preBlockCaches is not null)
         {
-            preBlockCaches.ClearCaches();
-            nodeStorageCache.ClearCaches();
-            nodeStorageCache.Enabled = true;
+            CacheType result = _preBlockCaches.ClearCaches();
+            _nodeStorageCache.ClearCaches();
+            _nodeStorageCache.Enabled = true;
+            if (result != default)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
+            }
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
@@ -65,7 +81,7 @@ public sealed class BlockCachePreWarmer(
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
+                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
                 return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
@@ -78,28 +94,28 @@ public sealed class BlockCachePreWarmer(
     public void InvalidateCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Invalidating caches");
-        preBlockCaches?.InvalidateCaches();
+        _preBlockCaches.InvalidateCaches();
         if (_logger.IsDebug) _logger.Debug("Invalidated caches");
     }
 
     public void FinalizeProcessedBlock(BlockHeader block, IReleaseSpec spec)
     {
         _ = spec;
-        preBlockCaches.RecordCommittedBlock(block.Number, block.Hash);
+        _preBlockCaches.RecordCommittedBlock(block.Number, block.Hash);
     }
 
-    public void FlushCarryForwardWrites()
-    {
-        preBlockCaches?.FlushCarryForwardWrites();
-    }
+    public void FlushCarryForwardWrites() => _preBlockCaches.FlushCarryForwardWrites();
 
-    public void ClearCaches()
+    public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
-        preBlockCaches?.ClearCaches();
-        nodeStorageCache.ClearCaches();
-        if (_logger.IsDebug) _logger.Debug("Cleared caches");
+        CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
+        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
+        return cachesCleared;
     }
+
+    public void Dispose() => (_envPool as IDisposable)?.Dispose();
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
@@ -116,7 +132,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Error pre-warming {suggestedBlock.Number}. {ex}");
+            _logger.DebugWarn($"Error pre-warming {suggestedBlock.Number}. {ex}");
         }
         finally
         {
@@ -161,7 +177,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error pre-warming withdrawal", ex);
+            _logger.DebugError("Error pre-warming withdrawal", ex);
         }
     }
 
@@ -181,7 +197,7 @@ public sealed class BlockCachePreWarmer(
             try
             {
                 // Convert to array for parallel iteration
-                ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
+                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
 
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
@@ -229,7 +245,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming transactions", ex);
+            _logger.DebugError("Error pre-warming transactions", ex);
         }
     }
 
@@ -284,7 +300,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (blockState.PreWarmer._logger.IsDebug) blockState.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx.Hash}", ex);
+            blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
         }
     }
 
@@ -323,7 +339,7 @@ public sealed class BlockCachePreWarmer(
             }
             catch (Exception ex)
             {
-                if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming addresses", ex);
+                PreWarmer._logger.DebugError("Error pre-warming addresses", ex);
             }
             finally
             {
@@ -434,9 +450,18 @@ public sealed class BlockCachePreWarmer(
         private static void DisposeThreadState(AddressWarmingState state) => state.Dispose();
     }
 
-    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    /// <summary>
+    /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.
+    /// </summary>
+    internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches _preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public IReadOnlyTxProcessorSource Create() => envFactory.Create(preBlockCaches);
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create(_preBlockCaches);
+
+        /// <remarks>
+        /// Always returns true — the env is valid for reuse. The pool that owns this policy
+        /// must call <see cref="IDisposable.Dispose"/> on any item it cannot retain; failing
+        /// to do so leaks resources held by the env for the lifetime of the process.
+        /// </remarks>
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 

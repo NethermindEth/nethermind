@@ -100,7 +100,7 @@ public class CliqueTests
         signer.CanSign.Returns(true);
         signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));
         signer.Sign(Arg.Any<BlockHeader>()).Returns(new Signature(new byte[65]));
-        CliqueSealer sut = new CliqueSealer(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
+        CliqueSealer sut = new(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
 
         await sut.SealBlock(block, System.Threading.CancellationToken.None);
@@ -115,7 +115,7 @@ public class CliqueTests
         signer.CanSign.Returns(true);
         signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));
         signer.Sign(Arg.Any<ValueHash256>()).Returns(new Signature(new byte[65]));
-        CliqueSealer sut = new CliqueSealer(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
+        CliqueSealer sut = new(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
 
         await sut.SealBlock(block, System.Threading.CancellationToken.None);

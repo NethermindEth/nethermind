@@ -8,13 +8,7 @@ namespace Nethermind.Era1.Test;
 
 public static class TestContainerExtensions
 {
-    public static string ResolveTempFilePath(this IContainer container)
-    {
-        return container.ResolveNamed<TempPath>("file").Path;
-    }
+    public static string ResolveTempFilePath(this IContainer container) => container.ResolveNamed<TempPath>("file").Path;
 
-    public static string ResolveTempDirPath(this IContainer container)
-    {
-        return container.ResolveNamed<TempPath>("directory").Path;
-    }
+    public static string ResolveTempDirPath(this IContainer container) => container.ResolveNamed<TempPath>("directory").Path;
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -23,14 +24,11 @@ namespace Nethermind.JsonRpc.Modules.Personal
             return ResultWrapper<Address>.Success(privateKey.Address);
         }
 
-        public ResultWrapper<Address[]> personal_listAccounts()
-        {
-            return ResultWrapper<Address[]>.Success(wallet.GetAccounts());
-        }
+        public ResultWrapper<Address[]> personal_listAccounts() => ResultWrapper<Address[]>.Success(wallet.GetAccounts());
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {
-            var locked = wallet.LockAccount(address);
+            bool locked = wallet.LockAccount(address);
 
             return ResultWrapper<bool>.Success(locked);
         }
@@ -38,26 +36,28 @@ namespace Nethermind.JsonRpc.Modules.Personal
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<bool> personal_unlockAccount(Address address, string passphrase)
         {
-            var notSecuredHere = passphrase.Secure();
-            var unlocked = wallet.UnlockAccount(address, notSecuredHere);
+            SecureString notSecuredHere = passphrase.Secure();
+            bool unlocked = wallet.UnlockAccount(address, notSecuredHere);
             return ResultWrapper<bool>.Success(unlocked);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Address> personal_newAccount(string passphrase)
         {
-            var notSecuredHere = passphrase.Secure();
+            SecureString notSecuredHere = passphrase.Secure();
             return ResultWrapper<Address>.Success(wallet.NewAccount(notSecuredHere));
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
-        {
-            throw new NotImplementedException();
-        }
+        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase) => throw new NotImplementedException();
 
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
+            if (signature.Length != Signature.Size)
+            {
+                return ResultWrapper<Address>.Fail($"Invalid signature length: {signature.Length}. Expected {Signature.Size} bytes.", ErrorCodes.InvalidParams);
+            }
+
             message = ToEthSignedMessage(message);
             Hash256 msgHash = Keccak.Compute(message);
             PublicKey publicKey = ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             {
                 if (passphrase is not null)
                 {
-                    var notSecuredHere = passphrase.Secure();
+                    SecureString notSecuredHere = passphrase.Secure();
                     wallet.UnlockAccount(address, notSecuredHere);
                 }
             }

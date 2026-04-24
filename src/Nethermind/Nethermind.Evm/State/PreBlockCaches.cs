@@ -43,9 +43,11 @@ public class PreBlockCaches
     public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
-    public void ClearCaches()
+    public CacheType ClearCaches()
     {
+        // State/storage caches carry committed writes into the next block and are invalidated separately.
         _precompileCache.NoResizeClear();
+        return CacheType.None;
     }
 
     public void InvalidateCaches()
@@ -142,4 +144,14 @@ public class PreBlockCaches
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
+}
+
+[Flags]
+public enum CacheType
+{
+    None = 0,
+    Storage = 0b1,
+    State = 0b10,
+    Rlp = 0b100,
+    Precompile = 0b1000
 }

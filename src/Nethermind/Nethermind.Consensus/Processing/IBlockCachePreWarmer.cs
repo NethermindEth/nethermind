@@ -11,10 +11,10 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public interface IBlockCachePreWarmer
+public interface IBlockCachePreWarmer : IDisposable
 {
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
-    void ClearCaches();
+    CacheType ClearCaches();
     void InvalidateCaches();
     void FinalizeProcessedBlock(BlockHeader block, IReleaseSpec spec);
     void FlushCarryForwardWrites();

@@ -13,6 +13,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -88,7 +89,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _timer.Elapsed += CleanupOldPayloads;
         _timer.Start();
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<PayloadPreparationService>();
     }
 
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
@@ -100,7 +101,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             long startTimestamp = Stopwatch.GetTimestamp();
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
             if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken));
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
         }
         else if (_logger.IsInfo)
         {
@@ -111,10 +112,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         return payloadId;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMultiStartRequest(string payloadId, long number)
-        {
-            _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
-        }
+        void LogMultiStartRequest(string payloadId, long number) => _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
     }
 
     protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
@@ -137,7 +135,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts) =>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
         _payloadStorage.AddOrUpdate(payloadId,
             id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
             (id, currentContext) =>
@@ -169,7 +167,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             });
 
 
-    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
+    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
@@ -375,7 +373,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
         else if (t.IsFaulted)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Block improvement failed", t.Exception);
+            _logger.DebugError("Block improvement failed", t.Exception);
         }
         else if (t.IsCanceled)
         {
@@ -437,9 +435,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
     }
 
-    public void CancelBlockProduction(string payloadId)
-    {
+    public void CancelBlockProduction(string payloadId) =>
         // GetPayload cancels the request
         _ = GetPayload(payloadId);
-    }
 }

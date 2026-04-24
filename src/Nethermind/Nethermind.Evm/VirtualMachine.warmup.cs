@@ -58,7 +58,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             vm.VmState = vmState;
             vm._worldState = state;
             vm._codeInfoRepository = codeInfoRepository;
-            vmState.InitializeStacks();
 
             RunOpCodes<OnFlag>(vm, state, vmState, spec);
             RunOpCodes<OffFlag>(vm, state, vmState, spec);
@@ -151,10 +150,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         const int WarmUpIterations = 40;
 
-        var opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
-        EvmStack stack = new(0, txTracer, vmState.DataStack);
+        vmState.InitializeStacks(txTracer, vmState.Env.CodeInfo.CodeSpan, out EvmStack stack);
         TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
         int pc = 0;
 
@@ -178,7 +177,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 }
 
                 state.Reset(resetBlockChanges: true);
-                stack = new(0, txTracer, vmState.DataStack);
+                stack.Head = 0;
                 gas = TGasPolicy.FromLong(long.MaxValue);
                 pc = 0;
             }
@@ -190,12 +189,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
             => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
-        {
-            return Keccak.Compute(spec!.IsBlockHashInStateAvailable
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec) => Keccak.Compute(spec!.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
                 : number.ToString());
-        }
 
         public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }

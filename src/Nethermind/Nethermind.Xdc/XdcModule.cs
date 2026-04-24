@@ -12,7 +12,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -23,10 +22,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -89,6 +86,7 @@ public class XdcModule : Module
             .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
 
             // Validators
+            .AddSingleton<IBlockValidator, XdcBlockValidator>()
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
             .AddSingleton<ISealValidator, XdcSealValidator>()
             .AddSingleton<IUnclesValidator, MustBeEmptyUnclesValidator>()
@@ -133,14 +131,8 @@ public class XdcModule : Module
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-    {
-        return new SnapshotManager(db, blockTree, votingContract, specProvider);
-    }
-    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
-    {
-        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
-    }
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider) => new SnapshotManager(db, blockTree, votingContract, specProvider);
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager) => new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
 
     private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,

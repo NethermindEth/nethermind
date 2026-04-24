@@ -53,7 +53,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .Bind<INodeSource, IStaticNodesManager>()
 
             // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
-            .AddNetworkStorage(DbNames.PeersDb, "peers")
+            .AddNetworkStorage(DbNames.PeersDb, DbNames.PeersDb)
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
@@ -104,8 +104,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
 
-                .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
-                .AddNetworkStorage(DbNames.DiscoveryV5Nodes, "discoveryV5Nodes")
+                .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
+                .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)
 
                 .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
                 .AddSingleton<INodeTable, NodeTable>()

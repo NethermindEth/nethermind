@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -194,7 +195,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(invalidBlock);
 
-        var response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
+        ResultWrapper<PayloadStatusV1> response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
 
         Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
     }
@@ -212,7 +213,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(TestBlock);
 
         // must reject if execution requests types are not in ascending order
-        var response = await rpc.engine_newPayloadV4(
+        ResultWrapper<PayloadStatusV1> response = await rpc.engine_newPayloadV4(
                 executionPayload,
                 [],
                 TestBlock.ParentBeaconBlockRoot,
@@ -259,7 +260,10 @@ public partial class EngineModuleTests
         last!.IsGenesis.Should().BeTrue();
 
         Block? head = chain.BlockTree.Head;
-        head!.ExecutionRequests!.Length.Should().Be(ExecutionRequestsProcessorMock.Requests.Length);
+        // ExecutionRequests is a transient property (not in RLP), so it may not survive
+        // cache round-trips. Verify via RequestsHash on the header instead, which IS persisted.
+        head!.Header.RequestsHash.Should().Be(
+            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests));
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
@@ -355,8 +359,8 @@ public partial class EngineModuleTests
             ? chain.WaitForImprovedBlock()
             : Task.CompletedTask;
 
-        ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
-        PayloadAttributes payloadAttributes = new PayloadAttributes
+        ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
+        PayloadAttributes payloadAttributes = new()
         {
             Timestamp = timestamp,
             PrevRandao = random,

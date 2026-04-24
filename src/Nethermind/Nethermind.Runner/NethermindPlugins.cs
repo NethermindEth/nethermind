@@ -26,5 +26,7 @@ public static class NethermindPlugins
         typeof(Nethermind.Taiko.TaikoPlugin),
         typeof(Nethermind.UPnP.Plugin.UPnPPlugin),
         typeof(Nethermind.Xdc.XdcPlugin),
+        typeof(Nethermind.Xdc.XdcSubnetPlugin),
+        typeof(Nethermind.StateComposition.StateCompositionPlugin),
     ];
 }

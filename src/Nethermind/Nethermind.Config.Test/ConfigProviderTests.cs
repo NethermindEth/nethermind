@@ -26,10 +26,7 @@ namespace Nethermind.Config.Test
         }
 
         [Test]
-        public void GetDefault_returns_null_for_reference_types()
-        {
-            Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
-        }
+        public void GetDefault_returns_null_for_reference_types() => Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
     }
 
     [TestFixture]

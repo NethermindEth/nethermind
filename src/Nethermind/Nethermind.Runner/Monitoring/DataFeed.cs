@@ -70,7 +70,7 @@ public class DataFeed
         _receiptFinder = receiptFinder;
         _syncPeerPool = syncPeerPool;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<DataFeed>();
 
         mainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
         blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
@@ -93,7 +93,7 @@ public class DataFeed
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Http request {nameof(DataFeed)} errored", e);
+            _logger.DebugError($"Http request {nameof(DataFeed)} errored", e);
         }
         finally
         {
@@ -118,7 +118,7 @@ public class DataFeed
         await ctx.Response.Body.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(ConsoleHelpers.GetRecentMessages(), JsonSerializerOptions.Web), ct);
         await ctx.Response.WriteAsync("\n\n", ct);
 
-        var channel = Channel.CreateUnbounded<ChannelEntry>();
+        Channel<ChannelEntry> channel = Channel.CreateUnbounded<ChannelEntry>();
 
         InitializeChannelSubscriptions(channel, ct);
 
@@ -266,9 +266,7 @@ public class DataFeed
         return JsonSerializer.SerializeToUtf8Bytes(peers, JsonSerializerOptions.Web);
     }
 
-    private byte[] GetTxFlowTask()
-    {
-        return JsonSerializer.SerializeToUtf8Bytes(new TxPoolFlow(
+    private byte[] GetTxFlowTask() => JsonSerializer.SerializeToUtf8Bytes(new TxPoolFlow(
                     TxPool.Metrics.PendingTransactionsReceived,
                     TxPool.Metrics.PendingTransactionsNotSupportedTxType,
                     TxPool.Metrics.PendingTransactionsSizeTooLarge,
@@ -293,13 +291,12 @@ public class DataFeed
                     TxPool.Metrics.TransactionsSourcedMemPool,
                     TxPool.Metrics.TransactionsReorged
             )
-        {
-            PooledBlobTx = _txPool.GetPendingBlobTransactionsCount(),
-            PooledTx = _txPool.GetPendingTransactionsCount(),
-            HashesReceived = TxPool.Metrics.PendingTransactionsHashesReceived
-        },
+    {
+        PooledBlobTx = _txPool.GetPendingBlobTransactionsCount(),
+        PooledTx = _txPool.GetPendingTransactionsCount(),
+        HashesReceived = TxPool.Metrics.PendingTransactionsHashesReceived
+    },
             JsonSerializerOptions.Web);
-    }
 
     private DataCompletion _processing = new();
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)

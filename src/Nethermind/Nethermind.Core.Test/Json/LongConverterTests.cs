@@ -18,10 +18,7 @@ public class LongConverterTests : ConverterTestBase<long>
     [TestCase(int.MaxValue)]
     [TestCase(1L)]
     [TestCase(0L)]
-    public void Test_roundtrip(long value)
-    {
-        TestConverter(value, static (a, b) => a.Equals(b), converter);
-    }
+    public void Test_roundtrip(long value) => TestConverter(value, static (a, b) => a.Equals(b), converter);
 
     [TestCase("\"0xa00000\"", 10485760L)]
     [TestCase("\"0x0\"", 0L)]
@@ -35,11 +32,8 @@ public class LongConverterTests : ConverterTestBase<long>
     }
 
     [Test]
-    public void Throws_on_null()
-    {
-        Assert.Throws<JsonException>(
+    public void Throws_on_null() => Assert.Throws<JsonException>(
             static () => JsonSerializer.Deserialize<long>("null", options));
-    }
 
     [TestCase(0L, "\"0x0\"")]
     [TestCase(1L, "\"0x1\"")]

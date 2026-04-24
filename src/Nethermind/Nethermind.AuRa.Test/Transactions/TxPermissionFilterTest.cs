@@ -281,11 +281,9 @@ public class TxPermissionFilterTest
 
         private class TestValidationModule(PermissionBasedTxFilter permissionBasedFilter) : Module, IBlockValidationModule
         {
-            protected override void Load(ContainerBuilder builder)
-            {
-                // Override default tx filter
+            // Override default tx filter
+            protected override void Load(ContainerBuilder builder) =>
                 builder.AddSingleton<ITxFilter>(permissionBasedFilter);
-            }
         }
 
         protected override async Task AddBlocksOnStart()

@@ -8,10 +8,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public class AccountChangesBuilder : BuilderBase<AccountChanges>
     {
-        public AccountChangesBuilder()
-        {
-            TestObjectInternal = new AccountChanges(Address.Zero);
-        }
+        public AccountChangesBuilder() => TestObjectInternal = new AccountChanges(Address.Zero);
 
         public AccountChangesBuilder WithAddress(Address address)
         {

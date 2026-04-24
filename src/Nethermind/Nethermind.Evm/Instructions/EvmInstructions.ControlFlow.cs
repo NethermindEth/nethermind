@@ -4,8 +4,9 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
-using Nethermind.Core.Specs;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 
@@ -13,7 +14,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Pushes the current program counter (minus one) onto the EVM stack.
@@ -34,9 +35,7 @@ internal static partial class EvmInstructions
         // Deduct the base gas cost for reading the program counter.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
-        stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
-
-        return EvmExceptionType.None;
+        return stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
     }
 
     /// <summary>
@@ -83,6 +82,8 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
+        // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
+        PrefetchCodeAtDestination(ref stack, programCounter);
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
@@ -120,6 +121,8 @@ internal static partial class EvmInstructions
         if (shouldJump)
         {
             if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
+            // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
+            PrefetchCodeAtDestination(ref stack, programCounter);
         }
 
         return EvmExceptionType.None;
@@ -164,8 +167,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 position) ||
-            !stack.PopUInt256(out UInt256 length))
+        if (!stack.PopUInt256(out UInt256 position, out UInt256 length))
         {
             goto StackUnderflow;
         }
@@ -335,5 +337,39 @@ internal static partial class EvmInstructions
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Prefetches the cache line at the given program counter location.
+    /// Hardware prefetchers cannot predict jump destinations, so we explicitly prefetch
+    /// to reduce cache misses after non-sequential control flow.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PrefetchCodeAtDestination(ref EvmStack stack, int programCounter)
+    {
+        if (Sse.IsSupported)
+        {
+            // Prefetch the cache line containing the jump destination.
+            // Also prefetch the next cache line since code often spans multiple lines.
+            ref byte code = ref stack.Code;
+            nuint dest = (nuint)programCounter;
+            nuint codeLength = (nuint)stack.CodeLength;
+
+            if (dest < codeLength)
+            {
+                unsafe
+                {
+                    // Best-effort hint: PREFETCHT0 never faults. A GC relocation just
+                    // makes the hint useless, not unsafe.
+                    Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, dest)));
+                    // Prefetch next cache line too (64 bytes ahead)
+                    nuint nextLine = (dest + 64) & ~(nuint)63;
+                    if (nextLine < codeLength)
+                    {
+                        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, nextLine)));
+                    }
+                }
+            }
+        }
     }
 }

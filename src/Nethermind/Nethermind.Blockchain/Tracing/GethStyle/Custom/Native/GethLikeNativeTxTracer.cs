@@ -7,14 +7,9 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 
-public abstract class GethLikeNativeTxTracer : GethLikeTxTracer
+public abstract class GethLikeNativeTxTracer(GethTraceOptions options) : GethLikeTxTracer(options)
 {
-    protected int Depth { get; private set; }
-
-    protected GethLikeNativeTxTracer(GethTraceOptions options) : base(options)
-    {
-        Depth = -1;
-    }
+    protected int Depth { get; private set; } = -1;
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {

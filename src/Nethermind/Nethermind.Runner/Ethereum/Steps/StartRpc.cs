@@ -30,7 +30,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
     {
         IJsonRpcConfig jsonRpcConfig = api.Config<IJsonRpcConfig>();
         IKeyStoreConfig keyStoreConfig = api.Config<IKeyStoreConfig>();
-        ILogger logger = api.LogManager.GetClassLogger();
+        ILogger logger = api.LogManager.GetClassLogger<StartRpc>();
 
         if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
             ConfigureJwtSecret(keyStoreConfig, jsonRpcConfig, logger);

@@ -40,7 +40,7 @@ namespace Nethermind.Flashbots.Modules.Flashbots
                 .AddModule(overridableEnv));
 
             rootLifetime.Disposer.AddInstanceForAsyncDisposal(moduleLifetime);
-            ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
+            ValidateSubmissionHandler validateSubmissionHandler = new(
                 headerValidator,
                 blockTree,
                 blockValidator,

@@ -5,11 +5,11 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+#if ZK_EVM
 using Nethermind.Core.Collections;
+#endif
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -30,10 +30,7 @@ namespace Nethermind.Db
 #endif
 
         public MemDb(string name)
-            : this(0, 0)
-        {
-            Name = name;
-        }
+            : this(0, 0) => Name = name;
 
         public static MemDb CopyFrom(IDb anotherDb)
         {

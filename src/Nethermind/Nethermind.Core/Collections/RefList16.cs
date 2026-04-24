@@ -11,7 +11,7 @@ namespace Nethermind.Core.Collections;
 /// Like a list with a capacity of 16. But refstruct and therefore on the stack.
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public ref struct RefList16<T>
+public ref struct RefList16<T>(int initialSize)
 {
     [InlineArray(16)]
     private struct Inline16
@@ -20,12 +20,7 @@ public ref struct RefList16<T>
     }
 
     private Inline16 _array;
-    public int Count;
-
-    public RefList16(int initialSize)
-    {
-        Count = initialSize;
-    }
+    public int Count = initialSize;
 
     public T? this[int index] => _array[index];
 

@@ -67,7 +67,7 @@ namespace Nethermind.Merge.Plugin
             _blockTree = blockTree;
             _specProvider = specProvider;
             _chainSpec = chainSpec;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<PoSSwitcher>();
 
             Initialize();
         }
@@ -113,15 +113,9 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e)
-        {
-            TryUpdateTerminalBlock(e.Block.Header);
-        }
+        private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e) => TryUpdateTerminalBlock(e.Block.Header);
 
-        private void LoadFinalizedBlockHash()
-        {
-            _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
-        }
+        private void LoadFinalizedBlockHash() => _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
         {
@@ -137,7 +131,7 @@ namespace Nethermind.Merge.Plugin
             _firstPoSBlockNumber = header.Number + 1;
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
 
-            if (_hasEverReachedTerminalDifficulty == false)
+            if (!_hasEverReachedTerminalDifficulty)
             {
                 TerminalBlockReached?.Invoke(this, EventArgs.Empty);
                 _hasEverReachedTerminalDifficulty = true;
@@ -189,7 +183,7 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = true;
             }
-            else if (header.TotalDifficulty is null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
+            else if (header.TotalDifficulty is null || (header.TotalDifficulty == 0 && !header.IsGenesis)) // we don't know header TD, so we consider header.Difficulty
             {
                 isPostMerge = header.Difficulty == 0;
                 isTerminal = false; // we can't say if block isTerminal if we don't have TD

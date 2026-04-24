@@ -59,7 +59,7 @@ public class DiscoveryApp : IDiscoveryApp
         NodeFilter? inboundMessageFilter = null)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<DiscoveryApp>();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
@@ -154,10 +154,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     string IStoppableService.Description => "discv4";
 
-    public void AddNodeToDiscovery(Node node)
-    {
-        _discoveryManager.GetNodeLifecycleManager(node);
-    }
+    public void AddNodeToDiscovery(Node node) => _discoveryManager.GetNodeLifecycleManager(node);
 
     private void Initialize()
     {
@@ -281,7 +278,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during discovery initialization", e);
+            _logger.DebugError("Error during discovery initialization", e);
         }
     }
 
@@ -446,10 +443,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
-    private void OnNodeDiscovered(object? sender, NodeEventArgs e)
-    {
-        NodeAdded?.Invoke(this, e);
-    }
+    private void OnNodeDiscovered(object? sender, NodeEventArgs e) => NodeAdded?.Invoke(this, e);
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
 

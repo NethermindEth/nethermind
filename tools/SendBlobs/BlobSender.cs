@@ -34,7 +34,7 @@ internal class BlobSender
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logManager = logManager;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<BlobSender>();
         _rpcClient = SetupCli.InitRpcClient(rpcUrl, _logger);
         _rpcUrl = rpcUrl;
 
