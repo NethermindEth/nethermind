@@ -479,6 +479,8 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
         Assert.That(result.Data, Has.Count.EqualTo(1));
         Assert.That(result.Data[0].Calls, Has.Count.EqualTo(1));
-        Assert.That(result.Data[0].Calls.First().Error, Is.Null);
+        SimulateCallResult call = result.Data[0].Calls.First();
+        Assert.That(call.Error, Is.Null);
+        Assert.That(call.Status, Is.EqualTo(1ul));
     }
 }

@@ -96,9 +96,20 @@ namespace Nethermind.Evm.TransactionProcessing
             Warmup = 8,
 
             /// <summary>
+            /// Skip all gas and balance validation regardless of transaction type.
+            /// Used by eth_simulateV1 with validation:false to allow zero-balance senders.
+            /// </summary>
+            SkipBalanceValidation = 16,
+
+            /// <summary>
             /// Skip potential fail checks and commit state after execution
             /// </summary>
             SkipValidationAndCommit = Commit | SkipValidation,
+
+            /// <summary>
+            /// Skip all validations including gas/balance checks, commit state. Used by eth_simulateV1 validate:false.
+            /// </summary>
+            SimulateAndCommit = Commit | SkipValidation | SkipBalanceValidation,
 
             /// <summary>
             /// Commit and later restore state also skip validation, use for CallAndRestore
@@ -162,6 +173,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
+
+        public TransactionResult Simulate(Transaction transaction, ITxTracer txTracer) =>
+            ExecuteCore(transaction, txTracer, ExecutionOptions.SimulateAndCommit);
 
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
@@ -610,7 +624,7 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
             {
-                if (validate)
+                if (!opts.HasFlag(ExecutionOptions.SkipBalanceValidation))
                 {
                     TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
                     return TransactionResult.InsufficientSenderBalance;
@@ -928,9 +942,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
-            // When validation is skipped (e.g. eth_simulateV1 with validation:false), bypass balance enforcement
-            // so simulations from zero-balance addresses succeed rather than throw InsufficientBalanceException.
-            if (opts.HasFlag(ExecutionOptions.SkipValidation) && WorldState.GetBalance(tx.SenderAddress!) < tx.ValueRef)
+            if (opts.HasFlag(ExecutionOptions.SkipBalanceValidation) && WorldState.GetBalance(tx.SenderAddress!) < tx.ValueRef)
                 return;
             WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
