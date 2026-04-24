@@ -9,7 +9,6 @@ using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Comparers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -55,21 +54,21 @@ public class AccountChanges : IEquatable<AccountChanges>
     public AccountChanges()
     {
         Address = Address.Zero;
-        _storageChanges = new(UInt256Comparer.Instance);
-        _storageReads = new(UInt256Comparer.Instance);
-        _balanceChanges = new(IntComparer.Instance);
-        _nonceChanges = new(IntComparer.Instance);
-        _codeChanges = new(IntComparer.Instance);
+        _storageChanges = new(GenericComparer.GetOptimized<UInt256>());
+        _storageReads = new(GenericComparer.GetOptimized<UInt256>());
+        _balanceChanges = new(GenericComparer.GetOptimized<int>());
+        _nonceChanges = new(GenericComparer.GetOptimized<int>());
+        _codeChanges = new(GenericComparer.GetOptimized<int>());
     }
 
     public AccountChanges(Address address)
     {
         Address = address;
-        _storageChanges = new(UInt256Comparer.Instance);
-        _storageReads = new(UInt256Comparer.Instance);
-        _balanceChanges = new(IntComparer.Instance);
-        _nonceChanges = new(IntComparer.Instance);
-        _codeChanges = new(IntComparer.Instance);
+        _storageChanges = new(GenericComparer.GetOptimized<UInt256>());
+        _storageReads = new(GenericComparer.GetOptimized<UInt256>());
+        _balanceChanges = new(GenericComparer.GetOptimized<int>());
+        _nonceChanges = new(GenericComparer.GetOptimized<int>());
+        _codeChanges = new(GenericComparer.GetOptimized<int>());
     }
 
     public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
@@ -176,7 +175,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         {
             if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
             {
-                yield return new(slotChanges.Slot, new SortedList<int, StorageChange>(IntComparer.Instance) { { index, storageChange } });
+                yield return new(slotChanges.Slot, new SortedList<int, StorageChange>(GenericComparer.GetOptimized<int>()) { { index, storageChange } });
             }
         }
     }

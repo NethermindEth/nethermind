@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Comparers;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -28,7 +27,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         UInt256? lastSlot = null;
-        SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length, UInt256Comparer.Instance);
+        SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length, GenericComparer.GetOptimized<UInt256>());
         foreach (SlotChanges slotChange in slotChanges)
         {
             UInt256 slot = slotChange.Slot;
@@ -41,7 +40,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
 
         UInt256[] storageReads = ctx.DecodeArray(UInt256Decoder.Instance, true, default, _storageLimit);
-        SortedSet<UInt256> storageReadsList = new(UInt256Comparer.Instance);
+        SortedSet<UInt256> storageReadsList = new(GenericComparer.GetOptimized<UInt256>());
         UInt256? lastRead = null;
         foreach (UInt256 storageRead in storageReads)
         {
@@ -109,7 +108,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         where T : struct, IIndexedChange
     {
         int? lastIndex = null;
-        SortedList<int, T> sorted = new(items.Length, IntComparer.Instance);
+        SortedList<int, T> sorted = new(items.Length, GenericComparer.GetOptimized<int>());
         foreach (T item in items)
         {
             int index = item.BlockAccessIndex;

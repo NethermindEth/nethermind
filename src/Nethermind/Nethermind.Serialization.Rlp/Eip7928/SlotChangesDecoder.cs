@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Comparers;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -26,7 +25,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
         int? lastIndex = null;
-        SortedList<int, StorageChange> changesList = new(changes.Length, IntComparer.Instance);
+        SortedList<int, StorageChange> changesList = new(changes.Length, GenericComparer.GetOptimized<int>());
         foreach (StorageChange s in changes)
         {
             int index = s.BlockAccessIndex;
