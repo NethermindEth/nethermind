@@ -61,7 +61,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
         }
 
-        TimeSpan timeout = TimeSpan.TryParse(options.Timeout, out TimeSpan parsed) ? parsed : DefaultTimeout;
+        TimeSpan timeout = string.IsNullOrEmpty(options.Timeout)
+            ? DefaultTimeout
+            : TimeSpan.TryParse(options.Timeout, out TimeSpan parsed)
+                ? parsed
+                : throw new ArgumentException($"Invalid timeout '{options.Timeout}'. Use .NET TimeSpan format, e.g. '00:00:05' for 5 seconds.");
         _cts = new CancellationTokenSource(timeout);
         _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
     }
