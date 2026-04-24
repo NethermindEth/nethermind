@@ -457,7 +457,7 @@ public partial class EthRpcModule(
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
         using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
     public virtual ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
