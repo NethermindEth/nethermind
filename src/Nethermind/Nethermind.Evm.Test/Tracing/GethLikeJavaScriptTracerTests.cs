@@ -377,10 +377,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void step_limit_throws_after_200k_steps()
+    public void step_limit_throws_after_default_limit()
     {
         // JUMPDEST(5B) PUSH1(60) 0x00 JUMP(56) — tight 3-opcode loop.
-        // 5 000 000 gas / 12 gas-per-iter ≈ 416 K iters → ~1.25 M step callbacks >> 200 K limit.
+        // 5 000 000 gas / 4 gas-per-iter ≈ 1.25 M step callbacks, exceeding the 1 M default.
         byte[] infiniteLoop = [0x5B, 0x60, 0x00, 0x56];
 
         (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 5_000_000, infiniteLoop);
@@ -391,7 +391,24 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         Action act = () => _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
         act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*200000*");
+           .WithMessage("*1000000*");
+    }
+
+    [Test]
+    public void step_limit_respects_options_limit()
+    {
+        string tracerJs = "{ step: function(log, db) {}, fault: function(log, db) {}, result: function(ctx, db) { return {}; } }";
+        byte[] infiniteLoop = [0x5B, 0x60, 0x00, 0x56];
+
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 5_000_000, infiniteLoop);
+        GethTraceOptions options = GethTraceOptions.Default with { EnableMemory = true, Tracer = tracerJs, Limit = 500 };
+        using GethLikeBlockJavaScriptTracer blockTracer = new(TestState, Shanghai.Instance, options);
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)blockTracer).StartNewTxTrace(tx);
+
+        Action act = () => _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*500*");
     }
 
     private static byte[] MStore() => Prepare.EvmCode

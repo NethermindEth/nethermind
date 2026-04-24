@@ -15,6 +15,7 @@ namespace Nethermind.Evm;
 
 public static class StateOverridesExtensions
 {
+    private static readonly UInt256 MaxNonce = ulong.MaxValue;
 
     public static void ApplyStateOverridesNoCommit(
         this IWorldState state,
@@ -111,8 +112,6 @@ public static class StateOverridesExtensions
                 new CodeInfo(accountOverride.Code));
         }
     }
-
-    private static readonly UInt256 MaxNonce = ulong.MaxValue;
 
     private static void UpdateNonce(
         this IWorldState stateProvider,

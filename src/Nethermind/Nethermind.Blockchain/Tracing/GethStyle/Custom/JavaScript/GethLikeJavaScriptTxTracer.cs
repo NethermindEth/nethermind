@@ -17,7 +17,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
-    private const int MaxStepCount = 200_000;
+    // A 5M-gas tight JUMP loop generates ~1.25M step callbacks, so 200k would fire at ~16% of max block gas.
+    // Default is 1M; callers can override via GethTraceOptions.Limit.
+    private const int DefaultMaxStepCount = 1_000_000;
     private const int ResultCallTimeoutMs = 5_000;
 
     private readonly dynamic _tracer;
@@ -27,6 +29,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
+    private readonly int _maxStepCount;
     private bool _resultConstructed;
     private Stack<long>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -53,6 +56,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _engine = engine;
         _db = db;
         _ctx = ctx;
+        _maxStepCount = options.Limit > 0 ? options.Limit : DefaultMaxStepCount;
 
         _tracer = engine.CreateTracer(options.Tracer);
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
@@ -70,15 +74,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         result.TxHash = _ctx.TxHash;
         using CancellationTokenSource cts = new(ResultCallTimeoutMs);
-        using IDisposable _ = cts.Token.Register(static e => ((Engine)e!).Interrupt(), _engine);
-        try
-        {
-            result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
-        }
-        finally
-        {
-            _resultConstructed = true;
-        }
+        using IDisposable registration = cts.Token.Register(static e => ((Engine)e!).Interrupt(), _engine);
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
+        _resultConstructed = true;
 
         return result;
     }
@@ -216,8 +214,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         if (_functions.HasFlag(TracerFunctions.step))
         {
-            if (++_stepCount > MaxStepCount)
-                throw new InvalidOperationException($"JavaScript tracer exceeded {MaxStepCount} step limit");
+            if (++_stepCount > _maxStepCount)
+                throw new InvalidOperationException($"JavaScript tracer exceeded {_maxStepCount} step limit");
             _tracer.step(_log, _db);
         }
 

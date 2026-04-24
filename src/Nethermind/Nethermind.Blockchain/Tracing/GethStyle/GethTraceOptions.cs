@@ -29,6 +29,12 @@ public record GethTraceOptions
 
     public JsonElement? TracerConfig { get; init; }
 
+    /// <summary>
+    /// Maximum number of step callbacks before the JavaScript tracer is interrupted.
+    /// 0 uses the default limit of 1,000,000 steps (~80% of a full block at 12.5M gas).
+    /// </summary>
+    public int Limit { get; init; }
+
     public Dictionary<Address, AccountOverride>? StateOverrides { get; init; }
 
     public BlockOverride? BlockOverrides { get; set; }
