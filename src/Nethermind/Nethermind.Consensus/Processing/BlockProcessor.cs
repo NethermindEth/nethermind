@@ -53,13 +53,11 @@ public partial class BlockProcessor(
         new(
             beaconBlockRootHandler,
             blockHashStore,
-            withdrawalProcessor,
-            executionRequestsProcessor,
             balManager
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
-    private SystemContractHandler _systemContractHandler;
+    private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -125,7 +123,7 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
-        _systemContractHandler.StoreBeaconRoot(block, spec);
+        _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
