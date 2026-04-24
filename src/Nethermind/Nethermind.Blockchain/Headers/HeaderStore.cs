@@ -123,6 +123,7 @@ public class HeaderStore(
             using ISortedView view = sorted.GetViewBetween(startKey, endKey);
             while (view.MoveNext())
             {
+                if (view.CurrentKey.Length != 40) continue; // skip old hash-only keys
                 BlockHeader header = _headerDecoder.Decode(view.CurrentValue);
                 header.Hash ??= new Hash256(view.CurrentKey[8..]);
                 prefetched[header.Hash.ValueHash256] = header;
