@@ -116,6 +116,12 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
     internal class TrustyForensics : IForensicsProcessor
     {
+        event EventHandler<ForensicsEvent>? IForensicsProcessor.ForensicsEventEmitted
+        {
+            add { }
+            remove { }
+        }
+
         public Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool)
         {
             return Task.CompletedTask;

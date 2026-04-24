@@ -25,18 +25,21 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         IBlockTree blockTree,
         ISpecProvider xdcConfig,
         IEpochSwitchManager epochSwitchManager,
-        ILogManager logManager)
+        ILogManager logManager,
+        IForensicsProcessor forensicsProcessor)
     {
         _context = context;
         _blockTree = blockTree;
         _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
+        _forensicsProcessor = forensicsProcessor;
         _logger = logManager.GetClassLogger<QuorumCertificateManager>();
     }
 
     private IXdcConsensusContext _context { get; }
     private readonly IBlockTree _blockTree;
     private IEpochSwitchManager _epochSwitchManager { get; }
+    private readonly IForensicsProcessor _forensicsProcessor;
 
     private ILogger _logger;
 
@@ -149,6 +152,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
         _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Full)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
+        _ = _forensicsProcessor.ForensicsMonitoring([parentHeader, proposedBlockHeader], proposedQuorumCert);
         //Mark grand parent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
         error = null;
