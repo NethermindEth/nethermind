@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -57,6 +57,12 @@ public abstract class BlockchainTestBase
     /// </summary>
     protected virtual bool? ParallelExecutionOverride => null;
 
+    /// <summary>
+    /// Override to force BAL batch-read prewarming on or off in tests.
+    /// Null means use the default config value.
+    /// </summary>
+    protected virtual bool? ParallelExecutionBatchReadOverride => null;
+
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
@@ -111,6 +117,11 @@ public abstract class BlockchainTestBase
         if (ParallelExecutionOverride.HasValue)
         {
             blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
+        }
+
+        if (ParallelExecutionBatchReadOverride.HasValue)
+        {
+            blocksConfig.ParallelExecutionBatchRead = ParallelExecutionBatchReadOverride.Value;
         }
 
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)

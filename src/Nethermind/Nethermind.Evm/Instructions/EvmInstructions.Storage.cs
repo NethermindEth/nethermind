@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -563,7 +563,13 @@ public static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    long refundFromReversal = gasCosts.RefundFromReversal<TEip8037>(originalIsZero);
+                    long refundFromReversal = gasCosts.RefundFromReversal(originalIsZero);
+
+                    if (TEip8037.IsActive && originalIsZero)
+                    {
+                        vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost(in gas));
+                        refundFromReversal = GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
+                    }
 
                     vmState.Refund += refundFromReversal;
                     if (vm.TxTracer.IsTracingRefunds)

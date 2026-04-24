@@ -19,8 +19,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState
+public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches, IBlockAccessListSource
 {
+    public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
+    public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
+
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
@@ -196,6 +199,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public void MergeGeneratingBal(BlockAccessList other)
         => other.Merge(_generatingBlockAccessList);
+
+    BlockAccessList IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
 
     public void Restore(Snapshot snapshot)
     {
