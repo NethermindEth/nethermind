@@ -13,6 +13,7 @@ namespace Nethermind.Evm.Precompiles;
 public partial class SecP256r1Precompile : IPrecompile<SecP256r1Precompile>
 {
     private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+    private static readonly byte[] InvalidLengthInput = [];
 
     public static SecP256r1Precompile Instance { get; } = new();
 
@@ -23,6 +24,9 @@ public partial class SecP256r1Precompile : IPrecompile<SecP256r1Precompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip7951Enabled ? 6900L : 3450L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length == 160 ? inputData : InvalidLengthInput;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 }

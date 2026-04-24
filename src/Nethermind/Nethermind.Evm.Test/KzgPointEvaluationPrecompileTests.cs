@@ -64,6 +64,32 @@ public class KzgPointEvaluationPrecompileTests
 
     public static IEnumerable<TestCaseData> GasTests => InvalidTestCases.Union(ValidTestCases);
 
+    [TestCase(
+        "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c44401400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "11",
+        TestName = "Valid input + 1 trailing byte")]
+    [TestCase(
+        "",
+        "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        TestName = "191-byte invalid input")]
+    [TestCase(
+        "",
+        "0011",
+        TestName = "2-byte invalid input")]
+    public void GetEffectiveInput_SameOutput(string input, string trailing)
+    {
+        ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
+        ReadOnlyMemory<byte> effInput = KzgPointEvaluationPrecompile.Instance.GetEffectiveInput(fullInput);
+        Assert.That(effInput.Length, Is.LessThan(fullInput.Length));
+        (byte[] effOutput, bool effSuccess) = KzgPointEvaluationPrecompile.Instance.Run(effInput, Cancun.Instance);
+        (byte[] fullOutput, bool fullSuccess) = KzgPointEvaluationPrecompile.Instance.Run(fullInput, Cancun.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(effSuccess, Is.EqualTo(fullSuccess));
+            Assert.That(effOutput, Is.EquivalentTo(fullOutput));
+        }
+    }
+
     private static byte[] CreateKzgTestInput(string versionedHash, string z, string y, string commitment, string proof)
     {
         versionedHash.Length.Should().Be(64);

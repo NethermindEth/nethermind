@@ -13,6 +13,7 @@ namespace Nethermind.Evm.Precompiles;
 public partial class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
 {
     private const int PairingMaxInputSizeGranite = 112_687;
+    private static readonly byte[] InvalidLengthInput = new byte[1];
 
     public static BN254PairingPrecompile Instance { get; } = new();
 
@@ -26,6 +27,9 @@ public partial class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         (releaseSpec.IsEip1108Enabled ? 34_000L : 80_000L) * (inputData.Length / BN254.PairSize);
+
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length % BN254.PairSize == 0 ? inputData : InvalidLengthInput;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 

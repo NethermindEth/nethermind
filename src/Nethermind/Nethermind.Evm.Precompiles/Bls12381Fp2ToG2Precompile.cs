@@ -12,6 +12,8 @@ namespace Nethermind.Evm.Precompiles;
 /// </summary>
 public partial class Bls12381Fp2ToG2Precompile : IPrecompile<Bls12381Fp2ToG2Precompile>
 {
+    private static readonly byte[] InvalidLengthInput = [];
+
     public static Bls12381Fp2ToG2Precompile Instance { get; } = new();
 
     private Bls12381Fp2ToG2Precompile() { }
@@ -23,6 +25,9 @@ public partial class Bls12381Fp2ToG2Precompile : IPrecompile<Bls12381Fp2ToG2Prec
     public long BaseGasCost(IReleaseSpec _) => 23800L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length == 2 * Eip2537.LenFp ? inputData : InvalidLengthInput;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 
