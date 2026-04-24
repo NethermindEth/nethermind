@@ -44,6 +44,12 @@ public class CustomTimeDurationConverterTests
         new TestCaseData("\"-5s\"", TimeSpan.FromSeconds(-5)).SetName("negative"),
         new TestCaseData("\"+5s\"", TimeSpan.FromSeconds(5)).SetName("positive_sign"),
         new TestCaseData("null", null).SetName("null"),
+        new TestCaseData("\"1.s\"", TimeSpan.FromSeconds(1)).SetName("trailing_dot_no_fraction"),
+        new TestCaseData("\".5s\"", TimeSpan.FromMilliseconds(500)).SetName("leading_dot_no_integer"),
+        new TestCaseData("\"0.5h\"", TimeSpan.FromMinutes(30)).SetName("fractional_hour"),
+        new TestCaseData("\"0.123456789s\"", TimeSpan.FromTicks(1234567)).SetName("nine_fractional_digits"),
+        new TestCaseData("\"-1h30m\"", TimeSpan.FromMinutes(-90)).SetName("negative_multi_segment"),
+        new TestCaseData("\"05s\"", TimeSpan.FromSeconds(5)).SetName("leading_zeros"),
     ];
 
     [TestCaseSource(nameof(ValidGoDurationCases))]
@@ -67,7 +73,11 @@ public class CustomTimeDurationConverterTests
         new TestCaseData("\"abc\"").SetName("not_a_duration"),
         new TestCaseData("\"5x\"").SetName("unknown_unit"),
         new TestCaseData("\"\"").SetName("empty_string"),
-        new TestCaseData("\"-\"").SetName("sign_only"),
+        new TestCaseData("\"-\"").SetName("sign_only_minus"),
+        new TestCaseData("\"+\"").SetName("sign_only_plus"),
+        new TestCaseData("\"1.2.3s\"").SetName("double_fractional_separator"),
+        new TestCaseData("\"5 s\"").SetName("whitespace_before_unit"),
+        new TestCaseData("\"1ss\"").SetName("duplicated_unit_char"),
     ];
 
     [TestCaseSource(nameof(InvalidDurationCases))]
@@ -90,6 +100,11 @@ public class CustomTimeDurationConverterTests
         new TestCaseData((TimeSpan?)new TimeSpan(1, 30, 45), "\"1h30m45s\"").SetName("hours_minutes_seconds"),
         new TestCaseData((TimeSpan?)TimeSpan.FromSeconds(-5), "\"-5s\"").SetName("negative"),
         new TestCaseData((TimeSpan?)null, "null").SetName("null"),
+        new TestCaseData((TimeSpan?)TimeSpan.FromMilliseconds(-1500), "\"-1.5s\"").SetName("negative_fractional"),
+        new TestCaseData((TimeSpan?)TimeSpan.FromMicroseconds(-500), "\"-500µs\"").SetName("negative_sub_second"),
+        new TestCaseData((TimeSpan?)TimeSpan.FromTicks(1), "\"100ns\"").SetName("smallest_non_zero_tick"),
+        new TestCaseData((TimeSpan?)TimeSpan.FromHours(1), "\"1h0m0s\"").SetName("exact_hour_boundary"),
+        new TestCaseData((TimeSpan?)TimeSpan.FromSeconds(60), "\"1m0s\"").SetName("exact_minute_boundary"),
     ];
 
     [TestCaseSource(nameof(WriteCases))]
@@ -105,6 +120,9 @@ public class CustomTimeDurationConverterTests
         new TestCaseData(TimeSpan.FromMilliseconds(1500)).SetName("fractional_seconds"),
         new TestCaseData(new TimeSpan(1, 30, 45)).SetName("hours_minutes_seconds"),
         new TestCaseData(TimeSpan.Zero).SetName("zero"),
+        new TestCaseData(TimeSpan.FromSeconds(-5)).SetName("negative"),
+        new TestCaseData(TimeSpan.FromMicroseconds(1500)).SetName("microseconds_cross_unit"),
+        new TestCaseData(TimeSpan.FromHours(24)).SetName("full_day"),
     ];
 
     [TestCaseSource(nameof(RoundTripCases))]
