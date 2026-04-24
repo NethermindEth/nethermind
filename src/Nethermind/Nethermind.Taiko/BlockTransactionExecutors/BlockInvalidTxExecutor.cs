@@ -73,6 +73,4 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         block.TrySetTransactions([.. correctTransactions]);
         return [.. receiptsTracer.TxReceipts];
     }
-
-    public void SetBlockAccessListManager(in IBlockAccessListManager balManager) => throw new NotImplementedException();
 }
