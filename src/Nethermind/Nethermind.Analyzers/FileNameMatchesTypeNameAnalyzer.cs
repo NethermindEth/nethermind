@@ -43,7 +43,7 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeSyntaxTree(SyntaxTreeAnalysisContext context)
     {
         string filePath = context.Tree.FilePath;
-        if (string.IsNullOrEmpty(filePath) || !filePath.EndsWith(".cs"))
+        if (string.IsNullOrEmpty(filePath) || !filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
             return;
 
         CompilationUnitSyntax root = (CompilationUnitSyntax)context.Tree.GetRoot(context.CancellationToken);
@@ -66,7 +66,7 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
 
         // Attribute types may drop the "Attribute" suffix in the file name
         const string attributeSuffix = "Attribute";
-        string? strippedName = typeName.EndsWith(attributeSuffix) && typeName.Length > attributeSuffix.Length
+        string? strippedName = typeName.EndsWith(attributeSuffix, StringComparison.Ordinal) && typeName.Length > attributeSuffix.Length
             ? typeName.Substring(0, typeName.Length - attributeSuffix.Length)
             : null;
 
@@ -116,6 +116,8 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
     {
         foreach (MemberDeclarationSyntax member in members)
         {
+            if (result.Count > 1)
+                return;
             if (member is BaseNamespaceDeclarationSyntax ns)
                 CollectTopLevelTypes(ns.Members, result);
             else if (member is BaseTypeDeclarationSyntax or DelegateDeclarationSyntax)
