@@ -293,7 +293,6 @@ public class HistoryPruner : IHistoryPruner
     {
         if (_blockTree.Head is null ||
             _blockTree.SyncPivot.BlockNumber == 0 ||
-            !_hasLoadedDeletePointer ||
             !ShouldPruneHistory(out ulong? cutoffTimestamp))
         {
             SkipLocalPruning();
