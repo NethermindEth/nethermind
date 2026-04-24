@@ -43,6 +43,8 @@ public class BlockAccessListManager(
     IWithdrawalProcessorFactory withdrawalProcessorFactory)
     : IBlockAccessListManager
 {
+    public class ParallelExecutionException(Exception? innerException = null) : Exception("Encountered error during parallel execution.", innerException);
+
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
@@ -160,7 +162,7 @@ public class BlockAccessListManager(
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 
                 if (ex is not null)
-                    ExceptionDispatchInfo.Capture(ex).Throw();
+                    ExceptionDispatchInfo.Capture(new ParallelExecutionException(ex)).Throw();
 
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
