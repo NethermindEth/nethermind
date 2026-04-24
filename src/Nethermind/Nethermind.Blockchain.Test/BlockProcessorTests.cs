@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -13,6 +13,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -21,6 +22,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -74,6 +76,38 @@ public class BlockProcessorTests
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
+    }
+
+    private static (IWorldState StateProvider, Hash256 StateRoot) CreateWorldStateWithEip2935Contract(IReleaseSpec spec)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        stateProvider.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
+        stateProvider.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, spec);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+        stateProvider.RecalculateStateRoot();
+        stateRoot = stateProvider.StateRoot;
+
+        return (stateProvider, stateRoot);
+    }
+
+    private static BlockAccessListManager CreateBalManager(IWorldState stateProvider, IReleaseSpec spec) =>
+        new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(spec),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+    private static void SetupBalManager(BlockAccessListManager balManager, Block block, IReleaseSpec spec)
+    {
+        balManager.PrepareForProcessing(block, spec, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+        balManager.Setup(block);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -330,6 +364,65 @@ public class BlockProcessorTests
         else
         {
             Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+        }
+    }
+
+    [Test]
+    public void ApplyBlockhashStateChanges_is_required_for_eip2935_pre_execution_bal_validation()
+    {
+        // Mirrors execution-specs `test_bal_2935_empty_block`: BAL index 0 must contain the
+        // HISTORY_STORAGE_ADDRESS parent-hash write performed by the pre-execution system call.
+        IReleaseSpec spec = Amsterdam.Instance;
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(0)
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+
+        BlockAccessList expectedBal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
+                    .WithStorageChanges(
+                        0,
+                        new StorageChange(0, new UInt256(parent.Hash!.BytesToArray(), isBigEndian: true)))
+                    .TestObject)
+            .TestObject;
+
+        (IWorldState stateWithoutPreExecutionCall, Hash256 stateRootWithoutPreExecutionCall) = CreateWorldStateWithEip2935Contract(spec);
+        Block blockWithoutPreExecutionCall = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithParent(parent).WithStateRoot(stateRootWithoutPreExecutionCall).TestObject)
+            .WithBlockAccessList(expectedBal)
+            .TestObject;
+
+        using (IDisposable _ = stateWithoutPreExecutionCall.BeginScope(blockWithoutPreExecutionCall.Header))
+        {
+            BlockAccessListManager balManagerWithoutPreExecutionCall = CreateBalManager(stateWithoutPreExecutionCall, spec);
+            SetupBalManager(balManagerWithoutPreExecutionCall, blockWithoutPreExecutionCall, spec);
+            balManagerWithoutPreExecutionCall.NextTransaction();
+
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => balManagerWithoutPreExecutionCall.ValidateBlockAccessList(blockWithoutPreExecutionCall, 0));
+        }
+
+        (IWorldState stateWithPreExecutionCall, Hash256 stateRootWithPreExecutionCall) = CreateWorldStateWithEip2935Contract(spec);
+        Block blockWithPreExecutionCall = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithParent(parent).WithStateRoot(stateRootWithPreExecutionCall).TestObject)
+            .WithBlockAccessList(expectedBal)
+            .TestObject;
+
+        using (IDisposable _ = stateWithPreExecutionCall.BeginScope(blockWithPreExecutionCall.Header))
+        {
+            BlockAccessListManager balManagerWithPreExecutionCall = CreateBalManager(stateWithPreExecutionCall, spec);
+            SetupBalManager(balManagerWithPreExecutionCall, blockWithPreExecutionCall, spec);
+            balManagerWithPreExecutionCall.ApplyBlockhashStateChanges(blockWithPreExecutionCall.Header, spec);
+            balManagerWithPreExecutionCall.NextTransaction();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(balManagerWithPreExecutionCall.GeneratedBlockAccessList, Is.EqualTo(expectedBal));
+                Assert.That(balManagerWithPreExecutionCall.GeneratedBlockAccessList.GetAccountChanges(Address.SystemUser), Is.Null);
+                Assert.DoesNotThrow(() => balManagerWithPreExecutionCall.ValidateBlockAccessList(blockWithPreExecutionCall, 0));
+            }
         }
     }
 }

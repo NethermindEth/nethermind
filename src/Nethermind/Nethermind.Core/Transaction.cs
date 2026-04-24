@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -367,7 +367,20 @@ namespace Nethermind.Core
     /// <summary>
     /// System call like transaction that is to be executed by the node without including in the block.
     /// </summary>
-    public sealed class SystemCall : Transaction;
+    public sealed class SystemCall : Transaction
+    {
+        private const long DefaultGasLimit = 30_000_000L;
+
+        public SystemCall(Address to, byte[]? data = null)
+        {
+            Value = UInt256.Zero;
+            Data = data ?? [];
+            To = to;
+            SenderAddress = Address.SystemUser;
+            GasLimit = DefaultGasLimit;
+            GasPrice = UInt256.Zero;
+        }
+    }
 
     /// <summary>
     /// Used inside Transaction::GetSize to calculate encoded transaction size

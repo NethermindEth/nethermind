@@ -1,29 +1,40 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-
 using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using System;
-using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor) : IExecutionRequestsProcessor
+public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
+    private readonly ITransactionProcessor _transactionProcessor;
+    private readonly SystemCall _withdrawalTransaction;
+    private readonly SystemCall _consolidationTransaction;
+
+    public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
+    {
+        _transactionProcessor = transactionProcessor;
+
+        _withdrawalTransaction = new(Eip7002Constants.WithdrawalRequestPredeployAddress);
+        _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
+
+        _consolidationTransaction = new(Eip7251Constants.ConsolidationRequestPredeployAddress);
+        _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
+    }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
@@ -37,14 +48,14 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
             if (spec.WithdrawalRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7002ContractAddress, ref requests,
+                ReadRequests(block, state, spec.Eip7002ContractAddress, ref requests, _withdrawalTransaction,
                     ExecutionRequestType.WithdrawalRequest,
                     BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
             }
 
             if (spec.ConsolidationRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests,
+                ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests, _consolidationTransaction,
                     ExecutionRequestType.ConsolidationRequest,
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
             }
@@ -137,7 +148,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
     }
 
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
-        ExecutionRequestType type, string contractEmptyError, string contractFailedError)
+        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
         if (!state.HasCode(contractAddress))
         {
@@ -145,8 +156,6 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         }
 
         CallOutputTracer tracer = new();
-        SystemCall systemTx = SystemCallFactory.Create(contractAddress, block.Header.BaseFeePerGas);
-
         _transactionProcessor.Execute(systemTx, tracer);
 
         if (tracer.StatusCode == StatusCode.Failure)
