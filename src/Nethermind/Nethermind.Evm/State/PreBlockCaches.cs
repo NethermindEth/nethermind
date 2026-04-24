@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -16,11 +17,21 @@ namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
+    private readonly record struct PendingStorageWrite(StorageCell Cell, byte[] Value, int ClearVersion);
+
     private const int InitialCapacity = 4096 * 8;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private long _committedBlockNumber = -1;
     private volatile Hash256? _committedBlockHash;
+    private volatile bool _hasLegacyStorageClear;
+    private readonly ConcurrentDictionary<AddressAsKey, int> _storageClearVersions = new(LockPartitions, InitialCapacity);
+
+    // Pending carry-forward writes buffered during FlushToTree, flushed after prewarm completion.
+    // State: single-threaded producer (StateProvider.FlushToTree).
+    // Storage: multi-threaded producers (PersistentStorageProvider.FlushToTree parallelizes across contracts).
+    private readonly List<(AddressAsKey Key, Account? Account)> _pendingStateWrites = new();
+    private readonly ConcurrentQueue<PendingStorageWrite> _pendingStorageWrites = new();
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
@@ -34,6 +45,7 @@ public class PreBlockCaches
 
     public CacheType ClearCaches()
     {
+        // State/storage caches carry committed writes into the next block and are invalidated separately.
         _precompileCache.NoResizeClear();
         return CacheType.None;
     }
@@ -44,6 +56,8 @@ public class PreBlockCaches
         _stateCache.Clear();
         _committedBlockHash = null;
         Volatile.Write(ref _committedBlockNumber, -1);
+        ResetBlockFlags();
+        DiscardPendingCarryForward();
     }
 
     public void RecordCommittedBlock(long blockNumber, Hash256? blockHash)
@@ -56,31 +70,76 @@ public class PreBlockCaches
         => Volatile.Read(ref _committedBlockNumber) == parentNumber
             && _committedBlockHash == parentHash;
 
-    /// <summary>
-    /// Write a state entry directly into the cache. Thread-safe via SeqlockCache.
-    /// </summary>
-    public void SetState(AddressAsKey key, Account? account) => _stateCache.Set(key, account);
+    public void NoteStorageClear(Address address)
+    {
+        _hasLegacyStorageClear = true;
+        _storageClearVersions.AddOrUpdate(address, 1, static (_, version) => version + 1);
+    }
+
+    public bool HasLegacyStorageClear => _hasLegacyStorageClear;
+
+    public void ResetBlockFlags()
+    {
+        _hasLegacyStorageClear = false;
+        _storageClearVersions.Clear();
+    }
 
     /// <summary>
-    /// Write a storage entry directly into the cache. Thread-safe via SeqlockCache.
+    /// Buffer a state write for deferred carry-forward. Applied after prewarm completion.
     /// </summary>
-    public void SetStorage(in StorageCell cell, byte[] value) => _storageCache.Set(cell, value);
+    public void EnqueueStateWrite(AddressAsKey key, Account? account) => _pendingStateWrites.Add((key, account));
 
     /// <summary>
-    /// Invalidate all cached storage slots for correctness (SELFDESTRUCT/CREATE2).
+    /// Buffer a storage write for deferred carry-forward. Thread-safe (called from parallel FlushToTree).
     /// </summary>
-    public void NoteStorageClear() => _storageCache.Clear();
+    public void EnqueueStorageWrite(in StorageCell cell, byte[] value)
+    {
+        AddressAsKey address = cell.Address;
+        _pendingStorageWrites.Enqueue(new PendingStorageWrite(cell, value, GetStorageClearVersion(address)));
+    }
 
     /// <summary>
-    /// Finalize carry-forward after prewarm completes.
-    /// State cache is rebuilt from the write set; storage cache retains prewarmed reads.
+    /// Flush buffered carry-forward writes into the SeqlockCaches.
+    /// State cache is rebuilt from scratch (accounts are few, correctness is critical).
+    /// Storage cache preserves prewarmed reads and overlays writes (main perf benefit).
+    /// Called from BranchProcessor after the prewarm task is complete and state is reset.
     /// </summary>
     public void FlushCarryForwardWrites()
     {
-        // No-op: writes were applied directly during processing.
-        // State cache already has post-block values from CachePopulatingWriteBatch.
-        // Storage cache already has post-block values overlaid on prewarmed reads.
+        _stateCache.Clear();
+
+        foreach ((AddressAsKey key, Account? account) in _pendingStateWrites)
+        {
+            _stateCache.Set(key, account);
+        }
+        _pendingStateWrites.Clear();
+
+        if (_hasLegacyStorageClear)
+        {
+            _storageCache.Clear();
+        }
+
+        while (_pendingStorageWrites.TryDequeue(out PendingStorageWrite entry))
+        {
+            AddressAsKey address = entry.Cell.Address;
+            if (entry.ClearVersion == GetStorageClearVersion(address))
+            {
+                _storageCache.Set(entry.Cell, entry.Value);
+            }
+        }
+
+        ResetBlockFlags();
     }
+
+    private void DiscardPendingCarryForward()
+    {
+        _pendingStateWrites.Clear();
+        while (_pendingStorageWrites.TryDequeue(out _)) { }
+        _storageClearVersions.Clear();
+    }
+
+    private int GetStorageClearVersion(AddressAsKey address)
+        => _storageClearVersions.TryGetValue(address, out int version) ? version : 0;
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
     {
