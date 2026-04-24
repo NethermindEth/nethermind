@@ -1,10 +1,19 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Numerics;
 
 namespace Nethermind.Core
 {
     public static class GasCostOf
     {
+        private const ulong StateGrowthTargetBytes = 100UL * 1024 * 1024 * 1024;
+        private const ulong BlocksPerYear = 2_628_000;
+        private const int CostPerStateByteSigBits = 5;
+        private const ulong CostPerStateByteOffset = 9_578;
+        private const ulong CostPerStateByteDivisor = 2 * StateGrowthTargetBytes;
+
         public const long Free = 0;
         public const long Base = 2;
         public const long VeryLow = 3;
@@ -70,8 +79,7 @@ namespace Nethermind.Core
         public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
-        // EIP-8037: Two-dimensional gas metering constants.
-        // Devnet-3 keeps CPSB hardcoded and replaces it with dynamic CPSB in devnet-4.
+        // EIP-8037 default/fallback values for 100M block gas limit.
         public const long CostPerStateByte = 1174;
         public const long SSetRegular = 2_900;
         public const long SSetState = 32 * CostPerStateByte;
@@ -91,5 +99,39 @@ namespace Nethermind.Core
         public const long MinModExpEip2565 = 200; // eip-2565
         public const long MinModExpEip7883 = 500; // eip-7883
 
+        public static long CalculateCostPerStateByte(long blockGasLimit)
+        {
+            if (blockGasLimit <= 0)
+            {
+                return CostPerStateByte;
+            }
+
+            UInt128 scaledGasLimit = (ulong)blockGasLimit;
+            UInt128 raw = (scaledGasLimit * BlocksPerYear + CostPerStateByteDivisor - 1) / CostPerStateByteDivisor;
+            ulong shifted = (ulong)raw + CostPerStateByteOffset;
+            ulong quantized = QuantizeToSignificantBits(shifted, CostPerStateByteSigBits);
+            return quantized <= CostPerStateByteOffset
+                ? 1
+                : (long)(quantized - CostPerStateByteOffset);
+        }
+
+        public static long CalculateSSetState(long costPerStateByte) => checked(32 * costPerStateByte);
+        public static long CalculateCreateState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateNewAccountState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateCodeDepositState(long costPerStateByte, int byteCodeLength) => checked(costPerStateByte * byteCodeLength);
+        public static long CalculatePerAuthBaseState(long costPerStateByte) => checked(23 * costPerStateByte);
+        public static long CalculatePerEmptyAccountState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateSSetReversalRefund(long costPerStateByte) => checked(CalculateSSetState(costPerStateByte) + SSetRegular - WarmStateRead);
+
+        private static ulong QuantizeToSignificantBits(ulong value, int significantBits)
+        {
+            if (value == 0)
+            {
+                return 0;
+            }
+
+            int shift = Math.Max(BitOperations.Log2(value) + 1 - significantBits, 0);
+            return (value >> shift) << shift;
+        }
     }
 }
