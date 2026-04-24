@@ -597,7 +597,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level call frame (ReportAction populated _callStack)");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        Assert.That(frame.Error, Is.Null, "no EVM exception fired; Error must stay null after the null-guard early return");
+        Assert.That(frame.Error, Is.Null, "no EVM exception fired; Error must stay null when _error is null");
     }
 
     [Test]
