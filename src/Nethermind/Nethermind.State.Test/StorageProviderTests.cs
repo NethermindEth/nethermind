@@ -163,20 +163,6 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void PreBlockCaches_storage_clear_flag_lifecycle_is_correct()
-    {
-        PreBlockCaches caches = new();
-
-        caches.HasLegacyStorageClear.Should().BeFalse();
-
-        caches.NoteStorageClear(TestItem.AddressA);
-        caches.HasLegacyStorageClear.Should().BeTrue();
-
-        caches.ResetBlockFlags();
-        caches.HasLegacyStorageClear.Should().BeFalse();
-    }
-
-    [Test]
     public void PreBlockCaches_can_store_null_account_values()
     {
         PreBlockCaches caches = new();
@@ -568,7 +554,6 @@ public class StorageProviderTests(bool useFlat)
         provider.CommitTree(blockNumber);
         caches.RecordCommittedBlock(blockNumber, Keccak.Compute($"block-{blockNumber}"));
         provider.Reset();
-        caches.FlushCarryForwardWrites();
     }
 
     [Test]
@@ -613,10 +598,10 @@ public class StorageProviderTests(bool useFlat)
         Account currentAccount = new((UInt256)2, (UInt256)3);
 
         caches.StateCache.Set((AddressAsKey)TestItem.AddressA, oldAccount);
-        caches.EnqueueStateWrite((AddressAsKey)TestItem.AddressB, currentAccount);
+        caches.SetState((AddressAsKey)TestItem.AddressB, currentAccount);
         caches.FlushCarryForwardWrites();
 
-        caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out _).Should().BeFalse();
+        caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out _).Should().BeTrue();
         caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressB, out Account account).Should().BeTrue();
         account.Should().BeSameAs(currentAccount);
     }
@@ -629,7 +614,7 @@ public class StorageProviderTests(bool useFlat)
         StorageCell currentCell = new(TestItem.AddressB, 2);
 
         caches.StorageCache.Set(in oldCell, [1]);
-        caches.EnqueueStorageWrite(in currentCell, [2]);
+        caches.SetStorage(in currentCell, [2]);
         caches.FlushCarryForwardWrites();
 
         caches.StorageCache.TryGetValue(in oldCell, out byte[] oldValue).Should().BeTrue();
@@ -690,25 +675,6 @@ public class StorageProviderTests(bool useFlat)
 
             caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out Account account).Should().BeTrue();
             account.Should().BeNull();
-        }
-    }
-
-    [Test]
-    public void Commit_storage_clear_marks_legacy_storage_clear_flag()
-    {
-        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
-        using (scope) using (ctx)
-        {
-            provider.CreateAccount(TestItem.AddressA, 1);
-            provider.Set(new StorageCell(TestItem.AddressA, 1), [1, 2, 3]);
-            provider.Commit(Frontier.Instance);
-
-            caches.ResetBlockFlags();
-
-            provider.ClearStorage(TestItem.AddressA);
-            provider.Commit(Frontier.Instance);
-
-            caches.HasLegacyStorageClear.Should().BeTrue();
         }
     }
 

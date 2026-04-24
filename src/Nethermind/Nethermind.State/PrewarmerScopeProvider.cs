@@ -43,8 +43,6 @@ public class PrewarmerScopeProvider(
             preBlockCaches.InvalidateCaches();
         }
 
-        preBlockCaches.ResetBlockFlags();
-
         return new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
     }
 
@@ -281,8 +279,7 @@ public class PrewarmerScopeProvider(
         }
 
         private void OnBaseAccountUpdated(object? sender, IWorldStateScopeProvider.AccountUpdated e) =>
-            // This fires with the correct storage root, overriding any stale entry from Set()
-            _preBlockCaches.EnqueueStateWrite(e.Address, e.Account);
+            _preBlockCaches.SetState(e.Address, e.Account);
 
         public void Dispose()
         {
@@ -301,7 +298,7 @@ public class PrewarmerScopeProvider(
         public void Set(Address key, Account? account)
         {
             _baseWriteBatch.Set(key, account);
-            _preBlockCaches.EnqueueStateWrite(key, account);
+            _preBlockCaches.SetState(key, account);
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
@@ -321,13 +318,13 @@ public class PrewarmerScopeProvider(
         public void Set(in UInt256 index, byte[] value)
         {
             baseStorageWriteBatch.Set(in index, value);
-            preBlockCaches.EnqueueStorageWrite(new StorageCell(address, in index), value);
+            preBlockCaches.SetStorage(new StorageCell(address, in index), value);
         }
 
         public void Clear()
         {
             baseStorageWriteBatch.Clear();
-            preBlockCaches.NoteStorageClear(address);
+            preBlockCaches.NoteStorageClear();
         }
     }
 
