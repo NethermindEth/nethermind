@@ -37,24 +37,18 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     {
         // EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls.
         bool suppressSystemAccountReads = !_isAura && tx.SenderAddress == Address.SystemUser;
-        IDisposable? systemAccountReadSuppression = suppressSystemAccountReads ? WorldState.BeginSystemAccountReadSuppression() : null;
 
-        try
-        {
-            if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
-            {
-                WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
-            }
+        using IDisposable? systemAccountReadSuppression = suppressSystemAccountReads ? WorldState.BeginSystemAccountReadSuppression() : null;
 
-            ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-            return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-                ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
-                : opts);
-        }
-        finally
+        if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
         {
-            systemAccountReadSuppression?.Dispose();
+            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
+
+        ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
+        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
+            : opts);
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
