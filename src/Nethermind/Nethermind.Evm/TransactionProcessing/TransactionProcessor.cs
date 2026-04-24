@@ -630,7 +630,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
                     {
                         TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                        return TransactionResult.InsufficientSenderBalance;
+                        return BuildInsufficientFundsResult(tx, senderBalance, effectiveGasPrice);
                     }
                 }
             }

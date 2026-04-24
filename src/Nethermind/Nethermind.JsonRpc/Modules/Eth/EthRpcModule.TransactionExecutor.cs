@@ -124,7 +124,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
-                // Non-revert errors: execution errors (OOG, insufficient funds) use -32003; input validation errors use -32000
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
                     int errorCode = result.InputError ? ErrorCodes.InvalidInput : ErrorCodes.ExecutionError;
