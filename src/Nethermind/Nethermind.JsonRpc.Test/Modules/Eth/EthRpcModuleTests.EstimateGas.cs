@@ -9,6 +9,7 @@ using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -82,13 +83,21 @@ public partial class EthRpcModuleTests
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
-    [TestCase(false, 2)]
-    [TestCase(true, 2)]
-    [TestCase(true, 17)]
-    public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
+    private static IEnumerable<TestCaseData> CreateAccessListGasCases()
+    {
+        yield return new TestCaseData(false, 2, Berlin.Instance).SetName("Berlin: noOpt, 2");
+        yield return new TestCaseData(true, 2, Berlin.Instance).SetName("Berlin: opt, 2");
+        yield return new TestCaseData(true, 17, Berlin.Instance).SetName("Berlin: opt, 17");
+        yield return new TestCaseData(false, 2, Eip7981Spec).SetName("EIP-7981: noOpt, 2");
+        yield return new TestCaseData(true, 2, Eip7981Spec).SetName("EIP-7981: opt, 2");
+        yield return new TestCaseData(true, 17, Eip7981Spec).SetName("EIP-7981: opt, 17");
+    }
+
+    [TestCaseSource(nameof(CreateAccessListGasCases))]
+    public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads, IReleaseSpec spec)
     {
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .Build(new TestSpecProvider(Berlin.Instance));
+            .Build(new TestSpecProvider(spec));
 
         (byte[] code, _) = GetTestAccessList(loads);
 
@@ -534,42 +543,65 @@ public partial class EthRpcModuleTests
     }
 
     private static readonly OverridableReleaseSpec Eip7976Spec = new(Prague.Instance) { IsEip7976Enabled = true };
+    private static readonly OverridableReleaseSpec Eip7981Spec = new(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
 
     private static IEnumerable<TestCaseData> EstimateGasFloorCostCases()
     {
         // EIP-7976: 100 zero bytes → floor = 21000 + 100 * 4 * 16 = 27400
         long eip7976Floor100 = GasCostOf.Transaction + 100 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
-        yield return new TestCaseData(Eip7976Spec, new byte[100], 100_000L, $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor100.ToHexString(true)}\",\"id\":67}}")
+        yield return new TestCaseData(Eip7976Spec, new byte[100], 100_000L, null,
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor100.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: data heavy tx returns floor cost");
 
         // EIP-7623: 100 zero bytes → floor = 21000 + 100 * 10 = 22000
         long eip7623Floor100 = GasCostOf.Transaction + 100 * Prague.Instance.GasCosts.TotalCostFloorPerToken;
-        yield return new TestCaseData(Prague.Instance, new byte[100], 100_000L, $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7623Floor100.ToHexString(true)}\",\"id\":67}}")
+        yield return new TestCaseData(Prague.Instance, new byte[100], 100_000L, null,
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7623Floor100.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7623: data heavy tx returns lower floor");
 
         // EIP-7976: gas limit below intrinsic gas
         const long belowFloor = GasCostOf.Transaction + GasCostOf.TxDataZero;
-        yield return new TestCaseData(Eip7976Spec, new byte[] { 0 }, belowFloor, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"gas limit below intrinsic gas\"},\"id\":67}")
+        yield return new TestCaseData(Eip7976Spec, new byte[] { 0 }, belowFloor, null,
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"gas limit below intrinsic gas\"},\"id\":67}")
             .SetName("EIP-7976: insufficient gas for floor");
 
         // EIP-7976: mixed calldata (0x00001122 = 2 zero + 2 nonzero bytes)
         long eip7976Floor4 = GasCostOf.Transaction + 4 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
-        yield return new TestCaseData(Eip7976Spec, new byte[] { 0x00, 0x00, 0x11, 0x22 }, 100_000L, $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
+        yield return new TestCaseData(Eip7976Spec, new byte[] { 0x00, 0x00, 0x11, 0x22 }, 100_000L, null,
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: mixed calldata returns floor");
+
+        // EIP-7981: access list with 1 address, no calldata — standard wins
+        long eip7981Standard = GasCostOf.Transaction + GasCostOf.AccessAccountListEntry
+            + 80 * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
+        yield return new TestCaseData(Eip7981Spec, Array.Empty<byte>(), 100_000L,
+                new AccessList.Builder().AddAddress(Address.Zero).Build(),
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Standard.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7981: standard wins with access list");
+
+        // EIP-7981: 100 zero bytes + 1 address — floor wins
+        long eip7981Floor = GasCostOf.Transaction
+            + (100 * Eip7981Spec.GasCosts.TxDataNonZeroMultiplier + 80) * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
+        yield return new TestCaseData(Eip7981Spec, new byte[100], 100_000L,
+                new AccessList.Builder().AddAddress(Address.Zero).Build(),
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Floor.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7981: floor wins with calldata and access list");
     }
 
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]
-    public async Task Eth_estimateGas_floor_cost(IReleaseSpec spec, byte[] data, long gasLimit, string expectedJson)
+    public async Task Eth_estimateGas_floor_cost(IReleaseSpec spec, byte[] data, long gasLimit, AccessList? accessList, string expectedJson)
     {
         TestSpecProvider specProvider = new(spec);
         using Context ctx = await Context.Create(specProvider);
 
-        Transaction tx = Build.A.Transaction
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithTo(TestItem.AddressB)
             .WithGasLimit(gasLimit)
-            .WithData(data)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
+            .WithData(data);
+        if (accessList is not null)
+            txBuilder.WithAccessList(accessList);
+        Transaction tx = txBuilder.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
         EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.GasPrice = null;
 

@@ -13,7 +13,6 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -29,9 +28,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
 
+            protected IReleaseSpec GetSpec(BlockHeader header) => specProvider.GetSpec(header);
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
-                IReleaseSpec spec = specProvider.GetSpec(header);
+                IReleaseSpec spec = GetSpec(header);
                 Result<Transaction> result = call.ToTransaction(validateUserInput: true, spec: spec);
                 if (result.IsError) return result;
 
@@ -166,10 +167,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
+                IReleaseSpec spec = GetSpec(header);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: GetResultGas(tx, result),
+                    gasUsed: GetResultGas(tx, result, spec),
                     result.Error);
 
                 return result.InputError
@@ -177,15 +179,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     : ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
             }
 
-            private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
+            private static UInt256 GetResultGas(Transaction transaction, CallOutput result, IReleaseSpec spec)
             {
                 long gas = result.GasSpent;
                 long operationGas = result.OperationGas;
                 if (result.AccessList is not null)
                 {
-                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
                     transaction.AccessList = result.AccessList;
-                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
                     long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
                     if (gas > operationGas)
                     {

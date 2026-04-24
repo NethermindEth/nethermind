@@ -77,6 +77,20 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
     }
 
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData)
+    {
+        if (inputData.Length <= LengthsLengths) return inputData;
+
+        (uint baseLength, uint expLength, uint modulusLength) = GetInputLengths(inputData.Span);
+
+        // Header alone determines the output when base/mod overflowed or short-circuit to empty.
+        if (baseLength == uint.MaxValue || modulusLength == uint.MaxValue || (baseLength == 0 && modulusLength == 0))
+            return inputData[..LengthsLengths];
+
+        ulong end = (ulong)LengthsLengths + baseLength + expLength + modulusLength;
+        return end < (ulong)inputData.Length ? inputData[..(int)end] : inputData;
+    }
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
     [MethodImpl(MethodImplOptions.NoInlining)]

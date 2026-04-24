@@ -127,7 +127,7 @@ public partial class EthRpcModule(
         return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
     }
 
-    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
+    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
 
     public ResultWrapper<IEnumerable<Address>> eth_accounts()
     {
@@ -457,7 +457,7 @@ public partial class EthRpcModule(
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
         using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
     public virtual ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
