@@ -445,4 +445,60 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
+
+    [Test]
+    public async Task Test_eth_simulate_no_validation_skips_balance_check()
+    {
+        // Regression: eth_simulateV1 with validation:false must not return -38014 (InsufficientFunds)
+        // for a value transfer from a zero-balance address.
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    Calls =
+                    [
+                        new EIP1559TransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = 1_000_000.Ether,
+                        }
+                    ]
+                }
+            ],
+            Validation = false
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        Assert.That(result.Data, Has.Count.EqualTo(1));
+        Assert.That(result.Data[0].Calls, Has.Count.EqualTo(1));
+        SimulateCallResult call = result.Data[0].Calls.First();
+        Assert.That(call.Error, Is.Null);
+        Assert.That(call.Status, Is.EqualTo(1ul));
+    }
+
+    [TestCase(
+        """{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000001":{"MovePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}}]}""",
+        ErrorCodes.MovePrecompileSelfReference,
+        "MovePrecompileToAddress referenced itself in replacement",
+        TestName = "SelfReference_38022")]
+    public async Task eth_simulateV1_MovePrecompileToAddress_invalid_override_returns_error(string payloadJson, int expectedErrorCode, string expectedMessage)
+    {
+        EthereumJsonSerializer serializer = new();
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        result.ErrorCode.Should().Be(expectedErrorCode);
+        result.Result.Error.Should().Be(expectedMessage);
+    }
 }
