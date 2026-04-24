@@ -601,7 +601,7 @@ public class StorageProviderTests(bool useFlat)
             caches.InvalidateCaches();
 
             provider.GetAccount(TestItem.AddressA).Nonce.Should().Be((UInt256)4);
-            caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out _).Should().BeFalse();
+            caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out _).Should().BeTrue("reads now populate cache for cross-block reuse");
         }
     }
 
@@ -672,7 +672,7 @@ public class StorageProviderTests(bool useFlat)
             caches.InvalidateCaches();
 
             provider.Get(storageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);
-            caches.StorageCache.TryGetValue(in storageCell, out _).Should().BeFalse();
+            caches.StorageCache.TryGetValue(in storageCell, out _).Should().BeTrue("reads now populate cache for cross-block reuse");
         }
     }
 

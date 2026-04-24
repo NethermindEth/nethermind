@@ -54,8 +54,8 @@ public class PrewarmerScopeProvider(
     private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
-        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
-        private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
+        private readonly ShardedSeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
+        private readonly ShardedSeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool populatePreBlockCache = populatePreBlockCache;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
@@ -173,6 +173,7 @@ public class PrewarmerScopeProvider(
             else
             {
                 account = GetFromBaseTree(in addressAsKey);
+                preBlockCache.Set(in addressAsKey, account);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
 
@@ -186,13 +187,13 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        SeqlockCache<StorageCell, byte[]> preBlockCache,
+        ShardedSeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool populatePreBlockCache,
         PrewarmerGetTimeLabels labels) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
-        private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
+        private readonly ShardedSeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool populatePreBlockCache = populatePreBlockCache;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
@@ -233,6 +234,7 @@ public class PrewarmerScopeProvider(
             else
             {
                 value = LoadFromTreeStorage(in storageCell);
+                preBlockCache.Set(in storageCell, value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
 
