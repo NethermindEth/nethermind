@@ -117,7 +117,7 @@ public class HeaderStore(
         {
             Span<byte> startKey = stackalloc byte[40];
             Span<byte> endKey = stackalloc byte[40];
-            KeyValueStoreExtensions.GetBlockNumPrefixedKey(endBlockNumber - count + 1, default, startKey);
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(Math.Max(0L, endBlockNumber - count + 1), default, startKey);
             KeyValueStoreExtensions.GetBlockNumPrefixedKey(endBlockNumber + 1, default, endKey);
 
             using ISortedView view = sorted.GetViewBetween(startKey, endKey);
