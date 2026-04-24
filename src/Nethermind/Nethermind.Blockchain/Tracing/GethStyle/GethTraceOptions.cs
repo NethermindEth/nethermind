@@ -23,7 +23,7 @@ public record GethTraceOptions
 
     /// <summary>
     /// Maximum duration for a single trace. Uses .NET TimeSpan format, e.g. "00:00:05" for 5 seconds.
-    /// Defaults to 5 seconds when null or unparseable.
+    /// Defaults to 5 seconds when null or empty. Throws <see cref="ArgumentException"/> for invalid values.
     /// </summary>
     public string? Timeout { get; init; }
 
