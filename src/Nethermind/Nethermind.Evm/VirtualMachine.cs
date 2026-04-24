@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -279,13 +279,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         if (previousStateSucceeded)
                         {
                             previousState.CommitToParent(_currentState);
+                            IncorporateChildStateGasRefunds(previousState);
                         }
                     }
                     else
                     {
                         // On revert, return remaining regular gas and restore all state gas to parent reservoir.
                         TGasPolicy.UpdateGasUp(ref _currentState.Gas, TGasPolicy.GetRemainingGas(in previousState.Gas));
-                        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
+                        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir, previousState.StateGasRefund);
+                        if (previousState.ExecutionType.IsAnyCreate())
+                        {
+                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+                        }
                         // Revert state changes for the previous call frame when a revert condition is signaled.
                         HandleRevert(previousState, callResult, ref previousCallOutput);
                     }
@@ -375,7 +380,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ref bool previousStateSucceeded)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, out long regularDepositCost, out long stateDepositCost))
+        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out long regularDepositCost, out long stateDepositCost))
         {
             regularDepositCost = long.MaxValue;
             stateDepositCost = long.MaxValue;
@@ -386,7 +391,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             regularDepositCost, stateDepositCost, invalidCode, callResult.Output);
     }
 
-    protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult) => new(
+    protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
+    {
+        if (callResult.ShouldRevert)
+        {
+            RefundRevertedTopLevelStateGas();
+        }
+
+        return new TransactionSubstate(
             callResult.Output,
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
@@ -395,6 +407,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             isTracerConnected: _txTracer.IsTracing,
             callResult.ExceptionType,
             _logger);
+    }
 
     private void TryChargeAndDepositCode(
         VmState<TGasPolicy> previousState,
@@ -435,8 +448,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
-            // The CREATE opcode's own state charge belongs to the parent frame and remains consumed.
-            TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
+            TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir, previousState.StateGasRefund);
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {
@@ -555,6 +568,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // For a top-level call, immediately return a final transaction substate.
         if (_currentState.IsTopLevel)
         {
+            RefundRevertedTopLevelStateGas();
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
             shouldExit = true;
@@ -562,6 +576,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         _previousCallResult = StatusCode.FailureBytes;
+        bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
 
         // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
@@ -569,6 +584,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         previousCallOutput = ZeroPaddedSpan.Empty;
 
         PopAndRestoreParentState();
+        if (failedCreate)
+        {
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+        }
 
         shouldExit = false;
         return default;
@@ -583,9 +602,55 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
-        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas, childState.InitialStateReservoir);
+        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas, childState.InitialStateReservoir, childState.StateGasRefund);
         _currentState.IsContinuation = true;
         childState.Dispose();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RefundRevertedTopLevelStateGas()
+    {
+        long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
+        if (revertedStateGas > _currentState.InitialStateGasUsed)
+        {
+            TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, _currentState.InitialStateGasUsed);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void CreditStateGasRefund(ref TGasPolicy gas, long amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        VmState<TGasPolicy> vmState = VmState;
+        long stateGasFloor = vmState.InitialStateGasUsed;
+        long refundableStateGas = Math.Max(0, TGasPolicy.GetStateGasUsed(in gas) - stateGasFloor);
+        long appliedRefund = Math.Min(amount, refundableStateGas);
+
+        if (appliedRefund > 0)
+        {
+            TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor);
+            vmState.StateGasRefund += appliedRefund;
+        }
+
+        long pendingRefund = amount - appliedRefund;
+        if (pendingRefund > 0)
+        {
+            vmState.StateGasRefundPending += pendingRefund;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void IncorporateChildStateGasRefunds(VmState<TGasPolicy> childState)
+    {
+        _currentState.StateGasRefund += childState.StateGasRefund;
+        if (childState.StateGasRefundPending > 0)
+        {
+            CreditStateGasRefund(ref _currentState.Gas, childState.StateGasRefundPending);
+        }
     }
 
     /// <summary>
@@ -651,11 +716,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // If this is the top-level call, return a final transaction substate encapsulating the error.
         if (_currentState.IsTopLevel)
         {
+            RefundRevertedTopLevelStateGas();
             shouldExit = true;
             return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
         }
 
         _previousCallResult = StatusCode.FailureBytes;
+        bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
 
         // Reset output destination and clear return data.
         _previousCallOutputDestination = UInt256.Zero;
@@ -663,6 +730,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         previousCallOutput = ZeroPaddedSpan.Empty;
 
         PopAndRestoreParentState();
+        if (failedCreate)
+        {
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+        }
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
         shouldExit = false;
@@ -786,7 +857,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length);
+        long regularDepositCost = 0;
+        long stateDepositCost = 0;
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas);
+        bool hasEnoughGasForCodeDeposit = true;
+        if (currentState.ExecutionType.IsAnyCreate())
+        {
+            _ = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out regularDepositCost, out stateDepositCost);
+            hasEnoughGasForCodeDeposit =
+                TGasPolicy.GetRemainingGas(currentState.Gas) >= regularDepositCost &&
+                TGasPolicy.GetRemainingGas(currentState.Gas) + TGasPolicy.GetStateReservoir(in currentState.Gas) >= stateDepositCost;
+        }
 
         // Cache the output bytes for reuse in the tracing reports.
         ReadOnlyMemory<byte> outputBytes = callResult.Output;
@@ -809,7 +890,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             long gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
             // If available gas is insufficient to cover the code deposit cost...
-            if (gasAvailable < codeDepositGasCost)
+            if (!hasEnoughGasForCodeDeposit)
             {
                 // When the spec mandates charging for top-level creation, report an out-of-gas error.
                 if (spec.ChargeForTopLevelCreate)

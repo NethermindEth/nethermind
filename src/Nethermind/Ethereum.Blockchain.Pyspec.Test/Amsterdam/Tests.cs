@@ -26,19 +26,19 @@ public class Eip7843BlockChainTests : AmsterdamBlockChainTestFixture<Eip7843Bloc
 public class Eip7843EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip7843EngineBlockChainTests>;
 
 [EipWildcard("eip7928_block_level_access_lists")]
-[TestFixture(false)]
-[TestFixture(true)]
-public class Eip7928BlockChainTests(bool parallel) : AmsterdamBlockChainTestFixture<Eip7928BlockChainTests>
+[TestFixture(true, true)]
+public class Eip7928BlockChainTests(bool parallelExecution, bool parallelExecutionBatchRead) : AmsterdamBlockChainTestFixture<Eip7928BlockChainTests>
 {
-    protected override bool? ParallelExecutionOverride => parallel;
+    protected override bool? ParallelExecutionOverride => parallelExecution;
+    protected override bool? ParallelExecutionBatchReadOverride => parallelExecutionBatchRead;
 }
 
 [EipWildcard("eip7928_block_level_access_lists")]
-[TestFixture(false)]
-[TestFixture(true)]
-public class Eip7928EngineBlockChainTests(bool parallel) : AmsterdamEngineBlockChainTestFixture<Eip7928EngineBlockChainTests>
+[TestFixture(true, true)]
+public class Eip7928EngineBlockChainTests(bool parallelExecution, bool parallelExecutionBatchRead) : AmsterdamEngineBlockChainTestFixture<Eip7928EngineBlockChainTests>
 {
-    protected override bool? ParallelExecutionOverride => parallel;
+    protected override bool? ParallelExecutionOverride => parallelExecution;
+    protected override bool? ParallelExecutionBatchReadOverride => parallelExecutionBatchRead;
 }
 
 [EipWildcard("eip7954_increase_max_contract_size")]
