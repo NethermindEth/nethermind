@@ -11,7 +11,7 @@ namespace Nethermind.Evm;
 public class BlockOverride
 {
     public ulong? Number { get; set; }
-    public Hash256 PrevRandao { get; set; } = Keccak.Zero;
+    public Hash256? PrevRandao { get; set; }
     public ulong? Time { get; set; }
     public ulong? GasLimit { get; set; }
     public Address? FeeRecipient { get; set; }
@@ -25,7 +25,7 @@ public class BlockOverride
         {
             if (GasLimit > long.MaxValue)
             {
-                throw new OverflowException($"GasLimit value is too large, max value {ulong.MaxValue}");
+                throw new OverflowException($"GasLimit value is too large, max value {long.MaxValue}");
             }
             result.GasLimit = (long)GasLimit.Value;
         }
@@ -33,6 +33,6 @@ public class BlockOverride
         if (Number is not null) result.Number = (long)Number.Value;
         if (FeeRecipient is not null) result.Beneficiary = FeeRecipient;
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
-        if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
+        if (PrevRandao is not null) result.MixHash = PrevRandao;
     }
 }

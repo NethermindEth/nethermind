@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -16,6 +17,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
+    private const int MaxStepCount = 200_000;
+    private const int ResultCallTimeoutMs = 5_000;
+
     private readonly dynamic _tracer;
     private readonly Log _log = new();
     private readonly IDisposable _blockTracer;
@@ -27,6 +31,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private Stack<long>? _frameGas;
     private Stack<Log.Contract>? _contracts;
     private int _depth = -1;
+    private int _stepCount;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -64,9 +69,16 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _ctx.TxHash;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
-
-        _resultConstructed = true;
+        using CancellationTokenSource cts = new(ResultCallTimeoutMs);
+        using IDisposable _ = cts.Token.Register(static e => ((Engine)e!).Interrupt(), _engine);
+        try
+        {
+            result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
+        }
+        finally
+        {
+            _resultConstructed = true;
+        }
 
         return result;
     }
@@ -204,6 +216,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         if (_functions.HasFlag(TracerFunctions.step))
         {
+            if (++_stepCount > MaxStepCount)
+                throw new InvalidOperationException($"JavaScript tracer exceeded {MaxStepCount} step limit");
             _tracer.step(_log, _db);
         }
 

@@ -27,6 +27,9 @@ public static class StateOverridesExtensions
             overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
+                if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
+                    throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
+
                 if (!state.TryGetAccount(address, out AccountStruct account))
                 {
                     state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? UInt256.Zero);
@@ -109,6 +112,8 @@ public static class StateOverridesExtensions
         }
     }
 
+    private static readonly UInt256 MaxNonce = ulong.MaxValue;
+
     private static void UpdateNonce(
         this IWorldState stateProvider,
         in AccountStruct account,
@@ -123,7 +128,7 @@ public static class StateOverridesExtensions
             {
                 stateProvider.DecrementNonce(address, nonce - newNonce);
             }
-            else if (nonce < accountOverride.Nonce)
+            else if (nonce < newNonce)
             {
                 stateProvider.IncrementNonce(address, newNonce - nonce);
             }

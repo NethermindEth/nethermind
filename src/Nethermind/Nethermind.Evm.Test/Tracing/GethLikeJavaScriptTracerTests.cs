@@ -14,7 +14,11 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.Test.Tracing;
 
@@ -370,6 +374,24 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         {
             calls_btn_contracts();
         }
+    }
+
+    [Test]
+    public void step_limit_throws_after_200k_steps()
+    {
+        // JUMPDEST(5B) PUSH1(60) 0x00 JUMP(56) — tight 3-opcode loop.
+        // 5 000 000 gas / 12 gas-per-iter ≈ 416 K iters → ~1.25 M step callbacks >> 200 K limit.
+        byte[] infiniteLoop = [0x5B, 0x60, 0x00, 0x56];
+
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 5_000_000, infiniteLoop);
+        using GethLikeBlockJavaScriptTracer blockTracer = GetTracer(
+            "{ step: function(log, db) {}, fault: function(log, db) {}, result: function(ctx, db) { return {}; } }");
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)blockTracer).StartNewTxTrace(tx);
+
+        Action act = () => _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*200000*");
     }
 
     private static byte[] MStore() => Prepare.EvmCode
