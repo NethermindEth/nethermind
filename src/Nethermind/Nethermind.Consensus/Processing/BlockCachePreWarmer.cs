@@ -68,6 +68,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_preBlockCaches is not null)
         {
             CacheType result = _preBlockCaches.ClearCaches();
+            _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
             if (result != default)
             {
@@ -94,7 +95,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_logger.IsDebug) _logger.Debug("Invalidating caches");
         _preBlockCaches.InvalidateCaches();
-        _nodeStorageCache.ClearCaches();
         if (_logger.IsDebug) _logger.Debug("Invalidated caches");
     }
 
@@ -102,15 +102,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         _ = spec;
         _preBlockCaches.RecordCommittedBlock(block.Number, block.Hash);
-
-        if (_logger.IsInfo && block.Number % 100 == 0)
-        {
-            long rlpHits = _nodeStorageCache.Hits;
-            long rlpMisses = _nodeStorageCache.Misses;
-            long rlpTotal = rlpHits + rlpMisses;
-            double rate = rlpTotal > 0 ? 100.0 * rlpHits / rlpTotal : 0;
-            _logger.Info($"Block {block.Number} cumulative cache stats: RLP hits={rlpHits} misses={rlpMisses} rate={rate:F1}% | StateHits={Db.Metrics.StateTreeCache} StorageHits={Db.Metrics.StorageTreeCache}");
-        }
     }
 
     public void FlushCarryForwardWrites() => _preBlockCaches.FlushCarryForwardWrites();
@@ -119,6 +110,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
+        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
