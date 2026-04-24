@@ -200,7 +200,7 @@ public class BranchProcessor(
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        suggestedBlock.Transactions.Length < 9999
+        suggestedBlock.Transactions.Length < 3
             ? null
             : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,
