@@ -16,7 +16,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 [TestFixture]
-public class StateOverridesNonceTests
+public class StateOverridesTests
 {
     private IWorldState _state = null!;
     private IOverridableCodeInfoRepository _codeRepo = null!;
