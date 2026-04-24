@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -22,6 +26,19 @@ public class Eip8037Tests
 
     [TestCaseSource(nameof(ConstantsTestCases))]
     public long Constants_are_calculated_correctly(long actual) => actual;
+
+    private static IEnumerable<TestCaseData> DynamicCostPerStateByteTestCases()
+    {
+        yield return new TestCaseData(1_000_000L, 1L).SetName("CostPerStateByte_1M");
+        yield return new TestCaseData(30_000_000L, 150L).SetName("CostPerStateByte_30M");
+        yield return new TestCaseData(60_000_000L, 662L).SetName("CostPerStateByte_60M");
+        yield return new TestCaseData(100_000_000L, 1174L).SetName("CostPerStateByte_100M");
+        yield return new TestCaseData(200_000_000L, 2198L).SetName("CostPerStateByte_200M");
+    }
+
+    [TestCaseSource(nameof(DynamicCostPerStateByteTestCases))]
+    public void Cost_per_state_byte_is_quantized_from_block_gas_limit(long blockGasLimit, long expectedCostPerStateByte) =>
+        Assert.That(GasCostOf.CalculateCostPerStateByte(blockGasLimit), Is.EqualTo(expectedCostPerStateByte));
 
     [TestCase(1, ExpectedResult = 6L)]
     [TestCase(32, ExpectedResult = 6L)]
@@ -42,6 +59,103 @@ public class Eip8037Tests
     }
 
     [Test]
+    public void Gas_policy_exposes_dynamic_state_costs()
+    {
+        long costPerStateByte = GasCostOf.CalculateCostPerStateByte(30_000_000);
+        EthereumGasPolicy gas = new() { CostPerStateByte = costPerStateByte };
+
+        Assert.That(
+            (
+                EthereumGasPolicy.GetCostPerStateByte(in gas),
+                EthereumGasPolicy.GetStorageSetStateCost(in gas),
+                EthereumGasPolicy.GetCreateStateCost(in gas),
+                EthereumGasPolicy.GetNewAccountStateCost(in gas),
+                EthereumGasPolicy.GetPerAuthBaseStateCost(in gas)
+            ),
+            Is.EqualTo(
+                (
+                    costPerStateByte,
+                    GasCostOf.CalculateSSetState(costPerStateByte),
+                    GasCostOf.CalculateCreateState(costPerStateByte),
+                    GasCostOf.CalculateNewAccountState(costPerStateByte),
+                    GasCostOf.CalculatePerAuthBaseState(costPerStateByte)
+                )));
+    }
+
+    [Test]
+    public void Generic_code_deposit_cost_uses_policy_state_pricing()
+    {
+        long costPerStateByte = GasCostOf.CalculateCostPerStateByte(30_000_000);
+        EthereumGasPolicy gas = new() { CostPerStateByte = costPerStateByte };
+
+        bool success = CodeDepositHandler.CalculateCost(Amsterdam.Instance, 33, in gas, out long regularCost, out long stateCost);
+
+        Assert.That((success, regularCost, stateCost),
+            Is.EqualTo((true, 12L, GasCostOf.CalculateCodeDepositState(costPerStateByte, 33))));
+    }
+
+    [Test]
+    public void Intrinsic_gas_carries_dynamic_cost_per_state_byte()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved()
+            .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+            .TestObject;
+
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance, 30_000_000);
+        long costPerStateByte = GasCostOf.CalculateCostPerStateByte(30_000_000);
+
+        Assert.That(EthereumGasPolicy.GetCostPerStateByte(intrinsicGas.Standard), Is.EqualTo(costPerStateByte));
+        Assert.That(intrinsicGas.Standard.StateReservoir,
+            Is.EqualTo(GasCostOf.CalculateNewAccountState(costPerStateByte) + GasCostOf.CalculatePerAuthBaseState(costPerStateByte)));
+    }
+
+    [Test]
+    public void Amsterdam_access_list_floor_pricing_is_added_to_regular_and_floor_intrinsic_gas()
+    {
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(TestItem.AddressA)
+            .AddStorage(UInt256.One)
+            .AddStorage((UInt256)2)
+            .AddStorage((UInt256)3)
+            .Build();
+        Transaction tx = Build.A.Transaction.SignedAndResolved()
+            .WithAccessList(accessList)
+            .TestObject;
+
+        IntrinsicGas<EthereumGasPolicy> splitIntrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+        long accessListBaseCost = GasCostOf.AccessAccountListEntry + 3 * GasCostOf.AccessStorageListEntry;
+        long accessListFloorTokens = (20L + 3 * 32L) * Amsterdam.Instance.GasCosts.TxDataNonZeroMultiplier;
+        long accessListFloorCost = accessListFloorTokens * Amsterdam.Instance.GasCosts.TotalCostFloorPerToken;
+        long expectedRegular = GasCostOf.Transaction + accessListBaseCost + accessListFloorCost;
+        long expectedFloorGas = GasCostOf.Transaction + accessListFloorCost;
+
+        Assert.That(splitIntrinsicGas.Standard.Value, Is.EqualTo(expectedRegular));
+        Assert.That(splitIntrinsicGas.Standard.StateReservoir, Is.Zero);
+        Assert.That(splitIntrinsicGas.FloorGas.Value, Is.EqualTo(expectedFloorGas));
+        Assert.That(intrinsicGas.Standard, Is.EqualTo(expectedRegular));
+        Assert.That(intrinsicGas.FloorGas, Is.EqualTo(expectedFloorGas));
+    }
+
+    [Test]
+    public void Prague_access_list_floor_pricing_is_not_applied()
+    {
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(TestItem.AddressA)
+            .AddStorage(UInt256.One)
+            .Build();
+        Transaction tx = Build.A.Transaction.SignedAndResolved()
+            .WithAccessList(accessList)
+            .TestObject;
+
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Prague.Instance);
+        long expectedRegular = GasCostOf.Transaction + GasCostOf.AccessAccountListEntry + GasCostOf.AccessStorageListEntry;
+
+        Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(expectedRegular));
+        Assert.That(intrinsicGas.FloorGas.Value, Is.EqualTo(GasCostOf.Transaction));
+    }
+
+    [Test]
     public void State_gas_consumption_spills_to_regular_gas()
     {
         EthereumGasPolicy gas = new() { Value = 100, StateReservoir = 50, StateGasUsed = 0 };
@@ -49,6 +163,17 @@ public class Eip8037Tests
         bool consumed = EthereumGasPolicy.ConsumeStateGas(ref gas, 70);
 
         Assert.That((consumed, gas.Value, gas.StateReservoir, gas.StateGasUsed), Is.EqualTo((true, 80L, 0L, 70L)));
+    }
+
+    [Test]
+    public void Failed_state_spill_preserves_existing_reservoir()
+    {
+        EthereumGasPolicy gas = new() { Value = 10, StateReservoir = 50, StateGasUsed = 0, StateGasSpill = 0 };
+
+        bool consumed = EthereumGasPolicy.ConsumeStateGas(ref gas, 70);
+
+        Assert.That((consumed, gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
+            Is.EqualTo((false, 10L, 50L, 0L, 0L)));
     }
 
     [Test]
@@ -82,7 +207,7 @@ public class Eip8037Tests
 
         EthereumGasPolicy.RefundStateGas(ref gas, 200, stateGasFloor: 40);
 
-        Assert.That((gas.StateReservoir, gas.StateGasUsed), Is.EqualTo((200L, 0L)));
+        Assert.That((gas.StateReservoir, gas.StateGasUsed), Is.EqualTo((80L, 40L)));
     }
 
     [Test]
@@ -100,7 +225,7 @@ public class Eip8037Tests
 
         Assert.That(regularRefund, Is.Zero);
         Assert.That((gas.StateReservoir, gas.StateGasUsed),
-            Is.EqualTo((GasCostOf.NewAccountState - 2 * GasCostOf.SSetState, GasCostOf.PerAuthBaseState + 2 * GasCostOf.SSetState)));
+            Is.EqualTo((GasCostOf.NewAccountState - 2 * GasCostOf.SSetState, intrinsicAuthState + 2 * GasCostOf.SSetState)));
     }
 
     [Test]
@@ -113,7 +238,7 @@ public class Eip8037Tests
         EthereumGasPolicy.SetOutOfGas(ref child);
         Assert.That((child.Value, child.StateReservoir), Is.EqualTo((0L, 300L)));
 
-        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 500);
+        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 500, childStateRefund: 0);
         Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((500L, 10L)));
     }
 
@@ -127,9 +252,41 @@ public class Eip8037Tests
         EthereumGasPolicy.ConsumeStateGas(ref child, 150);
 
         EthereumGasPolicy.UpdateGasUp(ref parent, EthereumGasPolicy.GetRemainingGas(in child));
-        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 400);
+        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 400, childStateRefund: 0);
 
         Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((900L, 400L, 20L)));
+    }
+
+    [Test]
+    public void Revert_discards_child_inline_state_refund_inflation()
+    {
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 400, StateGasUsed = 20 };
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 600);
+        EthereumGasPolicy.ConsumeStateGas(ref child, 150);
+        EthereumGasPolicy.RefundStateGas(ref child, 40, stateGasFloor: 0);
+
+        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 400, childStateRefund: 40);
+
+        Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((360L, 20L)));
+    }
+
+    [Test]
+    public void Revert_discards_descendant_spill_once_refund_reaches_ancestor()
+    {
+        EthereumGasPolicy parent = new() { Value = 500_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy outer = EthereumGasPolicy.CreateChildFrameGas(ref parent, 400_000);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref outer, GasCostOf.CreateState), Is.True);
+
+        EthereumGasPolicy inner = EthereumGasPolicy.CreateChildFrameGas(ref outer, 200_000);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref inner, GasCostOf.SSetState), Is.True);
+        EthereumGasPolicy.RefundStateGas(ref inner, GasCostOf.SSetState, stateGasFloor: 0);
+        EthereumGasPolicy.RestoreChildStateGas(ref outer, in inner, initialStateReservoir: 0, childStateRefund: GasCostOf.SSetState);
+
+        EthereumGasPolicy.RefundStateGas(ref outer, GasCostOf.CreateState, stateGasFloor: 0);
+        EthereumGasPolicy.RestoreChildStateGas(ref parent, in outer, initialStateReservoir: 0, childStateRefund: GasCostOf.CreateState);
+
+        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill),
+            Is.EqualTo((0L, 0L, GasCostOf.CreateState + GasCostOf.SSetState)));
     }
 
     [TestCase(ExpectedResult = 5_000L)]

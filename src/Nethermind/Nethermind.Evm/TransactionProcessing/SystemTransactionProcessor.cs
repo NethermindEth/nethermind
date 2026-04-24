@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -63,7 +63,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired, bool validate) => TransactionResult.Ok;
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in TGasPolicy intrinsicGas, long minGasRequired, bool validate) => TransactionResult.Ok;
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 
@@ -79,8 +79,27 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         }
     }
 
-    protected override IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
-        tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
+    protected override IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit)
+    {
+        if (tx is not SystemCall)
+        {
+            return base.CalculateIntrinsicGas(tx, spec, blockGasLimit);
+        }
+
+        TGasPolicy intrinsicGas = TGasPolicy.CreateSystemTransactionIntrinsicGas(blockGasLimit);
+        return new IntrinsicGas<TGasPolicy>(intrinsicGas, intrinsicGas);
+    }
+
+    protected override TransactionResult CalculateAvailableGas(Transaction tx, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
+    {
+        if (tx is SystemCall)
+        {
+            gasAvailable = TGasPolicy.CreateSystemTransactionGas(tx.GasLimit, intrinsicGas.Standard);
+            return TransactionResult.Ok;
+        }
+
+        return base.CalculateAvailableGas(tx, spec, in intrinsicGas, out gasAvailable);
+    }
 
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {

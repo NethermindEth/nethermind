@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -29,12 +29,71 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract TSelf FromLong(long value);
 
     /// <summary>
+    /// Creates zero intrinsic gas for unchecked system transactions.
+    /// EIP-8037 policies can use the block gas limit to carry dynamic state-byte pricing.
+    /// </summary>
+    /// <param name="blockGasLimit">The enclosing block gas limit.</param>
+    /// <returns>Zero intrinsic gas with policy-specific block context.</returns>
+    static virtual TSelf CreateSystemTransactionIntrinsicGas(long blockGasLimit) => TSelf.FromLong(0);
+
+    /// <summary>
+    /// Creates the execution gas state for unchecked system transactions.
+    /// EIP-8037 system calls execute with all gas as regular gas and no state reservoir.
+    /// </summary>
+    /// <param name="gasLimit">The system transaction gas limit.</param>
+    /// <param name="intrinsicGas">The system transaction intrinsic gas context.</param>
+    /// <returns>The available gas state for EVM execution.</returns>
+    static virtual TSelf CreateSystemTransactionGas(long gasLimit, in TSelf intrinsicGas) => TSelf.FromLong(gasLimit);
+
+    /// <summary>
     /// Get the remaining single-dimensional gas available for execution.
     /// This is what's checked against zero to detect out-of-gas conditions.
     /// </summary>
     /// <param name="gas">The gas state to query.</param>
     /// <returns>Remaining gas (negative values indicate out-of-gas)</returns>
     static abstract long GetRemainingGas(in TSelf gas);
+
+    /// <summary>
+    /// Gets the per-block EIP-8037 cost-per-state-byte value carried by the gas policy.
+    /// Pre-EIP-8037 policies return the default fallback constant.
+    /// </summary>
+    static virtual long GetCostPerStateByte(in TSelf gas) => GasCostOf.CostPerStateByte;
+
+    /// <summary>
+    /// Gets the EIP-8037 state component for SSTORE zero-to-non-zero writes.
+    /// Pre-EIP-8037 policies return the fallback constant.
+    /// </summary>
+    static virtual long GetStorageSetStateCost(in TSelf gas) => GasCostOf.SSetState;
+
+    /// <summary>
+    /// Gets the EIP-8037 state component for CREATE/CREATE2.
+    /// Pre-EIP-8037 policies return the fallback constant.
+    /// </summary>
+    static virtual long GetCreateStateCost(in TSelf gas) => GasCostOf.CreateState;
+
+    /// <summary>
+    /// Gets the EIP-8037 state component for creating a new account via CALL.
+    /// Pre-EIP-8037 policies return the fallback constant.
+    /// </summary>
+    static virtual long GetNewAccountStateCost(in TSelf gas) => GasCostOf.NewAccountState;
+
+    /// <summary>
+    /// Gets the EIP-8037 state component of each authorization-list entry.
+    /// Pre-EIP-8037 policies return the fallback constant.
+    /// </summary>
+    static virtual long GetPerAuthBaseStateCost(in TSelf gas) => GasCostOf.PerAuthBaseState;
+
+    /// <summary>
+    /// Gets the EIP-8037 state component of code deposit for the supplied byte length.
+    /// Pre-EIP-8037 policies return the fallback constant.
+    /// </summary>
+    static virtual long GetCodeDepositStateCost(in TSelf gas, int byteCodeLength) => GasCostOf.CalculateCodeDepositState(GasCostOf.CostPerStateByte, byteCodeLength);
+
+    /// <summary>
+    /// Gets the EIP-8037 refund applied when an SSTORE reverts to the original zero value.
+    /// Pre-EIP-8037 policies return the fallback constant.
+    /// </summary>
+    static virtual long GetStorageSetReversalRefund(in TSelf gas) => RefundOf.SSetReversedEip8037;
 
     /// <summary>
     /// Gets the remaining state gas reservoir.
@@ -97,7 +156,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="parentGas">The parent gas state to restore into.</param>
     /// <param name="childGas">The child gas state to restore from.</param>
     /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
-    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+    /// <param name="childStateRefund">Inline state-gas refunds already applied inside the child frame.</param>
+    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir, long childStateRefund) { }
 
     /// <summary>
     /// Adjusts parent gas state when a child <see cref="Refund"/> was already applied but the child
@@ -108,7 +168,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="parentGas">The parent gas state to adjust.</param>
     /// <param name="childGas">The child gas state that was previously merged via Refund.</param>
     /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
-    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+    /// <param name="childStateRefund">Inline state-gas refunds already applied inside the child frame.</param>
+    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir, long childStateRefund) { }
 
     /// <summary>
     /// Mark the gas state as out of gas.
@@ -280,8 +341,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         codeInsertRefunds > 0 ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0;
 
     /// <summary>
-    /// Applies EIP-7702 code insert refunds: EIP-8037 state refund to reservoir + regular refund amount.
-    /// For EIP-8037 this is applied before execution so later state charges can consume the refunded reservoir.
+    /// Applies EIP-7702 code insert refunds.
+    /// For EIP-8037 this replenishes the transaction state reservoir before execution so later
+    /// state charges can consume it, but it does not reduce intrinsic state gas already charged
+    /// to block accounting.
     /// </summary>
     /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas), for clamping refunds.</param>
     static virtual long ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor) =>
@@ -327,7 +390,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="tx">The transaction to calculate intrinsic gas for.</param>
     /// <param name="spec">The release specification governing gas costs.</param>
     /// <returns>The intrinsic gas as TGasPolicy.</returns>
-    static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec);
+    static virtual IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
+        TSelf.CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
+
+    /// <summary>
+    /// Calculates intrinsic gas for a transaction in the context of a specific block gas limit.
+    /// </summary>
+    /// <param name="tx">The transaction to calculate intrinsic gas for.</param>
+    /// <param name="spec">The release specification governing gas costs.</param>
+    /// <param name="blockGasLimit">The enclosing block gas limit.</param>
+    /// <returns>The intrinsic gas as TGasPolicy.</returns>
+    static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit);
 
     /// <summary>
     /// Creates available gas from gas limit minus intrinsic gas, preserving any tracking data.
@@ -413,7 +486,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
-    public static (long RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
+    public static (long RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec, long blockGasLimit = 0)
     {
         AuthorizationTuple[]? authList = transaction.AuthorizationList;
         if (authList is null)
@@ -427,10 +500,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         }
 
         long authCount = authList.Length;
+        long costPerStateByte = GasCostOf.CalculateCostPerStateByte(blockGasLimit);
         return spec.IsEip8037Enabled
             ? (
                 authCount * GasCostOf.PerAuthBaseRegular,
-                authCount * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+                authCount * (GasCostOf.CalculateNewAccountState(costPerStateByte) + GasCostOf.CalculatePerAuthBaseState(costPerStateByte))
             )
             : (authCount * GasCostOf.NewAccount, 0);
 
