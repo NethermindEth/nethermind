@@ -102,6 +102,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         _ = spec;
         _preBlockCaches.RecordCommittedBlock(block.Number, block.Hash);
+
+        long rlpHits = _nodeStorageCache.Hits;
+        long rlpMisses = _nodeStorageCache.Misses;
+        long rlpTotal = rlpHits + rlpMisses;
+        _nodeStorageCache.ResetCounters();
+
+        if (_logger.IsInfo && rlpTotal > 0)
+        {
+            _logger.Info($"Block {block.Number} cache stats: RLP hits={rlpHits} misses={rlpMisses} rate={100.0 * rlpHits / rlpTotal:F1}% | StateHits={Db.Metrics.StateTreeCache} StorageHits={Db.Metrics.StorageTreeCache}");
+        }
     }
 
     public void FlushCarryForwardWrites() => _preBlockCaches.FlushCarryForwardWrites();

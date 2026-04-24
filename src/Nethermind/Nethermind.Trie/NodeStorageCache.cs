@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie;
@@ -13,6 +14,9 @@ public sealed class NodeStorageCache
     private readonly SeqlockCache<NodeKey, byte[]>[] _shards;
 
     private volatile bool _enabled = false;
+
+    private long _hits;
+    private long _misses;
 
     public NodeStorageCache()
     {
@@ -29,6 +33,15 @@ public sealed class NodeStorageCache
         set => _enabled = value;
     }
 
+    public long Hits => Volatile.Read(ref _hits);
+    public long Misses => Volatile.Read(ref _misses);
+
+    public void ResetCounters()
+    {
+        Volatile.Write(ref _hits, 0);
+        Volatile.Write(ref _misses, 0);
+    }
+
     public byte[]? GetOrAdd(in NodeKey nodeKey, SeqlockCache<NodeKey, byte[]>.ValueFactory tryLoadRlp)
     {
         if (!_enabled)
@@ -36,7 +49,16 @@ public sealed class NodeStorageCache
             return tryLoadRlp(in nodeKey);
         }
         int shard = (int)((uint)nodeKey.GetHashCode() >> 16) & ShardMask;
-        return _shards[shard].GetOrAdd(in nodeKey, tryLoadRlp);
+        SeqlockCache<NodeKey, byte[]> cache = _shards[shard];
+        if (cache.TryGetValue(in nodeKey, out byte[]? value))
+        {
+            Interlocked.Increment(ref _hits);
+            return value;
+        }
+        Interlocked.Increment(ref _misses);
+        value = tryLoadRlp(in nodeKey);
+        cache.Set(in nodeKey, value);
+        return value;
     }
 
     public bool ClearCaches()
