@@ -758,8 +758,7 @@ namespace Nethermind.Trie
         {
             if (parent is null) return true;
             if (oldChild is null && newChild is null) return false;
-            // oldChild may be a Hash256 (committed child not in memory): always differs from newChild.
-            if (oldChild is TrieNode oldNode && ReferenceEquals(oldNode, newChild))
+            if (ReferenceEquals(oldChild, newChild) && newChild is not null)
             {
                 // So that recalculate root knows to recalculate the parent root.
                 // Parent's hash can also be null depending on nesting level - still need to update child, otherwise combine will remain original value

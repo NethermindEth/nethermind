@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -261,19 +260,47 @@ public class PatriciaTreeBulkSetAndCommitTests
         threw.Should().BeTrue();
     }
 
-    [TestCase(true,  true,  false, Description = "both null → no update")]
-    [TestCase(false, true,  true,  Description = "Hash256 old, null new → update (deletion of committed child)")]
-    [TestCase(false, false, true,  Description = "Hash256 old, non-null new → update")]
-    [TestCase(true,  false, true,  Description = "null old, non-null new → update")]
-    public void ShouldUpdateChild_ObjectOldChild(bool oldIsNull, bool newIsNull, bool expectedUpdate)
+    /// <summary>
+    /// Regression: MaybeCombineNode extension+extension path called GetChildWithChildPath on
+    /// originalNode whose child was already committed as Hash256 via UnresolveChild, causing a
+    /// NodeHashMismatchException in path-indexed stores (StorageTrieStoreAdapter).
+    ///
+    /// Structure: Extension(8-nibble key) → Branch(depth 8) → {slot3: Branch → 2 leaves, slot4: leaf}
+    /// The extension's child sits at depth 8 (even, > 4) so UnresolveChild converts it to Hash256.
+    /// BulkSet updates only the slot3 subtree: MakeFakeBranch exposes a NewBranch with one slot →
+    /// MaybeCombineNode collapses it → extension+extension case → originalChild is Hash256.
+    /// </summary>
+    [Test]
+    public void BulkSetAndCommit_MaybeCombineNode_ExtensionExtension_Hash256OriginalChild()
     {
-        PatriciaTree tree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
-        TrieNode parent = TrieNodeFactory.CreateBranch();
+        IScopedTrieStore store = new PatriciaTreeBulkSetterTests.StrictRawScopedTrieStore(new RawScopedTrieStore(new TestMemDb()));
+        PatriciaTree tree = new(store, LimboLogs.Instance);
 
-        object oldChild = oldIsNull ? null : (object)Keccak.Compute([1, 2, 3]);
-        TrieNode newChild = newIsNull ? null : TrieNodeFactory.CreateLeaf([1], new CappedArray<byte>(new byte[] { 1 }));
+        Hash256 keyA = new("3333333332222222222222222222222222222222222222222222222222222222");
+        Hash256 keyB = new("3333333333333333333333333333333333333333333333333333333333333333");
+        Hash256 keyC = new("3333333344444444444444444444444444444444444444444444444444444444");
 
-        tree.ShouldUpdateChild(parent, oldChild, newChild).Should().Be(expectedUpdate);
+        tree.Set(keyA.Bytes, [1]);
+        tree.Set(keyB.Bytes, [2]);
+        tree.Set(keyC.Bytes, [3]);
+        tree.Commit();
+
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(2);
+        entries.Add(new PatriciaTree.BulkSetEntry(keyA, [4]));
+        entries.Add(new PatriciaTree.BulkSetEntry(keyB, [5]));
+
+        tree.BulkSetAndCommit(entries);
+
+        PatriciaTree refTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        refTree.Set(keyA.Bytes, [1]);
+        refTree.Set(keyB.Bytes, [2]);
+        refTree.Set(keyC.Bytes, [3]);
+        refTree.Commit();
+        refTree.Set(keyA.Bytes, [4]);
+        refTree.Set(keyB.Bytes, [5]);
+        refTree.Commit();
+
+        tree.RootHash.Should().Be(refTree.RootHash);
     }
 
 }
