@@ -451,6 +451,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_storage_at_invalid_hex_key()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0xasdf");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid hex in storage key: \\\"0xasdf\\\"\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_storage_at_missing_trie_node()
     {
         using Context ctx = await Context.Create();

@@ -165,9 +165,21 @@ public partial class EthRpcModule(
         return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
     }
 
-    public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
+    public ResultWrapper<byte[]> eth_getStorageAt(Address address, string? positionIndex,
         BlockParameter? blockParameter = null)
     {
+        UInt256 storagePosition;
+        try
+        {
+            storagePosition = positionIndex is null
+                ? UInt256.Zero
+                : UInt256Converter.ReadHex(System.Text.Encoding.UTF8.GetBytes(positionIndex));
+        }
+        catch
+        {
+            return ResultWrapper<byte[]>.Fail($"invalid hex in storage key: \"{positionIndex}\"", ErrorCodes.InvalidParams);
+        }
+
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
@@ -177,7 +189,7 @@ public partial class EthRpcModule(
         BlockHeader? header = searchResult.Object;
         try
         {
-            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!, address, positionIndex);
+            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!, address, storagePosition);
             return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
         }
         catch (MissingTrieNodeException e)

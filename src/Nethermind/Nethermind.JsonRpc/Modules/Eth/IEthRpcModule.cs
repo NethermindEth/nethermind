@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns storage data at address. storage_index",
             IsSharable = true,
             ExampleResponse = "0x")]
-        ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, UInt256 positionIndex, BlockParameter? blockParameter = null);
+        ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, string? positionIndex, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns storage values for multiple slots across multiple accounts in a single request. Total slot count across all addresses must not exceed 1024.",
