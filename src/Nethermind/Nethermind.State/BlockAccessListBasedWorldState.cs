@@ -272,7 +272,7 @@ public class BlockAccessListBasedWorldState(
 
     public void ResetTransient()
         => _transientStorageProvider.Reset();
-    
+
     public void CreateEmptyAccountIfDeleted(Address address)
         => _innerWorldState.CreateEmptyAccountIfDeleted(address);
 
