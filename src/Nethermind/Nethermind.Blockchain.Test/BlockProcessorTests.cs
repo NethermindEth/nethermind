@@ -319,6 +319,8 @@ public class BlockProcessorTests
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
         // Generated BAL has the account but no storage reads
         balManager.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressA);
 
