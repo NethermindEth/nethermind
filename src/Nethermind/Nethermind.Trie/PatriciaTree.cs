@@ -161,8 +161,9 @@ namespace Nethermind.Trie
             // Need to be after committer dispose so that it can find it in trie store properly
             RootRef = newRoot;
 
-            // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
-            SetRootHash(RootRef?.Keccak, true);
+            // Update _rootHash without replacing RootRef — the committed tree is already fully resolved
+            // and replacing it via FindCachedOrUnknown would discard the resolved child references.
+            SetRootHash(RootRef?.Keccak, false);
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)

@@ -36,6 +36,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
 
+    private readonly FlatScopeProvider? _scopeProvider;
+
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -44,28 +46,37 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        TrieNode? cachedStateRoot = null,
+        FlatScopeProvider? scopeProvider = null)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
+        _scopeProvider = scopeProvider;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
-        _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
+        StateTrieStoreAdapter stateTrieStore = new(snapshotBundle, _concurrencyQuota);
+        _stateTree = new(stateTrieStore, logManager);
+
+        Hash256 stateRoot = currentStateId.StateRoot.ToCommitment();
+        if (cachedStateRoot is not null && cachedStateRoot.Keccak == stateRoot)
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
+            _stateTree.RootRef = cachedStateRoot;
+            _stateTree.SetRootHash(stateRoot, false);
+        }
+        else
+        {
+            _stateTree.RootHash = stateRoot;
+        }
 
         _warmupStateTree = new(
             new StateTrieStoreWarmerAdapter(snapshotBundle),
             logManager
         )
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
+            RootHash = stateRoot
         };
 
         _configuration = configuration;
@@ -184,6 +195,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         Task.WaitAll(commitTask.AsSpan());
+
+        _scopeProvider?.RecordCommittedStateRoot(_stateTree.RootHash, _stateTree.RootRef);
 
         _storages.Clear();
 
