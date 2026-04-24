@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -49,6 +50,7 @@ public class AdminModuleTests
     private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
     private IJsonSerializer _jsonSerializer = null!;
     private IBlockTree _blockTree = null!;
+    private ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore = null!;
     private IStateReader _stateReader = null!;
     private const string _enodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303";
     private const string _exampleDataDir = "/example/dbdir";
@@ -67,7 +69,9 @@ public class AdminModuleTests
         _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
         _jsonSerializer = new EthereumJsonSerializer();
-        _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(5);
+        _blockTree = blockTreeBuilder.TestObject;
+        _skipIndexedBlockInfoStore = blockTreeBuilder.SkipIndexedBlockInfoStore;
         _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
         IPeerPool peerPool = Substitute.For<IPeerPool>();
@@ -108,6 +112,7 @@ public class AdminModuleTests
 
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
+            _skipIndexedBlockInfoStore,
             _networkConfig,
             peerPool,
             staticNodesManager,
@@ -263,7 +268,7 @@ public class AdminModuleTests
         nodeInfo.Ports.Listener.Should().Be(_networkConfig.P2PPort);
 
         nodeInfo.Protocols.Should().HaveCount(1);
-        nodeInfo.Protocols["eth"].Difficulty.Should().Be(_blockTree.Head?.TotalDifficulty ?? 0);
+        nodeInfo.Protocols["eth"].Difficulty.Should().Be(_blockTree.GetTotalDifficulty(_blockTree.Head?.Header) ?? 0);
         nodeInfo.Protocols["eth"].HeadHash.Should().Be(_blockTree.HeadHash);
         nodeInfo.Protocols["eth"].GenesisHash.Should().Be(_blockTree.GenesisHash);
         nodeInfo.Protocols["eth"].NetworkId.Should().Be(_blockTree.NetworkId);
@@ -301,6 +306,7 @@ public class AdminModuleTests
         // Create the adminRpcModule as IAdminRpcModule (important for RpcTest)
         IAdminRpcModule adminRpcModule = new AdminRpcModule(
             _blockTree,
+            _skipIndexedBlockInfoStore,
             _networkConfig,
             peerPool,
             Substitute.For<IStaticNodesManager>(),
@@ -342,6 +348,7 @@ public class AdminModuleTests
         // Create the adminRpcModule as IAdminRpcModule (important for RpcTest)
         IAdminRpcModule adminRpcModule = new AdminRpcModule(
             _blockTree,
+            _skipIndexedBlockInfoStore,
             _networkConfig,
             peerPool,
             Substitute.For<IStaticNodesManager>(),
@@ -549,13 +556,15 @@ public class AdminModuleTests
 
     private static AdminRpcModule CreateMinimalAdminModule(IPeerPool peerPool)
     {
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = blockTreeBuilder.TestObject;
         NetworkConfig networkConfig = new();
         IStateReader stateReader = Substitute.For<IStateReader>();
         ISubscriptionManager subscriptionManager = Substitute.For<ISubscriptionManager>();
 
         return new AdminRpcModule(
             blockTree,
+            blockTreeBuilder.SkipIndexedBlockInfoStore,
             networkConfig,
             peerPool,
             Substitute.For<IStaticNodesManager>(),

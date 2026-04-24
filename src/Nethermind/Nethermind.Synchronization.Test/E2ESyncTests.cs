@@ -398,7 +398,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
         syncConfig.PivotHash = pivot.Hash!.ToString();
         syncConfig.PivotNumber = pivot.Number;
-        syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
+        syncConfig.PivotTotalDifficulty = (serverBlockTree.GetTotalDifficulty(pivot) ?? UInt256.Zero).ToString();
     }
 
     [Test]

@@ -74,6 +74,9 @@ public interface IDbConfig : IConfig
     string BlockInfosDbRocksDbOptions { get; set; }
     string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
+    string SkipIndexedBlockInfoDbRocksDbOptions { get; set; }
+    string? SkipIndexedBlockInfoDbAdditionalRocksDbOptions { get; set; }
+
     string PendingTxsDbRocksDbOptions { get; set; }
     string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 

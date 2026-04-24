@@ -62,7 +62,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 Author = Address.Zero
             };
 
-            callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
             Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true);

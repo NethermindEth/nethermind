@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -9,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -17,6 +19,17 @@ namespace Nethermind.Era1.Test;
 
 internal class EraReaderTests
 {
+    private static ISkipIndexedBlockInfoStore CreatePassThroughSkipIndexedBlockInfoStore()
+    {
+        ISkipIndexedBlockInfoStore store = Substitute.For<ISkipIndexedBlockInfoStore>();
+        store.GetTotalDifficulty(Arg.Any<BlockHeader?>()).Returns(ci =>
+        {
+            BlockHeader? h = (BlockHeader?)ci[0];
+            return h is null ? null : (UInt256?)BlockHeaderBuilder.DefaultDifficulty;
+        });
+        return store;
+    }
+
     private class PopulatedTestFile : IDisposable
     {
         private TempPath _tmpFile;
@@ -26,7 +39,7 @@ internal class EraReaderTests
         public static async Task<PopulatedTestFile> Create()
         {
             TempPath tmpFile = TempPath.GetTempFile();
-            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
+            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
             List<(Block, TxReceipt[])> addedContents = new();
             HeaderDecoder headerDecoder = new();
 
@@ -42,19 +55,19 @@ internal class EraReaderTests
             await AddBlock(
                 Build.A.Block.WithNumber(0)
                     .WithDifficulty(0)
-                    .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
+                    .TestObject,
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
 
             await AddBlock(
                 Build.A.Block.WithNumber(1)
                     .WithDifficulty(0)
-                    .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
+                    .TestObject,
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
 
             await AddBlock(
                 Build.A.Block.WithNumber(2)
                     .WithDifficulty(0)
-                    .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
+                    .TestObject,
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
 
             await builder.Finalize();
@@ -109,7 +122,7 @@ internal class EraReaderTests
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
         foreach ((Block, TxReceipt[]) tmpFileAddedContent in tmpFile.AddedContents)
         {
-            calculator.Add(tmpFileAddedContent.Item1.Hash!, tmpFileAddedContent.Item1.TotalDifficulty!.Value);
+            calculator.Add(tmpFileAddedContent.Item1.Hash!, BlockHeaderBuilder.DefaultDifficulty);
         }
 
         ValueHash256 root = calculator.ComputeRoot();

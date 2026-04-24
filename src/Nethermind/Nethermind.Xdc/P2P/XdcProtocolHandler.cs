@@ -35,7 +35,7 @@ internal class XdcProtocolHandler(
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth65ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
+    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth65ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, blockTree, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     private readonly ITimeoutCertificateManager _timeoutCertificateManager = timeoutCertificateManager;
     private readonly IVotesManager _votesManager = votesManager;

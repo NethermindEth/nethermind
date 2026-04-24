@@ -22,11 +22,11 @@ internal class EraWriterTests
     {
         using EraWriter sut = CreateSut();
 
-        Block b0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block b2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        Block b0 = Build.A.Block.WithNumber(0).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).TestObject;
 
-        await sut.Add(b0, []);
-        Assert.That(async () => await sut.Add(b2, []), Throws.ArgumentException);
+        await sut.Add(b0, [], BlockHeaderBuilder.DefaultDifficulty);
+        Assert.That(async () => await sut.Add(b2, [], BlockHeaderBuilder.DefaultDifficulty), Throws.ArgumentException);
     }
 
     [Test]
@@ -43,7 +43,7 @@ internal class EraWriterTests
     {
         using EraWriter sut = CreateSut();
 
-        Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty((UInt256?)null).TestObject;
+        Block block = Build.A.Block.WithNumber(0).TestObject;
         Assert.That(async () => await sut.Add(block, []), Throws.ArgumentException);
         return Task.CompletedTask;
     }
@@ -53,11 +53,9 @@ internal class EraWriterTests
     {
         using EraWriter sut = CreateSut();
 
-        Block block = Build.A.Block.WithNumber(0)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        block.Header.TotalDifficulty = 0;
+        Block block = Build.A.Block.WithNumber(0).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
-        Assert.That(async () => await sut.Add(block, []), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(async () => await sut.Add(block, [], UInt256.Zero), Throws.TypeOf<ArgumentOutOfRangeException>());
         return Task.CompletedTask;
     }
 
@@ -76,8 +74,8 @@ internal class EraWriterTests
     {
         using EraWriter sut = CreateSut();
 
-        Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        await sut.Add(block, []);
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        await sut.Add(block, [], BlockHeaderBuilder.DefaultDifficulty);
         await sut.Finalize();
 
         Assert.That(async () => await sut.Add(block, []), Throws.TypeOf<EraException>());
@@ -90,11 +88,11 @@ internal class EraWriterTests
 
         for (int i = 0; i < EraWriter.MaxEraSize; i++)
         {
-            Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-            await sut.Add(block, []);
+            Block block = Build.A.Block.WithNumber(i).TestObject;
+            await sut.Add(block, [], BlockHeaderBuilder.DefaultDifficulty);
         }
 
-        Block overflow = Build.A.Block.WithNumber(EraWriter.MaxEraSize).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        Block overflow = Build.A.Block.WithNumber(EraWriter.MaxEraSize).TestObject;
         Assert.That(async () => await sut.Add(overflow, []), Throws.ArgumentException);
     }
 
@@ -111,8 +109,8 @@ internal class EraWriterTests
     {
         using EraWriter sut = CreateSut();
 
-        Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        await sut.Add(block, []);
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        await sut.Add(block, [], BlockHeaderBuilder.DefaultDifficulty);
         await sut.Finalize();
 
         Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
@@ -127,8 +125,8 @@ internal class EraWriterTests
         {
             Block block = isPostMerge
                 ? Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject
-                : Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-            await sut.Add(block, []);
+                : Build.A.Block.WithNumber(0).TestObject;
+            await sut.Add(block, [], BlockHeaderBuilder.DefaultDifficulty);
             await sut.Finalize();
         }
 
@@ -145,8 +143,8 @@ internal class EraWriterTests
         {
             Block block = isPostMerge
                 ? Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject
-                : Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-            await sut.Add(block, []);
+                : Build.A.Block.WithNumber(0).TestObject;
+            await sut.Add(block, [], BlockHeaderBuilder.DefaultDifficulty);
             await sut.Finalize();
         }
 
@@ -163,8 +161,8 @@ internal class EraWriterTests
         using TempPath tmpFile = TempPath.GetTempFile();
         using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
         {
-            Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-            await sut.Add(block, []);
+            Block block = Build.A.Block.WithNumber(0).TestObject;
+            await sut.Add(block, [], BlockHeaderBuilder.DefaultDifficulty);
             await sut.Finalize();
         }
 

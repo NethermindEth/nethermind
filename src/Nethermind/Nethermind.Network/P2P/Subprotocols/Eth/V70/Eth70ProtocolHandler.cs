@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -38,6 +39,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ISyncServer syncServer,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ITxPool txPool,
+        IBlockTree blockTree,
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
@@ -45,7 +47,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ISpecProvider specProvider,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) => _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(Send);
+            blockTree, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) => _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(Send);
 
     public override string Name => "eth70";
 

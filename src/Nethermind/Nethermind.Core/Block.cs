@@ -104,8 +104,6 @@ public class Block
 
     public UInt256 Difficulty => Header.Difficulty; // do not add setter here
 
-    public UInt256? TotalDifficulty => Header.TotalDifficulty; // do not add setter here
-
     public UInt256 BaseFeePerGas => Header.BaseFeePerGas; // do not add setter here
 
     public ulong? BlobGasUsed => Header.BlobGasUsed; // do not add setter here

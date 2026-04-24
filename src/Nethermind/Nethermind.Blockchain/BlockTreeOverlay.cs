@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain;
 
@@ -280,4 +281,6 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public void DeleteOldBlock(long blockNumber, Hash256 blockHash)
         => _baseTree.DeleteOldBlock(blockNumber, blockHash);
+
+    public UInt256? GetTotalDifficulty(BlockHeader? header) => _overlayTree.GetTotalDifficulty(header) ?? _baseTree.GetTotalDifficulty(header);
 }

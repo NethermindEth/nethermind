@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -17,6 +18,7 @@ public class EraExporter(
     IBlockTree blockTree,
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
+    ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
     IEraConfig eraConfig,
     ILogManager logManager)
     : IEraExporter
@@ -111,7 +113,7 @@ public class EraExporter(
             ValueHash256 sha256;
 
             // Scoped using so the writer is disposed before File.Move — Windows locks open files.
-            using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
+            using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider, skipIndexedBlockInfoStore))
             {
                 for (long y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
                 {
@@ -127,7 +129,7 @@ public class EraExporter(
                         throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
                     }
 
-                    if (block.TotalDifficulty is null)
+                    if (blockTree.GetTotalDifficulty(block.Header) is null)
                     {
                         throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does not have total difficulty specified");
                     }

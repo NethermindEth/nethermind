@@ -27,7 +27,6 @@ using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -94,11 +93,7 @@ public abstract partial class BaseEngineModuleTests
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
         Block? block = parentBlock.TryGetBlock().Block;
-        UInt256? startingTotalDifficulty = block!.IsGenesis
-            ? block.Difficulty
-            : chain.BlockFinder.FindHeader(block.Header.ParentHash!)!.TotalDifficulty;
-        BlockHeader parentHeader = block.Header;
-        parentHeader.TotalDifficulty = startingTotalDifficulty + parentHeader.Difficulty;
+        BlockHeader parentHeader = block!.Header;
         for (int i = 0; i < count; i++)
         {
             ExecutionPayload getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader, parentBlock.Timestamp + slotLength, random ?? TestItem.KeccakA, Address.Zero);
@@ -116,7 +111,6 @@ public abstract partial class BaseEngineModuleTests
             blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
             block = parentBlock.TryGetBlock().Block!;
-            block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }
 

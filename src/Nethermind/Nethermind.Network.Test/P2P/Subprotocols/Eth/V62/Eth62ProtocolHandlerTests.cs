@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -42,6 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private ISession _session = null!;
         private IMessageSerializationService _svc = null!;
         private ISyncServer _syncManager = null!;
+        private IBlockTree _blockTree = null!;
         private ITxPool _transactionPool = null!;
         private Block _genesisBlock = null!;
         private Eth62ProtocolHandler _handler = null!;
@@ -62,6 +64,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.Node.Returns(node);
             _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
+            _blockTree = Substitute.For<IBlockTree>();
             _transactionPool = Substitute.For<ITxPool>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
@@ -81,6 +84,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
+                _blockTree,
                 _gossipPolicy,
                 LimboLogs.Instance,
                 _txGossipPolicy);
@@ -128,6 +132,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
+                _blockTree,
                 _gossipPolicy,
                 LimboLogs.Instance);
 
@@ -137,7 +142,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_broadcast_a_block([Values(SendBlockMode.HashOnly, SendBlockMode.FullBlock, (SendBlockMode)99)] SendBlockMode mode)
         {
-            Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
+            Block block = Build.A.Block.TestObject;
+            _blockTree.GetTotalDifficulty(block.Header).Returns(UInt256.One);
             Type expectedMessageType = mode == SendBlockMode.FullBlock ? typeof(NewBlockMessage) : typeof(NewBlockHashesMessage);
             _handler.NotifyOfNewBlock(block, mode);
             _session.Received().DeliverMessage(Arg.Is<P2PMessage>(m => m.GetType().IsAssignableFrom(expectedMessageType)));
@@ -146,7 +152,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Broadcasts_only_once([Values(SendBlockMode.HashOnly, SendBlockMode.FullBlock)] SendBlockMode mode)
         {
-            Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
+            Block block = Build.A.Block.TestObject;
+            _blockTree.GetTotalDifficulty(block.Header).Returns(UInt256.One);
             _handler.NotifyOfNewBlock(block, mode);
             _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
             _handler.NotifyOfNewBlock(block, SendBlockMode.FullBlock);
@@ -158,7 +165,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Should_not_broadcast_a_block_if_in_PoS()
         {
-            Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
+            Block block = Build.A.Block.TestObject;
             _gossipPolicy.CanGossipBlocks.Returns(false);
             _handler.NotifyOfNewBlock(block, SendBlockMode.FullBlock);
             _session.Received(0).DeliverMessage(Arg.Any<NewBlockMessage>());
@@ -472,6 +479,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _syncManager,
                 taskScheduler,
                 _transactionPool,
+                _blockTree,
                 _gossipPolicy,
                 LimboLogs.Instance,
                 _txGossipPolicy);

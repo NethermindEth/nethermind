@@ -82,7 +82,6 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
 
-        block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -248,7 +247,6 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
 
-        block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
 
@@ -265,7 +263,6 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(nextUnconnectedBlock.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, nextUnconnectedBlock.Header);
 
-        nextUnconnectedBlock.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = nextUnconnectedBlock.Header;
         pointers.BestKnownBeaconBlock = nextUnconnectedBlock.Number;
 
@@ -560,9 +557,8 @@ public partial class EngineModuleTests
 
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
         Block? block = chain.BlockTree.FindBlock(newBlock2.GetOrCalculateHash(), BlockTreeLookupOptions.None);
-        block?.TotalDifficulty.Should().NotBe((UInt256)0);
+        chain.BlockTree.GetTotalDifficulty(block?.Header).Should().NotBe((UInt256)0);
         BlockInfo? blockInfo = chain.BlockTree.FindLevel(newBlock2.Number!)?.BlockInfos[0];
-        blockInfo?.TotalDifficulty.Should().NotBe(0);
         blockInfo?.Metadata.Should().Be(BlockMetadata.None);
     }
 
@@ -703,8 +699,7 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
             .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // complete headers sync
-        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata
-                                                     | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata;
         for (int i = 0; i < requests.Length - 2; i++)
         {
             Block? block = requests[i].TryGetBlock().Block;
@@ -772,8 +767,7 @@ public partial class EngineModuleTests
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // simulate headers sync by inserting 3 headers from pivot backwards
         int filledNum = 3;
-        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata |
-                                                     BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata;
         for (int i = missingBlocks.Length; i-- > missingBlocks.Length - filledNum;)
         {
             chain.BlockTree.Insert(missingBlocks[i].Header, headerOptions);
@@ -845,7 +839,7 @@ public partial class EngineModuleTests
                 FastSync = true,
                 PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
-                PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
+                PivotTotalDifficulty = syncedBlockTree.GetTotalDifficulty(syncedBlockTree.Head?.Header)?.ToString() ?? ""
             };
         }
 
@@ -873,7 +867,7 @@ public partial class EngineModuleTests
                 FastSync = true,
                 PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
-                PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
+                PivotTotalDifficulty = syncedBlockTree.GetTotalDifficulty(syncedBlockTree.Head?.Header)?.ToString() ?? ""
             };
         }
 
@@ -903,7 +897,7 @@ public partial class EngineModuleTests
                 FastSync = true,
                 PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
-                PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
+                PivotTotalDifficulty = syncedBlockTree.GetTotalDifficulty(syncedBlockTree.Head?.Header)?.ToString() ?? ""
             };
         }
 
@@ -941,8 +935,7 @@ public partial class EngineModuleTests
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // fill in beacon headers until fast headers pivot
-        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata |
-                                                     BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata;
         for (int i = requests.Length; i-- > 0;)
         {
             Block? block = requests[i].TryGetBlock().Block;
@@ -1040,7 +1033,7 @@ public partial class EngineModuleTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.HeadHash.Returns(peerHeader.Hash);
         syncPeer.HeadNumber.Returns(peerHeader.Number);
-        syncPeer.TotalDifficulty.Returns(peerHeader.TotalDifficulty ?? 0);
+        syncPeer.TotalDifficulty.Returns(chain.BlockTree.GetTotalDifficulty(peerHeader) ?? 0);
         syncPeer.IsInitialized.Returns(true);
         ISyncPeerPool? syncPeerPool = Substitute.For<ISyncPeerPool>();
         List<PeerInfo> peerInfos = new() { new(syncPeer) };
@@ -1050,6 +1043,7 @@ public partial class EngineModuleTests
             chain.BlockTree,
             new FullStateFinder(chain.BlockTree, chain.StateReader),
             new SyncConfig(),
+            chain.SkipIndexedBlockInfoStore,
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
             Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),

@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -82,7 +83,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
+            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, Substitute.For<ISkipIndexedBlockInfoStore>(), _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
@@ -110,7 +111,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null, bool shouldReceiveResult = true)
         {
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, options);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, Substitute.For<ISkipIndexedBlockInfoStore>(), _logManager, _specProvider, options);
 
             JsonRpcResult jsonRpcResult = new();
 
@@ -340,20 +341,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void NewHeadSubscription_should_send_notifications_when_adding_multiple_blocks_at_once_and_after_reorgs()
         {
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            BlockTree blockTree = Build.A.BlockTree()
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree()
                 .WithoutSettingHead
-                .WithSpecProvider(specProvider)
-                .TestObject;
+                .WithSpecProvider(specProvider);
+            BlockTree blockTree = blockTreeBuilder.TestObject;
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, blockTreeBuilder.SkipIndexedBlockInfoStore, _logManager, specProvider);
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
 
-            Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
-            Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
-            Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(2).WithTotalDifficulty(3L).TestObject;
-            Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
-            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).WithTotalDifficulty(4L).TestObject;
-            Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(5).WithTotalDifficulty(9L).TestObject;
+            Block block0 = Build.A.Block.Genesis.TestObject;
+            Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(1).TestObject;
+            Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(2).TestObject;
+            Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).TestObject;
+            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).TestObject;
+            Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(5).TestObject;
 
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
@@ -381,7 +382,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.Head.Should().Be(block2B);
 
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Last().Response);
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"difficulty\":\"0x5\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x13f51c304a84742a660b0327c003765af51cb255f7cfa8d1d6c41c99c1c3ecd4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xd07062cc54724bd878b1b826bfa59f24cac986a11a151f2239b16f2a4436f9b2\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x9\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"difficulty\":\"0x5\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x13f51c304a84742a660b0327c003765af51cb255f7cfa8d1d6c41c99c1c3ecd4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xd07062cc54724bd878b1b826bfa59f24cac986a11a151f2239b16f2a4436f9b2\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0xf4249\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
             serialized.Should().Be(expectedResult);
         }
 
@@ -390,22 +391,22 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
 
-            BlockTree blockTree = Build.A.BlockTree()
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree()
                 .WithoutSettingHead
-                .WithSpecProvider(specProvider)
-                .TestObject;
+                .WithSpecProvider(specProvider);
+            BlockTree blockTree = blockTreeBuilder.TestObject;
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, blockTreeBuilder.SkipIndexedBlockInfoStore, _logManager, specProvider);
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
 
-            Block block0 = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block0 = Build.A.Block.Genesis.WithDifficulty(0).TestObject;
 
             List<Block> blocks = new() { block0 };
 
             for (int i = 1; i < 21; i++)
             {
                 UInt256 difficulty = (UInt256)i;
-                blocks.Add(Build.A.Block.WithParent(blocks[i - 1]).WithDifficulty(difficulty).WithTotalDifficulty(blocks[i - 1].TotalDifficulty + difficulty).TestObject);
+                blocks.Add(Build.A.Block.WithParent(blocks[i - 1]).WithDifficulty(difficulty).TestObject);
             }
 
             foreach (Block block in blocks)
@@ -942,8 +943,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                         // ReSharper disable once AccessToDisposedClosure
                         jsonRpcDuplexClient: client,
                         blockTree: blockTree,
-                        specProvider: new TestSpecProvider(new ReleaseSpec()),
-                        logManager: LimboLogs.Instance
+                        skipIndexedBlockInfoStore: Substitute.For<ISkipIndexedBlockInfoStore>(),
+                        logManager: LimboLogs.Instance,
+                        specProvider: new TestSpecProvider(new ReleaseSpec())
                     );
 
                 for (int i = 0; i < messages; i++)
@@ -964,13 +966,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void NewHeadSubscription_with_baseFeePerGas_test()
         {
             _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
-            Block block = Build.A.Block.Genesis.WithTotalDifficulty(0L).WithBaseFeePerGas(10000).TestObject;
+            Block block = Build.A.Block.Genesis.WithBaseFeePerGas(10000).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new(block);
             JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out string subscriptionId);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x6f38eb4d3ad3beb1f9c6f870b32b55532f2f490bc33dc72696d6bb22dcef5d09\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x204\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x2710\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x6f38eb4d3ad3beb1f9c6f870b32b55532f2f490bc33dc72696d6bb22dcef5d09\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x204\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x2710\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}";
             serialized.Should().Be(expectedResult);
 
         }

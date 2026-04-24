@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -16,6 +17,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -38,6 +40,7 @@ namespace Nethermind.Synchronization.Blocks
         private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>() ?? throw new InvalidOperationException();
 
         private readonly IBlockTree _blockTree;
+        private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISyncReport _syncReport;
         private readonly IReceiptStorage _receiptStorage;
@@ -75,6 +78,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public BlockDownloader(
             IBlockTree blockTree,
+            ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
             IBlockValidator blockValidator,
             ISyncReport syncReport,
             IReceiptStorage receiptStorage,
@@ -89,6 +93,7 @@ namespace Nethermind.Synchronization.Blocks
             ILogManager logManager)
         {
             _blockTree = blockTree;
+            _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
             _blockValidator = blockValidator;
             _syncReport = syncReport;
             _receiptStorage = receiptStorage;
@@ -587,9 +592,10 @@ namespace Nethermind.Synchronization.Blocks
         {
             void UpdatePeerInfo(PeerInfo peer, BlockHeader header)
             {
-                if (peer?.SyncPeer is not null && header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer) > 0)
+                UInt256? headerTd = _blockTree.GetTotalDifficulty(header);
+                if (peer?.SyncPeer is not null && header.Hash is not null && headerTd is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer, _skipIndexedBlockInfoStore) > 0)
                 {
-                    peer.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
+                    peer.SyncPeer.TotalDifficulty = headerTd.Value;
                     peer.SyncPeer.HeadNumber = header.Number;
                     peer.SyncPeer.HeadHash = header.Hash;
                 }

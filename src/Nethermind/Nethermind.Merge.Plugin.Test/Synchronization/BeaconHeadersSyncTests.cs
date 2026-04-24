@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -62,6 +63,17 @@ public class BeaconHeadersSyncTests
             set => _blockTree = value;
         }
 
+        private ISkipIndexedBlockInfoStore? _skipIndexedBlockInfoStore;
+        public ISkipIndexedBlockInfoStore SkipIndexedBlockInfoStore
+        {
+            get
+            {
+                _ = BlockTree;
+                return _skipIndexedBlockInfoStore ??= _blockTreeBuilder?.SkipIndexedBlockInfoStore ?? Substitute.For<ISkipIndexedBlockInfoStore>();
+            }
+            set => _skipIndexedBlockInfoStore = value;
+        }
+
         private IBeaconPivot? _beaconPivot;
         public IBeaconPivot BeaconPivot
         {
@@ -77,7 +89,7 @@ public class BeaconHeadersSyncTests
 
         private PoSSwitcher? _poSSwitcher;
         public PoSSwitcher PoSSwitcher => _poSSwitcher ??= new(MergeConfig, SyncConfig, MetadataDb, BlockTree,
-                MainnetSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
+                SkipIndexedBlockInfoStore, MainnetSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
 
         private IInvalidChainTracker? _invalidChainTracker;
 
@@ -91,14 +103,13 @@ public class BeaconHeadersSyncTests
         public BeaconHeadersSyncFeed Feed => _feed ??= new BeaconHeadersSyncFeed(
             PoSSwitcher,
             BlockTree,
+            SkipIndexedBlockInfoStore,
             PeerPool,
             SyncConfig,
             Report,
             BeaconPivot,
             InvalidChainTracker,
-            LimboLogs.Instance,
-            ChainLevelInfoRepository,
-            HeaderStore
+            LimboLogs.Instance
         );
 
         private ISyncPeerPool? _peerPool;
@@ -129,7 +140,11 @@ public class BeaconHeadersSyncTests
         }
 
         private IMergeConfig? _mergeConfig;
-        public IMergeConfig MergeConfig => _mergeConfig ??= new MergeConfig();
+        public IMergeConfig MergeConfig
+        {
+            get => _mergeConfig ??= new MergeConfig();
+            set => _mergeConfig = value;
+        }
 
         private IBlockCacheService? _blockCacheService;
         public IBlockCacheService BlockCacheService => _blockCacheService ??= new BlockCacheService();
@@ -281,7 +296,10 @@ public class BeaconHeadersSyncTests
     [Test]
     public void Feed_connect_invalid_chain()
     {
-        Context ctx = new();
+        // TerminalTotalDifficulty=0 classifies the synced chain (difficulty 0 per block after
+        // splitVariant subtracts DefaultDifficulty) as post-merge, so InvalidChainTracker keeps
+        // lastValidHeader instead of resetting to Keccak.Zero.
+        Context ctx = new() { MergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" } };
         IInvalidChainTracker invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(ctx.PoSSwitcher,
             ctx.BlockTree, ctx.BlockCacheService, LimboLogs.Instance);
         ctx.InvalidChainTracker = invalidChainTracker;

@@ -37,9 +37,6 @@ namespace Nethermind.Merge.Plugin
                 );
         }
 
-        protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error) =>
-            poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(header, parent, ref error);
-
         private bool ValidatePoWTotalDifficulty(BlockHeader header)
         {
             if (header.Difficulty == 0)
@@ -82,7 +79,8 @@ namespace Nethermind.Merge.Plugin
 
         private bool ValidateTerminalTotalDifficultyChecks(BlockHeader header, bool isTerminal)
         {
-            if ((header.TotalDifficulty ?? 0) == 0 || poSSwitcher.TerminalTotalDifficulty is null)
+            UInt256? headerTotalDifficulty = _blockTree.GetTotalDifficulty(header);
+            if ((headerTotalDifficulty ?? 0) == 0 || poSSwitcher.TerminalTotalDifficulty is null)
             {
                 return true;
             }
@@ -91,12 +89,12 @@ namespace Nethermind.Merge.Plugin
             bool isPostMerge = header.IsPostMerge;
             if (!isPostMerge && !isTerminal)
             {
-                if (header.TotalDifficulty >= poSSwitcher.TerminalTotalDifficulty)
+                if (headerTotalDifficulty >= poSSwitcher.TerminalTotalDifficulty)
                 {
                     isValid = false;
                 }
             }
-            else if (header.TotalDifficulty < poSSwitcher.TerminalTotalDifficulty)
+            else if (headerTotalDifficulty < poSSwitcher.TerminalTotalDifficulty)
             {
                 isValid = false;
             }
@@ -113,7 +111,7 @@ namespace Nethermind.Merge.Plugin
         {
             if (!Equals(value, expected))
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Full)} - the {name} is incorrect expected {expected}, got {value}. TransitionFinished: {poSSwitcher.TransitionFinished}, TTD: {_specProvider.TerminalTotalDifficulty}, IsTerminal: {header.IsTerminalBlock(_specProvider)}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Full)} - the {name} is incorrect expected {expected}, got {value}. TransitionFinished: {poSSwitcher.TransitionFinished}, TTD: {_specProvider.TerminalTotalDifficulty}");
                 return false;
             }
 

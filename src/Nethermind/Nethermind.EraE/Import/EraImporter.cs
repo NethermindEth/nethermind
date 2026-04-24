@@ -186,21 +186,9 @@ public sealed class EraImporter(
         Block? existing = blockTree.FindBlock(block.Number);
         if (existing is null)
         {
-            BlockTreeInsertHeaderOptions headerOptions = block.Header.IsPostMerge
-                ? BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded
-                : BlockTreeInsertHeaderOptions.None;
-            AddBlockResult result = blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, bodiesWriteFlags: WriteFlags.DisableWAL);
-            if (result is not AddBlockResult.Added and not AddBlockResult.AlreadyKnown)
-                if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number}.");
-        }
-        else if (!block.Header.IsPostMerge && existing.TotalDifficulty is null)
-        {
-            // Block body already exists (e.g. downloaded during snap sync ancient-bodies phase) but
-            // TotalDifficulty was not stored at that time. Re-insert so the block tree stores the
-            // correct TD — either from the era file (if available) or computed via SetTotalDifficulty.
             AddBlockResult result = blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
             if (result is not AddBlockResult.Added and not AddBlockResult.AlreadyKnown)
-                if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number} (TD re-insert).");
+                if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number}.");
         }
         if (!receiptStorage.HasBlock(block.Number, block.Hash!))
             receiptStorage.Insert(block, receipts, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
@@ -208,8 +196,6 @@ public sealed class EraImporter(
 
     private async Task SuggestAndProcessBlock(Block block)
     {
-        block.Header.TotalDifficulty = null;
-
         if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
             throw new EraVerificationException($"Block validation failed: {error}");
 

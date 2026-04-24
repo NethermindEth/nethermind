@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Linq;
 using FastEnumUtility;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Int256;
 using Nethermind.Stats;
 
@@ -23,17 +24,19 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
         private readonly IPeerAllocationStrategy _strategy;
         private readonly TotalDiffSelectionType _selectionType;
+        private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
 
-        public TotalDiffStrategy(IPeerAllocationStrategy strategy, TotalDiffSelectionType selectionType = TotalDiffSelectionType.Better)
+        public TotalDiffStrategy(IPeerAllocationStrategy strategy, ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore, TotalDiffSelectionType selectionType = TotalDiffSelectionType.Better)
         {
             if (!FastEnum.IsDefined(selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int)selectionType, typeof(TotalDiffSelectionType));
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
+            _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore ?? throw new ArgumentNullException(nameof(skipIndexedBlockInfoStore));
             _selectionType = selectionType;
         }
 
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            UInt256? currentDiffOrNull = blockTree.BestSuggestedHeader?.TotalDifficulty;
+            UInt256? currentDiffOrNull = blockTree.GetTotalDifficulty(blockTree.BestSuggestedHeader);
             if (currentDiffOrNull is null)
             {
                 return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);

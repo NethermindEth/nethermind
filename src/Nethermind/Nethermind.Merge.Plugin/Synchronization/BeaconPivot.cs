@@ -113,12 +113,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     return;
                 }
 
-                blockHeader.TotalDifficulty ??= _poSSwitcher.FinalTotalDifficulty;
-
                 // BeaconHeaderSync actually starts from the parent of the pivot. So we need to manually insert
                 // the pivot itself here.
-                _blockTree.Insert(blockHeader,
-                    BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+                _blockTree.Insert(blockHeader, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
                 CurrentBeaconPivot = blockHeader;
                 _blockTree.LowestInsertedBeaconHeader = blockHeader;
                 ShouldForceStartNewSync = false;

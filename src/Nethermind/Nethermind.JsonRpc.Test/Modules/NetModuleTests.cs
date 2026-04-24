@@ -4,6 +4,7 @@
 using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -52,6 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IWorldStateManager>(),
                 Substitute.For<IReadOnlyKeyValueStore>(),
                 blockTree,
+                Substitute.For<ISkipIndexedBlockInfoStore>(),
                 Substitute.For<IReceiptFinder>(),
                 Substitute.For<IBlockValidator>(),
                 Substitute.For<ISealValidator>(),

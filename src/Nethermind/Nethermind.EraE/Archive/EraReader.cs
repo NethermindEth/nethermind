@@ -34,7 +34,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
     {
         for (long blockNumber = e2.First; blockNumber <= e2.LastBlock; blockNumber++)
         {
-            (Block block, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, cancellation);
+            (Block block, TxReceipt[] receipts, UInt256 _) = await ReadBlockAndReceipts(blockNumber, cancellation);
             yield return (block, receipts);
         }
     }
@@ -46,7 +46,8 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         if (number > e2.LastBlock)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot exceed last block {e2.LastBlock}.");
 
-        return await ReadBlockAndReceipts(number, cancellation);
+        (Block block, TxReceipt[] receipts, UInt256 _) = await ReadBlockAndReceipts(number, cancellation);
+        return (block, receipts);
     }
 
     public ValueHash256 ReadAccumulatorRoot()
@@ -96,7 +97,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
             {
                 while (blockNumbers.TryDequeue(out long blockNumber))
                 {
-                    (Block block, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, cancellation);
+                    (Block block, TxReceipt[] receipts, UInt256 totalDifficulty) = await ReadBlockAndReceipts(blockNumber, cancellation);
 
                     if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
                         throw new EraVerificationException($"Mismatched block body against header: {error}. Block {blockNumber}.");
@@ -110,7 +111,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                     int idx = (int)(block.Header.Number - startBlock);
                     blockMeta[idx] = (
                         block.Header.Hash!,
-                        block.TotalDifficulty ?? UInt256.Zero,
+                        totalDifficulty,
                         !block.Header.IsPostMerge);
                 }
             }, cancellation);
@@ -148,7 +149,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
 
     public void Dispose() => e2.Dispose();
 
-    private async Task<(Block, TxReceipt[])> ReadBlockAndReceipts(long blockNumber, CancellationToken cancellation)
+    private async Task<(Block, TxReceipt[], UInt256)> ReadBlockAndReceipts(long blockNumber, CancellationToken cancellation)
     {
         long headerPos = e2.HeaderOffset(blockNumber);
         (BlockHeader header, _) = await e2.ReadSnappyCompressedEntryAndDecode(
@@ -166,6 +167,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         (TxReceipt[] receipts, _) = await e2.ReadSnappyCompressedEntryAndDecode(
             receiptsPos, _slimReceiptDecoder.Decode, EntryTypes.CompressedSlimReceipts, cancellation);
 
+        UInt256 td = UInt256.Zero;
         if (e2.HasTotalDifficulty)
         {
             long tdPos = e2.TotalDifficultyOffset(blockNumber);
@@ -173,12 +175,11 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                 tdPos,
                 static buf => new UInt256(buf.Span, isBigEndian: false),
                 EntryTypes.TotalDifficulty,
-                out UInt256 td);
-            header.TotalDifficulty = td;
+                out td);
         }
 
         // Bloom is not stored in slim receipts; TxReceipt.Bloom auto-calculates from Logs on first access.
-        return (new Block(header, body), receipts);
+        return (new Block(header, body), receipts, td);
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)

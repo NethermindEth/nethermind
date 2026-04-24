@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
 using Nethermind.Consensus.Stateless;
@@ -106,6 +107,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
     private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx) => new AdminRpcModule(
             ctx.Resolve<IBlockTree>(),
+            ctx.Resolve<ISkipIndexedBlockInfoStore>(),
             ctx.Resolve<INetworkConfig>(),
             ctx.Resolve<IPeerPool>(),
             ctx.Resolve<IStaticNodesManager>(),

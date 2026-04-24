@@ -62,9 +62,6 @@ public static class BlockErrorMessages
     public const string InvalidAncestor =
         "InvalidAncestor: No valid ancestors could be found.";
 
-    public const string InvalidTotalDifficulty =
-        "InvalidTotalDifficulty: Could not be validated.";
-
     public const string InvalidSealParameters =
         "InvalidSealParameters: Could not be validated.";
 

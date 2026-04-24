@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -14,10 +14,8 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -29,14 +27,13 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 public sealed class BeaconHeadersSyncFeed(
     IPoSSwitcher poSSwitcher,
     IBlockTree? blockTree,
+    ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
     ISyncPeerPool? syncPeerPool,
     ISyncConfig? syncConfig,
     ISyncReport? syncReport,
     IPivot? pivot,
     IInvalidChainTracker invalidChainTracker,
-    ILogManager logManager,
-    IChainLevelInfoRepository? chainLevelInfoRepository,
-    IHeaderStore? headerStore) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, chainLevelInfoRepository, headerStore, alwaysStartHeaderSync: true)
+    ILogManager logManager) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, skipIndexedBlockInfoStore: skipIndexedBlockInfoStore, alwaysStartHeaderSync: true)
 {
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
@@ -82,7 +79,7 @@ public sealed class BeaconHeadersSyncFeed(
 
         // First, we assume pivot
         _pivotNumber = ExpectedPivotNumber;
-        _expectedNextHeader = new NextHeader(ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
+        _expectedNextHeaderHash = ExpectedPivotHash;
 
         long startNumber = _pivotNumber;
 
@@ -173,12 +170,6 @@ public sealed class BeaconHeadersSyncFeed(
             lowestIndex = i;
         }
 
-        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
-        if (_expectedNextHeader.TotalDifficulty is null)
-        {
-            headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
-        }
-
         headersToAdd = headersToAdd.Slice(lowestIndex);
 
         if (_logger.IsTrace)
@@ -188,7 +179,7 @@ public sealed class BeaconHeadersSyncFeed(
         AddBlockResult insertOutcome = AddBlockResult.Added;
         try
         {
-            _blockTree.BulkInsertHeader(headersToAdd, headerOptions);
+            _blockTree.BulkInsertHeader(headersToAdd, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
         }
         finally
         {
@@ -206,10 +197,4 @@ public sealed class BeaconHeadersSyncFeed(
 
         if (mergeWhenInserted) _chainMerged = true;
     }
-
-    protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header) =>
-        // Beacon header don't seem to care about TD.
-        header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
-            ? header.TotalDifficulty - header.Difficulty
-            : null;
 }

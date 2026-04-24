@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -162,6 +163,11 @@ namespace Nethermind.Blockchain
         void DeleteOldBlock(long blockNumber, Hash256 blockHash);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
+
+        /// <summary>
+        /// Gets the total difficulty for a block from the cumulative store.
+        /// </summary>
+        UInt256? GetTotalDifficulty(BlockHeader? header) => null;
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;

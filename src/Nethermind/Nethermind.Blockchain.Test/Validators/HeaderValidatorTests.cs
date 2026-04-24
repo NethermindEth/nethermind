@@ -270,49 +270,6 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_total_difficulty_null_we_should_skip_total_difficulty_validation()
-    {
-        _block.Header.Difficulty = 1;
-        _block.Header.TotalDifficulty = null;
-        _block.Header.Hash = _block.CalculateHash();
-
-        HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
-        bool result = validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.True);
-    }
-
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(0, 0, true)]
-    [TestCase(0, null, false)]
-    [TestCase(0, 1, false)]
-    [TestCase(1, 0, false)]
-    [TestCase(1, null, false)]
-    [TestCase(1, 1, false)]
-    public void When_total_difficulty_zero_we_should_skip_total_difficulty_validation_depending_on_ttd_and_genesis_td(
-            long genesisTd, long? ttd, bool expectedResult)
-    {
-        _block.Header.Difficulty = 1;
-        _block.Header.TotalDifficulty = 0;
-        _block.Header.Hash = _block.CalculateHash();
-
-        {
-            _blockTree = Build.A.BlockTree()
-                .WithSpecProvider(FrontierSpecProvider.Instance)
-                .WithoutSettingHead
-                .TestObject;
-
-            Block genesis = Build.A.Block.WithDifficulty((UInt256)genesisTd).TestObject;
-            _blockTree.SuggestBlock(genesis);
-        }
-
-        _specProvider.UpdateMergeTransitionInfo(null, (UInt256?)ttd);
-
-        HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
-        bool result = validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.EqualTo(expectedResult));
-    }
-
     [Test]
     public void Validate_HashIsWrong_ErrorMessageIsSet()
     {

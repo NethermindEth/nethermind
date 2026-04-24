@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -78,6 +79,7 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
+            Substitute.For<IBlockTree>(),
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
@@ -258,6 +260,7 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
+            Substitute.For<IBlockTree>(),
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,

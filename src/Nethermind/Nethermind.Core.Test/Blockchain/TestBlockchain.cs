@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -67,6 +68,8 @@ public class TestBlockchain : IDisposable
     public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
 
     public IBlockTree BlockTree => _fromContainer.BlockTree;
+
+    public ISkipIndexedBlockInfoStore SkipIndexedBlockInfoStore => _fromContainer.SkipIndexedBlockInfoStore;
 
     public IBlockFinder BlockFinder => _fromContainer.BlockFinder;
 
@@ -153,7 +156,8 @@ public class TestBlockchain : IDisposable
         Lazy<IManualBlockProductionTrigger> blockProductionTrigger,
         Lazy<IShareableTxProcessorSource> shareableTxProcessorSource,
         Lazy<ISealer> sealer,
-        Lazy<IForkInfo> forkInfo
+        Lazy<IForkInfo> forkInfo,
+        Lazy<ISkipIndexedBlockInfoStore> skipIndexedBlockInfoStore
     )
     {
         public IStateReader StateReader => stateReader.Value;
@@ -184,6 +188,7 @@ public class TestBlockchain : IDisposable
         public IShareableTxProcessorSource ShareableTxProcessorSource => shareableTxProcessorSource.Value;
         public ISealer Sealer => sealer.Value;
         public IForkInfo ForkInfo => forkInfo.Value;
+        public ISkipIndexedBlockInfoStore SkipIndexedBlockInfoStore => skipIndexedBlockInfoStore.Value;
     }
 
     public class Configuration

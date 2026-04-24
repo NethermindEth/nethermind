@@ -123,6 +123,7 @@ public class ReorgTests
                 specProvider,
                 LimboLogs.Instance),
             stateReader,
+            blockTreeBuilder.SkipIndexedBlockInfoStore,
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,
             Substitute.For<IProcessingStats>());
@@ -137,12 +138,12 @@ public class ReorgTests
     {
         List<Block> events = new();
 
-        Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
-        Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
-        Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(1).WithTotalDifficulty(3L).TestObject;
-        Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
-        Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).WithTotalDifficulty(5L).TestObject;
-        Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(6).WithTotalDifficulty(11L).TestObject;
+        Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).TestObject;
+        Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(1).TestObject;
+        Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).TestObject;
+        Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).TestObject;
+        Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(6).TestObject;
 
         _blockTree.BlockAddedToMain += (_, args) =>
         {

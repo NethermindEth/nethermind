@@ -273,11 +273,7 @@ public partial class EngineModuleTests
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
         Block? block = parentBlock.TryGetBlock().Block;
-        UInt256? startingTotalDifficulty = block!.IsGenesis
-            ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
-        parentHeader.TotalDifficulty = startingTotalDifficulty +
-                                       parentHeader.Difficulty;
         for (int i = 0; i < count; i++)
         {
             ExecutionPayloadV3? getPayloadResult = await BuildAndGetPayloadOnBranchV4(rpc, chain, parentHeader,
@@ -297,7 +293,6 @@ public partial class EngineModuleTests
             blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
             block = parentBlock.TryGetBlock().Block!;
-            block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }
 

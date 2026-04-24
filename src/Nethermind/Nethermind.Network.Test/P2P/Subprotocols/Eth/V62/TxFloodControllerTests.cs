@@ -3,6 +3,7 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -39,6 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Substitute.For<ISyncServer>(),
                 RunImmediatelyScheduler.Instance,
                 Substitute.For<ITxPool>(),
+                Substitute.For<IBlockTree>(),
                 Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);
 

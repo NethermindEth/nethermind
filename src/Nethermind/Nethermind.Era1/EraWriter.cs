@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
@@ -26,23 +28,25 @@ public class EraWriter : IDisposable
     private readonly E2StoreWriter _e2StoreWriter;
     private readonly AccumulatorCalculator _accumulatorCalculator;
     private readonly ISpecProvider _specProvider;
+    private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
     private bool _finalized;
 
-    public EraWriter(string path, ISpecProvider specProvider)
-        : this(new E2StoreWriter(new FileStream(path, FileMode.Create)), specProvider)
+    public EraWriter(string path, ISpecProvider specProvider, ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore)
+        : this(new E2StoreWriter(new FileStream(path, FileMode.Create)), specProvider, skipIndexedBlockInfoStore)
     {
     }
 
-    public EraWriter(Stream outputStream, ISpecProvider specProvider)
-        : this(new E2StoreWriter(outputStream), specProvider)
+    public EraWriter(Stream outputStream, ISpecProvider specProvider, ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore)
+        : this(new E2StoreWriter(outputStream), specProvider, skipIndexedBlockInfoStore)
     {
     }
 
-    private EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider)
+    private EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider, ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore)
     {
         _e2StoreWriter = e2StoreWriter;
         _accumulatorCalculator = new();
         _specProvider = specProvider;
+        _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
         _entryIndexes = new(MaxEra1Size);
     }
 
@@ -66,11 +70,12 @@ public class EraWriter : IDisposable
             _firstBlock = false;
         }
 
-        if (block.TotalDifficulty < block.Difficulty)
-            throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), $"Cannot be less than the block difficulty.");
+        UInt256? totalDifficulty = _skipIndexedBlockInfoStore.GetTotalDifficulty(block.Header);
+        if (totalDifficulty < block.Difficulty)
+            throw new ArgumentOutOfRangeException(nameof(totalDifficulty), $"Cannot be less than the block difficulty.");
 
         _entryIndexes.Add(_totalWritten);
-        _accumulatorCalculator.Add(block.Hash, block.TotalDifficulty!.Value);
+        _accumulatorCalculator.Add(block.Hash, totalDifficulty!.Value);
 
         RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
@@ -89,7 +94,7 @@ public class EraWriter : IDisposable
             _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);
         }
 
-        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
+        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, totalDifficulty!.Value.ToLittleEndian(), cancellation);
     }
 
     public async Task<(ValueHash256, ValueHash256)> Finalize(CancellationToken cancellation = default)

@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.EraE.Proofs;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -41,9 +42,9 @@ public class BlocksRootContextTests
     public void ProcessBlock_InPreMergeContext_SetsPopulated()
     {
         using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
-        Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(1L).TestObject;
+        Block block = Build.A.Block.WithNumber(0).TestObject;
 
-        sut.ProcessBlock(block);
+        sut.ProcessBlock(block, UInt256.One);
 
         sut.Populated.Should().BeTrue();
     }
@@ -86,8 +87,8 @@ public class BlocksRootContextTests
     public void FinalizeContext_InPreMergeContext_SetsAccumulatorRoot()
     {
         using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
-        Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(1L).TestObject;
-        sut.ProcessBlock(block);
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        sut.ProcessBlock(block, UInt256.One);
 
         sut.FinalizeContext();
 
@@ -99,7 +100,7 @@ public class BlocksRootContextTests
     {
         using BlocksRootContext sut = CreateHistoricalRootsContext();
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ParisBlockNumber + 1).TestObject;
-        sut.ProcessBlock(block,
+        sut.ProcessBlock(block, UInt256.Zero,
             new ValueHash256("0xaabbccdd00000000000000000000000000000000000000000000000000000000"),
             new ValueHash256("0x1122334400000000000000000000000000000000000000000000000000000000"));
 
@@ -113,7 +114,7 @@ public class BlocksRootContextTests
     {
         using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp, MainnetSpecProvider.Instance);
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ParisBlockNumber + 1).TestObject;
-        sut.ProcessBlock(block,
+        sut.ProcessBlock(block, UInt256.Zero,
             new ValueHash256("0xaabbccdd00000000000000000000000000000000000000000000000000000000"),
             new ValueHash256("0x1122334400000000000000000000000000000000000000000000000000000000"));
 

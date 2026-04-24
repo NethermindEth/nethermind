@@ -101,7 +101,7 @@ namespace Nethermind.AuRa.Test
                     .WithAuthor(TestItem.AddressD)
                     .WithParent(parent)
                     .WithTimestamp(parent.Timestamp + 12)
-                    .WithTotalDifficulty(0).TestObject;
+                    .TestObject;
                 header.IsPostMerge = isPostMerge;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
                 BlockHeader res = auRaBlockProcessor.Process(

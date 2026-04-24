@@ -169,7 +169,6 @@ namespace Nethermind.Synchronization.Test
 
             Block block = Build.A.Block
                 .WithParent(_remoteBlockTree.Head!)
-                .WithTotalDifficulty((_remoteBlockTree.Head!.TotalDifficulty ?? 0) + 1)
                 .TestObject;
             SyncServer.AddNewBlock(block, peer);
 
@@ -204,6 +203,12 @@ namespace Nethermind.Synchronization.Test
 
             splitBlockChild.Header.Should().BeEquivalentTo(miner1Tree.BestSuggestedHeader, "split as expected");
 
+            // Stand-in for the ETH NewBlock gossip envelope: tell the peer mock about the
+            // advertised head + TD before notifying SyncServer (previously the TD rode on
+            // block.Header.TotalDifficulty, which no longer exists).
+            miner1.HeadNumber = splitBlockChild.Number;
+            miner1.HeadHash = splitBlockChild.Hash!;
+            miner1.TotalDifficulty = miner1Tree.GetTotalDifficulty(splitBlockChild.Header);
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After((int)_standardTimeoutUnit.TotalMilliseconds, 100));
@@ -226,7 +231,11 @@ namespace Nethermind.Synchronization.Test
 
             Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.Not.EqualTo(miner1Tree.BestSuggestedHeader.Hash).After((int)_standardTimeoutUnit.TotalMilliseconds, 100), "client does not agree with miner after split");
 
-            SyncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock()!, miner1);
+            Block newHeadBlock = miner1Tree.RetrieveHeadBlock()!;
+            miner1.HeadNumber = newHeadBlock.Number;
+            miner1.HeadHash = newHeadBlock.Hash!;
+            miner1.TotalDifficulty = miner1Tree.GetTotalDifficulty(newHeadBlock.Header);
+            SyncServer.AddNewBlock(newHeadBlock, miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader.Hash).After((int)_standardTimeoutUnit.TotalMilliseconds, 100), "client agrees with miner after split");
         }

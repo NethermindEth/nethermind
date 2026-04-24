@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -28,6 +29,7 @@ public class RegisterRpcModules(
     IJsonRpcConfig jsonRpcConfig,
     ISubscriptionFactory subscriptionFactory,
     IBlockTree blockTree,
+    ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
     ISpecProvider specProvider,
     IReceiptMonitor receiptMonitor,
     FilterStore filterStore,
@@ -54,6 +56,7 @@ public class RegisterRpcModules(
         // Register the standard subscription types in the dictionary
         subscriptionFactory.RegisterStandardSubscriptions(
             blockTree,
+            skipIndexedBlockInfoStore,
             logManager,
             specProvider,
             receiptMonitor,

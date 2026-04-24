@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -21,6 +22,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     public class MergeBlockDownloader(
         IBeaconPivot beaconPivot,
         IBlockTree blockTree,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         IBlockValidator blockValidator,
         ISyncReport syncReport,
         IReceiptStorage receiptStorage,
@@ -35,6 +37,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         ILogManager logManager)
         : BlockDownloader(
             blockTree,
+            skipIndexedBlockInfoStore,
             blockValidator,
             syncReport,
             receiptStorage,

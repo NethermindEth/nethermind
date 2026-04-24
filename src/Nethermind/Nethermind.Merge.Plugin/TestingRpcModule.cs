@@ -211,7 +211,6 @@ public class TestingRpcModule(
 
         UInt256 difficulty = UInt256.Zero;
         header.Difficulty = difficulty;
-        header.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
         header.IsPostMerge = true;
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);

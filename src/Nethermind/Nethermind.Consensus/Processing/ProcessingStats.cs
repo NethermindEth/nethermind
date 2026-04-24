@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -39,6 +40,7 @@ namespace Nethermind.Consensus.Processing
         private readonly Action<BlockData> _executeFromThreadPool;
         public event EventHandler<BlockStatistics>? NewProcessingStatistics;
         protected readonly IStateReader _stateReader;
+        private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
         protected readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
 
@@ -69,11 +71,12 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogManager logManager)
+        public ProcessingStats(IStateReader stateReader, ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore, ILogManager logManager)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
+            _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
             _logger = logManager.GetClassLogger<ProcessingStats>();
 
             // the line below just to avoid compilation errors
@@ -188,7 +191,7 @@ namespace Nethermind.Consensus.Processing
             Metrics.BlockchainHeight = blockNumber;
 
             Metrics.Transactions += txs.Length;
-            Metrics.TotalDifficulty = block.TotalDifficulty ?? UInt256.Zero;
+            Metrics.TotalDifficulty = _skipIndexedBlockInfoStore.GetTotalDifficulty(block.Header) ?? UInt256.Zero;
             Metrics.LastDifficulty = block.Difficulty;
             Metrics.GasUsed = block.GasUsed;
             Metrics.GasLimit = block.GasLimit;

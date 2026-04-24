@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -24,6 +25,7 @@ namespace Nethermind.Synchronization.Blocks;
 public class PowForwardHeaderProvider(
     ISealValidator sealValidator,
     IBlockTree blockTree,
+    ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
     ISyncPeerPool syncPeerPool,
     ISyncReport syncReport,
     ILogManager logManager
@@ -40,7 +42,7 @@ public class PowForwardHeaderProvider(
     private const int MinCachedHeaderBatchSize = 32;
 
     private IPeerAllocationStrategy _bestPeerAllocationStrategy =
-        new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), skipIndexedBlockInfoStore, TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
 
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
@@ -300,7 +302,7 @@ public class PowForwardHeaderProvider(
         cancellation.ThrowIfCancellationRequested();
     }
 
-    protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty ?? UInt256.Zero) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero);
+    protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty ?? UInt256.Zero) > (blockTree.GetTotalDifficulty(blockTree.BestSuggestedHeader) ?? UInt256.Zero);
 
     protected virtual IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers) => headers;
 }

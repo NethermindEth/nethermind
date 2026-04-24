@@ -52,14 +52,14 @@ public sealed class BlocksRootContext : IDisposable
         AccumulatorType = GetAccumulatorType(forkActivation, specProvider);
     }
 
-    public void ProcessBlock(Block block, ValueHash256? beaconBlockRoot = null, ValueHash256? stateRoot = null)
+    public void ProcessBlock(Block block, UInt256 totalDifficulty, ValueHash256? beaconBlockRoot = null, ValueHash256? stateRoot = null)
     {
         switch (AccumulatorType)
         {
             case AccumulatorType.HistoricalHashesAccumulator:
                 // Only track pre-merge blocks in the accumulator.
                 if (!block.Header.IsPostMerge)
-                    _blockHashes.Add((block.Header.Hash!, block.TotalDifficulty!.Value));
+                    _blockHashes.Add((block.Header.Hash!, totalDifficulty));
                 break;
 
             case AccumulatorType.HistoricalRoots:

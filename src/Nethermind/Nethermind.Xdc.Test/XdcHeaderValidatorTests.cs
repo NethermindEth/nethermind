@@ -59,15 +59,6 @@ public class XdcHeaderValidatorTests
         blockHeaderBuilder.WithUnclesHash(Hash256.FromBytesWithPadding([0x01]));
         yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid uncles hash");
 
-        blockHeaderBuilder = CreateValidHeader();
-        blockHeaderBuilder.WithDifficulty(2);
-        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid difficulty");
-
-        blockHeaderBuilder = CreateValidHeader();
-        blockHeaderBuilder.WithDifficulty(2);
-        blockHeaderBuilder.WithTotalDifficulty(1);
-        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid total difficulty");
-
         static XdcBlockHeaderBuilder CreateValidHeader()
         {
             XdcBlockHeaderBuilder blockHeaderBuilder = (XdcBlockHeaderBuilder)Build.A

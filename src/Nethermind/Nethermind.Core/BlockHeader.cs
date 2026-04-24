@@ -68,7 +68,6 @@ public class BlockHeader
     public Hash256? Random => MixHash;
     public ulong Nonce { get; set; }
     public Hash256? Hash { get; set; }
-    public UInt256? TotalDifficulty { get; set; }
     public byte[]? AuRaSignature { get; set; }
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas;
@@ -121,7 +120,6 @@ public class BlockHeader
             builder.AppendLine($"{indent}ExcessBlobGas: {ExcessBlobGas}");
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
-        builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
         if (RequestsHash is not null)
         {
             builder.AppendLine($"{indent}RequestsHash: {RequestsHash}");

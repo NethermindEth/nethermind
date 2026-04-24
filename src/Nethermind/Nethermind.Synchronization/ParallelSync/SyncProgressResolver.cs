@@ -4,6 +4,7 @@
 using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,6 +18,7 @@ namespace Nethermind.Synchronization.ParallelSync
         IBlockTree blockTree,
         IFullStateFinder fullStateFinder,
         ISyncConfig syncConfig,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
         ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
         ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
@@ -26,13 +28,14 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         private readonly ISyncConfig _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         private readonly IFullStateFinder _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
+        private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
 
         public long FindBestFullState() => _fullStateFinder.FindBestFullState();
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
         public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
-        public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
+        public UInt256 ChainDifficulty => GetTdForHeader(_blockTree.BestSuggestedBody?.Header) ?? UInt256.Zero;
 
         public UInt256? GetTotalDifficulty(Hash256 blockHash)
         {
@@ -41,19 +44,21 @@ namespace Nethermind.Synchronization.ParallelSync
             if (best is not null)
             {
                 if (best.Hash == blockHash)
-                {
-                    return best.TotalDifficulty;
-                }
+                    return GetTdForHeader(best);
 
                 if (best.ParentHash == blockHash)
                 {
-                    return best.TotalDifficulty - best.Difficulty;
+                    UInt256? bestTd = GetTdForHeader(best);
+                    return bestTd is not null ? bestTd.Value - best.Difficulty : null;
                 }
             }
 
-            UInt256? totalDifficulty = _blockTree.FindHeader(blockHash)?.TotalDifficulty;
+            BlockHeader? header = _blockTree.FindHeader(blockHash);
+            UInt256? totalDifficulty = GetTdForHeader(header);
             return totalDifficulty?.IsZero == true ? null : totalDifficulty;
         }
+
+        private UInt256? GetTdForHeader(BlockHeader? header) => blockTree.GetTotalDifficulty(header);
 
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || !_syncConfig.DownloadHeadersInFastSync || headersSyncFeed.IsFinished;
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || bodiesSyncFeed.IsFinished;

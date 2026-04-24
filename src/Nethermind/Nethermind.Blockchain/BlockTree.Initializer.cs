@@ -363,7 +363,6 @@ public partial class BlockTree
             throw new InvalidDataException("Head block data missing from chain info");
         }
 
-        headBlock.Header.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
         Head = headBlock;
     }
 

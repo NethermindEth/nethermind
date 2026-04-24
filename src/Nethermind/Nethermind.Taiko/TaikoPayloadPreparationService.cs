@@ -129,8 +129,7 @@ public class TaikoPayloadPreparationService(
             MixHash = payloadAttributes.BlockMetadata.MixHash,
             ParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot,
             BaseFeePerGas = payloadAttributes.BaseFeePerGas,
-            Difficulty = UInt256.Zero,
-            TotalDifficulty = UInt256.Zero
+            Difficulty = UInt256.Zero
         };
 
         return header;

@@ -243,16 +243,5 @@ public class TaikoHeaderValidator(
         return false;
     }
 
-    protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
-    {
-        if (header.Difficulty != 0 || header.TotalDifficulty != 0 && header.TotalDifficulty != null)
-        {
-            error = BlockErrorMessages.InvalidTotalDifficulty;
-            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - incorrect difficulty or total difficulty");
-            return false;
-        }
-        return true;
-    }
-
     protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true; // not validated in taiko-geth
 }

@@ -7,6 +7,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
@@ -36,6 +37,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
+            .AddSingleton<ITotalDifficultyAnchor, SyncPivotTotalDifficultyAnchor>()
+            .AddSingleton<ISkipIndexedBlockInfoStore, SkipIndexedBlockInfoStore>()
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>

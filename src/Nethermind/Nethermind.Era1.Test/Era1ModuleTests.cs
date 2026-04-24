@@ -6,6 +6,7 @@ using Autofac;
 using FluentAssertions;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -26,20 +27,21 @@ namespace Nethermind.Era1.Test;
 
 public class Era1ModuleTests
 {
+    private static ISkipIndexedBlockInfoStore CreatePassThroughSkipIndexedBlockInfoStore() =>
+        StaticTotalDifficultySkipIndexedBlockInfoStore.Instance;
+
     [Test]
     public async Task ExportAndImportTwoBlocksAndReceipts()
     {
         using TempPath tmpFile = TempPath.GetTempFile();
         Block block0 = Build.A.Block
             .WithNumber(0)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA)
                 .WithSenderAddress(null)
                 .To(TestItem.GetRandomAddress()).TestObject)
             .TestObject;
         Block block1 = Build.A.Block
             .WithNumber(1)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB)
                 .WithSenderAddress(null)
                 .To(TestItem.GetRandomAddress()).TestObject).TestObject;
@@ -50,7 +52,7 @@ public class Era1ModuleTests
             .WithAllFieldsFilled
             .TestObject;
 
-        using (EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
+        using (EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore()))
         {
             await builder.Add(block0, new[] { receipt0 });
             await builder.Add(block1, new[] { receipt1 });
@@ -72,8 +74,6 @@ public class Era1ModuleTests
         ImportedReceipts0.Should().BeEquivalentTo(ImportedReceipts0);
         ImportedReceipts1.Should().BeEquivalentTo(ImportedReceipts1);
 
-        Assert.That(importedBlock0.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
-        Assert.That(importedBlock1.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
     }
 
     [TestCase("mainnet")]
@@ -96,7 +96,7 @@ public class Era1ModuleTests
 
             using TempPath tmpFile = TempPath.GetTempFile();
             {
-                using EraWriter builder = new(tmpFile.Path, specProvider);
+                using EraWriter builder = new(tmpFile.Path, specProvider, CreatePassThroughSkipIndexedBlockInfoStore());
 
                 using EraReader eraEnumerator = new(era);
                 await foreach ((Block b, TxReceipt[] r) in eraEnumerator)
@@ -155,14 +155,13 @@ public class Era1ModuleTests
             }
             blocks.Add(Build.A.Block.WithUncles(uncle)
                 .WithBaseFeePerGas(1)
-                .WithTotalDifficulty(blocks[i].TotalDifficulty + blocks[i].Difficulty)
                 .WithTransactions(transactions)
                 .WithParent(blocks[i]).TestObject);
         }
 
         blocks = testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
         {
-            using EraWriter builder = new(tmpFile.Path, testBlockchain.SpecProvider);
+            using EraWriter builder = new(tmpFile.Path, testBlockchain.SpecProvider, CreatePassThroughSkipIndexedBlockInfoStore());
 
             foreach (Block block in blocks)
             {
@@ -193,7 +192,7 @@ public class Era1ModuleTests
         await testBlockchain.BuildSomeBlocks(numOfBlocks);
 
         {
-            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
+            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
             foreach ((Block, TxReceipt[]) blockAndReceipt in toAddBlocks)
             {
                 await builder.Add(blockAndReceipt.Item1, blockAndReceipt.Item2);
@@ -257,7 +256,6 @@ public class Era1ModuleTests
             blocks.Add(Build.A.Block.WithUncles(Build.A.Block.TestObject)
                 .WithBaseFeePerGas(1)
                 .WithWithdrawals(100)
-                .WithTotalDifficulty(1000000L + blocks[i].Difficulty)
                 .WithTransactions(transactions)
                 .WithParent(blocks[i])
                 .WithGasLimit(30_000_000).TestObject);
@@ -266,7 +264,7 @@ public class Era1ModuleTests
         testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
         {
-            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
+            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
             foreach (Block block in blocks)
             {
                 foreach (Transaction item in block.Transactions)

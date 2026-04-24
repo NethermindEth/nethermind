@@ -180,7 +180,7 @@ namespace Nethermind.EthStats.Integrations
                     block.GasUsed,
                     block.GasLimit,
                     block.Difficulty.ToString(),
-                    (block.TotalDifficulty ?? 0).ToString(),
+                    (_blockTree.GetTotalDifficulty(block.Header) ?? 0).ToString(),
                     block.Transactions.Select(static t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
                     (block.TxRoot ?? Keccak.Zero).ToString(),
                     (block.StateRoot ?? Keccak.Zero).ToString(),

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -208,5 +209,7 @@ namespace Nethermind.Blockchain
         public void NewOldestBlock(long oldestBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(NewOldestBlock)} calls");
 
         public void DeleteOldBlock(long blockNumber, Hash256 blockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlock)} calls");
+
+        public UInt256? GetTotalDifficulty(BlockHeader? header) => _wrapped.GetTotalDifficulty(header);
     }
 }

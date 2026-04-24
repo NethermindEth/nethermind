@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
@@ -18,12 +19,13 @@ public static class SubscriptionFactoryExtensions
     public static void RegisterNewHeadSubscription(
         this ISubscriptionFactory subscriptionFactory,
         IBlockTree? blockTree,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         ILogManager? logManager,
         ISpecProvider specProvider
         ) => subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
             SubscriptionType.EthSubscription.NewHeads,
             (jsonRpcDuplexClient, args) =>
-            new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, args)
+            new NewHeadSubscription(jsonRpcDuplexClient, blockTree, skipIndexedBlockInfoStore, logManager, specProvider, args)
             );
 
     public static void RegisterLogsSubscription(
@@ -95,6 +97,7 @@ public static class SubscriptionFactoryExtensions
     public static void RegisterStandardSubscriptions(
         this ISubscriptionFactory subscriptionFactory,
         IBlockTree? blockTree,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         ILogManager? logManager,
         ISpecProvider specProvider,
         IReceiptMonitor receiptMonitor,
@@ -105,7 +108,7 @@ public static class SubscriptionFactoryExtensions
         IRlpxHost? rlpxHost
         )
     {
-        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, skipIndexedBlockInfoStore, logManager, specProvider);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
@@ -117,6 +120,7 @@ public static class SubscriptionFactoryExtensions
     public static void RegisterStandardEthSubscriptions(
         this ISubscriptionFactory subscriptionFactory,
         IBlockTree? blockTree,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         ILogManager? logManager,
         ISpecProvider specProvider,
         IReceiptMonitor receiptMonitor,
@@ -125,7 +129,7 @@ public static class SubscriptionFactoryExtensions
         IEthSyncingInfo ethSyncingInfo
         )
     {
-        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, skipIndexedBlockInfoStore, logManager, specProvider);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);

@@ -6,6 +6,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EraE.Archive;
+using Nethermind.Int256;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.EraException;
 using Nethermind.Specs;
@@ -36,8 +37,8 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        (Block block, _) = await sut.GetBlockByNumber(2);
-        block.TotalDifficulty.Should().Be(file.Contents[2].Block.TotalDifficulty);
+        (Block _, _) = await sut.GetBlockByNumber(2);
+        // header.TotalDifficulty was removed; TD is no longer carried on the returned Block.
     }
 
     [Test]
@@ -55,8 +56,8 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
 
         using AccumulatorCalculator calculator = new();
-        foreach ((Block block, _) in file.Contents)
-            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
+        foreach ((Block block, _, UInt256 td) in file.Contents)
+            calculator.Add(block.Hash!, td);
 
         ValueHash256 expectedRoot = calculator.ComputeRoot();
 
@@ -102,8 +103,8 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 2);
 
         using AccumulatorCalculator calculator = new();
-        foreach ((Block block, _) in file.Contents.Where(c => !c.Block.Header.IsPostMerge))
-            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
+        foreach ((Block block, _, UInt256 td) in file.Contents.Where(c => !c.Block.Header.IsPostMerge))
+            calculator.Add(block.Hash!, td);
 
         ValueHash256 expectedRoot = calculator.ComputeRoot();
 

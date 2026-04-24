@@ -98,7 +98,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
 
                 // Note: Header.Hash is calculated by HeaderDecoder.
-                blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
+                blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.TotalDifficulty);
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
         await Task.WhenAll(workers.AsSpan());
@@ -173,10 +173,9 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
             static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
             EntryTypes.TotalDifficulty,
             out UInt256 currentTotalDifficulty);
-        header.TotalDifficulty = currentTotalDifficulty;
 
         Block block = new(header, body);
-        return new EntryReadResult(block, receipts);
+        return new EntryReadResult(block, receipts, currentTotalDifficulty);
     }
 
     private BlockBody DecodeBody(Memory<byte> buffer)
@@ -201,9 +200,10 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
     public void Dispose() => _fileReader.Dispose();
 
-    private struct EntryReadResult(Block block, TxReceipt[] receipts)
+    private struct EntryReadResult(Block block, TxReceipt[] receipts, UInt256 totalDifficulty)
     {
         public Block Block { get; } = block;
         public TxReceipt[] Receipts { get; } = receipts;
+        public UInt256 TotalDifficulty { get; } = totalDifficulty;
     }
 }

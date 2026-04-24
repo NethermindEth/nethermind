@@ -4,6 +4,7 @@
 using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,6 +41,7 @@ namespace Nethermind.Merge.Plugin
         private readonly ISyncConfig _syncConfig;
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
+        private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
         private readonly ISpecProvider _specProvider;
         private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
@@ -57,6 +59,7 @@ namespace Nethermind.Merge.Plugin
             ISyncConfig syncConfig,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             IBlockTree blockTree,
+            ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
             ISpecProvider specProvider,
             ChainSpec chainSpec,
             ILogManager logManager)
@@ -65,6 +68,7 @@ namespace Nethermind.Merge.Plugin
             _syncConfig = syncConfig;
             _metadataDb = metadataDb;
             _blockTree = blockTree;
+            _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
             _specProvider = specProvider;
             _chainSpec = chainSpec;
             _logger = logManager.GetClassLogger<PoSSwitcher>();
@@ -119,7 +123,8 @@ namespace Nethermind.Merge.Plugin
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
         {
-            if (_terminalBlockExplicitSpecified || TransitionFinished || !header.IsTerminalBlock(_specProvider))
+            UInt256? td = _blockTree.GetTotalDifficulty(header);
+            if (_terminalBlockExplicitSpecified || TransitionFinished || td is null || !header.IsTerminalBlock(_specProvider, td.Value))
             {
                 return false;
             }
@@ -162,9 +167,19 @@ namespace Nethermind.Merge.Plugin
 
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
+            UInt256? headerTotalDifficulty = _blockTree.GetTotalDifficulty(header);
+            // Block isn't in the cumulative store yet (e.g. still being evaluated before suggest);
+            // derive TD from parent + own difficulty when parent TD is available. Skip this for
+            // post-merge-flagged headers where TD doesn't drive the decision.
+            if (headerTotalDifficulty is null && !header.IsPostMerge && header.ParentHash is not null)
+            {
+                BlockHeader? parent = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: header.Number - 1);
+                UInt256? parentTotalDifficulty = parent is null ? null : _blockTree.GetTotalDifficulty(parent);
+                if (parentTotalDifficulty is not null) headerTotalDifficulty = parentTotalDifficulty + header.Difficulty;
+            }
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
+                    $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {headerTotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
 
             bool isTerminal = false, isPostMerge;
             if (_specProvider.TerminalTotalDifficulty is null) // TTD = null, so everything is preMerge
@@ -172,7 +187,7 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = false;
             }
-            else if (header.TotalDifficulty is not null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
+            else if (headerTotalDifficulty is not null && headerTotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
             {
                 // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
                 isTerminal = false;
@@ -183,7 +198,7 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = true;
             }
-            else if (header.TotalDifficulty is null || (header.TotalDifficulty == 0 && !header.IsGenesis)) // we don't know header TD, so we consider header.Difficulty
+            else if (headerTotalDifficulty is null || (headerTotalDifficulty == 0 && !header.IsGenesis)) // we don't know header TD, so we consider header.Difficulty
             {
                 isPostMerge = header.Difficulty == 0;
                 isTerminal = false; // we can't say if block isTerminal if we don't have TD
@@ -197,7 +212,7 @@ namespace Nethermind.Merge.Plugin
                 }
                 else
                 {
-                    isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
+                    isTerminal = header.IsTerminalBlock(_specProvider, headerTotalDifficulty.Value); // we're checking if block is terminal if not it should be PostMerge block
                     isPostMerge = !isTerminal;
                 }
             }
@@ -205,7 +220,7 @@ namespace Nethermind.Merge.Plugin
             header.IsPostMerge = isPostMerge;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"GetBlockConsensusInfo Result: IsTerminal: {isTerminal}, IsPostMerge: {isPostMerge}, {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
+                    $"GetBlockConsensusInfo Result: IsTerminal: {isTerminal}, IsPostMerge: {isPostMerge}, {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {headerTotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
             return (isTerminal, isPostMerge);
         }
 

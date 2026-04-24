@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -49,7 +50,7 @@ public class StateSyncDispatcherTests
 
         IBlockTree blockTree = CachedBlockTreeBuilder.OfLength((int)BlockTree.BestSuggestedHeader!.Number);
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-        _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
+        _pool = new SyncPeerPool(blockTree, Substitute.For<ISkipIndexedBlockInfoStore>(), new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
         _pool.Start();
 
         ISyncFeed<StateSyncBatch>? feed = Substitute.For<ISyncFeed<StateSyncBatch>>();

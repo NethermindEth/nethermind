@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -31,6 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
+        private readonly IBlockTree _blockTree;
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
         private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
@@ -41,6 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
+            IBlockTree blockTree,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
@@ -48,6 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
             _handleSlow = HandleSlow;
@@ -318,7 +322,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             try
             {
-                msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
+                // Record the peer's advertised TD before handing the block to SyncServer.
+                // SyncServer.UpdatePeerInfoBasedOnBlockData relies on our locally-computed TD
+                // which is null for an unknown-parent block; without this update the peer's
+                // head advancement would be invisible to the synchronizer.
+                if (msg.TotalDifficulty > (TotalDifficulty ?? 0))
+                {
+                    HeadNumber = msg.Block.Number;
+                    HeadHash = msg.Block.Hash!;
+                    TotalDifficulty = msg.TotalDifficulty;
+                }
                 SyncServer.AddNewBlock(msg.Block, this);
             }
             catch (Exception e)
@@ -336,7 +349,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 NetworkId = SyncServer.NetworkId,
                 ProtocolVersion = ProtocolVersion,
-                TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
+                TotalDifficulty = _blockTree.GetTotalDifficulty(head) ?? head.Difficulty,
                 BestHash = head.Hash!,
                 GenesisHash = SyncServer.Genesis.Hash!
             };
@@ -373,14 +386,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void SendNewBlock(Block block)
         {
-            if (!block.TotalDifficulty.HasValue)
+            UInt256? totalDifficulty = _blockTree.GetTotalDifficulty(block.Header);
+            if (!totalDifficulty.HasValue)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
             }
 
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
 
-            NewBlockMessage msg = new() { Block = block, TotalDifficulty = block.TotalDifficulty.Value };
+            NewBlockMessage msg = new() { Block = block, TotalDifficulty = totalDifficulty.Value };
 
             Send(msg);
         }

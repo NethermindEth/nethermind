@@ -4,6 +4,7 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -24,12 +25,13 @@ internal class XdcBlockTree(
     [KeyFilter("metadata")] IDb? metadataDb,
     IBadBlockStore? badBlockStore,
     IBlockAccessListStore? balStore,
+    ISkipIndexedBlockInfoStore? skipIndexedBlockInfoStore,
     IChainLevelInfoRepository? chainLevelInfoRepository,
     ISpecProvider? specProvider,
     IBloomStorage? bloomStorage,
     ISyncConfig? syncConfig,
     ILogManager? logManager,
-    long genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+    long genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, skipIndexedBlockInfoStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
 {
     private readonly IXdcConsensusContext _xdcConsensus = xdcConsensus;
 
@@ -92,6 +94,6 @@ internal class XdcBlockTree(
     }
 
     // Allow overriding head with self-mined blocks with the same TD
-    private static bool IsSameTdButSelfMined(XdcBlockHeader newHeader, XdcBlockHeader oldHeader) =>
-        newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.IsSelfMined;
+    private bool IsSameTdButSelfMined(XdcBlockHeader newHeader, XdcBlockHeader oldHeader) =>
+        GetTotalDifficulty(newHeader) == GetTotalDifficulty(oldHeader) && newHeader.IsSelfMined;
 }

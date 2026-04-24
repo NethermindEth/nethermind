@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -89,6 +90,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             editableDbProvider.MetadataDb,
             badBlockStore,
             tmpBalStore,
+            new SkipIndexedBlockInfoStore(new MemDb(), tmpHeaderStore, new CumulativeTotalDifficultyStrategy(), NullTotalDifficultyAnchor.Instance, logManager),
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
             NullBloomStorage.Instance,

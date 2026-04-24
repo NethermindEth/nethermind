@@ -134,23 +134,23 @@ public class ProtocolsManagerTests
                     session => new P2PProtocolHandler(session, _rlpxHost.LocalNodeId, _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
                     Protocol.P2P),
                 new ReusableProtocolHandlerFactory<Eth66ProtocolHandler>(
-                    session => new Eth66ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),
+                    session => new Eth66ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, Substitute.For<IBlockTree>(), _gossipPolicy, _forkInfo, LimboLogs.Instance),
                     Protocol.Eth,
                     66),
                 new ReusableProtocolHandlerFactory<Eth67ProtocolHandler>(
-                    session => new Eth67ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),
+                    session => new Eth67ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, Substitute.For<IBlockTree>(), _gossipPolicy, _forkInfo, LimboLogs.Instance),
                     Protocol.Eth,
                     67),
                 new ReusableProtocolHandlerFactory<Eth68ProtocolHandler>(
-                    session => new Eth68ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    session => new Eth68ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, Substitute.For<IBlockTree>(), _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
                     Protocol.Eth,
                     68),
                 new ReusableProtocolHandlerFactory<Eth69ProtocolHandler>(
-                    session => new Eth69ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    session => new Eth69ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, Substitute.For<IBlockTree>(), _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
                     Protocol.Eth,
                     69),
                 new ReusableProtocolHandlerFactory<Eth70ProtocolHandler>(
-                    session => new Eth70ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    session => new Eth70ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, Substitute.For<IBlockTree>(), _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
                     Protocol.Eth,
                     70)
             ];

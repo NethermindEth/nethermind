@@ -55,7 +55,6 @@ public class TaikoExecutionPayload : ExecutionPayload
                 MixHash = PrevRandao,
                 Author = FeeRecipient,
                 IsPostMerge = true,
-                TotalDifficulty = totalDifficulty,
                 TxRoot = TxHash,
                 WithdrawalsRoot = WithdrawalsHash,
             };

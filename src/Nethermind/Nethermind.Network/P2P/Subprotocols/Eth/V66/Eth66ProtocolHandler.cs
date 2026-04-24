@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -42,11 +43,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
+            IBlockTree blockTree,
             IGossipPolicy gossipPolicy,
             IForkInfo forkInfo,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, blockTree, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);

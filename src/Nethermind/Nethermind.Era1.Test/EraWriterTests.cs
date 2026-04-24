@@ -3,25 +3,38 @@
 
 using System.Buffers.Binary;
 using FluentAssertions;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.IO;
+using Nethermind.Int256;
 
 namespace Nethermind.Era1.Test;
 
 internal class EraWriterTests
 {
+    private static ISkipIndexedBlockInfoStore CreatePassThroughSkipIndexedBlockInfoStore()
+    {
+        ISkipIndexedBlockInfoStore store = Substitute.For<ISkipIndexedBlockInfoStore>();
+        store.GetTotalDifficulty(Arg.Any<BlockHeader?>()).Returns(ci =>
+        {
+            BlockHeader? h = (BlockHeader?)ci[0];
+            return h is null ? null : (UInt256?)BlockHeaderBuilder.DefaultDifficulty;
+        });
+        return store;
+    }
+
     [Test]
     public void Add_TotalDifficultyIsLowerThanBlock_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        ISkipIndexedBlockInfoStore store = Substitute.For<ISkipIndexedBlockInfoStore>();
+        store.GetTotalDifficulty(Arg.Any<BlockHeader>()).Returns(UInt256.Zero);
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>(), store);
 
-        Block block = Build.A.Block.WithNumber(1)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        block.Header.TotalDifficulty = 0;
+        Block block = Build.A.Block.WithNumber(1).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
         Assert.That(async () => await sut.Add(
             block,
@@ -32,9 +45,9 @@ internal class EraWriterTests
     public async Task Add_AddOneBlock()
     {
         using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
         Block block1 = Build.A.Block.WithNumber(1)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+            .TestObject;
 
         await sut.Add(block1, Array.Empty<TxReceipt>());
     }
@@ -46,16 +59,16 @@ internal class EraWriterTests
         stream.CanWrite.Returns(true);
         stream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>()).Returns(Task.CompletedTask);
 
-        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
         for (int i = 0; i < EraWriter.MaxEra1Size; i++)
         {
             Block block = Build.A.Block.WithNumber(i)
-                .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+                .TestObject;
             await sut.Add(block, Array.Empty<TxReceipt>());
         }
 
         Assert.That(
-            () => sut.Add(Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject, Array.Empty<TxReceipt>()),
+            () => sut.Add(Build.A.Block.WithNumber(0).TestObject, Array.Empty<TxReceipt>()),
             Throws.TypeOf<ArgumentException>());
     }
 
@@ -63,9 +76,9 @@ internal class EraWriterTests
     public async Task Add_FinalizedCalled_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
         Block block = Build.A.Block.WithNumber(1)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+            .TestObject;
 
         await sut.Add(block, Array.Empty<TxReceipt>());
         await sut.Finalize();
@@ -78,7 +91,7 @@ internal class EraWriterTests
     {
         using MemoryStream stream = new();
 
-        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
 
         Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
     }
@@ -87,11 +100,11 @@ internal class EraWriterTests
     public async Task Finalize_AddOneBlock_WritesAccumulatorEntry()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
         byte[] buffer = new byte[40];
 
         Block block = Build.A.Block.WithNumber(1)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+            .TestObject;
         await sut.Add(block, Array.Empty<TxReceipt>());
 
         await sut.Finalize();
@@ -106,10 +119,10 @@ internal class EraWriterTests
     {
         using TempPath tmpFile = TempPath.GetTempFile();
 
-        using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
+        using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore()))
         {
             Block block = Build.A.Block.WithNumber(0)
-                .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+                .TestObject;
             await sut.Add(block, Array.Empty<TxReceipt>());
             await sut.Finalize();
         }
@@ -122,7 +135,7 @@ internal class EraWriterTests
     public void Dispose_Disposed_InnerStreamIsDisposed()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>(), CreatePassThroughSkipIndexedBlockInfoStore());
         sut.Dispose();
 
         Assert.That(() => stream.ReadByte(), Throws.TypeOf<ObjectDisposedException>());

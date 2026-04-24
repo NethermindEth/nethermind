@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -91,7 +92,8 @@ public class SyncServerTests
     {
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(9);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
 
         ISealValidator sealValidator = sealOk ? Always.Valid : Always.Invalid;
         IBlockValidator blockValidator = validationOk ? Always.Valid : Always.Invalid;
@@ -126,7 +128,8 @@ public class SyncServerTests
     {
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(9);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
         StaticSelector staticSelector = syncMode switch
         {
             SyncMode.SnapSync => StaticSelector.SnapSync,
@@ -148,7 +151,8 @@ public class SyncServerTests
     {
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(9);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
         TestSpecProvider testSpecProvider = new(London.Instance)
         {
             TerminalTotalDifficulty = 10_000_000,
@@ -167,6 +171,7 @@ public class SyncServerTests
             new TestSyncConfig(),
             new MemDb(),
             localBlockTree,
+            localBlockTreeBuilder.SkipIndexedBlockInfoStore,
             testSpecProvider,
             new ChainSpec(),
             LimboLogs.Instance);
@@ -194,6 +199,7 @@ public class SyncServerTests
             ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
+            localBlockTreeBuilder.SkipIndexedBlockInfoStore,
             NullReceiptStorage.Instance,
             blockValidator,
             Always.Valid,
@@ -220,13 +226,14 @@ public class SyncServerTests
         Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
-        block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
+        // header.TotalDifficulty is gone; SyncServer no longer reads TD from header.
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
         Assert.That(block.Header.Hash, Is.EqualTo(ctx.LocalBlockTree.BestSuggestedHeader!.Hash));
 
         Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None)!;
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock.TotalDifficulty + block.Difficulty));
+        UInt256 expectedTd = (remoteBlockTree.GetTotalDifficulty(parentBlock.Header) ?? 0) + block.Difficulty;
+        Assert.That(ctx.LocalBlockTree.GetTotalDifficulty(ctx.LocalBlockTree.BestSuggestedHeader), Is.EqualTo(expectedTd));
     }
 
     [TestCase(9000000, true)]
@@ -240,7 +247,7 @@ public class SyncServerTests
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
         if (sendFakeTd)
         {
-            block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
+            // header.TotalDifficulty is gone; SyncServer no longer reads TD from header.
         }
 
         Assert.Throws<EthSyncException>(() => ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock));
@@ -256,7 +263,6 @@ public class SyncServerTests
         Block postMergeBlock = Build.A.Block
             .WithDifficulty(0)
             .WithParent(remoteBlockTree.Head!)
-            .WithTotalDifficulty(remoteBlockTree.Head!.TotalDifficulty)
             .WithNonce(0u)
             .TestObject;
         remoteBlockTree.SuggestBlock(postMergeBlock);
@@ -265,7 +271,7 @@ public class SyncServerTests
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
         if (sendFakeTd)
         {
-            block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
+            // header.TotalDifficulty is gone; SyncServer no longer reads TD from header.
         }
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -284,16 +290,15 @@ public class SyncServerTests
             .WithDifficulty((UInt256)difficulty)
             .WithParent(remoteBlockTree.Head!)
             .WithGasLimit(remoteBlockTree.Head!.GasLimit + 1)
-            .WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty + (UInt256)difficulty)
             .TestObject;
         remoteBlockTree.SuggestBlock(terminalBlockWithLowerDifficulty);
         Context ctx = CreateMergeContext(10, (UInt256)ttd);
-        Assert.That(terminalBlockWithLowerDifficulty.IsTerminalBlock(ctx.SpecProvider), Is.True);
+        Assert.That(terminalBlockWithLowerDifficulty.Header.IsTerminalBlock(ctx.SpecProvider, remoteBlockTree.GetTotalDifficulty(terminalBlockWithLowerDifficulty.Header) ?? 0), Is.True);
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
         if (sendFakeTd)
         {
-            block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
+            // header.TotalDifficulty is gone; SyncServer no longer reads TD from header.
         }
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -310,16 +315,15 @@ public class SyncServerTests
         Block terminalBlockWithHigherTotalDifficulty = Build.A.Block
             .WithDifficulty(1000010)
             .WithParent(remoteBlockTree.Head!)
-            .WithTotalDifficulty(remoteBlockTree.Head!.TotalDifficulty + 1000010)
             .TestObject;
         remoteBlockTree.SuggestBlock(terminalBlockWithHigherTotalDifficulty);
         Context ctx = CreateMergeContext(10, (UInt256)ttd);
-        Assert.That(terminalBlockWithHigherTotalDifficulty.IsTerminalBlock(ctx.SpecProvider), Is.True);
+        Assert.That(terminalBlockWithHigherTotalDifficulty.Header.IsTerminalBlock(ctx.SpecProvider, remoteBlockTree.GetTotalDifficulty(terminalBlockWithHigherTotalDifficulty.Header) ?? 0), Is.True);
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
         if (sendFakeTd)
         {
-            block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
+            // header.TotalDifficulty is gone; SyncServer no longer reads TD from header.
         }
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -336,7 +340,6 @@ public class SyncServerTests
         Block poWBlockPostMerge = Build.A.Block
             .WithDifficulty(1000010)
             .WithParent(remoteBlockTree.Head!)
-            .WithTotalDifficulty(remoteBlockTree.Head!.TotalDifficulty + 1000010)
             .TestObject;
         remoteBlockTree.SuggestBlock(poWBlockPostMerge);
 
@@ -344,7 +347,6 @@ public class SyncServerTests
         Block newPostMergeBlock = Build.A.Block
             .WithDifficulty(0)
             .WithParent(ctx.LocalBlockTree.Head!)
-            .WithTotalDifficulty(ctx.LocalBlockTree.Head!.TotalDifficulty)
             .TestObject;
         ctx.LocalBlockTree.SuggestBlock(newPostMergeBlock);
         ctx.LocalBlockTree.UpdateMainChain(new[] { newPostMergeBlock }, true, true);
@@ -367,7 +369,8 @@ public class SyncServerTests
             TerminalTotalDifficulty = ttd,
         };
         Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree(genesis, testSpecProvider).OfChainLength(blockTreeChainLength).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree(genesis, testSpecProvider).OfChainLength(blockTreeChainLength);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
 
         PoSSwitcher poSSwitcher = new(
             new MergeConfig
@@ -377,6 +380,7 @@ public class SyncServerTests
             new TestSyncConfig(),
             new MemDb(),
             localBlockTree,
+            localBlockTreeBuilder.SkipIndexedBlockInfoStore,
             testSpecProvider,
             new ChainSpec(),
             LimboLogs.Instance);
@@ -416,6 +420,7 @@ public class SyncServerTests
             ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
+            localBlockTreeBuilder.SkipIndexedBlockInfoStore,
             NullReceiptStorage.Instance,
             blockValidator,
             sealEngine,
@@ -438,7 +443,8 @@ public class SyncServerTests
     {
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(9);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
 
         HeaderValidator headerValidator = new(
             localBlockTree,
@@ -456,13 +462,14 @@ public class SyncServerTests
         ctx.SyncServer = ctx.CreateSyncServer(localBlockTree, blockValidator);
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
-        block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
+        // header.TotalDifficulty is gone; SyncServer no longer reads TD from header.
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
         Assert.That(block.Header.Hash, Is.EqualTo(localBlockTree.BestSuggestedHeader!.Hash));
 
         Block? parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
-        Assert.That(localBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock!.TotalDifficulty + block.Difficulty));
+        UInt256 expectedTd = (remoteBlockTree.GetTotalDifficulty(parentBlock!.Header) ?? 0) + block.Difficulty;
+        Assert.That(localBlockTree.GetTotalDifficulty(localBlockTree.BestSuggestedHeader), Is.EqualTo(expectedTd));
     }
 
     [Test]
@@ -470,7 +477,8 @@ public class SyncServerTests
     {
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(600);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
 
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         ctx.SyncServer = ctx.CreateSyncServer(localBlockTree, sealValidator: sealValidator);
@@ -487,7 +495,8 @@ public class SyncServerTests
     {
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(9);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
         ctx.SyncServer = ctx.CreateSyncServer(localBlockTree);
 
         ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
@@ -540,7 +549,8 @@ public class SyncServerTests
 
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(9);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
         ctx.SyncServer = ctx.CreateSyncServer(localBlockTree);
 
         ISyncServer remoteServer = Substitute.For<ISyncServer>();
@@ -567,7 +577,8 @@ public class SyncServerTests
         Context ctx = new();
 
         const int frequency = 32;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
 
         ctx.SyncServer = ctx.CreateSyncServer(localBlockTree);
 
@@ -610,7 +621,8 @@ public class SyncServerTests
     public void GetNodeData_returns_cached_trie_nodes()
     {
         Context ctx = new();
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
+        BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree().OfChainLength(600);
+        BlockTree localBlockTree = localBlockTreeBuilder.TestObject;
         MemDb stateDb = new();
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Prune.WhenCacheReaches(10.MB), NoPersistence.Instance, LimboLogs.Instance);
 
@@ -621,6 +633,7 @@ public class SyncServerTests
             worldStateManager,
             new MemDb(),
             localBlockTree,
+            localBlockTreeBuilder.SkipIndexedBlockInfoStore,
             NullReceiptStorage.Instance,
             Always.Valid,
             Always.Valid,
@@ -675,6 +688,7 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 BlockTree,
+                Substitute.For<ISkipIndexedBlockInfoStore>(),
                 NullReceiptStorage.Instance,
                 Always.Valid,
                 Always.Valid,
@@ -702,11 +716,13 @@ public class SyncServerTests
             IBlockValidator? blockValidator = null,
             ISealValidator? sealValidator = null,
             ISyncModeSelector? syncModeSelector = null,
-            ISpecProvider? specProvider = null) =>
+            ISpecProvider? specProvider = null,
+            ISkipIndexedBlockInfoStore? skipIndexedBlockInfoStore = null) =>
             new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
+                skipIndexedBlockInfoStore ?? Substitute.For<ISkipIndexedBlockInfoStore>(),
                 NullReceiptStorage.Instance,
                 blockValidator ?? Always.Valid,
                 sealValidator ?? Always.Valid,

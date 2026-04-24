@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -86,6 +87,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
+                Substitute.For<IBlockTree>(),
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);
@@ -338,6 +340,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
+                Substitute.For<IBlockTree>(),
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);

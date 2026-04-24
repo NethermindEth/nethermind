@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -23,7 +25,7 @@ public class BlockForRpc
     public BlockForRpc() { }
 
     [SkipLocalsInit]
-    public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
+    public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false, IBlockTree? blockTree = null, ISkipIndexedBlockInfoStore? skipIndexedBlockInfoStore = null)
     {
         bool isAuRaBlock = block.Header.AuRaSignature is not null;
         Difficulty = block.Difficulty;
@@ -73,7 +75,8 @@ public class BlockForRpc
             // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
             if (specProvider.MergeBlockNumber is null)
             {
-                TotalDifficulty = block.TotalDifficulty;
+                UInt256? td = skipIndexedBlockInfoStore?.GetTotalDifficulty(block.Header) ?? blockTree?.GetTotalDifficulty(block.Header);
+                TotalDifficulty = block.Difficulty.IsZero ? null : td;
             }
         }
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -33,6 +34,7 @@ public class Eth68ProtocolHandler(ISession session,
     ISyncServer syncServer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
     ITxPool txPool,
+    IBlockTree blockTree,
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
@@ -40,7 +42,7 @@ public class Eth68ProtocolHandler(ISession session,
     ISpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null
     )
-    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
+    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, blockTree, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;

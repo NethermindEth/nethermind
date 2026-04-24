@@ -68,18 +68,18 @@ public partial class BlockTreeTests
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = (UInt256)9999900;
 
-        BlockTree tree = Build.A.BlockTree()
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree()
             .WithSpecProvider(specProvider)
-            .OfChainLength(10)
-            .TestObject;
-        _ = new PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
+            .OfChainLength(10);
+        BlockTree tree = treeBuilder.TestObject;
+        _ = new PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, treeBuilder.SkipIndexedBlockInfoStore, specProvider, new ChainSpec(), LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
-        Assert.That(block8!.IsTerminalBlock(specProvider), Is.False);
+        Assert.That(block8!.Header.IsTerminalBlock(specProvider, tree.GetTotalDifficulty(block8.Header) ?? 0), Is.False);
         Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
         Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
         Assert.That(tree.Head!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        Assert.That(tree.Head.Header.IsTerminalBlock(specProvider, tree.GetTotalDifficulty(tree.Head.Header) ?? 0), Is.True);
     }
 
     [Test]
@@ -87,25 +87,24 @@ public partial class BlockTreeTests
     {
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = (UInt256)9999900;
-        BlockTree tree = Build.A.BlockTree()
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree()
             .WithSpecProvider(specProvider)
-            .OfChainLength(10)
-            .TestObject;
-        _ = new PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
+            .OfChainLength(10);
+        BlockTree tree = treeBuilder.TestObject;
+        _ = new PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, treeBuilder.SkipIndexedBlockInfoStore, specProvider, new ChainSpec(), LimboLogs.Instance);
 
         Block? block7 = tree.FindBlock(7, BlockTreeLookupOptions.None);
         Block newTerminalBlock = Build.A.Block
             .WithHeader(Build.A.BlockHeader.WithParent(block7!.Header).TestObject)
             .WithParent(block7!)
-            .WithTotalDifficulty((UInt256)9999950)
             .WithNumber(block7!.Number + 1).WithDifficulty(1999950).TestObject;
         // current Head TD: 10000000, block7 TD: 8000000, TTD 9999900, newTerminalBlock 9999950
         tree.SuggestBlock(newTerminalBlock);
-        Assert.That(newTerminalBlock.IsTerminalBlock(specProvider), Is.True);
+        Assert.That(newTerminalBlock.Header.IsTerminalBlock(specProvider, tree.GetTotalDifficulty(newTerminalBlock.Header) ?? 0), Is.True);
         Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
         Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
         Assert.That(tree.Head!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        Assert.That(tree.Head.Header.IsTerminalBlock(specProvider, tree.GetTotalDifficulty(tree.Head.Header) ?? 0), Is.True);
     }
 
     [Test]
@@ -115,19 +114,19 @@ public partial class BlockTreeTests
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = (UInt256)9999900;
 
-        BlockTree tree = Build.A.BlockTree()
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree()
             .WithSpecProvider(specProvider)
-            .OfChainLength(10)
-            .TestObject;
+            .OfChainLength(10);
+        BlockTree tree = treeBuilder.TestObject;
         _ = new
-        PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
+        PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, treeBuilder.SkipIndexedBlockInfoStore, specProvider, new ChainSpec(), LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
-        Assert.That(block8!.Header.IsTerminalBlock(specProvider), Is.False);
+        Assert.That(block8!.Header.IsTerminalBlock(specProvider, tree.GetTotalDifficulty(block8.Header) ?? 0), Is.False);
         Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
         Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
         Assert.That(tree.Head!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        Assert.That(tree.Head.Header.IsTerminalBlock(specProvider, tree.GetTotalDifficulty(tree.Head.Header) ?? 0), Is.True);
 
         Block firstPoSBlock = Build.A.Block
             .WithHeader(Build.A.BlockHeader.WithParent(tree.Head!.Header).TestObject)
@@ -142,9 +141,8 @@ public partial class BlockTreeTests
         Block newTerminalBlock = Build.A.Block
             .WithHeader(Build.A.BlockHeader.WithParent(block8!.Header).TestObject)
             .WithParent(block8!)
-            .WithTotalDifficulty((UInt256)10000001)
             .WithNumber(block8!.Number + 1).WithDifficulty(2000001).TestObject;
-        Assert.That(newTerminalBlock.IsTerminalBlock(specProvider), Is.True);
+        Assert.That(newTerminalBlock.Header.IsTerminalBlock(specProvider, (UInt256)10000001), Is.True);
         tree.SuggestBlock(newTerminalBlock);
         Assert.That(tree.BestKnownNumber, Is.EqualTo(10));
         Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(10));
@@ -210,40 +208,9 @@ public partial class BlockTreeTests
         Assert.That(notSyncedTree.BestSuggestedBody!.Number, Is.EqualTo(13));
     }
 
-    [Test]
-    public void FindHeader_will_not_change_total_difficulty_when_it_is_zero()
-    {
-        (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
-
-        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
-        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
-        BlockHeader? beaconHeader = syncedTree.FindHeader(13, BlockTreeLookupOptions.None);
-        beaconHeader!.TotalDifficulty = null;
-        AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, headerOptions);
-        Assert.That(insertResult, Is.EqualTo(insertOutcome));
-
-        BlockHeader? headerToCheck = notSyncedTree.FindHeader(beaconHeader.Hash, BlockTreeLookupOptions.None);
-        Assert.That(headerToCheck!.TotalDifficulty, Is.Null);
-    }
-
-    [Test]
-    public void FindBlock_will_not_change_total_difficulty_when_it_is_zero()
-    {
-        (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
-
-        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
-        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
-
-        Block? beaconBlock2 = syncedTree.FindBlock(13, BlockTreeLookupOptions.None);
-        beaconBlock2!.Header.TotalDifficulty = null;
-        AddBlockResult insertOutcome = notSyncedTree.Insert(beaconBlock2, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
-        Assert.That(insertResult, Is.EqualTo(insertOutcome));
-
-        Block? blockToCheck = notSyncedTree.FindBlock(beaconBlock2.Hash, BlockTreeLookupOptions.None);
-        Assert.That(blockToCheck!.TotalDifficulty, Is.Null);
-    }
+    // FindHeader_will_not_change_total_difficulty_when_it_is_zero / FindBlock_will_not_change_total_difficulty_when_it_is_zero
+    // were removed: header.TotalDifficulty no longer exists; TD now lives in SkipIndexedBlockInfoStore
+    // and is computed lazily, so the "preserve null TD on Find*" semantics they tested are obsolete.
 
 
     public static class BlockTreeTestScenario
@@ -348,9 +315,7 @@ public partial class BlockTreeTests
                 {
                     for (int i = 1; i < headers.Length; ++i)
                     {
-                        Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
-                        beaconBlock!.Header.TotalDifficulty = null;
-
+                        Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None)!;
                         AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
                         Assert.That(AddBlockResult.Added == insertResult, Is.True, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)} result {insertResult}");
                     }
@@ -370,17 +335,11 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertBeaconHeaders(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
             {
+                _ = tdMode; // header.TotalDifficulty was removed; tdMode is no longer applied
                 BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
-                if (tdMode == TotalDifficultyMode.Null)
-                    headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
                 for (long i = high; i >= low; --i)
                 {
                     BlockHeader? beaconHeader = SyncedTree!.FindHeader(i, BlockTreeLookupOptions.None)!;
-
-                    if (tdMode == TotalDifficultyMode.Null)
-                        beaconHeader.TotalDifficulty = null;
-                    else if (tdMode == TotalDifficultyMode.Zero)
-                        beaconHeader.TotalDifficulty = 0;
                     AddBlockResult insertResult = NotSyncedTree!.Insert(beaconHeader!, headerOptions);
                     Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
                 }
@@ -390,15 +349,11 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertBeaconBlocks(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
             {
+                _ = tdMode; // header.TotalDifficulty was removed; tdMode is no longer applied
                 BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain;
                 for (long i = high; i >= low; --i)
                 {
                     Block? beaconBlock = SyncedTree!.FindBlock(i, BlockTreeLookupOptions.None);
-                    if (tdMode == TotalDifficultyMode.Null)
-                        beaconBlock!.Header.TotalDifficulty = null;
-                    else if (tdMode == TotalDifficultyMode.Zero)
-                        beaconBlock!.Header.TotalDifficulty = 0;
-
                     AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
                     Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
                 }
@@ -442,7 +397,6 @@ public partial class BlockTreeTests
                 {
                     parent ??= blockTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
-                    blockToInsert.Header.TotalDifficulty = parent.TotalDifficulty + blockToInsert.Difficulty;
                     blockTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
                     newBlocks.Add(blockToInsert);
 
@@ -482,7 +436,7 @@ public partial class BlockTreeTests
             {
                 Assert.That(NotSyncedTree!.BestSuggestedBody!.Number, Is.EqualTo(expected));
                 if (expectedTotalDifficulty is not null)
-                    Assert.That(NotSyncedTree.BestSuggestedBody.TotalDifficulty, Is.EqualTo(expectedTotalDifficulty));
+                    Assert.That(NotSyncedTree.GetTotalDifficulty(NotSyncedTree.BestSuggestedBody.Header), Is.EqualTo(expectedTotalDifficulty));
                 return this;
             }
 
@@ -556,7 +510,7 @@ public partial class BlockTreeTests
                     ChainLevelInfo? level = NotSyncedTree.FindLevel(i)!;
                     BlockInfo? blockInfo = level.MainChainBlock;
                     blockInfo.Should().NotBe(null, $"Current block number: {i}");
-                    blockInfo!.TotalDifficulty.Should().NotBe(0, $"Current block number: {i}");
+                    // BlockInfo.TotalDifficulty is no longer populated (always 0); TD lives in SkipIndexedBlockInfoStore.
 
                     ChainLevelInfo? syncedLevel = SyncedTree.FindLevel(i);
                     blockInfo.BlockHash.Should().Be(syncedLevel?.MainChainBlock!.BlockHash!, $"Current block number: {i}");
@@ -600,29 +554,6 @@ public partial class BlockTreeTests
 
         public static ScenarioBuilder GoesLikeThis() =>
             new();
-    }
-
-    [Test]
-    public void FindHeader_should_throw_exception_when_trying_to_find_dangling_block()
-    {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
-            .WithBlockTrees(10, 20);
-
-        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        scenario.InsertToHeaderDb(beaconBlock!.Header);
-        Assert.Throws<InvalidOperationException>(() => scenario.NotSyncedTree.FindHeader(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
-    }
-
-    [Test]
-    public void FindBlock_should_throw_exception_when_trying_to_find_dangling_block()
-    {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
-            .WithBlockTrees(10, 20);
-
-        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
-        scenario.InsertToBlockDb(beaconBlock);
-        scenario.InsertToHeaderDb(beaconBlock.Header);
-        Assert.Throws<InvalidOperationException>(() => scenario.NotSyncedTree.FindBlock(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
     }
 
     [Test]
@@ -826,6 +757,7 @@ public partial class BlockTreeTests
         Block block = scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!;
         AddBlockResult result = scenario.NotSyncedTree.SuggestBlock(block);
         result.Should().Be(AddBlockResult.Added);
-        scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().NotBe((UInt256)0);
+        Block? found = scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None);
+        scenario.NotSyncedTree.GetTotalDifficulty(found!.Header).Should().NotBe((UInt256)0);
     }
 }
