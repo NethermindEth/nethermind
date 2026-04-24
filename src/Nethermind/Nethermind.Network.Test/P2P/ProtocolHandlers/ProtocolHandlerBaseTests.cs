@@ -43,9 +43,11 @@ public class ProtocolHandlerBaseTests
 
     private class ImmediateBackgroundTaskScheduler(CancellationToken cancellationToken) : IBackgroundTaskScheduler
     {
+        public Task ScheduledTask { get; private set; } = Task.CompletedTask;
+
         public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
         {
-            fulfillFunc(request, cancellationToken).GetAwaiter().GetResult();
+            ScheduledTask = fulfillFunc(request, cancellationToken);
             return true;
         }
     }
@@ -62,11 +64,12 @@ public class ProtocolHandlerBaseTests
         session.Received().InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, Arg.Any<string>());
     }
 
-    [Test]
-    public void Does_not_disconnect_for_operation_canceled_when_session_is_closing()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Operation_canceled_behavior_depends_on_session_closing(bool sessionIsClosing)
     {
         ISession session = Substitute.For<ISession>();
-        session.IsClosing.Returns(true);
+        session.IsClosing.Returns(sessionIsClosing);
 
         using CancellationTokenSource cancellationTokenSource = new();
         cancellationTokenSource.Cancel();
@@ -76,23 +79,15 @@ public class ProtocolHandlerBaseTests
 
         handler.ScheduleBackgroundTask(static (_, cancellationToken) => ValueTask.FromException(new OperationCanceledException(cancellationToken)));
 
-        session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-    }
+        await backgroundTaskScheduler.ScheduledTask;
 
-    [Test]
-    public void Disconnects_for_operation_canceled_when_session_is_not_closing()
-    {
-        ISession session = Substitute.For<ISession>();
-        session.IsClosing.Returns(false);
-
-        using CancellationTokenSource cancellationTokenSource = new();
-        cancellationTokenSource.Cancel();
-
-        ImmediateBackgroundTaskScheduler backgroundTaskScheduler = new(cancellationTokenSource.Token);
-        TestProtocolHandler handler = new(session, TimeSpan.FromMilliseconds(50), backgroundTaskScheduler);
-
-        handler.ScheduleBackgroundTask(static (_, cancellationToken) => ValueTask.FromException(new OperationCanceledException(cancellationToken)));
-
-        session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, Arg.Any<string>());
+        if (sessionIsClosing)
+        {
+            session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+        else
+        {
+            session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, Arg.Any<string>());
+        }
     }
 }
