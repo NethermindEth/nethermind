@@ -377,38 +377,21 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void step_limit_throws_after_default_limit()
+    public void tracer_timeout_interrupts_step_loop()
     {
-        // JUMPDEST(5B) PUSH1(60) 0x00 JUMP(56) — tight 3-opcode loop.
-        // 5 000 000 gas / 4 gas-per-iter ≈ 1.25 M step callbacks, exceeding the 1 M default.
-        byte[] infiniteLoop = [0x5B, 0x60, 0x00, 0x56];
-
-        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 5_000_000, infiniteLoop);
-        using GethLikeBlockJavaScriptTracer blockTracer = GetTracer(
-            "{ step: function(log, db) {}, fault: function(log, db) {}, result: function(ctx, db) { return {}; } }");
-        blockTracer.StartNewBlockTrace(block);
-        ITxTracer txTracer = ((IBlockTracer)blockTracer).StartNewTxTrace(tx);
-
-        Action act = () => _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*1000000*");
-    }
-
-    [Test]
-    public void step_limit_respects_options_limit()
-    {
+        // JUMPDEST(5B) PUSH1(60) 0x00 JUMP(56) — tight infinite loop.
+        // With a 1ms timeout the step() callback is interrupted before the gas runs out.
         string tracerJs = "{ step: function(log, db) {}, fault: function(log, db) {}, result: function(ctx, db) { return {}; } }";
         byte[] infiniteLoop = [0x5B, 0x60, 0x00, 0x56];
 
         (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 5_000_000, infiniteLoop);
-        GethTraceOptions options = GethTraceOptions.Default with { EnableMemory = true, Tracer = tracerJs, Limit = 500 };
+        GethTraceOptions options = GethTraceOptions.Default with { EnableMemory = true, Tracer = tracerJs, Timeout = TimeSpan.FromMilliseconds(1) };
         using GethLikeBlockJavaScriptTracer blockTracer = new(TestState, Shanghai.Instance, options);
         blockTracer.StartNewBlockTrace(block);
         ITxTracer txTracer = ((IBlockTracer)blockTracer).StartNewTxTrace(tx);
 
         Action act = () => _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*500*");
+        act.Should().Throw<Exception>();
     }
 
     private static byte[] MStore() => Prepare.EvmCode

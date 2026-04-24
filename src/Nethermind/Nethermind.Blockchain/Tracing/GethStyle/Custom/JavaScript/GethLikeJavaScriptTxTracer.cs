@@ -17,10 +17,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
-    // A 5M-gas tight JUMP loop generates ~1.25M step callbacks, so 200k would fire at ~16% of max block gas.
-    // Default is 1M; callers can override via GethTraceOptions.Limit.
-    private const int DefaultMaxStepCount = 1_000_000;
-    private const int ResultCallTimeoutMs = 5_000;
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
 
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -29,12 +26,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
-    private readonly int _maxStepCount;
+    private readonly CancellationTokenSource _cts;
     private bool _resultConstructed;
     private Stack<long>? _frameGas;
     private Stack<Log.Contract>? _contracts;
     private int _depth = -1;
-    private int _stepCount;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -56,7 +52,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _engine = engine;
         _db = db;
         _ctx = ctx;
-        _maxStepCount = options.Limit > 0 ? options.Limit : DefaultMaxStepCount;
+
+        _cts = new CancellationTokenSource(options.Timeout ?? DefaultTimeout);
+        _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
 
         _tracer = engine.CreateTracer(options.Tracer);
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
@@ -66,15 +64,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         }
     }
 
-    protected override GethLikeTxTrace CreateTrace() => new(_engine);
+protected override GethLikeTxTrace CreateTrace() => new(_engine);
 
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _ctx.TxHash;
-        using CancellationTokenSource cts = new(ResultCallTimeoutMs);
-        using IDisposable registration = cts.Token.Register(static e => ((Engine)e!).Interrupt(), _engine);
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
         _resultConstructed = true;
 
@@ -214,8 +210,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         if (_functions.HasFlag(TracerFunctions.step))
         {
-            if (++_stepCount > _maxStepCount)
-                throw new InvalidOperationException($"JavaScript tracer exceeded {_maxStepCount} step limit");
             _tracer.step(_log, _db);
         }
 
@@ -262,6 +256,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void Dispose()
     {
         base.Dispose();
+        _cts.Dispose();
 
         if (!_resultConstructed)
         {

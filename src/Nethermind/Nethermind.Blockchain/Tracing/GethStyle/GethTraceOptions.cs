@@ -21,19 +21,13 @@ public record GethTraceOptions
 
     public bool DisableStack { get; init; }
 
-    public string Timeout { get; init; }
+    public TimeSpan? Timeout { get; init; }
 
     public string Tracer { get; init; }
 
     public Hash256? TxHash { get; init; }
 
     public JsonElement? TracerConfig { get; init; }
-
-    /// <summary>
-    /// Maximum number of step callbacks before the JavaScript tracer is interrupted.
-    /// 0 uses the default limit of 1,000,000 steps (~80% of a full block at 12.5M gas).
-    /// </summary>
-    public int Limit { get; init; }
 
     public Dictionary<Address, AccountOverride>? StateOverrides { get; init; }
 
