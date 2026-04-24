@@ -64,7 +64,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         }
     }
 
-protected override GethLikeTxTrace CreateTrace() => new(_engine);
+    protected override GethLikeTxTrace CreateTrace() => new(_engine);
 
     public override GethLikeTxTrace BuildResult()
     {
