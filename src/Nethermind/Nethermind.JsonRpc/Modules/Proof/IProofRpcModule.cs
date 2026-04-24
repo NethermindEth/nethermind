@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
     [RpcModule(ModuleType.Proof)]
     public interface IProofRpcModule : IRpcModule
     {
-        [JsonRpcMethod(IsImplemented = false, Description = "This function returns the same result as `eth_getTransactionByHash` and also a tx proof and a serialized block header.", IsSharable = false)]
+        [JsonRpcMethod(IsImplemented = false, Description = "Executes a call against the state at the given block (analogous to `eth_call`) and returns the call output, Merkle-Patricia proofs for every account and storage slot accessed during execution, and RLP-encoded block headers — always including the header at `blockParameter` plus headers for any additional blocks whose hashes were read via the `BLOCKHASH` opcode during the call.", IsSharable = false)]
         ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true,
