@@ -54,7 +54,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _db = db;
         _ctx = ctx;
 
-        _cts = new CancellationTokenSource(options.Timeout ?? DefaultTimeout);
+        TimeSpan timeout = TimeSpan.TryParse(options.Timeout, out TimeSpan parsed) ? parsed : DefaultTimeout;
+        _cts = new CancellationTokenSource(timeout);
         _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
 
         _tracer = engine.CreateTracer(options.Tracer);

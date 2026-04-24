@@ -21,7 +21,11 @@ public record GethTraceOptions
 
     public bool DisableStack { get; init; }
 
-    public TimeSpan? Timeout { get; init; }
+    /// <summary>
+    /// Maximum duration for a single trace. Uses .NET TimeSpan format, e.g. "00:00:05" for 5 seconds.
+    /// Defaults to 5 seconds when null or unparseable.
+    /// </summary>
+    public string? Timeout { get; init; }
 
     public string Tracer { get; init; }
 

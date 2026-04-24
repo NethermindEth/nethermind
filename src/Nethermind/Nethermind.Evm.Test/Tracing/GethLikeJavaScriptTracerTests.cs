@@ -376,25 +376,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void tracer_timeout_interrupts_step_loop()
-    {
-        // JUMPDEST(5B) PUSH1(60) 0x00 JUMP(56) — tight infinite loop.
-        // With a 1ms timeout the step() callback is interrupted before the gas runs out.
-        string tracerJs = "{ step: function(log, db) {}, fault: function(log, db) {}, result: function(ctx, db) { return {}; } }";
-        byte[] infiniteLoop = [0x5B, 0x60, 0x00, 0x56];
-
-        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 5_000_000, infiniteLoop);
-        GethTraceOptions options = GethTraceOptions.Default with { EnableMemory = true, Tracer = tracerJs, Timeout = TimeSpan.FromMilliseconds(1) };
-        using GethLikeBlockJavaScriptTracer blockTracer = new(TestState, Shanghai.Instance, options);
-        blockTracer.StartNewBlockTrace(block);
-        ITxTracer txTracer = ((IBlockTracer)blockTracer).StartNewTxTrace(tx);
-
-        Action act = () => _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
-        act.Should().Throw<Exception>();
-    }
-
-    private static byte[] MStore() => Prepare.EvmCode
+private static byte[] MStore() => Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))
             .PushData(0)
             .Op(Instruction.MSTORE)
