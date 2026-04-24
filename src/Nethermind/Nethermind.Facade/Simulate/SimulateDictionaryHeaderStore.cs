@@ -65,12 +65,12 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
     public long? GetBlockNumber(Hash256 blockHash) =>
         _blockNumberDict.TryGetValue(blockHash, out long blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
 
-    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, long count)
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count)
     {
         BlockHeader? cursor = Get(endBlockHash, shouldCache: false, blockNumber: endBlockNumber);
         if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
 
-        ArrayPoolList<BlockHeader> result = new((int)count) { cursor };
+        ArrayPoolList<BlockHeader> result = new(count) { cursor };
         while (result.Count < count && cursor.ParentHash is not null)
         {
             cursor = Get(cursor.ParentHash, shouldCache: false, blockNumber: cursor.Number - 1);

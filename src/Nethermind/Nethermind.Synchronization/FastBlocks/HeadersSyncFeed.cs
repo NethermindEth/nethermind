@@ -553,12 +553,12 @@ namespace Nethermind.Synchronization.FastBlocks
         private HeadersSyncBatch? ProcessPersistedPortion(HeadersSyncBatch batch)
         {
             ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(batch.EndNumber);
+            // Don't worry about fork — `InsertHeaders` will check for fork and retry if not on the right fork.
             Hash256? seedHash = level?.BlockInfos is { Length: > 0 } infos ? infos[0].BlockHash : null;
             if (seedHash is null) return batch;
 
-            long count = batch.EndNumber - batch.StartNumber + 1;
             using IOwnedReadOnlyList<BlockHeader> headers =
-                _headerStore.FindReversedHeaders(batch.EndNumber, seedHash, count);
+                _headerStore.FindReversedHeaders(batch.EndNumber, seedHash, batch.RequestSize);
 
             if (headers.Count == 0) return batch;
 

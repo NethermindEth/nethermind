@@ -109,9 +109,9 @@ public class HeaderStore(
         }
     }
 
-    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, long count)
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count)
     {
-        Dictionary<ValueHash256, BlockHeader> prefetched = new();
+        Dictionary<ValueHash256, BlockHeader> prefetched = new(count);
 
         if (headerDb is ISortedKeyValueStore sorted)
         {
@@ -136,7 +136,7 @@ public class HeaderStore(
 
         if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
 
-        ArrayPoolList<BlockHeader> result = new((int)count) { cursor };
+        ArrayPoolList<BlockHeader> result = new(count) { cursor };
         while (result.Count < count && cursor.ParentHash is not null)
         {
             long parentNumber = cursor.Number - 1;

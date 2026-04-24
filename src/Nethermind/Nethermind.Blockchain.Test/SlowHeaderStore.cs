@@ -27,6 +27,6 @@ public class SlowHeaderStore(IHeaderStore headerStore) : IHeaderStore
     public void Delete(Hash256 blockHash) => headerStore.Delete(blockHash);
     public void InsertBlockNumber(Hash256 blockHash, long blockNumber) => headerStore.InsertBlockNumber(blockHash, blockNumber);
     public long? GetBlockNumber(Hash256 blockHash) => headerStore.GetBlockNumber(blockHash);
-    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, long count) =>
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count) =>
         headerStore.FindReversedHeaders(endBlockNumber, endBlockHash, count);
 }

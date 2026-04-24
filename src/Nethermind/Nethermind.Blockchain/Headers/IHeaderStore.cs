@@ -25,5 +25,5 @@ public interface IHeaderStore : IHeaderFinder
     /// The returned list is ordered oldest-first. If the chain breaks, the returned list is shorter.
     /// Returns an empty list when <paramref name="endBlockHash"/> is not found.
     /// </summary>
-    IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, long count);
+    IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count);
 }
