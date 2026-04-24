@@ -214,9 +214,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 .CreateStorageTreeImpl(address)
                 .CreateWriteBatch(
                     estimatedEntries: estimatedEntries,
-                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
+                    onRootUpdated: MarkDirty);
 
-        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
+        private void MarkDirty(Address address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
 
         public void Dispose()
