@@ -47,9 +47,9 @@ public class BlockAccessListManager(
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
     private BlockExecutionContext? _blockExecutionContext;
-    private TxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
-    private readonly TxProcessorWithWorldStateManager _parallelTxProcessorWithWorldStateManager = new(parallel: true, blockHashProvider, specProvider, stateProvider, logManager);
-    private readonly TxProcessorWithWorldStateManager _sequentialTxProcessorWithWorldStateManager = new(parallel: false, blockHashProvider, specProvider, stateProvider, logManager);
+    private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
+    private readonly ParallelTxProcessorWithWorldStateManager _parallelTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
+    private readonly SequentialTxProcessorWithWorldStateManager _sequentialTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
@@ -414,61 +414,71 @@ public class BlockAccessListManager(
     private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
         => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
 
-    private class TxProcessorWithWorldStateManager(
-        bool parallel,
+    private interface ITxProcessorWithWorldStateManager
+    {
+        void Setup(Block block, BlockExecutionContext blockExecutionContext);
+        TxProcessorWithWorldState Get(int? balIndex = null);
+        TxProcessorWithWorldState GetPreExecution() => Get(0);
+        TxProcessorWithWorldState GetPostExecution() => Get(int.MaxValue);
+        void NextTransaction();
+        void Rollback();
+    }
+
+    private class ParallelTxProcessorWithWorldStateManager(
         IBlockhashProvider blockHashProvider,
         ISpecProvider specProvider,
         IWorldState stateProvider,
-        ILogManager logManager)
+        ILogManager logManager) : ITxProcessorWithWorldStateManager
     {
-        private TxProcessorWithWorldState[] _processors = parallel
-            ? []
-            : [new(0, false, blockHashProvider, specProvider, stateProvider, logManager)];
+        private TxProcessorWithWorldState[] _txProcessorsWithWorldStates;
+        private readonly IBlockhashProvider _blockhashProvider = blockHashProvider;
+        private readonly ISpecProvider _specProvider = specProvider;
+        private readonly IWorldState _stateProvider = stateProvider;
+        private readonly ILogManager _logManager = logManager;
+        private int _len;
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext)
         {
-            if (parallel)
+            _len = block.Transactions.Length + 2;
+            _txProcessorsWithWorldStates = new TxProcessorWithWorldState[_len];
+            for (int i = 0; i < _len; i++)
             {
-                int len = block.Transactions.Length + 2;
-                _processors = new TxProcessorWithWorldState[len];
-                for (int i = 0; i < len; i++)
-                {
-                    // todo: could be a lot of allocations here
-                    // will optimize to allocate ~16 worldstates upfront, and reuse them as they are ready
-                    _processors[i] = new(i, true, blockHashProvider, specProvider, stateProvider, logManager);
-                    _processors[i].Setup(block, blockExecutionContext);
-                }
-            }
-            else
-            {
-                _processors[0].Setup(block, blockExecutionContext);
+                // todo: could be a lot of allocations here
+                // will optimize to allocate ~16 worldstates upfront, and reuse them as they are ready
+                _txProcessorsWithWorldStates[i] = new(i, true, _blockhashProvider, _specProvider, _stateProvider, _logManager);
+                _txProcessorsWithWorldStates[i].Setup(block, blockExecutionContext);
             }
         }
 
-        public TxProcessorWithWorldState Get(int? balIndex = null)
-            => _processors[parallel ? int.Min(balIndex ?? 0, _processors.Length - 1) : 0];
+        public TxProcessorWithWorldState Get(int? balIndex)
+            => _txProcessorsWithWorldStates[int.Min(balIndex ?? 0, _len - 1)];
 
-        public TxProcessorWithWorldState GetPreExecution() => Get(0);
+        public void NextTransaction() { }
 
-        public TxProcessorWithWorldState GetPostExecution() => Get(int.MaxValue);
+        public void Rollback() { }
+    }
+
+    private class SequentialTxProcessorWithWorldStateManager(
+        IBlockhashProvider blockHashProvider,
+        ISpecProvider specProvider,
+        IWorldState stateProvider,
+        ILogManager logManager) : ITxProcessorWithWorldStateManager
+    {
+        private readonly TxProcessorWithWorldState _txProcessorWithWorldState = new(0, false, blockHashProvider, specProvider, stateProvider, logManager);
+
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext)
+            => _txProcessorWithWorldState.Setup(block, blockExecutionContext);
+
+        public TxProcessorWithWorldState Get(int? _)
+            => _txProcessorWithWorldState;
 
         public void NextTransaction()
         {
-            if (!parallel)
-            {
-                TxProcessorWithWorldState p = _processors[0];
-                p.WorldState.Clear();
-                p.WorldState.IncrementIndex();
-            }
+            _txProcessorWithWorldState.WorldState.Clear();
+            _txProcessorWithWorldState.WorldState.IncrementIndex();
         }
 
-        public void Rollback()
-        {
-            if (!parallel)
-            {
-                _processors[0].WorldState.Clear();
-            }
-        }
+        public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
     }
 
     private class TxProcessorWithWorldState
