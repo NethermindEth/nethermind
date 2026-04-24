@@ -180,8 +180,9 @@ public partial class DebugRpcModuleTests
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
     }
 
-    [Test]
-    public async Task Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle()
+    [TestCase(3, TestName = "Debug_traceCallMany_with_minimum_block_number_gap_returns_one_entry_per_bundle")]
+    [TestCase(5, TestName = "Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle")]
+    public async Task Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle(int secondBundleOffset)
     {
         using Context ctx = await CreateContext();
         long headNumber = ctx.Blockchain.BlockTree.Head!.Number;
@@ -190,7 +191,7 @@ public partial class DebugRpcModuleTests
         first.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + 1) };
 
         TransactionBundle second = CreateBundle(CreateTransaction(to: TestItem.AddressD));
-        second.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + 5) };
+        second.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + secondBundleOffset) };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
