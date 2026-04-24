@@ -7,9 +7,21 @@ namespace Nethermind.Trie;
 
 public sealed class NodeStorageCache
 {
-    private readonly SeqlockCache<NodeKey, byte[]> _cache = new();
+    private const int ShardCount = 8;
+    private const int ShardMask = ShardCount - 1;
+
+    private readonly SeqlockCache<NodeKey, byte[]>[] _shards;
 
     private volatile bool _enabled = false;
+
+    public NodeStorageCache()
+    {
+        _shards = new SeqlockCache<NodeKey, byte[]>[ShardCount];
+        for (int i = 0; i < ShardCount; i++)
+        {
+            _shards[i] = new SeqlockCache<NodeKey, byte[]>();
+        }
+    }
 
     public bool Enabled
     {
@@ -23,14 +35,18 @@ public sealed class NodeStorageCache
         {
             return tryLoadRlp(in nodeKey);
         }
-        return _cache.GetOrAdd(in nodeKey, tryLoadRlp);
+        int shard = (int)((uint)nodeKey.GetHashCode() >> 16) & ShardMask;
+        return _shards[shard].GetOrAdd(in nodeKey, tryLoadRlp);
     }
 
     public bool ClearCaches()
     {
         bool wasEnabled = _enabled;
         _enabled = false;
-        _cache.Clear();
+        for (int i = 0; i < ShardCount; i++)
+        {
+            _shards[i].Clear();
+        }
         return wasEnabled;
     }
 }
