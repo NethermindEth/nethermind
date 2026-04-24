@@ -78,18 +78,32 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
 
     private static bool IsMatch(string fileBaseName, string typeName, string? strippedName, bool isPartial)
     {
-        if (fileBaseName == typeName || fileBaseName == strippedName)
+        // Strip a leading numeric-order prefix of the form "NN_" (e.g. "00_Olympic" → "Olympic")
+        string stripped = StripNumericPrefix(fileBaseName);
+
+        if (stripped == typeName || stripped == strippedName)
             return true;
 
         if (isPartial)
         {
-            if (HasDescriptorPrefix(fileBaseName, typeName))
+            if (HasDescriptorPrefix(stripped, typeName))
                 return true;
-            if (strippedName is not null && HasDescriptorPrefix(fileBaseName, strippedName))
+            if (strippedName is not null && HasDescriptorPrefix(stripped, strippedName))
                 return true;
         }
 
         return false;
+    }
+
+    // Strips a leading "digits_" ordering prefix, e.g. "00_Olympic" → "Olympic".
+    private static string StripNumericPrefix(string fileBaseName)
+    {
+        int i = 0;
+        while (i < fileBaseName.Length && char.IsDigit(fileBaseName[i]))
+            i++;
+        return i > 0 && i < fileBaseName.Length && fileBaseName[i] == '_'
+            ? fileBaseName.Substring(i + 1)
+            : fileBaseName;
     }
 
     // Returns true for "TypeName.SomeDescriptor" where the descriptor is non-empty.

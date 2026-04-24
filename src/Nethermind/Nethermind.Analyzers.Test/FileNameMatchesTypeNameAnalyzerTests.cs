@@ -10,6 +10,7 @@ namespace Nethermind.Analyzers.Test;
 
 public class FileNameMatchesTypeNameAnalyzerTests
 {
+    [TestCase("00_Foo.cs", "class Foo { }", TestName = "Numeric_prefix_match")]
     [TestCase("Foo.cs", "class Foo { }", TestName = "Class_match")]
     [TestCase("MyAttribute.cs", "class MyAttribute { }", TestName = "Attribute_full_name")]
     [TestCase("My.cs", "class MyAttribute { }", TestName = "Attribute_stripped_name")]
