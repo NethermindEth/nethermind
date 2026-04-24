@@ -175,11 +175,11 @@ public class BlockAccessListManager(
     {
         foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].BlockAccessIndex != -1)
+            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].BlockAccessIndex != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
-                UInt256 newBalance = accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].PostBalance;
+                UInt256 newBalance = accountChanges.BalanceChanges[^1].PostBalance;
                 if (newBalance > oldBalance)
                 {
                     stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
@@ -190,15 +190,15 @@ public class BlockAccessListManager(
                 }
             }
 
-            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].BlockAccessIndex != -1)
+            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].BlockAccessIndex != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].NewNonce);
+                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].NewNonce);
             }
 
-            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1].BlockAccessIndex != -1)
+            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].BlockAccessIndex != -1)
             {
-                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1].NewCode, spec);
+                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].NewCode, spec);
             }
 
             foreach (SlotChanges slotChange in accountChanges.StorageChanges)
@@ -431,10 +431,6 @@ public class BlockAccessListManager(
         ILogManager logManager) : ITxProcessorWithWorldStateManager
     {
         private TxProcessorWithWorldState[] _txProcessorsWithWorldStates;
-        private readonly IBlockhashProvider _blockhashProvider = blockHashProvider;
-        private readonly ISpecProvider _specProvider = specProvider;
-        private readonly IWorldState _stateProvider = stateProvider;
-        private readonly ILogManager _logManager = logManager;
         private int _len;
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext)
@@ -445,7 +441,7 @@ public class BlockAccessListManager(
             {
                 // todo: could be a lot of allocations here
                 // will optimize to allocate ~16 worldstates upfront, and reuse them as they are ready
-                _txProcessorsWithWorldStates[i] = new(i, true, _blockhashProvider, _specProvider, _stateProvider, _logManager);
+                _txProcessorsWithWorldStates[i] = new(i, true, blockHashProvider, specProvider, stateProvider, logManager);
                 _txProcessorsWithWorldStates[i].Setup(block, blockExecutionContext);
             }
         }
