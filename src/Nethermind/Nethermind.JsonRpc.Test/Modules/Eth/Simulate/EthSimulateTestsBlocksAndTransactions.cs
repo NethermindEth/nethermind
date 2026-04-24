@@ -501,7 +501,7 @@ public class EthSimulateTestsBlocksAndTransactions
         result.ErrorCode.Should().Be(expectedErrorCode);
         result.Result.Error.Should().Be(expectedMessage);
     }
-  
+
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
     // Verifies that blockOverrides.time is respected by the EVM TIMESTAMP opcode in eth_simulateV1
     [TestCase(false)]
@@ -554,5 +554,5 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 returnedTimestamp = new(returnData, isBigEndian: true);
         Assert.That((ulong)returnedTimestamp, Is.EqualTo(futureTimestamp),
             $"Expected block.timestamp = {futureTimestamp} (overridden), got {returnedTimestamp}");
-    }    
+    }
 }
