@@ -110,7 +110,7 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
     private static bool HasDescriptorPrefix(string fileBaseName, string prefix) =>
         fileBaseName.Length > prefix.Length + 1
         && fileBaseName[prefix.Length] == '.'
-        && fileBaseName.StartsWith(prefix);
+        && fileBaseName.StartsWith(prefix, StringComparison.Ordinal);
 
     private static void CollectTopLevelTypes(SyntaxList<MemberDeclarationSyntax> members, List<MemberDeclarationSyntax> result)
     {
