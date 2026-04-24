@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.Persistence;
 public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
     private readonly WriteBufferAdjuster _adjuster = new(db);
-    private int _layoutPersisted = BasePersistence.EnsureLayout(db, FlatLayout.Flat);
+    private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
 
     public void Flush() => db.Flush();
 

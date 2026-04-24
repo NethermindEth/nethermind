@@ -51,7 +51,12 @@ public static class BasePersistence
     internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(LayoutKey);
-        return bytes is null || bytes.Length == 0 ? null : (FlatLayout)bytes[0];
+        if (bytes is null || bytes.Length == 0) return null;
+        if (!Enum.IsDefined((FlatLayout)bytes[0]))
+            throw new InvalidConfigurationException(
+                $"Flat DB metadata contains an unrecognized layout byte '{bytes[0]}'. The DB may be corrupt or was written by a newer version.",
+                -1);
+        return (FlatLayout)bytes[0];
     }
 
     internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
@@ -62,17 +67,12 @@ public static class BasePersistence
     }
 
     /// <summary>
-    /// Validates that the persistence's <see cref="FlatLayout"/> matches the value previously persisted
-    /// in the flat DB's metadata column. Throws <see cref="InvalidConfigurationException"/> on mismatch.
-    /// Intended to be called from each persistence's constructor (via the field initializer that seeds
-    /// the per-persistence "layout recorded" flag); the layout itself is written by the first write
+    /// Validates that <paramref name="layout"/> matches the value previously persisted in the flat DB's
+    /// metadata column. Throws <see cref="InvalidConfigurationException"/> on mismatch.
+    /// On a fresh DB (no stored value) the check is a no-op; the layout is written by the first write
     /// batch through <see cref="RecordLayoutOnFirstBatch"/>.
     /// </summary>
-    /// <returns>
-    /// Always 0 — the initial value of the per-persistence "layout recorded" flag. The first write batch
-    /// is responsible for actually writing the layout (idempotently when one is already stored).
-    /// </returns>
-    internal static int EnsureLayout(IColumnsDb<FlatDbColumns> db, FlatLayout layout)
+    internal static void ValidateLayout(IColumnsDb<FlatDbColumns> db, FlatLayout layout)
     {
         FlatLayout? stored = ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata));
         if (stored is not null && stored != layout)
@@ -82,6 +82,16 @@ public static class BasePersistence
                 $"Either set 'IFlatDbConfig.Layout' back to '{stored}', or wipe the flat DB and re-sync.",
                 -1);
         }
+    }
+
+    /// <summary>
+    /// Calls <see cref="ValidateLayout"/> and returns 0 for use as the initial value of the
+    /// per-persistence "layout recorded" field (which is written on the first batch via
+    /// <see cref="RecordLayoutOnFirstBatch"/>).
+    /// </summary>
+    internal static int ValidateLayoutReturnFlag(IColumnsDb<FlatDbColumns> db, FlatLayout layout)
+    {
+        ValidateLayout(db, layout);
         return 0;
     }
 

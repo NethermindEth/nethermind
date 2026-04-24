@@ -35,39 +35,44 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
-    public void EnsureLayout_ReturnsZero_AndDoesNotWrite_OnFreshDb(FlatLayout layout)
+    public void ValidateLayout_DoesNotThrow_OnFreshDb(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
-
-        BasePersistence.EnsureLayout(db, layout).Should().Be(0);
-
-        BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)).Should().BeNull();
+        Assert.DoesNotThrow(() => BasePersistence.ValidateLayout(db, layout));
     }
 
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
-    public void EnsureLayout_ReturnsZero_AndDoesNotWrite_WhenStoredMatches(FlatLayout layout)
+    public void ValidateLayout_DoesNotThrow_WhenStoredMatches(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
         BasePersistence.SetLayout(db.GetColumnDb(FlatDbColumns.Metadata), layout);
+        Assert.DoesNotThrow(() => BasePersistence.ValidateLayout(db, layout));
+    }
 
-        BasePersistence.EnsureLayout(db, layout).Should().Be(0);
-
-        BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)).Should().Be(layout);
+    [TestCase(FlatLayout.Flat)]
+    [TestCase(FlatLayout.FlatInTrie)]
+    [TestCase(FlatLayout.PreimageFlat)]
+    public void ValidateLayoutReturnFlag_ReturnsZero(FlatLayout layout)
+    {
+        using MemColumnsDb<FlatDbColumns> db = new();
+        BasePersistence.ValidateLayoutReturnFlag(db, layout).Should().Be(0);
     }
 
     [TestCase(FlatLayout.Flat, FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.FlatInTrie, FlatLayout.Flat)]
     [TestCase(FlatLayout.Flat, FlatLayout.PreimageFlat)]
+    [TestCase(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat)]
+    [TestCase(FlatLayout.PreimageFlat, FlatLayout.Flat)]
     [TestCase(FlatLayout.PreimageFlat, FlatLayout.FlatInTrie)]
-    public void EnsureLayout_Throws_WhenStoredDiffers(FlatLayout stored, FlatLayout configured)
+    public void ValidateLayout_Throws_WhenStoredDiffers(FlatLayout stored, FlatLayout configured)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
         BasePersistence.SetLayout(db.GetColumnDb(FlatDbColumns.Metadata), stored);
 
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(
-            () => BasePersistence.EnsureLayout(db, configured))!;
+            () => BasePersistence.ValidateLayout(db, configured))!;
 
         ex.Message.Should().Contain(stored.ToString());
         ex.Message.Should().Contain(configured.ToString());
