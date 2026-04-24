@@ -50,15 +50,13 @@ public sealed class NodeStorageCache
         }
         int shard = (int)((uint)nodeKey.GetHashCode() >> 16) & ShardMask;
         SeqlockCache<NodeKey, byte[]> cache = _shards[shard];
-        if (cache.TryGetValue(in nodeKey, out byte[]? value))
+        if (cache.TryGetValue(in nodeKey, out byte[]? existing))
         {
             Interlocked.Increment(ref _hits);
-            return value;
+            return existing;
         }
         Interlocked.Increment(ref _misses);
-        value = tryLoadRlp(in nodeKey);
-        cache.Set(in nodeKey, value);
-        return value;
+        return cache.GetOrAdd(in nodeKey, tryLoadRlp);
     }
 
     public bool ClearCaches()
