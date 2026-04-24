@@ -28,13 +28,18 @@ public class PrecompileCachedCodeInfoRepository(
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
-        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo cachedCodeInfo))
+        if (TryGetCachedPrecompile(codeSource, vmSpec, out CodeInfo cachedCodeInfo))
         {
             delegationAddress = null;
             return cachedCodeInfo;
         }
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
+
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec) =>
+        TryGetCachedPrecompile(codeSource, vmSpec, out CodeInfo cachedCodeInfo)
+            ? cachedCodeInfo
+            : baseCodeInfoRepository.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
 
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
         baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
@@ -48,6 +53,18 @@ public class PrecompileCachedCodeInfoRepository(
     public bool TryGetDelegation(Address address, IReleaseSpec spec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>
         baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+
+    private bool TryGetCachedPrecompile(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? cachedCodeInfo)
+    {
+        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo precompileCodeInfo))
+        {
+            cachedCodeInfo = precompileCodeInfo;
+            return true;
+        }
+
+        cachedCodeInfo = null;
+        return false;
+    }
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,

@@ -180,8 +180,7 @@ public static partial class EvmInstructions
 
             vm.WorldState.AddAccountRead(address);
 
-            CodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            CodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -294,11 +293,8 @@ public static partial class EvmInstructions
             }
         }
 
-        // No optimization applied: load the account's code from storage.
-        ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
-            .CodeSpan;
-        return stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
+        uint codeSize = vm.GetExtCodeSizeCached(address, spec);
+        return stack.PushUInt32<TTracingInst>(codeSize);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

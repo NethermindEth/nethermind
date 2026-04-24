@@ -45,14 +45,8 @@ public class CodeInfoRepository : ICodeInfoRepository
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        if (vmSpec.IsPrecompile(codeSource))
-        {
-            if (_balBuilder is not null && _balBuilder.TracingEnabled)
-            {
-                _balBuilder.AddAccountRead(codeSource);
-            }
-            return _localPrecompiles[codeSource];
-        }
+        if (TryGetPrecompileCodeInfo(codeSource, vmSpec, out CodeInfo precompileCodeInfo))
+            return precompileCodeInfo;
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
@@ -65,6 +59,28 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
 
         return codeInfo;
+    }
+
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec) =>
+        TryGetPrecompileCodeInfo(codeSource, vmSpec, out CodeInfo precompileCodeInfo)
+            ? precompileCodeInfo
+            : _codeInfoLoader(codeHash);
+
+    private bool TryGetPrecompileCodeInfo(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? precompileCodeInfo)
+    {
+        if (vmSpec.IsPrecompile(codeSource))
+        {
+            if (_balBuilder is not null && _balBuilder.TracingEnabled)
+            {
+                _balBuilder.AddAccountRead(codeSource);
+            }
+
+            precompileCodeInfo = _localPrecompiles[codeSource];
+            return true;
+        }
+
+        precompileCodeInfo = null;
+        return false;
     }
 
     private CodeInfo InternalGetCodeInfo(Address codeSource)

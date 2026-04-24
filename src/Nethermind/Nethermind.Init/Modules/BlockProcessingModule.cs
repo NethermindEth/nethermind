@@ -38,6 +38,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 {
     protected override void Load(ContainerBuilder builder)
     {
+        VirtualMachine.SetMaxExtCodeCacheEntries(blocksConfig.ExtCodeCacheEntries);
+
         builder
             // Validators
             .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
