@@ -452,6 +452,7 @@ public partial class EthRpcModuleTests
 
     [TestCase("0xasdf")]
     [TestCase("notahex")]
+    [TestCase("0x")]
     [TestCase("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     public async Task Eth_get_storage_at_invalid_hex_key(string position)
     {

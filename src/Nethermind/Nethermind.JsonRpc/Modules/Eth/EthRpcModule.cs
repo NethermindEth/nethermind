@@ -173,6 +173,11 @@ public partial class EthRpcModule(
             return ResultWrapper<byte[]>.Fail("invalid hex in storage key: null", ErrorCodes.InvalidParams);
         }
 
+        if (positionIndex.Length == 0 || positionIndex == "0x")
+        {
+            return ResultWrapper<byte[]>.Fail($"invalid hex in storage key: \"{positionIndex}\"", ErrorCodes.InvalidParams);
+        }
+
         UInt256 storagePosition;
         try
         {
