@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Abi;
@@ -169,6 +169,24 @@ public class ExecutionProcessorTests
         Assert.That(requestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
+    }
+
+    [Test]
+    public void ShouldUseBlockBaseFeeAsGasPriceForSystemRequestCalls()
+    {
+        UInt256 baseFee = 1234;
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(baseFee).TestObject;
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, [], _spec);
+
+        _transactionProcessor.Received(1).Execute(
+            Arg.Is<Transaction>(transaction => transaction.To == eip7002Account && transaction.GasPrice == baseFee),
+            Arg.Any<CallOutputTracer>());
+        _transactionProcessor.Received(1).Execute(
+            Arg.Is<Transaction>(transaction => transaction.To == eip7251Account && transaction.GasPrice == baseFee),
+            Arg.Any<CallOutputTracer>());
     }
 
     private static LogEntry CreateLogEntry(byte[][] requestDataParts) =>

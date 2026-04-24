@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
@@ -18,41 +18,14 @@ using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
+public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor) : IExecutionRequestsProcessor
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
     private const long GasLimit = 30_000_000L;
 
-    private readonly ITransactionProcessor _transactionProcessor;
-
-    private readonly SystemCall _withdrawalTransaction = new()
-    {
-        Value = UInt256.Zero,
-        Data = Array.Empty<byte>(),
-        To = Eip7002Constants.WithdrawalRequestPredeployAddress,
-        SenderAddress = Address.SystemUser,
-        GasLimit = GasLimit,
-        GasPrice = UInt256.Zero,
-    };
-
-    private readonly SystemCall _consolidationTransaction = new()
-    {
-        Value = UInt256.Zero,
-        Data = Array.Empty<byte>(),
-        To = Eip7251Constants.ConsolidationRequestPredeployAddress,
-        SenderAddress = Address.SystemUser,
-        GasLimit = GasLimit,
-        GasPrice = UInt256.Zero,
-    };
-
-    public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
-    {
-        _transactionProcessor = transactionProcessor;
-        _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
-        _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
-    }
+    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
@@ -66,14 +39,14 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
             if (spec.WithdrawalRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7002ContractAddress, ref requests, _withdrawalTransaction,
+                ReadRequests(block, state, spec.Eip7002ContractAddress, ref requests,
                     ExecutionRequestType.WithdrawalRequest,
                     BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
             }
 
             if (spec.ConsolidationRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests, _consolidationTransaction,
+                ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests,
                     ExecutionRequestType.ConsolidationRequest,
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
             }
@@ -166,7 +139,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     }
 
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
-        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
+        ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
         if (!state.HasCode(contractAddress))
         {
@@ -174,6 +147,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
 
         CallOutputTracer tracer = new();
+        SystemCall systemTx = CreateSystemCall(contractAddress, block.Header.BaseFeePerGas);
 
         _transactionProcessor.Execute(systemTx, tracer);
 
@@ -191,5 +165,21 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         buffer[0] = (byte)type;
         tracer.ReturnValue.AsSpan().CopyTo(buffer.AsSpan(1));
         requests.Add(buffer);
+    }
+
+    private static SystemCall CreateSystemCall(Address contractAddress, UInt256 gasPrice)
+    {
+        // EIP-7002/EIP-7251 dequeue calls expose the block base fee through GASPRICE.
+        SystemCall systemTx = new()
+        {
+            Value = UInt256.Zero,
+            Data = Array.Empty<byte>(),
+            To = contractAddress,
+            SenderAddress = Address.SystemUser,
+            GasLimit = GasLimit,
+            GasPrice = gasPrice,
+        };
+        systemTx.Hash = systemTx.CalculateHash();
+        return systemTx;
     }
 }
