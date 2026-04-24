@@ -51,16 +51,27 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             balManager.NextTransaction();
-            balManager.ValidateBlockAccessList(block, 0);
+            bool preExecutionBalValidated = false;
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
                 ProcessTransaction(balManager.GetTxProcessor(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
 
+                if (!preExecutionBalValidated)
+                {
+                    balManager.ValidateBlockAccessList(block, 0);
+                    preExecutionBalValidated = true;
+                }
+
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
+            }
+
+            if (!preExecutionBalValidated)
+            {
+                balManager.ValidateBlockAccessList(block, 0);
             }
 
             return [.. receiptsTracer.TxReceipts];

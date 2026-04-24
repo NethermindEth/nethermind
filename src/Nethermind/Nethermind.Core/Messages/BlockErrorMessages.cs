@@ -165,7 +165,7 @@ public static class BlockErrorMessages
     public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
 
-    public static string BlockLevelAccessListExceededSizeLimit(int balItems, int maxBalItems) =>
+    public static string BlockLevelAccessListExceededSizeLimit(int balItems, long maxBalItems) =>
         $"BlockLevelAccessListExceededSizeLimit: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
 
     public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>

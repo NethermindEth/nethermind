@@ -18,6 +18,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -46,6 +47,7 @@ public class BlockAccessListManager(
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
+    private const long SystemTransactionGasLimit = 30_000_000L;
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly ParallelTxProcessorWithWorldStateManager _parallelTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
@@ -353,7 +355,27 @@ public class BlockAccessListManager(
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
     }
 
-    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) => new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
+    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+    {
+        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null)
+        {
+            return;
+        }
+
+        Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        SystemCall systemTx = new()
+        {
+            Value = UInt256.Zero,
+            Data = header.ParentHash.Bytes.ToArray(),
+            To = eip2935Account,
+            SenderAddress = Address.SystemUser,
+            GasLimit = SystemTransactionGasLimit,
+            GasPrice = header.BaseFeePerGas,
+        };
+        systemTx.Hash = systemTx.CalculateHash();
+
+        _txProcessorWithWorldStateManager.GetPreExecution().TxProcessor.Execute(systemTx, NullTxTracer.Instance);
+    }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
