@@ -69,7 +69,7 @@ namespace Nethermind.Logging.NLog
             _logger.Log(evt);
         }
 
-        public void Error(string text, LogEventKind kind, Exception ex = null)
+        public void Error(string text, LogEventKind kind, Exception? ex = null)
         {
             if (!IsError) return;
             LogEventInfo evt = LogEventInfo.Create(global::NLog.LogLevel.Error, _logger.Name, ex, null, text);

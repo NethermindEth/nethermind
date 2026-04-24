@@ -43,9 +43,9 @@ public class NLogManager : ILogManager, IDisposable
 
     private static void SetupLogFile(string logFileName, string logDirectory)
     {
-        if (LogManager.Configuration?.AllTargets is not null)
+        if (LogManager.Configuration?.AllTargets is { } allTargets)
         {
-            foreach (FileTarget target in LogManager.Configuration?.AllTargets.OfType<FileTarget>())
+            foreach (FileTarget target in allTargets.OfType<FileTarget>())
             {
                 string fileNameToUse = (target.Name == DefaultFileTargetName) ? logFileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
                 target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.GetFullPath(Path.Combine(logDirectory, fileNameToUse)) : fileNameToUse;

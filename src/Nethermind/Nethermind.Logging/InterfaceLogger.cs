@@ -29,7 +29,7 @@ namespace Nethermind.Logging
         /// filter these events separately from plain errors. Default implementation drops the
         /// kind and falls through to <see cref="Error(string, Exception)"/>.
         /// </summary>
-        void Error(string text, LogEventKind kind, Exception ex = null) => Error(text, ex);
+        void Error(string text, LogEventKind kind, Exception? ex = null) => Error(text, ex);
 
         bool IsInfo { get; }
         bool IsWarn { get; }
