@@ -83,7 +83,7 @@ public class XdcModule : Module
             .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
 
             // forensics handler
-            .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
+            .AddSingleton<IForensicsProcessor, NullForensicsProcessor>()
 
             // Validators
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
