@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -27,6 +27,9 @@ public class VmState<TGasPolicy> : IDisposable
     public byte[]? DataStack;
     public TGasPolicy Gas;
     public long InitialStateReservoir;
+    public long InitialStateGasUsed;
+    public long StateGasRefund;
+    public long StateGasRefundPending;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -127,6 +130,9 @@ public class VmState<TGasPolicy> : IDisposable
         _accessTracker.TakeSnapshot();
         Gas = gas;
         InitialStateReservoir = TGasPolicy.GetStateReservoir(in gas);
+        InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
+        StateGasRefund = 0;
+        StateGasRefundPending = 0;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;

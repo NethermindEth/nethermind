@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test.Amsterdam;
@@ -23,7 +22,7 @@ public abstract class AmsterdamBlockChainTestFixture<TSelf> : BlockchainTestBase
     public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy
@@ -46,7 +45,7 @@ public abstract class AmsterdamEngineBlockChainTestFixture<TSelf> : BlockchainTe
     public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy
@@ -54,6 +53,7 @@ public abstract class AmsterdamEngineBlockChainTestFixture<TSelf> : BlockchainTe
             ArchiveVersion = Constants.BalArchiveVersion,
             ArchiveName = Constants.BalArchiveName
         }, "fixtures/blockchain_tests_engine/for_amsterdam", typeof(TSelf).GetCustomAttribute<EipWildcardAttribute>()!.Wildcard).LoadTests<BlockchainTest>();
+
 }
 
 /// <summary>
@@ -65,7 +65,7 @@ public abstract class AmsterdamEngineBlockChainTestFixture<TSelf> : BlockchainTe
 public abstract class AmsterdamStateTestFixture<TSelf> : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test) => RunTest(test).Pass.Should().BeTrue();
+    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy

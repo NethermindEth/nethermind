@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -141,14 +141,14 @@ internal class XdcTransactionProcessor(
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec _, long minGasRequired, bool validate)
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec _, in EthereumGasPolicy intrinsicGas, long minGasRequired, bool validate)
     {
         IXdcReleaseSpec spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
         if (tx.RequiresSpecialHandling(spec))
         {
             return TransactionResult.Ok;
         }
-        return base.ValidateGas(tx, header, spec, minGasRequired, validate);
+        return base.ValidateGas(tx, header, spec, in intrinsicGas, minGasRequired, validate);
     }
 
     protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
@@ -169,10 +169,10 @@ internal class XdcTransactionProcessor(
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
-    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit) =>
         tx.RequiresSpecialHandling((IXdcReleaseSpec)spec)
             ? new IntrinsicGas<EthereumGasPolicy>()
-            : base.CalculateIntrinsicGas(tx, spec);
+            : base.CalculateIntrinsicGas(tx, spec, blockGasLimit);
 
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -184,7 +184,7 @@ internal class XdcTransactionProcessor(
         // maybe a better approach would be adding an XdcGasPolicy
         TransactionResult result;
         _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))
             || !(result = IncrementNonce(tx, header, spec, tracer, opts))
