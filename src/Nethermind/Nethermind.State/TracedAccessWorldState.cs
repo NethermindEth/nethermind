@@ -19,11 +19,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches
+public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState
 {
-    public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
-    public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
-
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;

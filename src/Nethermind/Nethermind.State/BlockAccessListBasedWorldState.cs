@@ -21,16 +21,12 @@ namespace Nethermind.State;
 public class BlockAccessListBasedWorldState(
     IWorldState innerWorldState,
     int blockAccessIndex,
-    ILogManager logManager) : IWorldState, IPreBlockCaches
+    ILogManager logManager) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
     private BlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
-
-    public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
-
-    public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
 
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
