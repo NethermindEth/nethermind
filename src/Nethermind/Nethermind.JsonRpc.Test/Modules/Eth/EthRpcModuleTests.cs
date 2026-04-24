@@ -451,7 +451,8 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase("0xasdf")]
-    [TestCase("")]
+    [TestCase("notahex")]
+    [TestCase("0x" + new string('f', 66))]
     public async Task Eth_get_storage_at_invalid_hex_key(string position)
     {
         using Context ctx = await Context.Create();

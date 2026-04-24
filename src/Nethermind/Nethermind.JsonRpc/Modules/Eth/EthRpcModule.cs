@@ -178,7 +178,7 @@ public partial class EthRpcModule(
         {
             storagePosition = UInt256Converter.ReadHex(Encoding.UTF8.GetBytes(positionIndex));
         }
-        catch (Exception)
+        catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
             return ResultWrapper<byte[]>.Fail($"invalid hex in storage key: \"{positionIndex}\"", ErrorCodes.InvalidParams);
         }
