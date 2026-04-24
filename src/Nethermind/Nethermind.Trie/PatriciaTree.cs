@@ -754,14 +754,18 @@ namespace Nethermind.Trie
             return node;
         }
 
-        internal bool ShouldUpdateChild(TrieNode? parent, TrieNode? oldChild, TrieNode? newChild)
+        internal bool ShouldUpdateChild(TrieNode? parent, object? oldChild, TrieNode? newChild)
         {
             if (parent is null) return true;
             if (oldChild is null && newChild is null) return false;
-            if (!ReferenceEquals(oldChild, newChild)) return true;
-            // So that recalculate root knows to recalculate the parent root.
-            // Parent's hash can also be null depending on nesting level - still need to update child, otherwise combine will remain original value
-            return newChild.Keccak is null;
+            // oldChild may be a Hash256 (committed child not in memory): always differs from newChild.
+            if (oldChild is TrieNode oldNode && ReferenceEquals(oldNode, newChild))
+            {
+                // So that recalculate root knows to recalculate the parent root.
+                // Parent's hash can also be null depending on nesting level - still need to update child, otherwise combine will remain original value
+                return newChild.Keccak is null;
+            }
+            return true;
         }
 
         /// <summary>
@@ -811,7 +815,7 @@ namespace Nethermind.Trie
                 byte[] extensionKey = HexPrefix.SingleNibble((byte)onlyChildIdx);
                 if (originalNode is not null && originalNode.IsExtension && Bytes.AreEqual(extensionKey, originalNode.Key))
                 {
-                    TrieNode? originalChild = originalNode.GetChildIfCached(0);
+                    object? originalChild = originalNode.GetRawChild(0);
                     if (!ShouldUpdateChild(originalNode, originalChild, onlyChildNode))
                     {
                         return originalNode;
@@ -839,7 +843,7 @@ namespace Nethermind.Trie
                     {
                         int originalLength = path.Length;
                         path.AppendMut(newKey);
-                        TrieNode? originalChild = originalNode.GetChildIfCached(0);
+                        object? originalChild = originalNode.GetRawChild(0);
                         TrieNode? newChild = onlyChildNode.GetChildWithChildPath(TrieStore, ref path, 0);
                         path.TruncateMut(originalLength);
                         if (!ShouldUpdateChild(originalNode, originalChild, newChild))

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -258,6 +259,21 @@ public class PatriciaTreeBulkSetAndCommitTests
         catch (InvalidOperationException) { threw = true; }
 
         threw.Should().BeTrue();
+    }
+
+    [TestCase(true,  true,  false, Description = "both null → no update")]
+    [TestCase(false, true,  true,  Description = "Hash256 old, null new → update (deletion of committed child)")]
+    [TestCase(false, false, true,  Description = "Hash256 old, non-null new → update")]
+    [TestCase(true,  false, true,  Description = "null old, non-null new → update")]
+    public void ShouldUpdateChild_ObjectOldChild(bool oldIsNull, bool newIsNull, bool expectedUpdate)
+    {
+        PatriciaTree tree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        TrieNode parent = TrieNodeFactory.CreateBranch();
+
+        object oldChild = oldIsNull ? null : (object)Keccak.Compute([1, 2, 3]);
+        TrieNode newChild = newIsNull ? null : TrieNodeFactory.CreateLeaf([1], new CappedArray<byte>(new byte[] { 1 }));
+
+        tree.ShouldUpdateChild(parent, oldChild, newChild).Should().Be(expectedUpdate);
     }
 
 }
