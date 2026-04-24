@@ -120,7 +120,6 @@ public sealed class TrieNodeCache : ITrieNodeCache
             TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
             if (oldNode is not null)
             {
-                oldNode.PrunePersistedRecursively(1);
                 Interlocked.Add(ref _shardMemoryUsages[shardIdx], -EstimatedSizePerNode);
             }
         }
@@ -145,12 +144,6 @@ public sealed class TrieNodeCache : ITrieNodeCache
             wasPruned = true;
             int shardToClear = _nextShardToClear;
 
-            // Prune any remaining reference
-            for (int i = 0; i < _bucketSize; i++)
-            {
-                _cacheShards[shardToClear][i]?.PrunePersistedRecursively(1);
-            }
-
             // Clear the shard
             Array.Clear(_cacheShards[shardToClear]);
 
@@ -173,10 +166,6 @@ public sealed class TrieNodeCache : ITrieNodeCache
     {
         for (int i = 0; i < ShardCount; i++)
         {
-            for (int j = 0; j < _bucketSize; j++)
-            {
-                _cacheShards[i][j]?.PrunePersistedRecursively(1);
-            }
             Array.Clear(_cacheShards[i]);
             Interlocked.Exchange(ref _shardMemoryUsages[i], 0);
         }

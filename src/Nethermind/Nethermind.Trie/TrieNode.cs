@@ -793,7 +793,7 @@ namespace Nethermind.Trie
             // Don't unresolve nodes with path length <= 4; there should be relatively few and they should fit
             // in RAM, but they are hit quite a lot, and don't have very good data locality.
             // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
-            if (child?.IsPersisted == true && !keepChildRef && childPath.Length > 8 && childPath.Length % 2 == 0)
+            if (false && child?.IsPersisted == true && !keepChildRef && childPath.Length > 8 && childPath.Length % 2 == 0)
             {
                 UnresolveChild(childIndex);
             }
