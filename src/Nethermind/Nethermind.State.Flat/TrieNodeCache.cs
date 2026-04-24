@@ -105,7 +105,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
                 for (int j = 0; j < shard.Length; j++)
                 {
-                    if (shard[j].node is { } newNode) newNode.PrunePersistedRecursively(1);
+                    if (shard[j].node is { } newNode) newNode.PrunePersistedRecursively(3);
 
                 }
             }
@@ -115,7 +115,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         void AddToCacheWithHashCode(int shardIdx, int hashCode, TrieNode newNode)
         {
             int bucketIdx = hashCode & _bucketMask;
-            newNode.PrunePersistedRecursively(1);
+            newNode.PrunePersistedRecursively(3);
             Interlocked.Add(ref _shardMemoryUsages[shardIdx], newNode.GetMemorySize(false));
 
             TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
