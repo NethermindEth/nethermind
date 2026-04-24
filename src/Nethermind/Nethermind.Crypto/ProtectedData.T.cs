@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Crypto
 {
-    public abstract class ProtectedData<T> : ProtectedData where T : IDisposable
+    public abstract partial class ProtectedData<T> : ProtectedData where T : IDisposable
     {
         private const int EntropyMaxLength = 10;
         private const int EntropyMinLength = 5;
