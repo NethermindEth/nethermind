@@ -27,6 +27,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
     private readonly CancellationTokenSource _cts;
+    private readonly IDisposable _ctsRegistration;
     private bool _resultConstructed;
     private Stack<long>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -54,7 +55,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _ctx = ctx;
 
         _cts = new CancellationTokenSource(options.Timeout ?? DefaultTimeout);
-        _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
 
         _tracer = engine.CreateTracer(options.Tracer);
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
@@ -72,6 +73,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
+        _ctsRegistration.Dispose();
         _resultConstructed = true;
 
         return result;
@@ -256,6 +258,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void Dispose()
     {
         base.Dispose();
+        _ctsRegistration.Dispose();
         _cts.Dispose();
 
         if (!_resultConstructed)
