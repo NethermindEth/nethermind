@@ -450,12 +450,21 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000abcdef\",\"id\":67}"));
     }
 
-    [Test]
-    public async Task Eth_get_storage_at_invalid_hex_key()
+    [TestCase("0xasdf")]
+    [TestCase("")]
+    public async Task Eth_get_storage_at_invalid_hex_key(string position)
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0xasdf");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid hex in storage key: \\\"0xasdf\\\"\"},\"id\":67}"));
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), position);
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"invalid hex in storage key: \\\"{position}\\\"\"}},\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Eth_get_storage_at_null_key_returns_error()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), null!);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid hex in storage key: null\"},\"id\":67}"));
     }
 
     [Test]

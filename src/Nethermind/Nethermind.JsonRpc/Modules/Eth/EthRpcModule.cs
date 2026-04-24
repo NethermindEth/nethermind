@@ -168,14 +168,17 @@ public partial class EthRpcModule(
     public ResultWrapper<byte[]> eth_getStorageAt(Address address, string? positionIndex,
         BlockParameter? blockParameter = null)
     {
+        if (positionIndex is null)
+        {
+            return ResultWrapper<byte[]>.Fail("invalid hex in storage key: null", ErrorCodes.InvalidParams);
+        }
+
         UInt256 storagePosition;
         try
         {
-            storagePosition = positionIndex is null
-                ? UInt256.Zero
-                : UInt256Converter.ReadHex(System.Text.Encoding.UTF8.GetBytes(positionIndex));
+            storagePosition = UInt256Converter.ReadHex(Encoding.UTF8.GetBytes(positionIndex));
         }
-        catch
+        catch (Exception)
         {
             return ResultWrapper<byte[]>.Fail($"invalid hex in storage key: \"{positionIndex}\"", ErrorCodes.InvalidParams);
         }
