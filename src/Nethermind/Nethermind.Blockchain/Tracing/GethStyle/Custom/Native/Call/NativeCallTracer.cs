@@ -177,6 +177,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+
+        if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         firstCallFrame.Output = new ArrayPoolList<byte>(output);
@@ -185,12 +187,15 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+
+        if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         if (output is not null)
             firstCallFrame.Output = new ArrayPoolList<byte>(output);
 
-        EvmExceptionType errorType = _error!.Value;
+        if (_error is null) return;
+        EvmExceptionType errorType = _error.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
         if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
         {
