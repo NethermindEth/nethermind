@@ -3,7 +3,6 @@
 
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Test;
-using NUnit.Framework;
 
 namespace Nethermind.Merge.AuRa.Test;
 
