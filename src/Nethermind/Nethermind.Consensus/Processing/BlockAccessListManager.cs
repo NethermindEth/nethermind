@@ -47,7 +47,6 @@ public class BlockAccessListManager(
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
-    private const long SystemTransactionGasLimit = 30_000_000L;
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly ParallelTxProcessorWithWorldStateManager _parallelTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
@@ -363,16 +362,7 @@ public class BlockAccessListManager(
         }
 
         Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        SystemCall systemTx = new()
-        {
-            Value = UInt256.Zero,
-            Data = header.ParentHash.Bytes.ToArray(),
-            To = eip2935Account,
-            SenderAddress = Address.SystemUser,
-            GasLimit = SystemTransactionGasLimit,
-            GasPrice = header.BaseFeePerGas,
-        };
-        systemTx.Hash = systemTx.CalculateHash();
+        SystemCall systemTx = SystemCallFactory.Create(eip2935Account, header.ParentHash.Bytes.ToArray(), header.BaseFeePerGas);
 
         _txProcessorWithWorldStateManager.GetPreExecution().TxProcessor.Execute(systemTx, NullTxTracer.Instance);
     }

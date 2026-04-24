@@ -23,8 +23,6 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    private const long GasLimit = 30_000_000L;
-
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
@@ -147,7 +145,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         }
 
         CallOutputTracer tracer = new();
-        SystemCall systemTx = CreateSystemCall(contractAddress, block.Header.BaseFeePerGas);
+        SystemCall systemTx = SystemCallFactory.Create(contractAddress, block.Header.BaseFeePerGas);
 
         _transactionProcessor.Execute(systemTx, tracer);
 
@@ -165,21 +163,5 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         buffer[0] = (byte)type;
         tracer.ReturnValue.AsSpan().CopyTo(buffer.AsSpan(1));
         requests.Add(buffer);
-    }
-
-    private static SystemCall CreateSystemCall(Address contractAddress, UInt256 gasPrice)
-    {
-        // EIP-7002/EIP-7251 dequeue calls expose the block base fee through GASPRICE.
-        SystemCall systemTx = new()
-        {
-            Value = UInt256.Zero,
-            Data = Array.Empty<byte>(),
-            To = contractAddress,
-            SenderAddress = Address.SystemUser,
-            GasLimit = GasLimit,
-            GasPrice = gasPrice,
-        };
-        systemTx.Hash = systemTx.CalculateHash();
-        return systemTx;
     }
 }
