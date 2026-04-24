@@ -93,23 +93,31 @@ public class BlockAccessListManager(
         if (Enabled)
         {
             _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager : _sequentialTxProcessorWithWorldStateManager;
+            CheckInitialized();
             _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
         }
     }
 
     public void SpendGas(long gas)
-        => _gasRemaining -= gas;
+    {
+        CheckInitialized();
+        _gasRemaining -= gas;
+    }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => _blockExecutionContext = blockExecutionContext;
 
     public ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null)
-        => _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
+    {
+        CheckInitialized();
+        return _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
+    }
 
     public void NextTransaction()
     {
         if (Enabled)
         {
+            CheckInitialized();
             _txProcessorWithWorldStateManager.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
             _txProcessorWithWorldStateManager.NextTransaction();
         }
@@ -119,12 +127,15 @@ public class BlockAccessListManager(
     {
         if (Enabled)
         {
+            CheckInitialized();
             _txProcessorWithWorldStateManager.Rollback();
         }
     }
 
     public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
+        CheckInitialized();
+    
         int len = block.Transactions.Length;
         _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
         ValidateBlockAccessList(block, 0);
@@ -246,6 +257,8 @@ public class BlockAccessListManager(
         }
         else
         {
+            CheckInitialized();
+
             _txProcessorWithWorldStateManager.GetPostExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
@@ -260,6 +273,8 @@ public class BlockAccessListManager(
         {
             return;
         }
+
+        CheckInitialized();
 
         IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
         IEnumerator<ChangeAtIndex> suggestedChanges = block.BlockAccessList.GetChangesAtIndex(index).GetEnumerator();
@@ -351,14 +366,22 @@ public class BlockAccessListManager(
 
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
+        CheckInitialized();
+
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
     }
 
-    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) => new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
+    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+    {
+        CheckInitialized();
+        new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
+    }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
+        CheckInitialized();
+
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         IWithdrawalProcessor withdrawalProcessor = withdrawalProcessorFactory.Create(postExecution.WorldState, postExecution.TxProcessor);
         if (_isBuilding)
@@ -370,6 +393,8 @@ public class BlockAccessListManager(
 
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
     {
+        CheckInitialized();
+
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
@@ -415,6 +440,18 @@ public class BlockAccessListManager(
 
     private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
         => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
+    
+    private void CheckInitialized()
+    {
+        if (_txProcessorWithWorldStateManager is null)
+            throw new InvalidOperationException($"{nameof(_txProcessorWithWorldStateManager)} was not initialized.");
+
+        if (_gasRemaining is null)
+            throw new InvalidOperationException($"{nameof(_gasRemaining)} was not initialized.");
+
+        if (_blockExecutionContext is null)
+            throw new InvalidOperationException($"{nameof(_blockExecutionContext)} was not initialized.");
+    }
 
     private interface ITxProcessorWithWorldStateManager
     {
