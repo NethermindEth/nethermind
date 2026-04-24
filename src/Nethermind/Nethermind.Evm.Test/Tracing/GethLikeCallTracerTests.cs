@@ -618,14 +618,38 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
         using NativeCallTracer tracer = new(tx, GetGethTraceOptions(null));
 
-        Assert.That(
-            () =>
-            {
-                _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
-                tracer.BuildResult().Dispose();
-            },
-            Throws.Nothing);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        Assert.That(trace.CustomTracerResult, Is.Null,
+            "address-collision path never enters the EVM; no call frame should be produced");
     }
+
+    [Test]
+    public void Test_CallTrace_TopLevelCreate_WithLog_DeployContractFailure_LogsCleared()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.LOG0)
+            .PushData(0xEF)
+            .PushData(0)
+            .Op(Instruction.MSTORE8)
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
+        Assert.That(frame, Is.Not.Null, "expected a top-level call frame (EVM ran before deployment was rejected)");
+        Assert.That(frame!.Logs, Is.Null, "logs must be cleared on a failed CREATE frame even when _error is null");
+    }
+
 
     private byte[] CreateNestedCallsCode(bool revertParentCall = false, bool revertCreateCall = false)
     {

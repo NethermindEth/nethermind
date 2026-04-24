@@ -194,12 +194,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         if (output is not null)
             firstCallFrame.Output = new ArrayPoolList<byte>(output);
 
-        if (_error is null) return;
-        EvmExceptionType errorType = _error.Value;
-        firstCallFrame.Error = errorType.GetEvmExceptionDescription();
-        if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
+        if (_error is not null)
         {
-            firstCallFrame.RevertReason = ValidateRevertReason(error);
+            EvmExceptionType errorType = _error.Value;
+            firstCallFrame.Error = errorType.GetEvmExceptionDescription();
+            if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
+            {
+                firstCallFrame.RevertReason = ValidateRevertReason(error);
+            }
         }
 
         if (_config.WithLog)
