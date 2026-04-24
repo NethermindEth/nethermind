@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -36,8 +35,8 @@ public class PrecompileCachedCodeInfoRepository(
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
-        baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
+    public CodeInfo GetDelegatedCodeInfo(Address delegationAddress) =>
+        baseCodeInfoRepository.GetDelegatedCodeInfo(delegationAddress);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
@@ -45,9 +44,8 @@ public class PrecompileCachedCodeInfoRepository(
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec,
-        [NotNullWhen(true)] out Address? delegatedAddress) =>
-        baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+    public bool HasDelegation(Address address) =>
+        baseCodeInfoRepository.HasDelegation(address);
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,

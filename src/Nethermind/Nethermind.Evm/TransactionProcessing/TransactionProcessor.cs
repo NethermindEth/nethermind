@@ -53,8 +53,7 @@ namespace Nethermind.Evm.TransactionProcessing
     }
 
     /// <summary>
-    /// Bundle of per-tx state computed during Execute's prelude. Passed by ref to
-    /// downstream methods so the arg count stays low (one byref vs. many stack args).
+    /// Per-transaction state computed during Execute's prelude and passed by ref to downstream execution helpers.
     /// </summary>
     internal struct TxExecutionState<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
@@ -237,7 +236,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Address? preloadedDelegationAddress = null;
             if (executingAccount is not null && IsSimpleTransferFastPathCandidate(tx))
             {
-                preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(executingAccount, spec, out preloadedDelegationAddress);
+                preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(executingAccount, followDelegation: true, spec, out preloadedDelegationAddress);
                 useSimpleTransferFastPath = HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
             }
 
@@ -583,7 +582,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             accessTracker.WarmUp(authorizationTuple.Authority);
 
-            if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+            if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.HasDelegation(authorizationTuple.Authority))
             {
                 error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                 return AuthorizationTupleResult.InvalidAsCodeDeployed;
@@ -872,7 +871,7 @@ namespace Nethermind.Evm.TransactionProcessing
             else
             {
                 Address? delegationAddress = preloadedDelegationAddress;
-                codeInfo = preloadedCodeInfo ?? codeInfoRepository.GetCachedCodeInfo(recipient, spec, out delegationAddress);
+                codeInfo = preloadedCodeInfo ?? codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: true, spec, out delegationAddress);
 
                 //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)

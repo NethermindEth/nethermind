@@ -171,16 +171,18 @@ public static partial class EvmInstructions
         bool tracingAccess = vm.TxTracer.IsTracingAccess;
         ref readonly StackAccessTracker accessTracker = ref vm.VmState.AccessTracker;
 
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
+        // Charge gas for accessing the account's code.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in accessTracker,
                 tracingAccess, codeSource)) goto OutOfGas;
 
-        CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, out Address? delegated);
-
-        if (spec.UseHotAndColdStorage && delegated is not null)
+        CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, spec, out Address? delegationAddress);
+        if (delegationAddress is not null)
         {
-            if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in accessTracker,
-                    tracingAccess, delegated)) goto OutOfGas;
+            if (spec.UseHotAndColdStorage &&
+                !TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in accessTracker,
+                    tracingAccess, delegationAddress)) goto OutOfGas;
+
+            codeInfo = codeInfoRepository.GetDelegatedCodeInfo(delegationAddress);
         }
 
         // Charge additional gas if the target account is new or considered empty.
@@ -193,12 +195,6 @@ public static partial class EvmInstructions
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
-
-        if (delegated is not null)
-        {
-            // Preserve EIP-7702 follow semantics: delegation to a precompile address loads account code, not the native precompile.
-            codeInfo = codeInfoRepository.GetCachedCodeInfo(codeSource, spec);
-        }
 
         // Get remaining gas for 63/64 calculation
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);

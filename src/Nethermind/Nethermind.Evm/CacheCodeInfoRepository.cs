@@ -49,11 +49,11 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress) =>
         _inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
-        _inner.GetExecutableCodeHash(address, spec);
+    public CodeInfo GetDelegatedCodeInfo(Address delegationAddress) =>
+        _inner.GetDelegatedCodeInfo(delegationAddress);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
-        _inner.TryGetDelegation(address, spec, out delegatedAddress);
+    public bool HasDelegation(Address address) =>
+        _inner.HasDelegation(address);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
