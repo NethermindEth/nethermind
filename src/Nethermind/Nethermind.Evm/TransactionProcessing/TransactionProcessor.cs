@@ -309,11 +309,18 @@ namespace Nethermind.Evm.TransactionProcessing
             [MethodImpl(MethodImplOptions.NoInlining)]
             void ProcessDestroyList(TransactionSubstate substate, JournalSet<Address> destroyList)
             {
+                bool tracingLogs = tracer.IsTracingLogs;
                 foreach (Address toBeDestroyed in destroyList)
                 {
                     UInt256 balance = WorldState.GetBalance(toBeDestroyed);
                     if (!balance.IsZero)
-                        substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
+                    {
+                        // Mirror VirtualMachine.AddLog: tracers that build responses from ReportLog
+                        // would otherwise miss this synthetic burn log even though it lands in the receipt.
+                        LogEntry burnLog = TransferLog.CreateBurn(toBeDestroyed, balance);
+                        substate.Logs.Add(burnLog);
+                        if (tracingLogs) tracer.ReportLog(burnLog);
+                    }
 
                     WorldState.ClearStorage(toBeDestroyed);
                     WorldState.DeleteAccount(toBeDestroyed);
@@ -1008,6 +1015,7 @@ namespace Nethermind.Evm.TransactionProcessing
             [MethodImpl(MethodImplOptions.NoInlining)]
             void ProcessDestroyList(IReleaseSpec spec, ITxTracer tracer, TransactionSubstate substate, bool eip7708Enabled, bool tracingRefunds, JournalSet<Address> destroyList)
             {
+                bool tracingLogs = tracer.IsTracingLogs;
                 foreach (Address toBeDestroyed in destroyList)
                 {
                     if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
@@ -1017,7 +1025,11 @@ namespace Nethermind.Evm.TransactionProcessing
                         UInt256 balance = WorldState.GetBalance(toBeDestroyed);
                         if (!balance.IsZero)
                         {
-                            substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                            // Mirror VirtualMachine.AddLog: tracers that build responses from ReportLog
+                            // would otherwise miss this synthetic selfdestruct log even though it lands in the receipt.
+                            LogEntry selfDestructLog = TransferLog.CreateSelfDestruct(toBeDestroyed, balance);
+                            substate.Logs.Add(selfDestructLog);
+                            if (tracingLogs) tracer.ReportLog(selfDestructLog);
                         }
                     }
 

@@ -9,6 +9,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -829,5 +830,72 @@ public class TransactionProcessorTests(bool eip155Enabled)
         result.TransactionExecuted.Should().BeTrue();
         virtualMachine.ExecuteTransactionCalls.Should().Be(0, "fast path must be taken");
         tracer.Logs.Should().HaveCount(1, "the EIP-7708 transfer log must be reported to the tracer");
+    }
+
+    [Test]
+    public void Selfdestruct_destroy_list_reports_eip7708_log_to_tracer()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = true };
+        ISpecProvider specProvider = new TestSpecProvider(spec);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance, specProvider, _stateProvider, vm, codeInfoRepository, LimboLogs.Instance);
+
+        UInt256 senderNonce = _stateProvider.GetNonce(TestItem.AddressA);
+
+        // Contract A: if called with zero value, self-destructs to inheritor; with value, just accepts ETH.
+        // This lets Contract B create+call+resend-to A, leaving A with non-zero balance at end of tx.
+        Address inheritor = TestItem.AddressD;
+        byte[] contractACode = Prepare.EvmCode
+            .CALLVALUE()
+            .Op(Instruction.ISZERO)
+            .PushData(6)
+            .JUMPI()
+            .STOP()
+            .JUMPDEST()
+            .SELFDESTRUCT(inheritor)
+            .Done;
+        byte[] initCodeA = Prepare.EvmCode.ForInitOf(contractACode).Done;
+
+        const ulong contractABalance = 1_000_000;
+        const ulong ethToSendAfterDestroy = 500_000;
+
+        Address contractBAddress = ContractAddress.From(TestItem.AddressA, senderNonce);
+        Address contractAAddress = ContractAddress.From(contractBAddress, 1);
+
+        byte[] contractBCode = Prepare.EvmCode
+            .Create(initCodeA, contractABalance)
+            .Call(contractAAddress, 100_000)
+            .CallWithValue(contractAAddress, 100_000, ethToSendAfterDestroy)
+            .STOP()
+            .Done;
+        byte[] initCodeB = Prepare.EvmCode.ForInitOf(contractBCode).Done;
+
+        Transaction deployBTx = Build.A.Transaction
+            .WithCode(initCodeB)
+            .WithValue(contractABalance + ethToSendAfterDestroy)
+            .WithNonce(senderNonce)
+            .WithGasLimit(2_000_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .TestObject;
+
+        Transaction callTx = Build.A.Transaction
+            .WithTo(contractBAddress)
+            .WithNonce(senderNonce + 1)
+            .WithGasLimit(2_000_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .TestObject;
+
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(deployBTx, callTx).TestObject;
+        BlockExecutionContext ctx = new(block.Header, spec);
+
+        transactionProcessor.Execute(deployBTx, ctx, NullTxTracer.Instance);
+
+        LogRecordingTxTracer tracer = new();
+        transactionProcessor.Execute(callTx, ctx, tracer);
+
+        tracer.Logs.Should().Contain(log => log.Topics.Length > 0 && log.Topics[0] == TransferLog.SelfDestructSignature,
+            "the EIP-7708 selfdestruct log emitted during ProcessDestroyList must be reported to the tracer");
     }
 }
