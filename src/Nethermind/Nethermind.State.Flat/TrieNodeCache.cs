@@ -115,15 +115,13 @@ public sealed class TrieNodeCache : ITrieNodeCache
         void AddToCacheWithHashCode(int shardIdx, int hashCode, TrieNode newNode)
         {
             int bucketIdx = hashCode & _bucketMask;
-            Interlocked.Add(ref _shardMemoryUsages[shardIdx], newNode.GetMemorySize(false));
+            Interlocked.Add(ref _shardMemoryUsages[shardIdx], EstimatedSizePerNode);
 
             TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
             if (oldNode is not null)
             {
-                long oldMemory = oldNode.GetMemorySize(false);
                 oldNode.PrunePersistedRecursively(1);
-
-                Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldMemory);
+                Interlocked.Add(ref _shardMemoryUsages[shardIdx], -EstimatedSizePerNode);
             }
         }
 
