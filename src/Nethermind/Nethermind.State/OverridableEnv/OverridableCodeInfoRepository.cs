@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -26,13 +25,25 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         if (_codeOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, ValueHash256 codeHash) result))
         {
             return !result.codeInfo.IsEmpty &&
-                   ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegationAddress) &&
+                   CodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegationAddress) &&
                    followDelegation
-                ? GetCachedCodeInfo(delegationAddress, false, vmSpec, out Address? _)
+                ? GetDelegatedCodeInfo(delegationAddress)
                 : result.codeInfo;
         }
 
         return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+    }
+
+    public CodeInfo GetDelegatedCodeInfo(Address delegationAddress)
+    {
+        if (_precompileOverrides.TryGetValue(delegationAddress, out (CodeInfo codeInfo, Address initialAddr) precompile))
+        {
+            return precompile.codeInfo;
+        }
+
+        return _codeOverrides.TryGetValue(delegationAddress, out (CodeInfo codeInfo, ValueHash256 codeHash) result)
+            ? result.codeInfo
+            : codeInfoRepository.GetDelegatedCodeInfo(delegationAddress);
     }
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
@@ -52,19 +63,17 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
-        [NotNullWhen(true)] out Address? delegatedAddress)
+    public bool HasDelegation(Address address)
     {
-        delegatedAddress = null;
+        if (_precompileOverrides.ContainsKey(address))
+        {
+            return false;
+        }
+
         return _codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) result)
-            ? ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegatedAddress)
-            : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
+            ? Eip7702Constants.IsDelegatedCode(result.codeInfo.CodeSpan)
+            : codeInfoRepository.HasDelegation(address);
     }
-
-
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) result)
-        ? result.codeHash
-        : codeInfoRepository.GetExecutableCodeHash(address, spec);
 
     public void ResetOverrides()
     {

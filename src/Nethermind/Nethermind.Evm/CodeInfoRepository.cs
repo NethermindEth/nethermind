@@ -23,7 +23,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly Func<ValueHash256, CodeInfo> _codeInfoLoader;
+    private readonly Func<ValueHash256, CodeInfo>? _codeInfoLoader;
     private readonly IBlockAccessListBuilder? _balBuilder;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
@@ -36,10 +36,23 @@ public class CodeInfoRepository : ICodeInfoRepository
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
         _balBuilder = _worldState as IBlockAccessListBuilder;
-        _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
+        _codeInfoLoader = codeInfoLoader;
+    }
 
-        CodeInfo DefaultLoad(ValueHash256 codeHash) =>
-            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, in codeHash);
+    /// <remarks>
+    /// Parses delegation code to extract the contained address.
+    /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
+    /// </remarks>
+    public static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
+    {
+        if (Eip7702Constants.IsDelegatedCode(code))
+        {
+            address = new Address(code[Eip7702Constants.DelegationHeader.Length..].ToArray());
+            return true;
+        }
+
+        address = null;
+        return false;
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -56,21 +69,32 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
-        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
+        if (!codeInfo.IsEmpty && TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
         {
             if (followDelegation)
             {
-                codeInfo = InternalGetCodeInfo(delegationAddress);
+                codeInfo = GetDelegatedCodeInfo(delegationAddress);
             }
         }
 
         return codeInfo;
     }
 
+    public CodeInfo GetDelegatedCodeInfo(Address delegationAddress) =>
+        InternalGetCodeInfo(delegationAddress);
+
     private CodeInfo InternalGetCodeInfo(Address codeSource)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
-        return _codeInfoLoader(codeHash);
+        Func<ValueHash256, CodeInfo>? codeInfoLoader = _codeInfoLoader;
+        if (codeInfoLoader is null)
+        {
+            return codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(_worldState, in codeHash);
+        }
+        else
+        {
+            return codeInfoLoader(codeHash);
+        }
     }
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash)
@@ -124,25 +148,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         return worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
     }
 
-    /// <summary>
-    /// Retrieves code hash of delegation if delegated. Otherwise, code hash of <paramref name="address"/>.
-    /// </summary>
-    /// <param name="address"></param>
-    /// <param name="spec"></param>
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
-    {
-        ValueHash256 codeHash = _worldState.GetCodeHash(address);
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
-        {
-            return Keccak.OfAnEmptyString.ValueHash256;
-        }
-
-        CodeInfo codeInfo = _codeInfoLoader(codeHash);
-        return codeInfo.IsEmpty
-            ? Keccak.OfAnEmptyString.ValueHash256
-            : codeHash;
-    }
-
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address).CodeSpan, out delegatedAddress);
+    public bool HasDelegation(Address address) =>
+        Eip7702Constants.IsDelegatedCode(InternalGetCodeInfo(address).CodeSpan);
 }

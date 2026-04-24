@@ -12,10 +12,10 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; } = new();
     // Empty code sentinel
-    private static readonly JumpDestinationAnalyzer? _emptyAnalyzer = new(Empty, skipAnalysis: true);
+    private static readonly JumpDestinationAnalyzer? _emptyAnalyzer = Empty._analyzer;
 
     // Empty
-    private CodeInfo() => _analyzer = null;
+    private CodeInfo() => _analyzer = new(this, skipAnalysis: true);
 
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)

@@ -222,7 +222,8 @@ public static partial class EvmInstructions
         }
 
         // Deduct the transfer value from the executing account's balance.
-        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        if (!value.IsZero)
+            state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
@@ -232,7 +233,6 @@ public static partial class EvmInstructions
             caller: env.ExecutingAccount,
             codeSource: null,
             callDepth: env.CallDepth + 1,
-            transferValue: in value,
             value: in value,
             inputData: in _emptyMemory);
 

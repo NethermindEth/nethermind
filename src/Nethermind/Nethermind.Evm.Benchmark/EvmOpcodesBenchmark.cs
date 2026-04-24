@@ -195,7 +195,6 @@ public unsafe class EvmOpcodesBenchmark
             caller: address,
             codeSource: address,
             callDepth: 0,
-            transferValue: 0,
             value: 0,
             inputData: default);
 
