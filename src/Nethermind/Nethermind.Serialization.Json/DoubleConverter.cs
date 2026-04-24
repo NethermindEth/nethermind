@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json
 {
-    using Nethermind.Core.Collections;
-    using System.Globalization;
-    using System.Runtime.CompilerServices;
-    using System.Text.Json;
-    using System.Text.Json.Serialization;
-
     public class DoubleConverter : JsonConverter<double>
     {
         public override double Read(
@@ -22,55 +21,15 @@ namespace Nethermind.Serialization.Json
         public override void Write(
             Utf8JsonWriter writer,
             double value,
-            JsonSerializerOptions options) => writer.WriteRawValue(value.ToString("0.##########", CultureInfo.InvariantCulture), skipInputValidation: true);
-    }
-
-    public class DoubleArrayConverter : JsonConverter<double[]>
-    {
-        public override double[] Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
             JsonSerializerOptions options)
         {
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                string s = reader.GetString();
-                return JsonSerializer.Deserialize<double[]>(s);
-            }
-
-            if (reader.TokenType != JsonTokenType.StartArray)
-            {
-                throw new JsonException();
-            }
-            using ArrayPoolListRef<double> values = new(16);
-            while (reader.Read() && reader.TokenType == JsonTokenType.Number)
-            {
-                values.Add(reader.GetDouble());
-            }
-            if (reader.TokenType != JsonTokenType.EndArray)
-            {
-                throw new JsonException();
-            }
-
-            if (values.Count == 0) return [];
-
-            double[] result = new double[values.Count];
-            values.CopyTo(result, 0);
-            return result;
+            if (double.IsNaN(value) || double.IsInfinity(value))
+                ThrowNotFiniteJsonException(value);
+            writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
         }
 
-        [SkipLocalsInit]
-        public override void Write(
-            Utf8JsonWriter writer,
-            double[] values,
-            JsonSerializerOptions options)
-        {
-            writer.WriteStartArray();
-            foreach (double value in values)
-            {
-                writer.WriteRawValue(value.ToString("0.0#########", CultureInfo.InvariantCulture), skipInputValidation: true);
-            }
-            writer.WriteEndArray();
-        }
+        [DoesNotReturn]
+        private static void ThrowNotFiniteJsonException(double value) =>
+            throw new JsonException($"The value '{value}' is not a valid JSON number.");
     }
 }
