@@ -543,8 +543,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [TestCase(false, false, TestName = "TopLevelCreate_Success")]
-    [TestCase(true,  false, TestName = "TopLevelCreate_Revert")]
-    [TestCase(false, true,  TestName = "TopLevelCreate_AddressCollision")]
+    [TestCase(true, false, TestName = "TopLevelCreate_Revert")]
+    [TestCase(false, true, TestName = "TopLevelCreate_AddressCollision")]
     public void Test_CallTrace_TopLevelCreate(bool revert, bool addressCollision)
     {
         byte[] initCode;
