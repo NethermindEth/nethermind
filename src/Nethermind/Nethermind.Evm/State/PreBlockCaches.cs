@@ -94,8 +94,12 @@ public class PreBlockCaches
     /// </summary>
     public void EnqueueStorageWrite(in StorageCell cell, byte[] value)
     {
-        AddressAsKey address = cell.Address;
-        _pendingStorageWrites.Enqueue(new PendingStorageWrite(cell, value, GetStorageClearVersion(address)));
+        int clearVersion = 0;
+        if (_hasLegacyStorageClear)
+        {
+            clearVersion = GetStorageClearVersion(cell.Address);
+        }
+        _pendingStorageWrites.Enqueue(new PendingStorageWrite(cell, value, clearVersion));
     }
 
     /// <summary>
@@ -117,12 +121,17 @@ public class PreBlockCaches
         if (_hasLegacyStorageClear)
         {
             _storageCache.Clear();
+            while (_pendingStorageWrites.TryDequeue(out PendingStorageWrite entry))
+            {
+                if (entry.ClearVersion == GetStorageClearVersion(entry.Cell.Address))
+                {
+                    _storageCache.Set(entry.Cell, entry.Value);
+                }
+            }
         }
-
-        while (_pendingStorageWrites.TryDequeue(out PendingStorageWrite entry))
+        else
         {
-            AddressAsKey address = entry.Cell.Address;
-            if (entry.ClearVersion == GetStorageClearVersion(address))
+            while (_pendingStorageWrites.TryDequeue(out PendingStorageWrite entry))
             {
                 _storageCache.Set(entry.Cell, entry.Value);
             }
