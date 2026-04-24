@@ -446,6 +446,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
 
+<<<<<<< 11216-eth_simulatev1-validation-false-not-respected-balance-check-still-runs
     [Test]
     public async Task Test_eth_simulate_no_validation_skips_balance_check()
     {
@@ -482,5 +483,23 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateCallResult call = result.Data[0].Calls.First();
         Assert.That(call.Error, Is.Null);
         Assert.That(call.Status, Is.EqualTo(1ul));
+=======
+    [TestCase(
+        """{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000001":{"MovePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}}]}""",
+        ErrorCodes.MovePrecompileSelfReference,
+        "MovePrecompileToAddress referenced itself in replacement",
+        TestName = "SelfReference_38022")]
+    public async Task eth_simulateV1_MovePrecompileToAddress_invalid_override_returns_error(string payloadJson, int expectedErrorCode, string expectedMessage)
+    {
+        EthereumJsonSerializer serializer = new();
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        result.ErrorCode.Should().Be(expectedErrorCode);
+        result.Result.Error.Should().Be(expectedMessage);
+>>>>>>> master
     }
 }
