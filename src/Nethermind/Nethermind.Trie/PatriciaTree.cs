@@ -811,9 +811,7 @@ namespace Nethermind.Trie
                 byte[] extensionKey = HexPrefix.SingleNibble((byte)onlyChildIdx);
                 if (originalNode is not null && originalNode.IsExtension && Bytes.AreEqual(extensionKey, originalNode.Key))
                 {
-                    path.AppendMut(onlyChildIdx);
-                    TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
-                    path.TruncateOne();
+                    TrieNode? originalChild = originalNode.GetChildIfCached(0);
                     if (!ShouldUpdateChild(originalNode, originalChild, onlyChildNode))
                     {
                         return originalNode;
@@ -841,7 +839,7 @@ namespace Nethermind.Trie
                     {
                         int originalLength = path.Length;
                         path.AppendMut(newKey);
-                        TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
+                        TrieNode? originalChild = originalNode.GetChildIfCached(0);
                         TrieNode? newChild = onlyChildNode.GetChildWithChildPath(TrieStore, ref path, 0);
                         path.TruncateMut(originalLength);
                         if (!ShouldUpdateChild(originalNode, originalChild, newChild))

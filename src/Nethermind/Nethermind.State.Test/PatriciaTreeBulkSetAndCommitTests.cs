@@ -259,4 +259,5 @@ public class PatriciaTreeBulkSetAndCommitTests
 
         threw.Should().BeTrue();
     }
+
 }
