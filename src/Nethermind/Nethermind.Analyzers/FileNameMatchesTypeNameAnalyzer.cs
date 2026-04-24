@@ -14,7 +14,7 @@ namespace Nethermind.Analyzers;
 /// Reports .cs files whose name does not match the single top-level type they contain.
 /// Files with zero or more than one top-level type are ignored.
 /// Attribute types may drop the <c>Attribute</c> suffix from the file name.
-/// Partial types may use <c>TypeName.Descriptor.cs</c> form.
+/// Partial types and generic types may use <c>TypeName.Descriptor.cs</c> form.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
@@ -61,6 +61,7 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
         string typeName = identifier.ValueText;
         bool isPartial = topLevelTypes[0] is TypeDeclarationSyntax td
             && td.Modifiers.Any(SyntaxKind.PartialKeyword);
+        bool isGeneric = topLevelTypes[0] is TypeDeclarationSyntax { TypeParameterList.Parameters.Count: > 0 };
 
         string fileBaseName = Path.GetFileNameWithoutExtension(filePath);
 
@@ -70,7 +71,7 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
             ? typeName.Substring(0, typeName.Length - attributeSuffix.Length)
             : null;
 
-        if (IsMatch(fileBaseName, typeName, strippedName, isPartial))
+        if (IsMatch(fileBaseName, typeName, strippedName, isPartial || isGeneric))
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, identifier.GetLocation(), fileBaseName, typeName));
