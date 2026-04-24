@@ -69,7 +69,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         RunTransactions(processor, state, spec);
     }
 
-    private static void RunTransactions(TransactionProcessor<TGasPolicy> processor, IWorldState state, IReleaseSpec spec)
+    private static void RunTransactions(ITransactionProcessor processor, IWorldState state, IReleaseSpec spec)
     {
         const int WarmUpIterations = 40;
 

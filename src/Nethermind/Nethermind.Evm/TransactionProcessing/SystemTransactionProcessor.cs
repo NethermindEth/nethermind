@@ -32,7 +32,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         ILogManager? logManager)
         : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager) => _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
 
-    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult ExecuteTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
         {
@@ -40,7 +40,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         }
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+        return base.ExecuteTransaction(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }

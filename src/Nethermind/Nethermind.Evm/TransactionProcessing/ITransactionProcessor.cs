@@ -10,38 +10,42 @@ namespace Nethermind.Evm.TransactionProcessing;
 public interface ITransactionProcessor
 {
     /// <summary>
-    /// Execute transaction, commit state
+    /// Core execution entry point. All named methods delegate here.
     /// </summary>
-    TransactionResult Execute(Transaction transaction, ITxTracer txTracer);
+    TransactionResult Execute(Transaction transaction, ITxTracer txTracer, ExecutionOptions opts);
+
+    /// <summary>Execute transaction, commit state</summary>
+    TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
+        Execute(transaction, txTracer, ExecutionOptions.Commit);
+
+    /// <summary>Call transaction, rollback state</summary>
+    TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
+        Execute(transaction, txTracer, ExecutionOptions.CommitAndRestore);
+
+    /// <summary>Execute transaction, keep the state uncommitted</summary>
+    TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer) =>
+        Execute(transaction, txTracer, ExecutionOptions.TakeSnapshot);
 
     /// <summary>
-    /// Call transaction, rollback state
+    /// Call transaction, no validations, commit state.
+    /// Will NOT charge gas from sender account, so stateDiff will miss gas fee.
     /// </summary>
-    TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer);
+    TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
+        Execute(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
     /// <summary>
-    /// Execute transaction, keep the state uncommitted
-    /// </summary>
-    TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer);
-
-    /// <summary>
-    /// Call transaction, no validations, commit state
-    /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
-    /// </summary>
-    TransactionResult Trace(Transaction transaction, ITxTracer txTracer);
-
-    /// <summary>
-    /// Execute transaction skipping all validations including gas and balance checks.
+    /// Execute transaction skipping all validations including balance checks.
     /// Used by eth_simulateV1 with validation:false to allow zero-balance senders.
     /// </summary>
-    TransactionResult Simulate(Transaction transaction, ITxTracer txTracer);
+    TransactionResult Simulate(Transaction transaction, ITxTracer txTracer) =>
+        Execute(transaction, txTracer, ExecutionOptions.SimulateAndCommit);
 
     /// <summary>
-    /// Call transaction, no validations, don't commit state
-    /// Will NOT charge gas from sender account
+    /// Call transaction, no validations, don't commit state.
+    /// Will NOT charge gas from sender account.
     /// </summary>
-    TransactionResult Warmup(Transaction transaction, ITxTracer txTracer);
-
+    TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
+        Execute(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
 
     void SetBlockExecutionContext(BlockHeader blockHeader);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
@@ -84,6 +88,7 @@ public static class ITransactionProcessorExtensions
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
         return transactionProcessor.BuildUp(transaction, txTracer);
     }
+
     public static TransactionResult Trace(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
     {
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);

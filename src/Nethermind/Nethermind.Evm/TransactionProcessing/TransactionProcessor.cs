@@ -67,56 +67,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private long _blockCumulativeRegularGas;
         private long _blockCumulativeReceiptGas;
 
-        [Flags]
-        protected enum ExecutionOptions
-        {
-            /// <summary>
-            /// Just accumulate the state
-            /// </summary>
-            None = 0,
-
-            /// <summary>
-            /// Commit the state after execution
-            /// </summary>
-            Commit = 1,
-
-            /// <summary>
-            /// Restore state after execution
-            /// </summary>
-            Restore = 2,
-
-            /// <summary>
-            /// Skip potential fail checks
-            /// </summary>
-            SkipValidation = 4,
-
-            /// <summary>
-            /// Marker option used by state pre-warmer
-            /// </summary>
-            Warmup = 8,
-
-            /// <summary>
-            /// Skip all gas and balance validation regardless of transaction type.
-            /// Used by eth_simulateV1 with validation:false to allow zero-balance senders.
-            /// </summary>
-            SkipBalanceValidation = 16,
-
-            /// <summary>
-            /// Skip potential fail checks and commit state after execution
-            /// </summary>
-            SkipValidationAndCommit = Commit | SkipValidation,
-
-            /// <summary>
-            /// Skip all validations including gas/balance checks, commit state. Used by eth_simulateV1 validate:false.
-            /// </summary>
-            SimulateAndCommit = Commit | SkipValidation | SkipBalanceValidation,
-
-            /// <summary>
-            /// Commit and later restore state also skip validation, use for CallAndRestore
-            /// </summary>
-            CommitAndRestore = Commit | Restore | SkipValidation
-        }
-
         protected TransactionProcessorBase(
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
             ISpecProvider? specProvider,
@@ -157,44 +107,24 @@ namespace Nethermind.Evm.TransactionProcessing
             SetBlockExecutionContext(in blockExecutionContext);
         }
 
-        public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
-
-        public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer)
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer, ExecutionOptions opts)
         {
-            // we need to treat the result of previous transaction as the original value of next transaction
-            // when we do not commit
-            WorldState.TakeSnapshot(true);
-            return ExecuteCore(transaction, txTracer, ExecutionOptions.None);
-        }
+            if (opts.HasFlag(ExecutionOptions.TakeSnapshot))
+                WorldState.TakeSnapshot(true);
 
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
-
-        public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
-
-        public TransactionResult Simulate(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SimulateAndCommit);
-
-        public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
-
-        private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
-        {
-            if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+            if (Logger.IsTrace) Logger.Trace($"Executing tx {transaction.Hash}");
+            if (transaction.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, tracer, opts);
+                return _systemTransactionProcessor.ExecuteTransaction(transaction, txTracer, opts);
             }
 
-            TransactionResult result = Execute(tx, tracer, opts);
-            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
+            TransactionResult result = ExecuteTransaction(transaction, txTracer, opts);
+            if (Logger.IsTrace) Logger.Trace($"Tx {transaction.Hash} was executed, {result}");
             return result;
         }
 
-        protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+        protected virtual TransactionResult ExecuteTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);

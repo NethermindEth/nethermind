@@ -103,7 +103,7 @@ internal class XdcTransactionProcessor(
 
     private bool IsBlackListed(IXdcReleaseSpec spec, Address sender) => spec.BlackListedAddresses.Contains(sender);
 
-    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult ExecuteTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
@@ -111,7 +111,7 @@ internal class XdcTransactionProcessor(
         if (tx.RequiresSpecialHandling(spec))
             return ExecuteSpecialTransaction(tx, tracer, opts);
 
-        return base.Execute(tx, tracer, opts);
+        return base.ExecuteTransaction(tx, tracer, opts);
     }
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
