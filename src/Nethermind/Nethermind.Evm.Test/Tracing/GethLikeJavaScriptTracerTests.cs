@@ -14,11 +14,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.Test.Tracing;
 
@@ -376,15 +372,15 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         }
     }
 
-private static byte[] MStore() => Prepare.EvmCode
-            .PushData(SampleHexData1.PadLeft(64, '0'))
-            .PushData(0)
-            .Op(Instruction.MSTORE)
-            .PushData(SampleHexData2.PadLeft(64, '0'))
-            .PushData(32)
-            .Op(Instruction.MSTORE)
-            .Op(Instruction.STOP)
-            .Done;
+    private static byte[] MStore() => Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .Op(Instruction.STOP)
+                .Done;
 
     private static byte[] SStore_double() => Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))

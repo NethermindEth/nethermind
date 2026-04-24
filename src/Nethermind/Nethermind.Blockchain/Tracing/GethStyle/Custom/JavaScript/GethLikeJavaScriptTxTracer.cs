@@ -54,16 +54,16 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _db = db;
         _ctx = ctx;
 
-        TimeSpan timeout = TimeSpan.TryParse(options.Timeout, out TimeSpan parsed) ? parsed : DefaultTimeout;
-        _cts = new CancellationTokenSource(timeout);
-        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
-
         _tracer = engine.CreateTracer(options.Tracer);
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
         if (_functions.HasFlag(TracerFunctions.setup))
         {
             _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
         }
+
+        TimeSpan timeout = TimeSpan.TryParse(options.Timeout, out TimeSpan parsed) ? parsed : DefaultTimeout;
+        _cts = new CancellationTokenSource(timeout);
+        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new(_engine);
