@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
@@ -54,24 +55,22 @@ public abstract class BlockchainTestBase
     {
         ArgumentNullException.ThrowIfNull(spec);
 
-        return spec.Name is not
-        (
-            "Olympic" or
-            "Frontier" or
-            "Homestead" or
-            "DAO" or
-            "Tangerine Whistle" or
-            "Spurious Dragon" or
-            "Byzantium" or
-            "Constantinople" or
-            "Constantinople Fix" or
-            "Istanbul" or
-            "Muir Glacier" or
-            "Berlin" or
-            "London" or
-            "ArrowGlacier" or
-            "Gray Glacier"
-        );
+        return spec != GrayGlacier.Instance &&
+               spec != ArrowGlacier.Instance &&
+               spec != LondonGnosis.Instance &&
+               spec != London.Instance &&
+               spec != Berlin.Instance &&
+               spec != MuirGlacier.Instance &&
+               spec != Istanbul.Instance &&
+               spec != ConstantinopleFix.Instance &&
+               spec != Constantinople.Instance &&
+               spec != Byzantium.Instance &&
+               spec != SpuriousDragon.Instance &&
+               spec != TangerineWhistle.Instance &&
+               spec != Dao.Instance &&
+               spec != Homestead.Instance &&
+               spec != Frontier.Instance &&
+               spec != Olympic.Instance;
     }
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
