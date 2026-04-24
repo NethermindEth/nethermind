@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -834,36 +834,47 @@ namespace Nethermind.Trie.Test.Pruning
         [TestCase(false)]
         public void ReadOnly_store_returns_copies(bool pruning)
         {
-            TrieNode node = new(NodeType.Leaf);
-            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
-            node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
+            TrieNode node = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
             TreePath emptyPath = TreePath.Empty;
-            node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(pruning));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            node.ResolveKey(trieStore, ref emptyPath);
 
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
             {
                 committer.CommitNode(ref emptyPath, node);
             }
 
-            var originalNode = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
+            TrieNode originalNode = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
 
             IReadOnlyTrieStore readOnlyTrieStore = fullTrieStore.AsReadOnly();
-            var readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(null, TreePath.Empty, node.Keccak);
+            TrieNode readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(null, TreePath.Empty, node.Keccak);
 
-            readOnlyNode.Should().NotBe(originalNode);
-            readOnlyNode.Should().BeEquivalentTo(originalNode,
-                static eq => eq.Including(static t => t.Keccak)
-                    .Including(static t => t.NodeType));
+            Assert.That(readOnlyNode, Is.Not.SameAs(originalNode));
 
-            var origRlp = originalNode.FullRlp;
-            var readOnlyRlp = readOnlyNode.FullRlp;
-            readOnlyRlp.Should().BeEquivalentTo(origRlp);
+            CappedArray<byte> origRlp = originalNode.FullRlp;
+            CappedArray<byte> readOnlyRlp = readOnlyNode.FullRlp;
 
-            readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
+            Assert.Multiple(() =>
+            {
+                Assert.That(readOnlyRlp.AsSpan().ToArray(), Is.EqualTo(origRlp.AsSpan().ToArray()));
+                Assert.That(readOnlyRlp.UnderlyingArray, Is.Not.SameAs(origRlp.UnderlyingArray));
+            });
+
+            byte firstReadOnlyByte = readOnlyRlp[0];
+            origRlp[0] ^= 1;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(readOnlyNode.GetChildHash(0), Is.EqualTo(TestItem.Keccaks[0]));
+                Assert.That(readOnlyNode.FullRlp[0], Is.EqualTo(firstReadOnlyByte));
+            });
         }
 
         private long ExpectedPerNodeKeyMemorySize => (scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
