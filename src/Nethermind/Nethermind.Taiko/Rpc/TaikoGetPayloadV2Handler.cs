@@ -16,7 +16,7 @@ namespace Nethermind.Taiko.Rpc;
 /// <summary>
 /// Taiko-specific GetPayloadV2 handler. Overrides <see cref="GetPayloadV2Handler"/>
 /// to skip fork validation (Taiko always uses V2) and to carry header difficulty
-/// through blockValue for Uzen blocks (matches alethia-reth behavior).
+/// through blockValue for Unzen blocks (matches alethia-reth behavior).
 /// </summary>
 public class TaikoGetPayloadV2Handler(
     IPayloadPreparationService payloadPreparationService,
@@ -29,9 +29,9 @@ public class TaikoGetPayloadV2Handler(
         Block block = context.CurrentBestBlock!;
         ITaikoReleaseSpec spec = (ITaikoReleaseSpec)SpecProvider.GetSpec(block.Header);
 
-        // For Uzen, carry header difficulty through blockValue (matches alethia-reth behavior).
+        // For Unzen, carry header difficulty through blockValue (matches alethia-reth behavior).
         // The driver reads blockValue from the standard ExecutionPayloadEnvelopeV2.
-        UInt256 blockValue = spec.IsUzenEnabled ? block.Difficulty : context.BlockFees;
+        UInt256 blockValue = spec.IsUnzenEnabled ? block.Difficulty : context.BlockFees;
 
         return new TaikoGetPayloadV2Result(block, blockValue);
     }

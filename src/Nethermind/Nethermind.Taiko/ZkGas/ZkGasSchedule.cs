@@ -6,17 +6,17 @@ using System;
 namespace Nethermind.Taiko.ZkGas;
 
 /// <summary>
-/// Consensus-owned ZK gas schedule for the Uzen hardfork.
+/// Consensus-owned ZK gas schedule for the Unzen hardfork.
 /// All values (multipliers, spawn estimates, and <see cref="BlockZkGasLimit"/>) are
 /// taken verbatim from the canonical Taiko protocol specification:
 /// <see href="https://github.com/taikoxyz/taiko-mono/blob/main/packages/protocol/docs/zk_gas_spec.md"/>.
 /// The alethia-reth reference implementation lives in
-/// <c>crates/evm/src/zk_gas/uzen.rs</c> in the alethia-reth repository.
+/// <c>crates/evm/src/zk_gas/unzen.rs</c> in the alethia-reth repository.
 /// Each opcode/precompile has a multiplier: zkGas = rawGas × multiplier.
 /// </summary>
 public static class ZkGasSchedule
 {
-    /// <summary>Maximum ZK gas permitted within a single Uzen block.</summary>
+    /// <summary>Maximum ZK gas permitted within a single Unzen block.</summary>
     public const ulong BlockZkGasLimit = 100_000_000;
 
     /// <summary>Fail-safe multiplier for any opcode or precompile not explicitly listed.</summary>

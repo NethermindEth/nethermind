@@ -143,8 +143,8 @@ public class TaikoPayloadPreparationService(
         // Wherever an EIP is active that requires a matching header field, pin it to its
         // zero/empty value so that the built header is internally consistent for the chainspec
         // and so that <see cref="TaikoExecutionPayload"/> can round-trip it through V2 payloads
-        // (which don't carry these fields) without hash drift.  This covers both the Uzen case
-        // (where Uzen enables these EIPs via TaikoChainSpecBasedSpecProvider) and the Surge
+        // (which don't carry these fields) without hash drift.  This covers both the Unzen case
+        // (where Unzen enables these EIPs via TaikoChainSpecBasedSpecProvider) and the Surge
         // case (where they're enabled directly by the chainspec's Prague/Cancun timestamps).
         if (taikoSpec.IsEip4844Enabled)
         {

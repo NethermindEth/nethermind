@@ -13,7 +13,7 @@ public class TaikoExecutionPayloadV3 : ExecutionPayloadV3
     public Hash256 TransactionsHash { get; set; } = Keccak.Zero;
 
     /// <summary>
-    /// Uzen sidecar field: carries the header difficulty (ZK gas used) through the Engine API.
+    /// Unzen sidecar field: carries the header difficulty (ZK gas used) through the Engine API.
     /// </summary>
     public UInt256? HeaderDifficulty { get; set; }
 

@@ -248,14 +248,14 @@ public class TaikoHeaderValidator(
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
 
-        if (taikoSpec.IsUzenEnabled)
+        if (taikoSpec.IsUnzenEnabled)
         {
-            // Uzen allows non-zero difficulty (stores ZK gas used)
+            // Unzen allows non-zero difficulty (stores ZK gas used)
             // TotalDifficulty must still be zero or null
             if (header.TotalDifficulty != 0 && header.TotalDifficulty is not null)
             {
                 error = BlockErrorMessages.InvalidTotalDifficulty;
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - non-zero total difficulty in Uzen");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - non-zero total difficulty in Unzen");
                 return false;
             }
 
@@ -275,12 +275,12 @@ public class TaikoHeaderValidator(
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
-        if (taikoSpec.IsUzenEnabled)
+        if (taikoSpec.IsUnzenEnabled)
         {
-            // Uzen pins RequestsHash to EMPTY_REQUESTS_HASH even though Prague system contracts aren't active
+            // Unzen pins RequestsHash to EMPTY_REQUESTS_HASH even though Prague system contracts aren't active
             if (header.RequestsHash != ExecutionRequestExtensions.EmptyRequestsHash)
             {
-                error = $"Uzen header must have RequestsHash={ExecutionRequestExtensions.EmptyRequestsHash}, got {header.RequestsHash}";
+                error = $"Unzen header must have RequestsHash={ExecutionRequestExtensions.EmptyRequestsHash}, got {header.RequestsHash}";
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
                 return false;
             }
@@ -294,25 +294,25 @@ public class TaikoHeaderValidator(
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
-        if (taikoSpec.IsUzenEnabled)
+        if (taikoSpec.IsUnzenEnabled)
         {
             if (header.BlobGasUsed != 0)
             {
-                error = $"Uzen header must have BlobGasUsed=0, got {header.BlobGasUsed?.ToString() ?? "<null>"}";
+                error = $"Unzen header must have BlobGasUsed=0, got {header.BlobGasUsed?.ToString() ?? "<null>"}";
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
                 return false;
             }
 
             if (header.ExcessBlobGas != 0)
             {
-                error = $"Uzen header must have ExcessBlobGas=0, got {header.ExcessBlobGas?.ToString() ?? "<null>"}";
+                error = $"Unzen header must have ExcessBlobGas=0, got {header.ExcessBlobGas?.ToString() ?? "<null>"}";
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
                 return false;
             }
 
             if (header.ParentBeaconBlockRoot != Keccak.Zero)
             {
-                error = $"Uzen header must have ParentBeaconBlockRoot=zero, got {header.ParentBeaconBlockRoot?.ToString() ?? "<null>"}";
+                error = $"Unzen header must have ParentBeaconBlockRoot=zero, got {header.ParentBeaconBlockRoot?.ToString() ?? "<null>"}";
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
                 return false;
             }

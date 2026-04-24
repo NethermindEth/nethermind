@@ -18,7 +18,7 @@ using NUnit.Framework;
 namespace Nethermind.Taiko.Test;
 
 /// <summary>
-/// Unit tests for <see cref="TaikoHeaderValidator"/> covering Uzen blob-gas field
+/// Unit tests for <see cref="TaikoHeaderValidator"/> covering Unzen blob-gas field
 /// validation, requests-hash pinning, difficulty rules, and blob-transaction rejection.
 /// These mirror the coverage in alethia-reth's
 /// <c>crates/consensus/src/validation/tests.rs</c>.
@@ -41,7 +41,7 @@ public class TaikoHeaderValidatorTests
     /// <summary>Creates a spec provider that returns <paramref name="spec"/> for every block.</summary>
     private static ISpecProvider ProviderFor(ITaikoReleaseSpec spec) => new TestSpecProvider(spec);
 
-    /// <summary>Builds a minimal valid non-Uzen parent header.</summary>
+    /// <summary>Builds a minimal valid non-Unzen parent header.</summary>
     private static BlockHeader ParentWithBaseFee(ulong baseFee = 1) =>
         Build.A.BlockHeader
             .WithNumber(0)
@@ -49,20 +49,20 @@ public class TaikoHeaderValidatorTests
             .WithBaseFee(baseFee)
             .TestObject;
     /// <summary>
-    /// Minimum extra-data for Shasta/Uzen headers (1 base-fee-sharing byte + 6 proposal-ID bytes).
+    /// Minimum extra-data for Shasta/Unzen headers (1 base-fee-sharing byte + 6 proposal-ID bytes).
     /// </summary>
     private static readonly byte[] ShastaExtraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
-    // ── ValidateBlobGasFields (Uzen) ──────────────────────────────────────────
+    // ── ValidateBlobGasFields (Unzen) ──────────────────────────────────────────
 
     /// <summary>
-    /// Uzen headers must carry BlobGasUsed = 0; a null value is rejected.
-    /// Mirrors <c>test_rejects_blob_transactions</c> enforcement that Uzen blocks have
+    /// Unzen headers must carry BlobGasUsed = 0; a null value is rejected.
+    /// Mirrors <c>test_rejects_blob_transactions</c> enforcement that Unzen blocks have
     /// no blob activity whatsoever.
     /// </summary>
     [Test]
-    public void Uzen_RejectsBlobGasUsed_WhenNull()
+    public void Unzen_RejectsBlobGasUsed_WhenNull()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -87,11 +87,11 @@ public class TaikoHeaderValidatorTests
         Assert.That(error, Does.Contain("BlobGasUsed"));
     }
 
-    /// <summary>Uzen headers must carry BlobGasUsed = 0; any nonzero value is rejected.</summary>
+    /// <summary>Unzen headers must carry BlobGasUsed = 0; any nonzero value is rejected.</summary>
     [Test]
-    public void Uzen_RejectsBlobGasUsed_WhenNonZero()
+    public void Unzen_RejectsBlobGasUsed_WhenNonZero()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -116,11 +116,11 @@ public class TaikoHeaderValidatorTests
         Assert.That(error, Does.Contain("BlobGasUsed"));
     }
 
-    /// <summary>Uzen headers must carry ExcessBlobGas = 0; a null value is rejected.</summary>
+    /// <summary>Unzen headers must carry ExcessBlobGas = 0; a null value is rejected.</summary>
     [Test]
-    public void Uzen_RejectsExcessBlobGas_WhenNull()
+    public void Unzen_RejectsExcessBlobGas_WhenNull()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -145,11 +145,11 @@ public class TaikoHeaderValidatorTests
         Assert.That(error, Does.Contain("ExcessBlobGas"));
     }
 
-    /// <summary>Uzen headers must carry ExcessBlobGas = 0; any nonzero value is rejected.</summary>
+    /// <summary>Unzen headers must carry ExcessBlobGas = 0; any nonzero value is rejected.</summary>
     [Test]
-    public void Uzen_RejectsExcessBlobGas_WhenNonZero()
+    public void Unzen_RejectsExcessBlobGas_WhenNonZero()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -174,12 +174,12 @@ public class TaikoHeaderValidatorTests
         Assert.That(error, Does.Contain("ExcessBlobGas"));
     }
 
-    /// <summary>Uzen header must have ParentBeaconBlockRoot set to
+    /// <summary>Unzen header must have ParentBeaconBlockRoot set to
     /// <see cref="Keccak.Zero"/>; a null value is rejected.</summary>
     [Test]
-    public void Uzen_RejectsParentBeaconBlockRoot_WhenNull()
+    public void Unzen_RejectsParentBeaconBlockRoot_WhenNull()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -204,12 +204,12 @@ public class TaikoHeaderValidatorTests
         Assert.That(error, Does.Contain("ParentBeaconBlockRoot"));
     }
 
-    /// <summary>Uzen header must have ParentBeaconBlockRoot exactly equal to
+    /// <summary>Unzen header must have ParentBeaconBlockRoot exactly equal to
     /// <see cref="Keccak.Zero"/>; any other value is rejected.</summary>
     [Test]
-    public void Uzen_RejectsParentBeaconBlockRoot_WhenNonZero()
+    public void Unzen_RejectsParentBeaconBlockRoot_WhenNonZero()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -237,15 +237,15 @@ public class TaikoHeaderValidatorTests
     // ── ValidateRequestsHash ──────────────────────────────────────────────────
 
     /// <summary>
-    /// Uzen headers must pin RequestsHash to the canonical empty-requests value.
+    /// Unzen headers must pin RequestsHash to the canonical empty-requests value.
     /// A null RequestsHash is rejected.
-    /// Mirrors <c>uzen_header_allows_nonzero_difficulty</c> and the requests-hash
+    /// Mirrors <c>unzen_header_allows_nonzero_difficulty</c> and the requests-hash
     /// test cases in alethia-reth.
     /// </summary>
     [Test]
-    public void Uzen_RejectsRequestsHash_WhenNull()
+    public void Unzen_RejectsRequestsHash_WhenNull()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -270,11 +270,11 @@ public class TaikoHeaderValidatorTests
         Assert.That(error, Does.Contain("RequestsHash"));
     }
 
-    /// <summary>Uzen headers whose RequestsHash differs from the canonical empty value are rejected.</summary>
+    /// <summary>Unzen headers whose RequestsHash differs from the canonical empty value are rejected.</summary>
     [Test]
-    public void Uzen_RejectsRequestsHash_WhenNotEmptyRequestsHash()
+    public void Unzen_RejectsRequestsHash_WhenNotEmptyRequestsHash()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -299,11 +299,11 @@ public class TaikoHeaderValidatorTests
         Assert.That(error, Does.Contain("RequestsHash"));
     }
 
-    /// <summary>Uzen headers whose RequestsHash equals the canonical empty value are accepted.</summary>
+    /// <summary>Unzen headers whose RequestsHash equals the canonical empty value are accepted.</summary>
     [Test]
-    public void Uzen_AcceptsRequestsHash_WhenEmptyRequestsHash()
+    public void Unzen_AcceptsRequestsHash_WhenEmptyRequestsHash()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 
@@ -330,11 +330,11 @@ public class TaikoHeaderValidatorTests
     // ── Difficulty rules ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Pre-Uzen headers must have Difficulty = 0.
-    /// Mirrors <c>pre_uzen_header_still_rejects_nonzero_difficulty</c>.
+    /// Pre-Unzen headers must have Difficulty = 0.
+    /// Mirrors <c>pre_unzen_header_still_rejects_nonzero_difficulty</c>.
     /// </summary>
     [Test]
-    public void PreUzen_RejectsNonZeroDifficulty()
+    public void PreUnzen_RejectsNonZeroDifficulty()
     {
         TaikoShastaReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
@@ -359,13 +359,13 @@ public class TaikoHeaderValidatorTests
     }
 
     /// <summary>
-    /// Uzen headers may carry a nonzero Difficulty (used to encode finalized ZK-gas).
-    /// Mirrors <c>uzen_header_allows_nonzero_difficulty</c>.
+    /// Unzen headers may carry a nonzero Difficulty (used to encode finalized ZK-gas).
+    /// Mirrors <c>unzen_header_allows_nonzero_difficulty</c>.
     /// </summary>
     [Test]
-    public void Uzen_AcceptsNonZeroDifficulty()
+    public void Unzen_AcceptsNonZeroDifficulty()
     {
-        TaikoUzenReleaseSpec spec = new();
+        TaikoUnzenReleaseSpec spec = new();
         ISpecProvider provider = ProviderFor(spec);
         TaikoHeaderValidator validator = MakeValidator(provider);
 

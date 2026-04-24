@@ -26,7 +26,7 @@ namespace Nethermind.Taiko;
 /// <summary>
 /// Taiko-specific block processor that wraps the block tracer with a
 /// <see cref="ZkGasBlockTracer"/> to meter ZK gas per opcode and precompile.
-/// When Uzen is active, stores the accumulated ZK gas in <see cref="BlockHeader.Difficulty"/>
+/// When Unzen is active, stores the accumulated ZK gas in <see cref="BlockHeader.Difficulty"/>
 /// and recalculates the block hash. Rejects blocks (during validation) whose execution
 /// would exceed the ZK gas block limit.
 /// </summary>
@@ -62,7 +62,7 @@ public class TaikoBlockProcessor(
     /// Wraps the incoming block tracer with ZK gas metering, delegates to
     /// <see cref="BlockProcessor.ProcessBlock"/>, then conditionally writes the
     /// total ZK gas consumed into <see cref="BlockHeader.Difficulty"/> and
-    /// recalculates the block hash when Uzen is active.
+    /// recalculates the block hash when Unzen is active.
     /// </summary>
     protected override TxReceipt[] ProcessBlock(
         Block block,
@@ -75,7 +75,7 @@ public class TaikoBlockProcessor(
 
         TxReceipt[] receipts = base.ProcessBlock(block, zkGasTracer, options, spec, token);
 
-        if (spec is ITaikoReleaseSpec { IsUzenEnabled: true })
+        if (spec is ITaikoReleaseSpec { IsUnzenEnabled: true })
         {
             // During validation (NewPayload), reject blocks that exceed the ZK gas limit.
             // During production (ProducingBlock), the executor already stopped adding

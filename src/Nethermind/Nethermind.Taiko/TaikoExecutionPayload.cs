@@ -32,14 +32,14 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     public Hash256? TxHash { get; set; } = null;
 
     /// <summary>
-    /// Uzen sidecar field: carries the header difficulty (ZK gas used) through the Engine API
+    /// Unzen sidecar field: carries the header difficulty (ZK gas used) through the Engine API
     /// newPayload direction. The driver populates this from blockValue returned by getPayload.
     /// </summary>
     public UInt256? HeaderDifficulty { get; set; }
 
     /// <summary>
     /// Non-serialised spec provider injected by <see cref="Rpc.TaikoEngineRpcModule"/> before the
-    /// request is forwarded to the base handler. Used by <see cref="ApplyUzenPinnedFields"/> to
+    /// request is forwarded to the base handler. Used by <see cref="ApplyUnzenPinnedFields"/> to
     /// determine which EIPs are active at the block's timestamp so header fields that V2 payloads
     /// cannot carry (ParentBeaconBlockRoot, RequestsHash) can be restored to their canonical
     /// zero/empty values for Taiko L2.
@@ -61,7 +61,7 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     /// driver sees the same values Nethermind used when hashing the block.
     /// <see cref="ExecutionPayload.ParentBeaconBlockRoot"/> is <c>[JsonIgnore]</c> on the
     /// base type, so it never reaches the wire and is restored from the spec provider on
-    /// the inbound path (see <see cref="ApplyUzenPinnedFields"/>).
+    /// the inbound path (see <see cref="ApplyUnzenPinnedFields"/>).
     /// </summary>
     public new static TaikoExecutionPayload Create(Block block)
     {
@@ -117,7 +117,7 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
                 WithdrawalsRoot = WithdrawalsHash,
             };
 
-            ApplyUzenPinnedFields(header);
+            ApplyUnzenPinnedFields(header);
             return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
         }
 
@@ -128,7 +128,7 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
             {
                 result.Block.Header.Difficulty = HeaderDifficulty.Value;
             }
-            ApplyUzenPinnedFields(result.Block.Header);
+            ApplyUnzenPinnedFields(result.Block.Header);
         }
         return result;
     }
@@ -151,7 +151,7 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     /// The spec provider is attached by <see cref="Rpc.TaikoEngineRpcModule"/> before the
     /// request is dispatched to the base handler.
     /// </summary>
-    private void ApplyUzenPinnedFields(BlockHeader header)
+    private void ApplyUnzenPinnedFields(BlockHeader header)
     {
         if (BlobGasUsed is not null) header.BlobGasUsed ??= BlobGasUsed.Value;
         if (ExcessBlobGas is not null) header.ExcessBlobGas ??= ExcessBlobGas.Value;

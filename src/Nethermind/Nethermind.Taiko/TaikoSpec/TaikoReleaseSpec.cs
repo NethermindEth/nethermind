@@ -12,7 +12,7 @@ public class TaikoReleaseSpec : ReleaseSpec, ITaikoReleaseSpec
     public bool IsOntakeEnabled { get; set; }
     public bool IsPacayaEnabled { get; set; }
     public bool IsShastaEnabled { get; set; }
-    public bool IsUzenEnabled { get; set; }
+    public bool IsUnzenEnabled { get; set; }
     public bool UseSurgeGasPriceOracle { get; set; }
     public required Address TaikoL2Address { get; set; }
     public bool IsRip7728Enabled { get; set; }

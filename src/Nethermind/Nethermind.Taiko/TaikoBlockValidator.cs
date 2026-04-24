@@ -136,7 +136,7 @@ public class TaikoBlockValidator(
         if (_logger.IsDebug)
         {
             _logger.Debug($"Anchor selector: 0x{Convert.ToHexString(selector)}, " +
-                $"IsUzenEnabled={spec.IsUzenEnabled}, IsShastaEnabled={spec.IsShastaEnabled}, " +
+                $"IsUnzenEnabled={spec.IsUnzenEnabled}, IsShastaEnabled={spec.IsShastaEnabled}, " +
                 $"IsPacayaEnabled={spec.IsPacayaEnabled}, IsOntakeEnabled={spec.IsOntakeEnabled}. " +
                 $"Expected: {(spec.IsShastaEnabled ? $"V4=0x{Convert.ToHexString(AnchorV4Selector)} or V4WithSignalSlots=0x{Convert.ToHexString(AnchorV4WithSignalSlotsSelector)}" : spec.IsPacayaEnabled ? $"V3=0x{Convert.ToHexString(AnchorV3Selector)}" : $"V1=0x{Convert.ToHexString(AnchorSelector)} or V2=0x{Convert.ToHexString(AnchorV2Selector)}")}");
         }
