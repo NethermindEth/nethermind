@@ -38,5 +38,5 @@ public class ECRecoverPrecompileTests : PrecompileTests<ECRecoverPrecompile, ECR
         "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e000000000000000000000000000000000000000000000000000000000000001b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000aabbccdd",
         TestName = "oversized input clamped to 128 then trailing zeros trimmed"
     )]
-    public void GetEffectiveInput_SameOutput(string input) => RunEffectiveInputTest(input);
+    public void NormalizedInput_SameOutput(string input) => RunEffectiveInputTest(input);
 }

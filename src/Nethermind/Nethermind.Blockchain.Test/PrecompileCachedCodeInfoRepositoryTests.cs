@@ -419,7 +419,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
-    public void CachedPrecompile_WithGetEffectiveInputOverride_DeduplicatesOversizedInputs()
+    public void CachedPrecompile_WithNormalizeInputOverride_DeduplicatesOversizedInputs()
     {
         // Precompile that only uses the first 4 bytes of input.
         int runCount = 0;
@@ -476,7 +476,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         public bool SupportsCaching => true;
 
-        public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+        public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
             inputData.Length > effectiveLength ? inputData[..effectiveLength] : inputData;
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;

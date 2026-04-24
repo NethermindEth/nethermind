@@ -71,7 +71,7 @@ public class PrecompileCachedCodeInfoRepository(
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            ReadOnlyMemory<byte> effectiveInput = precompile.GetEffectiveInput(inputData);
+            ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
             PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput);
             if (!cache.TryGetValue(key, out Result<byte[]> result))
             {

@@ -86,7 +86,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     {
         spec ??= DefaultSpec;
         ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
-        ReadOnlyMemory<byte> effInput = precompile.GetEffectiveInput(fullInput);
+        ReadOnlyMemory<byte> effInput = precompile.NormalizeInput(fullInput);
 
         Assert.That(effInput.Length, Is.LessThan(fullInput.Length));
         Assert.That(

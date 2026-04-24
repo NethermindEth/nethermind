@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
             "",
             "0011",
             TestName = "2-byte invalid input")]
-        public void GetEffectiveInput_SameOutput(string input, string trailing) => RunEffectiveInputTest(input, trailing);
+        public void NormalizedInput_SameOutput(string input, string trailing) => RunEffectiveInputTest(input, trailing);
 
         [Test]
         [TestCase(

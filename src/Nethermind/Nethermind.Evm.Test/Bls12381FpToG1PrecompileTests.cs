@@ -130,5 +130,5 @@ public class Bls12381FpToG1PrecompileTests : PrecompileTests<Bls12381FpToG1Preco
         "",
         "0011",
         TestName = "2-byte invalid input")]
-    public void GetEffectiveInput_SameOutput(string input, string trailing) => RunEffectiveInputTest(input, trailing);
+    public void NormalizedInput_SameOutput(string input, string trailing) => RunEffectiveInputTest(input, trailing);
 }

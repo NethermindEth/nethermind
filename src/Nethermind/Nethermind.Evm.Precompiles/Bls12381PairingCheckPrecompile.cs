@@ -27,7 +27,7 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 32600L * (inputData.Length / PairSize);
 
-    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
         inputData.Length != 0 && inputData.Length % PairSize == 0 ? inputData : InvalidLengthInput;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);

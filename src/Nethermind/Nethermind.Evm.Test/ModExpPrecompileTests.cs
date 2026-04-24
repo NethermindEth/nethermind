@@ -29,7 +29,7 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         "11223344",
         TestName = "expLength=uint.MaxValue overflow path"
     )]
-    public void GetEffectiveInput_SameOutput(string input, string trailing) =>
+    public void NormalizedInput_SameOutput(string input, string trailing) =>
         RunEffectiveInputTest(Instance, input, trailing, Prague.Instance);
 
 #pragma warning disable 618 // ModExpPrecompilePreEip2565 is Obsolete
@@ -53,7 +53,7 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         "11223344",
         TestName = "pre2565: expLength>int.MaxValue overflow-safe SafeSlice"
     )]
-    public void GetEffectiveInput_SameOutput_PreEip2565(string input, string trailing) =>
+    public void NormalizedInput_SameOutput_PreEip2565(string input, string trailing) =>
         RunEffectiveInputTest(ModExpPrecompilePreEip2565.Instance, input, trailing, Byzantium.Instance);
 #pragma warning restore 618
 

@@ -36,6 +36,5 @@ public class BN254MulPrecompileTests : PrecompileTests<BN254MulPrecompile, BN254
         "112233",
         TestName = "Invalid + 3 bytes"
     )]
-    public void GetEffectiveInput_SameOutput(string input, string trailing) =>
-        RunEffectiveInputTest(input, trailing);
+    public void NormalizedInput_SameOutput(string input, string trailing) => RunEffectiveInputTest(input, trailing);
 }

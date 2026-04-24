@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class KzgPointEvaluationPrecompileTests
+public class KzgPointEvaluationPrecompileTests: PrecompileTests<KzgPointEvaluationPrecompile, KzgPointEvaluationPrecompileTests>
 {
     private static readonly byte[] _predefinedSuccessAnswer =
         Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
@@ -76,19 +76,8 @@ public class KzgPointEvaluationPrecompileTests
         "",
         "0011",
         TestName = "2-byte invalid input")]
-    public void GetEffectiveInput_SameOutput(string input, string trailing)
-    {
-        ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
-        ReadOnlyMemory<byte> effInput = KzgPointEvaluationPrecompile.Instance.GetEffectiveInput(fullInput);
-        Assert.That(effInput.Length, Is.LessThan(fullInput.Length));
-        (byte[] effOutput, bool effSuccess) = KzgPointEvaluationPrecompile.Instance.Run(effInput, Cancun.Instance);
-        (byte[] fullOutput, bool fullSuccess) = KzgPointEvaluationPrecompile.Instance.Run(fullInput, Cancun.Instance);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(effSuccess, Is.EqualTo(fullSuccess));
-            Assert.That(effOutput, Is.EquivalentTo(fullOutput));
-        }
-    }
+    public void NormalizedInput_SameOutput(string input, string trailing) =>
+        RunEffectiveInputTest(input, trailing);
 
     private static byte[] CreateKzgTestInput(string versionedHash, string z, string y, string commitment, string proof)
     {

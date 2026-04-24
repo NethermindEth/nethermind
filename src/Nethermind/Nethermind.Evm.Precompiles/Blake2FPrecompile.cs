@@ -27,7 +27,7 @@ public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 
     public long BaseGasCost(IReleaseSpec _) => 0;
 
-    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
         inputData.Length == RequiredInputLength ? inputData : InvalidLengthInput;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
