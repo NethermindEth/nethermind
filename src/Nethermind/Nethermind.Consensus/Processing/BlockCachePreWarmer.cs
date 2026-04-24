@@ -68,7 +68,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_preBlockCaches is not null)
         {
             CacheType result = _preBlockCaches.ClearCaches();
-            _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
             if (result != default)
             {
@@ -95,6 +94,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_logger.IsDebug) _logger.Debug("Invalidating caches");
         _preBlockCaches.InvalidateCaches();
+        _nodeStorageCache.ClearCaches();
         if (_logger.IsDebug) _logger.Debug("Invalidated caches");
     }
 
@@ -110,7 +110,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
-        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
