@@ -445,4 +445,22 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
+
+    [TestCase(
+        """{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000001":{"MovePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}}]}""",
+        ErrorCodes.MovePrecompileSelfReference,
+        "MovePrecompileToAddress referenced itself in replacement",
+        TestName = "SelfReference_38022")]
+    public async Task eth_simulateV1_MovePrecompileToAddress_invalid_override_returns_error(string payloadJson, int expectedErrorCode, string expectedMessage)
+    {
+        EthereumJsonSerializer serializer = new();
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        result.ErrorCode.Should().Be(expectedErrorCode);
+        result.Result.Error.Should().Be(expectedMessage);
+    }
 }
