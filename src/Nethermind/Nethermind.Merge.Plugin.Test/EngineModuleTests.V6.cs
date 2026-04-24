@@ -862,7 +862,7 @@ public partial class EngineModuleTests
             {
                 modifiedAccounts[senderAddress] = CloneAccountChanges(
                     validBal.GetAccountChanges(senderAddress)!,
-                    bc => bc.BlockAccessIndex == 1 ? new BalanceChange(1, bc.PostBalance + 1) : bc);
+                    bc => bc.Index == 1 ? new BalanceChange(1, bc.Value + 1) : bc);
             }
 
             if (errorKind is BalErrorKind.SurplusChange)
@@ -893,7 +893,7 @@ public partial class EngineModuleTests
             foreach (KeyValuePair<int, StorageChange> kvp in sc.Changes)
                 changes.Add(kvp.Key, kvp.Value);
 
-            storageChanges.Add(sc.Slot, sc with { Changes = changes });
+            storageChanges.Add(sc.Key, sc with { Changes = changes });
         }
 
         SortedSet<UInt256> storageReads = new(ac.StorageReads);
@@ -902,16 +902,16 @@ public partial class EngineModuleTests
         foreach (BalanceChange bc in ac.BalanceChanges)
         {
             BalanceChange modified = balanceModifier?.Invoke(bc) ?? bc;
-            balanceChanges.Add(modified.BlockAccessIndex, modified);
+            balanceChanges.Add(modified.Index, modified);
         }
 
         SortedList<int, NonceChange> nonceChanges = new();
         foreach (NonceChange nc in ac.NonceChanges)
-            nonceChanges.Add(nc.BlockAccessIndex, nc);
+            nonceChanges.Add(nc.Index, nc);
 
         SortedList<int, CodeChange> codeChanges = new();
         foreach (CodeChange cc in ac.CodeChanges)
-            codeChanges.Add(cc.BlockAccessIndex, cc);
+            codeChanges.Add(cc.Index, cc);
 
         return new AccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }

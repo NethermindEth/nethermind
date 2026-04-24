@@ -235,7 +235,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 {
                     Address = address,
                     Type = ChangeType.StorageChange,
-                    Slot = slotChanges.Slot,
+                    Slot = slotChanges.Key,
                     PreviousValue = change.Value,
                     BlockAccessIndex = Index
                 });
@@ -428,10 +428,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         for (int i = count - 1; i >= 0; i--)
         {
             BalanceChange balanceChange = balanceChanges[i];
-            if (balanceChange.BlockAccessIndex != Index)
+            if (balanceChange.Index != Index)
             {
                 // balance changed in previous tx in block
-                return balanceChange.PostBalance != afterInstr;
+                return balanceChange.Value != afterInstr;
             }
         }
 
@@ -464,10 +464,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         for (int i = values.Count - 1; i >= 0; i--)
         {
             StorageChange storageChange = values[i];
-            if (storageChange.BlockAccessIndex != Index)
+            if (storageChange.Index != Index)
             {
                 // storage changed in previous tx in block
-                return storageChange.NewValue != afterInstr;
+                return storageChange.Value != afterInstr;
             }
         }
 
@@ -505,10 +505,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         for (int i = count - 1; i >= 0; i--)
         {
             CodeChange codeChange = codeChanges[i];
-            if (codeChange.BlockAccessIndex != Index)
+            if (codeChange.Index != Index)
             {
                 // code changed in previous tx in block
-                return !codeChange.NewCode.AsSpan().SequenceEqual(afterInstr);
+                return !codeChange.Code.AsSpan().SequenceEqual(afterInstr);
             }
         }
 
@@ -578,6 +578,6 @@ public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange
             slotChangeCount++;
         }
 
-        return $"{nameof(ChangeAtIndex)}({Address}, Balance={BalanceChange?.PostBalance}, Nonce={NonceChange?.NewNonce}, Code={CodeChange is not null}, Slots={slotChangeCount}, Reads={Reads})";
+        return $"{nameof(ChangeAtIndex)}({Address}, Balance={BalanceChange?.Value}, Nonce={NonceChange?.Value}, Code={CodeChange is not null}, Slots={slotChangeCount}, Reads={Reads})";
     }
 }

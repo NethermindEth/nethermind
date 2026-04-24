@@ -190,11 +190,11 @@ public class BlockAccessListManager(
     {
         foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].BlockAccessIndex != -1)
+            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].Index != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
-                UInt256 newBalance = accountChanges.BalanceChanges[^1].PostBalance;
+                UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
                 if (newBalance > oldBalance)
                 {
                     stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
@@ -205,25 +205,25 @@ public class BlockAccessListManager(
                 }
             }
 
-            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].BlockAccessIndex != -1)
+            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].Index != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].NewNonce);
+                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
             }
 
-            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].BlockAccessIndex != -1)
+            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].Index != -1)
             {
-                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].NewCode, spec);
+                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
             }
 
             foreach (SlotChanges slotChange in accountChanges.StorageChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, slotChange.Slot);
+                StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
                 // could be empty since prestate loaded
                 int slotCount = slotChange.Changes.Count;
                 if (slotCount > 0 && slotChange.Changes.Keys[slotCount - 1] != -1)
                 {
-                    stateProvider.Set(storageCell, [.. slotChange.Changes.Values[slotCount - 1].NewValue.ToBigEndian().WithoutLeadingZeros()]);
+                    stateProvider.Set(storageCell, [.. slotChange.Changes.Values[slotCount - 1].Value.ToBigEndian().WithoutLeadingZeros()]);
                 }
             }
         }
@@ -418,7 +418,7 @@ public class BlockAccessListManager(
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
+                StorageCell storageCell = new(accountChanges.Address, slotChanges.Key);
                 slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
             }
 

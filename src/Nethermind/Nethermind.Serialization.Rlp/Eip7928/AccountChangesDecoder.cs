@@ -30,7 +30,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length, GenericComparer.GetOptimized<UInt256>());
         foreach (SlotChanges slotChange in slotChanges)
         {
-            UInt256 slot = slotChange.Slot;
+            UInt256 slot = slotChange.Key;
             if (lastSlot is not null && slot <= lastSlot)
             {
                 throw new RlpException("Storage changes were in incorrect order.");
@@ -111,7 +111,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         SortedList<int, T> sorted = new(items.Length, GenericComparer.GetOptimized<int>());
         foreach (T item in items)
         {
-            int index = item.BlockAccessIndex;
+            int index = item.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException($"{changeName} changes were in incorrect order.");

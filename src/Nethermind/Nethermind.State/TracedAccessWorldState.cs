@@ -279,7 +279,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null && accountChanges.BalanceChanges.Count >= 1)
         {
-            return accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].PostBalance;
+            return accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].Value;
         }
         return null;
     }
@@ -292,14 +292,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null && accountChanges.NonceChanges.Count >= 1)
         {
-            return accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].NewNonce;
+            return accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].Value;
         }
 
         return null;
     }
 
     private byte[]? GetCodeCurrent(Address address)
-        => TryGetCodeChangeCurrent(address, out CodeChange? codeChange) ? codeChange.Value.NewCode : null;
+        => TryGetCodeChangeCurrent(address, out CodeChange? codeChange) ? codeChange.Value.Code : null;
 
     private bool GetCodeHashCurrent(Address address, [NotNullWhen(true)] out ValueHash256? hash)
     {
@@ -307,7 +307,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         bool res = TryGetCodeChangeCurrent(address, out CodeChange? codeChange);
         if (res)
         {
-            hash = codeChange.Value.NewCodeHash;
+            hash = codeChange.Value.CodeHash;
         }
         return res;
     }
@@ -342,7 +342,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
                 if (slotChanges is not null && slotChanges.Changes.Count >= 1)
                 {
-                    return slotChanges.Changes.Values[slotChanges.Changes.Count - 1].NewValue.ToBigEndian();
+                    return slotChanges.Changes.Values[slotChanges.Changes.Count - 1].Value.ToBigEndian();
                 }
             }
         }

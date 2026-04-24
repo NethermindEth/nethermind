@@ -129,8 +129,8 @@ public class BlockAccessListDecoderTests
     {
         StorageChange storageChange = new()
         {
-            BlockAccessIndex = 10,
-            NewValue = 0xcad
+            Index = 10,
+            Value = 0xcad
         };
         byte[] storageChangeBytes = Rlp.Encode(storageChange, RlpBehaviors.None).Bytes;
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
@@ -166,7 +166,7 @@ public class BlockAccessListDecoderTests
 
         AccountChanges accountChanges = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithStorageChanges(slotChanges.Slot, storageChange)
+            .WithStorageChanges(slotChanges.Key, storageChange)
             .WithStorageReads(0xbababa, 0xcacaca)
             .WithBalanceChanges([balanceChange, balanceChange2])
             .WithNonceChanges([nonceChange, nonceChange2])

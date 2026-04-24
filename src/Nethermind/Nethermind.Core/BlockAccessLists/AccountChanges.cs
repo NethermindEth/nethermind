@@ -175,7 +175,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         {
             if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
             {
-                yield return new(slotChanges.Slot, new SortedList<int, StorageChange>(GenericComparer.GetOptimized<int>()) { { index, storageChange } });
+                yield return new(slotChanges.Key, new SortedList<int, StorageChange>(GenericComparer.GetOptimized<int>()) { { index, storageChange } });
             }
         }
     }
@@ -199,7 +199,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     }
 
     public void AddBalanceChange(BalanceChange balanceChange)
-        => _balanceChanges[balanceChange.BlockAccessIndex] = balanceChange;
+        => _balanceChanges[balanceChange.Index] = balanceChange;
 
     public bool PopBalanceChange(int index, [NotNullWhen(true)] out BalanceChange? balanceChange)
     {
@@ -216,7 +216,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         => _balanceChanges.TryGetValue(index, out BalanceChange balanceChange) ? balanceChange : null;
 
     public void AddNonceChange(NonceChange nonceChange)
-        => _nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
+        => _nonceChanges.Add(nonceChange.Index, nonceChange);
 
     public bool PopNonceChange(int index, [NotNullWhen(true)] out NonceChange? nonceChange)
     {
@@ -233,7 +233,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         => _nonceChanges.TryGetValue(index, out NonceChange nonceChange) ? nonceChange : null;
 
     public void AddCodeChange(CodeChange codeChange)
-        => _codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
+        => _codeChanges.Add(codeChange.Index, codeChange);
 
     public bool PopCodeChange(int index, [NotNullWhen(true)] out CodeChange? codeChange)
     {
@@ -276,7 +276,7 @@ public class AccountChanges : IEquatable<AccountChanges>
             {
                 return lastNonce;
             }
-            lastNonce = change.Value.NewNonce;
+            lastNonce = change.Value.Value;
         }
         return lastNonce;
     }
@@ -290,7 +290,7 @@ public class AccountChanges : IEquatable<AccountChanges>
             {
                 return lastBalance;
             }
-            lastBalance = change.Value.PostBalance;
+            lastBalance = change.Value.Value;
         }
         return lastBalance;
     }
@@ -298,13 +298,13 @@ public class AccountChanges : IEquatable<AccountChanges>
     public byte[] GetCode(int blockAccessIndex)
     {
         GetCodeChange(blockAccessIndex, out CodeChange? codeChange);
-        return codeChange!.Value.NewCode;
+        return codeChange!.Value.Code;
     }
 
     public ValueHash256 GetCodeHash(int blockAccessIndex)
     {
         GetCodeChange(blockAccessIndex, out CodeChange? codeChange);
-        return codeChange!.Value.NewCodeHash;
+        return codeChange!.Value.CodeHash;
     }
 
     public HashSet<UInt256> GetAllSlots(int blockAccessIndex)
@@ -315,15 +315,15 @@ public class AccountChanges : IEquatable<AccountChanges>
             UInt256 lastValue = 0;
             foreach (StorageChange storageChange in slotChange.Changes.Values)
             {
-                if (storageChange.BlockAccessIndex > blockAccessIndex)
+                if (storageChange.Index > blockAccessIndex)
                 {
                     if (lastValue != 0)
                     {
-                        slots.Add(slotChange.Slot);
+                        slots.Add(slotChange.Key);
                     }
                     break;
                 }
-                lastValue = storageChange.NewValue;
+                lastValue = storageChange.Value;
             }
         }
         return slots;
