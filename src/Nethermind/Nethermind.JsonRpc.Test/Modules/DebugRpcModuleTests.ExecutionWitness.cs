@@ -20,7 +20,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Facade;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Trie.Pruning;
@@ -57,13 +59,17 @@ public partial class DebugRpcModuleTests
             return;
         }
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
+        WitnessForRpc witnessForRpc = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<WitnessForRpc>()
             .Subject;
 
-        witness.Headers.Should().NotBeEmpty();
-        witness.State.Should().NotBeEmpty();
+        witnessForRpc.Headers.Should().NotBeEmpty("witness must include at least the parent header");
+        witnessForRpc.State.Should().NotBeEmpty("witness must include state trie nodes");
 
+        BlockHeader? parent = blockchain.BlockTree.FindHeader(block.Header.ParentHash!, BlockTreeLookupOptions.RequireCanonical);
+        parent.Should().NotBeNull("precondition: parent header must be in the block tree");
+
+        using Witness witness = blockchain.Bridge.GenerateExecutionWitness(parent!, block);
         CheckStatelessProcessing(blockchain, witness, block);
     }
 
@@ -216,11 +222,11 @@ public partial class DebugRpcModuleTests
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
             new { to = TestItem.AddressB.ToString() }, "0x1");
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
+        WitnessForRpc witnessForRpc = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<WitnessForRpc>()
             .Subject;
 
-        witness.State.Should().NotBeEmpty("a call touching state should produce trie nodes");
+        witnessForRpc.State.Should().NotBeEmpty("a call touching state should produce trie nodes");
     }
 
     [Test]
@@ -238,19 +244,23 @@ public partial class DebugRpcModuleTests
             new { to = contractAddress.ToString(), gas = "0x30D40" },
             $"0x{blockNumber:x}");
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
+        WitnessForRpc witnessForRpc = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<WitnessForRpc>()
             .Subject;
 
-        witness.State.Should().NotBeEmpty();
-        witness.Codes.Should().NotBeEmpty("calling a contract should capture its bytecode");
+        witnessForRpc.State.Should().NotBeEmpty("calling a contract should capture state trie nodes");
+        witnessForRpc.Codes.Should().NotBeEmpty("calling a contract should capture its bytecode");
     }
 
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
     {
-        // 7 blocks in the test where this test case source is used
-        for (long blockNumber = 0; blockNumber < 7; blockNumber++)
-            yield return new TestCaseData(blockNumber);
+        yield return new TestCaseData(0L) { TestName = "GenesisBlock" };
+        yield return new TestCaseData(1L) { TestName = "BlockWithTransfer" };
+        yield return new TestCaseData(2L) { TestName = "BlockWithContractDeploy" };
+        yield return new TestCaseData(3L) { TestName = "BlockWithContractCall" };
+        yield return new TestCaseData(4L) { TestName = "Block4" };
+        yield return new TestCaseData(5L) { TestName = "Block5" };
+        yield return new TestCaseData(6L) { TestName = "Block6" };
     }
 
     private static async Task<Block> CreateTransferTx(TestRpcBlockchain blockchain)
@@ -316,7 +326,7 @@ public partial class DebugRpcModuleTests
     private static void CheckStatelessProcessing(TestRpcBlockchain blockchain, Witness witness, Block expectedBlock)
     {
         BlockHeader? parent = blockchain.BlockTree.FindHeader(expectedBlock.Header.ParentHash!, BlockTreeLookupOptions.RequireCanonical);
-        parent.Should().NotBeNull();
+        parent.Should().NotBeNull("precondition: parent header must exist in the block tree for stateless processing");
 
         StatelessBlockProcessingEnv statelessEnv = new(
             witness,
@@ -331,6 +341,6 @@ public partial class DebugRpcModuleTests
             NullBlockTracer.Instance,
             blockchain.SpecProvider.GetSpec(expectedBlock.Header));
 
-        processed.Hash.Should().Be(expectedBlock.Hash!);
+        processed.Hash.Should().Be(expectedBlock.Hash!, "stateless block processing must reproduce the original block hash");
     }
 }

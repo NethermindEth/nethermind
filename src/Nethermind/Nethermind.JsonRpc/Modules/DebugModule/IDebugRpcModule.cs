@@ -11,8 +11,6 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Consensus.Stateless;
-
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 [RpcModule(ModuleType.Debug)]
@@ -119,9 +117,9 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
-    [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
-    ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
+    [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<WitnessForRpc> debug_executionWitness(BlockParameter blockParameter);
 
-    [JsonRpcMethod(Description = "Generates an execution witness for a single call at a specific block, capturing all state accessed during the call.")]
-    ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null);
+    [JsonRpcMethod(Description = "Generates an execution witness for a single call at a specific block, capturing all state accessed during the call.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<WitnessForRpc> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null);
 }

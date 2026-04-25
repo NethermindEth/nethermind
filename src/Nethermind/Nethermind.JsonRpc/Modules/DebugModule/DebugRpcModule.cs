@@ -612,41 +612,41 @@ public class DebugRpcModule(
         return block;
     }
 
-    public ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter)
+    public ResultWrapper<WitnessForRpc> debug_executionWitness(BlockParameter blockParameter)
     {
         Block? block = blockFinder.FindBlock(blockParameter);
         if (block is null)
         {
-            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<WitnessForRpc>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
         else if (block.Number == 0)
         {
-            // Cannot generate witness for genesis block as the block itself does not contain any transaction
-            // responsible for the state setup. It is the weak subjectivity starting point to trust.
-            return ResultWrapper<Witness>.Fail($"Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
+            return ResultWrapper<WitnessForRpc>.Fail($"Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
         }
 
         BlockHeader? parent = blockFinder.FindHeader(block.ParentHash!);
         if (parent is null)
         {
-            return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<WitnessForRpc>.Fail($"Unable to find parent for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
-        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(parent, block));
+
+        using Witness witness = blockchainBridge.GenerateExecutionWitness(parent, block);
+        return ResultWrapper<WitnessForRpc>.Success(new WitnessForRpc(witness));
     }
 
-    public ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null)
+    public ResultWrapper<WitnessForRpc> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null)
     {
         blockParameter ??= BlockParameter.Latest;
 
         BlockHeader? header = blockFinder.FindHeader(blockParameter);
         if (header is null)
         {
-            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<WitnessForRpc>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
 
         if (header.Number == 0)
         {
-            return ResultWrapper<Witness>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
+            return ResultWrapper<WitnessForRpc>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
         }
 
         callRequest.Gas ??= header.GasLimit;
@@ -654,13 +654,14 @@ public class DebugRpcModule(
         Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: false);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
-            return ResultWrapper<Witness>.Fail(error, ErrorCodes.InvalidInput);
+            return ResultWrapper<WitnessForRpc>.Fail(error, ErrorCodes.InvalidInput);
         }
 
         tx.SenderAddress ??= Address.Zero;
 
         if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data.Length}");
 
-        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(header, tx));
+        using Witness witness = blockchainBridge.GenerateExecutionWitness(header, tx);
+        return ResultWrapper<WitnessForRpc>.Success(new WitnessForRpc(witness));
     }
 }

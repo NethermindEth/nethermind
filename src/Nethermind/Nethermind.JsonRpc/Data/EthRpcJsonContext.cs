@@ -30,6 +30,8 @@ namespace Nethermind.JsonRpc.Data;
 [JsonSerializable(typeof(GethLikeTxTrace))]
 [JsonSerializable(typeof(GethTraceOptions))]
 [JsonSerializable(typeof(ChainLevelForRpc))]
+[JsonSerializable(typeof(WitnessForRpc))]
+[JsonSerializable(typeof(WitnessHeaderForRpc))]
 // trace_ types
 [JsonSerializable(typeof(ParityTxTraceFromReplay))]
 [JsonSerializable(typeof(ParityTxTraceFromStore))]
