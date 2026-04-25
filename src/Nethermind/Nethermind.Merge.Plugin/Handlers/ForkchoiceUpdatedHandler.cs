@@ -89,7 +89,7 @@ public class ForkchoiceUpdatedHandler(
             }
         }
 
-        long reorgDepth = (_blockTree.Head?.Number ?? 0) - newHeadHeader.Number;
+        long reorgDepth = (_blockTree.Head?.Number ?? 0) - FindMainChainAncestorNumber(newHeadHeader);
         if (reorgDepth > _maxReorgDepth)
         {
             if (_logger.IsWarn) _logger.Warn($"Too deep reorg. Reorg depth: {reorgDepth}, limit: {_maxReorgDepth}. Request: {forkchoiceState}.");
@@ -399,6 +399,23 @@ public class ForkchoiceUpdatedHandler(
             cursor = parent;
         }
         return cursor.GetOrCalculateHash() != candidateHeader.GetOrCalculateHash();
+    }
+
+    // Returns the block number of newHeadHeader's closest ancestor (or itself) that is on the
+    // main chain. For a main-chain block this is newHeadHeader.Number itself. For a side-chain
+    // block this is the common ancestor's number — used to compute the true reorg depth.
+    // Returns 0 (genesis) when the parent chain cannot be fully walked, which is the most
+    // conservative fallback (maximises the reported reorg depth).
+    private long FindMainChainAncestorNumber(BlockHeader newHeadHeader)
+    {
+        BlockHeader cursor = newHeadHeader;
+        while (true)
+        {
+            if (_blockTree.IsMainChain(cursor)) return cursor.Number;
+            BlockHeader? parent = _blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (parent is null) return 0;
+            cursor = parent;
+        }
     }
 
     private static Hash256 ResolveZeroHash(Hash256 hash, Hash256? knownHash) =>
