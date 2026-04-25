@@ -19,6 +19,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
@@ -52,6 +53,7 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
+            Substitute.For<IPruningConfig>(),
             Substitute.For<ILogManager>()
         );
 
@@ -101,6 +103,7 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
+            Substitute.For<IPruningConfig>(),
             Substitute.For<ILogManager>()
         );
 
@@ -125,15 +128,17 @@ public class TaikoEngineApiTests
     }
 
     [Test]
-    public async Task ShouldProceedWithReorg_Override_PreventsAncestorReorgSkip()
+    public async Task ShouldProceedWithReorg_Override_BypassesTooDeepReorgError()
     {
         // Taiko overrides ShouldProceedWithReorg to always proceed (return true).
-        // Without the override, FCU to a canonical ancestor >32 blocks behind head would be skipped
-        // and UpdateMainChain would NOT be called. With the override, it must be called.
+        // Without the override, FCU to a block whose reorg depth exceeds IPruningConfig.PruningBoundary
+        // would return -38006 Too deep reorg. With the override, it must proceed regardless.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
 
-        Block deepAncestor = Build.A.Block.WithNumber(1).TestObject;
-        Block headBlock = Build.A.Block.WithNumber(34).TestObject;
+        const int pruningBoundary = 64;
+        Block headBlock = Build.A.Block.WithNumber(100).TestObject;
+        // reorg depth = 100 - 33 = 67, which exceeds pruningBoundary of 64
+        Block deepAncestor = Build.A.Block.WithNumber(33).TestObject;
 
         blockTree.FindBlock(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor);
         blockTree.GetInfo(deepAncestor.Number, deepAncestor.Hash!).Returns(
@@ -143,6 +148,9 @@ public class TaikoEngineApiTests
         blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
         blockTree.IsMainChain(Arg.Any<Hash256>()).Returns(true);
         blockTree.FindHeader(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor.Header);
+
+        IPruningConfig pruningConfig = Substitute.For<IPruningConfig>();
+        pruningConfig.PruningBoundary.Returns(pruningBoundary);
 
         TaikoForkchoiceUpdatedHandler handler = new(
             blockTree,
@@ -158,6 +166,7 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
+            pruningConfig,
             Substitute.For<ILogManager>()
         );
 

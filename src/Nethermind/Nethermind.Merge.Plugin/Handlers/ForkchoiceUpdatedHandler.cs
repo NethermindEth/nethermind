@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -48,6 +49,7 @@ public class ForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
+    IPruningConfig pruningConfig,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -55,6 +57,7 @@ public class ForkchoiceUpdatedHandler(
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+    private readonly int _maxReorgDepth = pruningConfig.PruningBoundary;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -64,13 +67,33 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
+    // Spec point 2: MAY skip if headBlockHash is a VALID ancestor of the latest known finalized block.
+    // Spec point 6: MUST return -38006 if reorg depth exceeds IPruningConfig.PruningBoundary.
+    // Taiko overrides this to always proceed because its finality follows L1 and may regress on L1 reorgs.
     protected virtual bool ShouldProceedWithReorg(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
-        if (_blockTree.IsAncestorOnMainChainBeyondReorgDepthLimit(newHeadHeader))
+        Hash256? knownFinalizedHash = _blockTree.FinalizedHash;
+        if (knownFinalizedHash is not null && knownFinalizedHash != Keccak.Zero)
         {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
-            errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            BlockHeader? knownFinalizedHeader = _blockTree.FindHeader(knownFinalizedHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            if (knownFinalizedHeader is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Known finalized hash {knownFinalizedHash} has no header — cannot check spec point 2 ancestry. Falling back to depth limit.");
+            }
+            else if (newHeadHeader.Number < knownFinalizedHeader.Number && _blockTree.IsMainChain(newHeadHeader))
+            {
+                if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated skipped - head is a valid ancestor of the latest known finalized block.");
+                errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+                return false;
+            }
+        }
+
+        long reorgDepth = (_blockTree.Head?.Number ?? 0) - newHeadHeader.Number;
+        if (reorgDepth > _maxReorgDepth)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Too deep reorg. Reorg depth: {reorgDepth}, limit: {_maxReorgDepth}. Request: {forkchoiceState}.");
+            errorResult = ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("Too deep reorg", MergeErrorCodes.TooDeepReorg);
             return false;
         }
 

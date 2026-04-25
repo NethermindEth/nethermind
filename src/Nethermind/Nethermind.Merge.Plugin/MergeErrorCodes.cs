@@ -34,4 +34,9 @@ public static class MergeErrorCodes
     /// Payload attributes are invalid or inconsistent.
     /// </summary>
     public const int UnsupportedFork = -38005;
+
+    /// <summary>
+    /// Reorg depth exceeds the client-specific limitation.
+    /// </summary>
+    public const int TooDeepReorg = -38006;
 }

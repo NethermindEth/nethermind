@@ -8,11 +8,6 @@ namespace Nethermind.Merge.Plugin;
 
 public static class BlockTreeExtensions
 {
-    public const int AncestorReorgDepthLimit = 32;
-
     public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, BlockHeader header) =>
         header.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(header);
-
-    public static bool IsAncestorOnMainChainBeyondReorgDepthLimit(this IBlockTree blockTree, BlockHeader header) =>
-        (blockTree.Head?.Number ?? 0) - header.Number > AncestorReorgDepthLimit && blockTree.IsMainChain(header);
 }
