@@ -31,6 +31,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Db;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
@@ -564,13 +565,13 @@ public partial class EngineModuleTests
     }
 
 
-    [TestCase(3, TestName = "2 blocks behind head — within limit")]
-    [TestCase(33, TestName = "exactly 32 blocks behind head — boundary")]
-    public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorWithinOrAtDepthLimit_ReorgsToAncestor(int chainLength)
+    [TestCase(3, TestName = "2 blocks behind head — within PruningBoundary")]
+    [TestCase(33, TestName = "32 blocks behind head — within PruningBoundary (default 64)")]
+    public async Task forkchoiceUpdatedV1_WhenHeadIsCanonicalAncestorWithinPruningBoundary_ReorgsToAncestor(int chainLength)
     {
-        // Spec: MUST support a reorg to a canonical ancestor no more than 32 blocks behind head.
-        // We submit blocks without finalizing them — reorging below finalized is a protocol violation
-        // that spec point 2 permits the client to skip. Keep finalized at zero so the reorg is allowed.
+        // Spec PR #786: MUST reorg to a canonical ancestor when reorg depth <= PruningBoundary (default 64).
+        // No finalized block is set — the MAY-skip (spec point 2) never fires; the reorg proceeds
+        // because depth < PruningBoundary, not because of any old "32-block limit".
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
@@ -586,14 +587,16 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestor);
 
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(b1Hash, $"head must reorg to b1 — depth is {chainLength - 1} blocks, within the 32-block limit");
+        chain.BlockTree.HeadHash.Should().Be(b1Hash, $"head must reorg to b1 — depth {chainLength - 1} is within PruningBoundary (default 64)");
     }
 
     [Test]
-    public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorBeyondDepthLimit_SkipsUpdate()
+    public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorOfFinalizedBlock_SkipsUpdate()
     {
-        // Spec: client MAY skip the update when headBlockHash is a canonical ancestor more than 32 blocks behind head.
-        // Nethermind skips in this case. Builds a chain of 34 blocks, then sends FCU to H=1 (33 blocks behind H=34).
+        // Spec PR #786 point 2: client MAY skip the update when headBlockHash is a valid ancestor of the
+        // latest known finalized block. ProduceBranchV1 with setHead:true finalizes each block via FCU,
+        // so after building 34 blocks the finalized hash is b34. FCU to b1 (H=1 < H=34, canonical)
+        // triggers the MAY-skip — not any depth limit.
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
@@ -602,23 +605,25 @@ public partial class EngineModuleTests
         Hash256 b34Hash = branch[33].BlockHash;
 
         chain.BlockTree.HeadHash.Should().Be(b34Hash, "precondition: head is at H=34");
+        chain.BlockTree.FinalizedHash.Should().Be(b34Hash, "precondition: b34 is finalized after setHead:true branch");
 
-        ForkchoiceStateV1 fcuToDeepAncestor = new(b1Hash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToDeepAncestor);
+        ForkchoiceStateV1 fcuToAncestorOfFinalized = new(b1Hash, Keccak.Zero, Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestorOfFinalized);
 
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         result.Data.PayloadStatus.LatestValidHash.Should().Be(b1Hash, "spec mandates latestValidHash == forkchoiceState.headBlockHash when skipping");
         result.Data.PayloadId.Should().BeNull("spec mandates payloadId: null when skipping");
-        chain.BlockTree.HeadHash.Should().Be(b34Hash, "Nethermind skips the update — ancestor is beyond the 32-block depth limit, skip is permitted by spec");
+        chain.BlockTree.HeadHash.Should().Be(b34Hash, "Nethermind skips the update — b1 is a canonical ancestor of the finalized block, skip is permitted by spec");
     }
 
     [Test]
     public async Task forkchoiceUpdatedV1_WhenHeadIsOnDifferentBranch_ReorgsRegardlessOfDepth()
     {
-        // Spec: the 32-block depth limit only applies to ancestors of the canonical chain.
-        // A block on a different (non-canonical) branch must always trigger a reorg — no depth limit.
-        // Builds a canonical chain of 34 blocks, then a side branch of 1 block off genesis.
-        // The side block is 34 levels "behind" but is NOT a canonical ancestor — it's on a fork.
+        // Spec PR #786: the MAY-skip (spec point 2) only fires when headBlockHash is a canonical ancestor
+        // of the finalized block. A non-canonical (fork) block is NOT eligible for the skip.
+        // FindMainChainAncestorNumber returns 0 (genesis) for side-chain blocks, giving a large reported
+        // depth, but here depth (34) < PruningBoundary (64) so -38006 doesn't fire either — the reorg
+        // always proceeds. Builds a canonical chain of 34 blocks, then a side block off genesis.
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
@@ -641,7 +646,31 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToSide);
 
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(sideHash, "different-branch FCU must always reorg — depth limit does not apply");
+        chain.BlockTree.HeadHash.Should().Be(sideHash, "different-branch FCU must always reorg — MAY-skip only applies to canonical ancestors of the finalized block");
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenReorgDepthExceedsPruningBoundary_ReturnsTooDeepReorg()
+    {
+        // Spec PR #786 point 6: MUST return -38006 when reorg depth > PruningBoundary.
+        // Configure PruningBoundary=2, build a 5-block chain (no finalized), then FCU to H=1.
+        // reorgDepth = head(5) - commonAncestor(1) = 4 > 2 → -38006.
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: b =>
+            b.AddSingleton<IPruningConfig>(new PruningConfig { PruningBoundary = 2 }));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 5, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        Hash256 b1Hash = branch[0].BlockHash;
+        Hash256 b5Hash = branch[4].BlockHash;
+
+        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(b5Hash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.HeadHash.Should().Be(b5Hash, "precondition: head is at H=5");
+
+        ForkchoiceStateV1 fcuTooDeep = new(b1Hash, Keccak.Zero, Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuTooDeep);
+
+        result.ErrorCode.Should().Be(MergeErrorCodes.TooDeepReorg, "reorg depth 4 exceeds PruningBoundary 2 — must return -38006");
+        chain.BlockTree.HeadHash.Should().Be(b5Hash, "head must not change when -38006 is returned");
     }
 
     [Test]

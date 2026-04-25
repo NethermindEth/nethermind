@@ -106,7 +106,9 @@ public abstract partial class BaseEngineModuleTests
             if (setHead)
             {
                 Hash256 newHead = getPayloadResult.BlockHash;
-                ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
+                // Use Keccak.Zero for finalized/safe: ProduceBranchV1 is a chain-building helper,
+                // not a finality-setting one. Tests that need finalized must set it explicitly.
+                ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, Keccak.Zero, Keccak.Zero);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
                 setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
                 setHeadResponse.Data.PayloadId.Should().Be(null);

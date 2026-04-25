@@ -57,6 +57,8 @@ public class ForkchoiceUpdatedHandler(
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+    // Spec point 6: implementation-specific limit for -38006. Matches pruning boundary
+    // because the client cannot serve state older than that. See execution-apis/pull/786.
     private readonly int _maxReorgDepth = pruningConfig.PruningBoundary;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
@@ -81,7 +83,7 @@ public class ForkchoiceUpdatedHandler(
             {
                 if (_logger.IsWarn) _logger.Warn($"Known finalized hash {knownFinalizedHash} has no header — cannot check spec point 2 ancestry. Falling back to depth limit.");
             }
-            else if (newHeadHeader.Number < knownFinalizedHeader.Number && _blockTree.IsMainChain(newHeadHeader))
+            else if (newHeadHeader.Number <= knownFinalizedHeader.Number && _blockTree.IsMainChain(newHeadHeader))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated skipped - head is a valid ancestor of the latest known finalized block.");
                 errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
