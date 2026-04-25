@@ -116,5 +116,6 @@ public class XdcSpecProviderTests
 
         specA.SwitchRound.Should().Be(0);
 
+        ReferenceEquals(specA, specB).Should().BeFalse();
     }
 }
