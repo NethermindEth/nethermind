@@ -31,7 +31,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
-using Nethermind.Db;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
@@ -657,7 +656,7 @@ public partial class EngineModuleTests
         // Configure PruningBoundary=2, build a 5-block chain (no finalized), then FCU to H=1.
         // reorgDepth = head(5) - commonAncestor(1) = 4 > 2 → -38006.
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: b =>
-            b.AddSingleton<IPruningConfig>(new PruningConfig { PruningBoundary = 2 }));
+            b.Intercept<IPruningConfig>(cfg => cfg.PruningBoundary = 2));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 5, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
