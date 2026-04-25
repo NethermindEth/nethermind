@@ -107,6 +107,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         public bool Equals(Result<byte[]> x, Result<byte[]> y)
         {
             if (x.ResultType != y.ResultType) return false;
+            if (x.Error != y.Error) return false;
             if (x.Data is null && y.Data is null) return true;
             if (x.Data is null || y.Data is null) return false;
             return x.Data.AsSpan().SequenceEqual(y.Data);
@@ -116,6 +117,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         {
             HashCode hash = new();
             hash.Add(obj.ResultType);
+            hash.Add(obj.Error);
             if (obj.Data is not null)
                 hash.AddBytes(obj.Data);
             return hash.ToHashCode();
