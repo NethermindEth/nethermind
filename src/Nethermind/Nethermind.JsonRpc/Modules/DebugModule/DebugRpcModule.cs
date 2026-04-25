@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -489,8 +490,7 @@ public class DebugRpcModule(
         long lastBlockNumber = header.Number;
         foreach (TransactionBundle bundle in bundles)
         {
-            ulong? overrideNumber = bundle.BlockOverride?.Number;
-            long number = overrideNumber is not null ? (long)overrideNumber.Value : lastBlockNumber + 1;
+            long number = (long)bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
             bundleBlockNumbers.Add(number);
             lastBlockNumber = number;
         }
