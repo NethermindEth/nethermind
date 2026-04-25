@@ -88,7 +88,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
         ReadOnlyMemory<byte> effInput = precompile.NormalizeInput(fullInput);
 
-        Assert.That(effInput.Length, Is.LessThan(fullInput.Length));
+        Assert.That(effInput.Span.SequenceEqual(fullInput.Span), Is.False);
         Assert.That(
             precompile.Run(effInput, spec),
             Is.EqualTo(precompile.Run(fullInput, spec)).Using(ResultComparer)
