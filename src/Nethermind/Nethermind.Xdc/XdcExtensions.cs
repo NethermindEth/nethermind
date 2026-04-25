@@ -35,7 +35,6 @@ internal static partial class XdcExtensions
     {
         if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
             return xdcProvider.GetXdcSpec(xdcBlockHeader, round);
-
         if (round == 0)
             round = xdcBlockHeader.ExtraConsensusData?.BlockRound ?? 0;
         return specProvider.GetXdcSpec(xdcBlockHeader.Number, round);
@@ -45,14 +44,11 @@ internal static partial class XdcExtensions
     {
         if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
             return xdcProvider.GetXdcSpec(blockNumber, round);
-
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)blockNumber);
-        if (spec is not XdcReleaseSpec xdcSpec)
-            throw new InvalidOperationException($"Expected {nameof(XdcChainSpecBasedSpecProvider)} or a spec provider whose specs implement {nameof(XdcReleaseSpec)}.");
-
-        XdcReleaseSpec copy = (XdcReleaseSpec)xdcSpec.Clone();
-        copy.ApplyV2Config(round);
-        return copy;
+        // Fallback for testing; note that this mutates the spec instance
+        if (specProvider.GetSpec(blockNumber, null) is not IXdcReleaseSpec spec)
+            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+        spec.ApplyV2Config(round);
+        return spec;
     }
 
     public static Address[] ParseV1Masternodes(this byte[] extraData)
