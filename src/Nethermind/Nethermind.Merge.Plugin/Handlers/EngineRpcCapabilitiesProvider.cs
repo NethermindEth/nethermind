@@ -41,7 +41,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
             _capabilities[nameof(IEngineRpcModule.engine_getBlobsV1)] = (spec.IsEip4844Enabled, false);
 
             // Prague
-            var v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
+            bool v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (v4, v4);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (v4, v4);
 

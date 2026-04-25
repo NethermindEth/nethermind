@@ -97,10 +97,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
     string IStoppableService.Description => "discovery connection";
 
-    public void AddNodeToDiscovery(Node node)
-    {
-        ForEachDiscoveryApp(static (discoveryApp, discoveredNode) => discoveryApp.AddNodeToDiscovery(discoveredNode), node);
-    }
+    public void AddNodeToDiscovery(Node node) => ForEachDiscoveryApp(static (discoveryApp, discoveredNode) => discoveryApp.AddNodeToDiscovery(discoveredNode), node);
 
     private void ForEachDiscoveryApp<TState>(Action<IDiscoveryApp, TState> action, TState state)
     {
@@ -130,10 +127,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         return result;
     }
 
-    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
-    {
-        return _compositeNodeSource.DiscoverNodes(cancellationToken);
-    }
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken) => _compositeNodeSource.DiscoverNodes(cancellationToken);
 
     public event EventHandler<NodeEventArgs>? NodeRemoved
     {

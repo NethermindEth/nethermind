@@ -10,8 +10,5 @@ namespace Nethermind.Shutter.Contracts;
 
 public class KeyBroadcastContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyBroadcastContract
 {
-    public byte[] GetEonKey(BlockHeader blockHeader, in ulong eon)
-    {
-        return (byte[])Call(blockHeader, nameof(GetEonKey), Address.Zero, [eon])[0];
-    }
+    public byte[] GetEonKey(BlockHeader blockHeader, in ulong eon) => (byte[])Call(blockHeader, nameof(GetEonKey), Address.Zero, [eon])[0];
 }

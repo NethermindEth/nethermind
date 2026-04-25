@@ -74,20 +74,11 @@ namespace Nethermind.Network
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
 
-        private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
-        {
-            TryRemove(e.Node.Id, out _);
-        }
+        private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e) => TryRemove(e.Node.Id, out _);
 
-        public Peer GetOrAdd(Node node)
-        {
-            return Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
-        }
+        public Peer GetOrAdd(Node node) => Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
 
-        public Peer GetOrAdd(NetworkNode node)
-        {
-            return Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
-        }
+        public Peer GetOrAdd(NetworkNode node) => Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
 
         private Peer CreateNew(PublicKeyAsKey key, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
@@ -119,10 +110,7 @@ namespace Nethermind.Network
             return peer;
         }
 
-        public bool TryGet(PublicKey id, out Peer peer)
-        {
-            return Peers.TryGetValue(id, out peer);
-        }
+        public bool TryGet(PublicKey id, out Peer peer) => Peers.TryGetValue(id, out peer);
 
         public bool TryRemove(PublicKey id, out Peer peer)
         {
@@ -183,7 +171,7 @@ namespace Nethermind.Network
 
         private async Task RunPeerCommit()
         {
-            var token = _cancellationTokenSource.Token;
+            CancellationToken token = _cancellationTokenSource.Token;
             while (!token.IsCancellationRequested
                 && await _peerPersistenceTimer.WaitForNextTickAsync(token))
             {
@@ -243,10 +231,10 @@ namespace Nethermind.Network
             NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;
-            var nodesToRemove = nonActiveNodes.Take(countToRemove);
+            IEnumerable<NetworkNode> nodesToRemove = nonActiveNodes.Take(countToRemove);
 
             int removedNodes = 0;
-            foreach (var item in nodesToRemove)
+            foreach (NetworkNode item in nodesToRemove)
             {
                 _peerStorage.RemoveNode(item.NodeId);
                 removedNodes++;

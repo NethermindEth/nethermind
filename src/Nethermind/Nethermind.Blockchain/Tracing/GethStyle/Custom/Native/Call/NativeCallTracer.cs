@@ -163,7 +163,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.ReportSelfDestruct(address, balance, refundAddress);
         if (!_config.OnlyTopCall && _callStack.Count > 0)
         {
-            NativeCallTracerCallFrame callFrame = new NativeCallTracerCallFrame
+            NativeCallTracerCallFrame callFrame = new()
             {
                 Type = Instruction.SELFDESTRUCT,
                 From = address,

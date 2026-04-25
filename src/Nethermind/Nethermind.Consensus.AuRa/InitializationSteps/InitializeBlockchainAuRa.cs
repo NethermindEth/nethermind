@@ -9,7 +9,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -23,24 +22,34 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps;
 public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
     : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
+    protected AuRaNethermindApi Api => api;
     private INethermindApi NethermindApi => api;
 
     protected override async Task InitBlockchain()
     {
-        var chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        AuRaChainSpecEngineParameters chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         api.FinalizationManager = new AuRaBlockFinalizationManager(
             api.BlockTree!,
             api.ChainLevelInfoRepository!,
             api.ValidatorStore!,
-            new ValidSealerStrategy(),
             api.LogManager,
             chainSpecAuRa.TwoThirdsMajorityTransition);
 
         await base.InitBlockchain();
 
-        // Got cyclic dependency. AuRaBlockFinalizationManager -> IAuraValidator -> AuraBlockProcessor -> AuraBlockFinalizationManager.
-        api.FinalizationManager.SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
+        WireFinalizationBranchProcessor();
     }
+
+    /// <summary>
+    /// Wires the branch processor into the finalization manager. Override in the merge variant
+    /// to skip wiring on post-merge chains, where AuRa finalization is no longer active and the
+    /// startup catch-up walk would allocate millions of BlockHeaders on long chains like Gnosis.
+    /// </summary>
+    /// <remarks>
+    /// Got cyclic dependency. AuRaBlockFinalizationManager -> IAuraValidator -> AuraBlockProcessor -> AuraBlockFinalizationManager.
+    /// </remarks>
+    protected virtual void WireFinalizationBranchProcessor() =>
+        api.FinalizationManager!.SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {
@@ -55,7 +64,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
                 localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
             DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
-                new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                new(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.Priorities,
                     api.BlockTree,

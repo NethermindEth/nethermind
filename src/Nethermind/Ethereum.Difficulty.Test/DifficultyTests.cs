@@ -26,9 +26,7 @@ namespace Ethereum.Difficulty.Test
         public string Name { get; set; } = name;
         public string FileName { get; set; } = fileName;
 
-        public override string ToString()
-        {
-            return string.Concat(CurrentBlockNumber, ".", CurrentTimestamp - ParentTimestamp, ".", Name);
-        }
+        public override string ToString() =>
+            string.Concat(CurrentBlockNumber, ".", CurrentTimestamp - ParentTimestamp, ".", Name);
     }
 }

@@ -2,10 +2,15 @@
 
   <Import Project="../../Directory.Build.props" />
 
+  <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
+  </PropertyGroup>
+
   <PropertyGroup Label="ProductInfo">
     <SourceDateEpoch>$(SOURCE_DATE_EPOCH)</SourceDateEpoch>
     <SourceDateEpoch Condition="'$(SourceDateEpoch)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</SourceDateEpoch>
-    <VersionPrefix>1.37.0</VersionPrefix>
+    <VersionPrefix>1.38.0</VersionPrefix>
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 

@@ -82,10 +82,7 @@ namespace Nethermind.Db
             }
         }
 
-        public void Remove(ReadOnlySpan<byte> key)
-        {
-            Set(key, null);
-        }
+        public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
@@ -313,14 +310,14 @@ namespace Nethermind.Db
         /// </summary>
         private byte[]? GetValueAtVersion(byte[] key, int version)
         {
-            var lower = (key, 0, (byte[]?)null);
-            var upper = (key, version, (byte[]?)null);
+            (byte[] key, int, byte[]) lower = (key, 0, (byte[]?)null);
+            (byte[] key, int version, byte[]) upper = (key, version, (byte[]?)null);
 
             if (_entryComparer.Compare(lower, upper) > 0)
                 return null;
 
-            var view = _db.GetViewBetween(lower, upper);
-            var max = view.Max;
+            SortedSet<(byte[] Key, int Version, byte[]? Value)> view = _db.GetViewBetween(lower, upper);
+            (byte[] Key, int Version, byte[]? Value) max = view.Max;
             return max.Key is not null ? max.Value : null;
         }
 
@@ -330,7 +327,7 @@ namespace Nethermind.Db
         private IEnumerable<byte[]> GetAllUniqueKeys()
         {
             byte[]? lastKey = null;
-            foreach (var entry in _db)
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in _db)
             {
                 if (lastKey == null || lastKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
                 {
@@ -353,7 +350,7 @@ namespace Nethermind.Db
         private byte[]? FindLastKeyAtVersion(int version)
         {
             byte[]? lastKey = null;
-            foreach (var entry in _db.Reverse())
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in _db.Reverse())
             {
                 if (lastKey is null || lastKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
                 {
@@ -374,7 +371,7 @@ namespace Nethermind.Db
             using ArrayPoolList<(byte[] Key, int Version, byte[]? Value)> toRemove = new(_db.Count);
             (byte[] Key, int Version, byte[]? Value) prev = default;
 
-            foreach (var entry in _db)
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in _db)
             {
                 if (prev.Key is not null && prev.Key.AsSpan().SequenceCompareTo(entry.Key) == 0)
                 {
@@ -384,7 +381,7 @@ namespace Nethermind.Db
                 prev = entry;
             }
 
-            foreach (var entry in toRemove)
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in toRemove)
             {
                 _db.Remove(entry);
             }
@@ -401,7 +398,7 @@ namespace Nethermind.Db
             int prevVersion = 0;
             byte[]? prevValue = null;
 
-            foreach (var entry in _db)
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in _db)
             {
                 if (entry.Version < minVersion &&
                     prevKey is not null &&
@@ -416,7 +413,7 @@ namespace Nethermind.Db
                 prevValue = entry.Value;
             }
 
-            foreach (var entry in toRemove)
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in toRemove)
             {
                 _db.Remove(entry);
             }
@@ -441,16 +438,16 @@ namespace Nethermind.Db
         /// </summary>
         private void RemovePreviousVersions(byte[] key, int currentVersion)
         {
-            var lower = (key, 0, (byte[]?)null);
-            var upper = (key, currentVersion - 1, (byte[]?)null);
+            (byte[] key, int, byte[]) lower = (key, 0, (byte[]?)null);
+            (byte[] key, int, byte[]) upper = (key, currentVersion - 1, (byte[]?)null);
 
             if (_entryComparer.Compare(lower, upper) > 0)
                 return;
 
-            var view = _db.GetViewBetween(lower, upper);
+            SortedSet<(byte[] Key, int Version, byte[]? Value)> view = _db.GetViewBetween(lower, upper);
             // Materialize before removing to avoid modifying during enumeration
-            var toRemove = new List<(byte[] Key, int Version, byte[]? Value)>(view);
-            foreach (var entry in toRemove)
+            List<(byte[] Key, int Version, byte[]? Value)> toRemove = new(view);
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in toRemove)
             {
                 _db.Remove(entry);
             }
@@ -481,18 +478,12 @@ namespace Nethermind.Db
             private readonly SnapshotableMemDb _db = db;
             private readonly int _snapshotVersion = snapshotVersion;
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return _db.GetAtVersion(key, _snapshotVersion);
-            }
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _db.GetAtVersion(key, _snapshotVersion);
 
             public unsafe Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
                 => Get(key, flags).AsSpan();
 
-            public bool KeyExists(ReadOnlySpan<byte> key)
-            {
-                return Get(key) is not null;
-            }
+            public bool KeyExists(ReadOnlySpan<byte> key) => Get(key) is not null;
 
             public unsafe void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
@@ -520,15 +511,9 @@ namespace Nethermind.Db
                 }
             }
 
-            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
-            {
-                return new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
-            }
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
 
-            public void Dispose()
-            {
-                _db.OnSnapshotDisposed(_snapshotVersion);
-            }
+            public void Dispose() => _db.OnSnapshotDisposed(_snapshotVersion);
         }
 
         /// <summary>
@@ -549,8 +534,8 @@ namespace Nethermind.Db
                 byte[] keyArray = key.ToArray();
                 lock (_db._versionLock)
                 {
-                    var lower = (_firstKey, 0, (byte[]?)null);
-                    var upper = (keyArray, 0, (byte[]?)null);
+                    (byte[] _firstKey, int, byte[]) lower = (_firstKey, 0, (byte[]?)null);
+                    (byte[] keyArray, int, byte[]) upper = (keyArray, 0, (byte[]?)null);
 
                     if (_db._entryComparer.Compare(lower, upper) > 0)
                     {
@@ -560,14 +545,14 @@ namespace Nethermind.Db
                         return true;
                     }
 
-                    var view = _db._db.GetViewBetween(lower, upper);
+                    SortedSet<(byte[] Key, int Version, byte[]? Value)> view = _db._db.GetViewBetween(lower, upper);
 
                     byte[]? bestKey = null;
                     byte[]? bestValue = null;
                     byte[]? candidateKey = null;
                     byte[]? candidateValue = null;
 
-                    foreach (var entry in view)
+                    foreach ((byte[] Key, int Version, byte[]? Value) entry in view)
                     {
                         if (candidateKey is not null && candidateKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
                         {
@@ -603,20 +588,20 @@ namespace Nethermind.Db
             {
                 lock (_db._versionLock)
                 {
-                    var lower = _currentKey is not null
+                    (byte[], int, byte[]) lower = _currentKey is not null
                         ? (_currentKey, int.MaxValue, (byte[]?)null)
                         : (_firstKey, 0, (byte[]?)null);
-                    var upper = (_lastKey, 0, (byte[]?)null);
+                    (byte[] _lastKey, int, byte[]) upper = (_lastKey, 0, (byte[]?)null);
 
                     if (_db._entryComparer.Compare(lower, upper) > 0)
                         return false;
 
-                    var view = _db._db.GetViewBetween(lower, upper);
+                    SortedSet<(byte[] Key, int Version, byte[]? Value)> view = _db._db.GetViewBetween(lower, upper);
 
                     byte[]? candidateKey = null;
                     byte[]? candidateValue = null;
 
-                    foreach (var entry in view)
+                    foreach ((byte[] Key, int Version, byte[]? Value) entry in view)
                     {
                         if (candidateKey is not null && candidateKey.AsSpan().SequenceCompareTo(entry.Key) != 0)
                         {
@@ -674,11 +659,9 @@ namespace Nethermind.Db
                 _operations.Add((key.ToArray(), value, flags));
             }
 
-            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-            {
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
                 // For in-memory database, merge is the same as set
                 Set(key, value.ToArray(), flags);
-            }
 
             public void Clear()
             {

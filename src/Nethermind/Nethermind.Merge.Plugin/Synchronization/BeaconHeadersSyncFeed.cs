@@ -24,12 +24,20 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
+public sealed class BeaconHeadersSyncFeed(
+    IPoSSwitcher poSSwitcher,
+    IBlockTree? blockTree,
+    ISyncPeerPool? syncPeerPool,
+    ISyncConfig? syncConfig,
+    ISyncReport? syncReport,
+    IPivot? pivot,
+    IInvalidChainTracker invalidChainTracker,
+    ILogManager logManager) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, alwaysStartHeaderSync: true)
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly IPivot _pivot;
-    private readonly ILogger _logger;
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+    private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
+    private readonly IPivot _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
+    private readonly ILogger _logger = logManager.GetClassLogger<BeaconHeadersSyncFeed>();
     private bool _chainMerged;
 
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
@@ -51,23 +59,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.BeaconHeaders;
     public override string FeedName => nameof(BeaconHeadersSyncFeed);
-
-    public BeaconHeadersSyncFeed(
-        IPoSSwitcher poSSwitcher,
-        IBlockTree? blockTree,
-        ISyncPeerPool? syncPeerPool,
-        ISyncConfig? syncConfig,
-        ISyncReport? syncReport,
-        IPivot? pivot,
-        IInvalidChainTracker invalidChainTracker,
-        ILogManager logManager)
-        : base(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, alwaysStartHeaderSync: true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
-    {
-        _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-        _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
-        _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger<BeaconHeadersSyncFeed>();
-    }
 
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.BeaconHeaders;
@@ -212,11 +203,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (mergeWhenInserted) _chainMerged = true;
     }
 
-    protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header)
-    {
+    protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header) =>
         // Beacon header don't seem to care about TD.
-        return header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
+        header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
             ? header.TotalDifficulty - header.Difficulty
             : null;
-    }
 }

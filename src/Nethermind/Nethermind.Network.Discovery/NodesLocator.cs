@@ -14,33 +14,19 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
 
-public class NodesLocator : INodesLocator
+public class NodesLocator(INodeTable? nodeTable, IDiscoveryManager? discoveryManager, IDiscoveryConfig? discoveryConfig, ILogManager? logManager) : INodesLocator
 {
-    private readonly ILogger _logger;
-    private readonly INodeTable _nodeTable;
-    private readonly IDiscoveryManager _discoveryManager;
-    private readonly IDiscoveryConfig _discoveryConfig;
+    private readonly ILogger _logger = logManager?.GetClassLogger<NodesLocator>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly INodeTable _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+    private readonly IDiscoveryManager _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+    private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
     private Node? _masterNode;
 
     public bool ShouldThrottle { get; set; }
 
-    public NodesLocator(INodeTable? nodeTable, IDiscoveryManager? discoveryManager, IDiscoveryConfig? discoveryConfig, ILogManager? logManager)
-    {
-        _logger = logManager?.GetClassLogger<NodesLocator>() ?? throw new ArgumentNullException(nameof(logManager));
-        _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-        _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
-        _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
-    }
+    public void Initialize(Node masterNode) => _masterNode = masterNode;
 
-    public void Initialize(Node masterNode)
-    {
-        _masterNode = masterNode;
-    }
-
-    public Task LocateNodesAsync(CancellationToken cancellationToken)
-    {
-        return LocateNodesAsync(null, cancellationToken);
-    }
+    public Task LocateNodesAsync(CancellationToken cancellationToken) => LocateNodesAsync(null, cancellationToken);
 
     public async Task LocateNodesAsync(byte[]? searchedNodeId, CancellationToken cancellationToken)
     {
@@ -164,7 +150,7 @@ public class NodesLocator : INodesLocator
         }
 
         int nodesCountAfterDiscovery = 0;
-        var buckets = _nodeTable.Buckets;
+        NodeBucket[] buckets = _nodeTable.Buckets;
         for (int i = 0; i < buckets.Length; i++)
         {
             nodesCountAfterDiscovery += buckets[i].BondedItemsCount;

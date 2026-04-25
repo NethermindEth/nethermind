@@ -206,17 +206,11 @@ namespace Nethermind.Core.Test.Encoding
 
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream_with_wrapping(
-            (string IncomingRlpHex, Hash256 Hash) testCase)
-        {
-            ValueDecoderContext_return_the_same_transaction_as_rlp_stream(testCase, false);
-        }
+            (string IncomingRlpHex, Hash256 Hash) testCase) => ValueDecoderContext_return_the_same_transaction_as_rlp_stream(testCase, false);
 
         [TestCaseSource(nameof(SkipTypedWrappingTestCases))]
         public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream_without_additional_wrapping(
-            (string IncomingRlpHex, Hash256 Hash) testCase)
-        {
-            ValueDecoderContext_return_the_same_transaction_as_rlp_stream(testCase, true);
-        }
+            (string IncomingRlpHex, Hash256 Hash) testCase) => ValueDecoderContext_return_the_same_transaction_as_rlp_stream(testCase, true);
 
         private void ValueDecoderContext_return_the_same_transaction_as_rlp_stream(
             (string IncomingRlpHex, Hash256 Hash) testCase, bool wrapping)

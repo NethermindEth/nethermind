@@ -14,10 +14,7 @@ public class BloomConverterTests : ConverterTestBase<Bloom>
     static readonly BloomConverter converter = new();
 
     [TestCaseSource(nameof(BloomTestCases))]
-    public void Test_roundtrip(Bloom? value)
-    {
-        TestConverter(value!, static (a, b) => a is null ? b is null : a.Equals(b), converter);
-    }
+    public void Test_roundtrip(Bloom? value) => TestConverter(value!, static (a, b) => a is null ? b is null : a.Equals(b), converter);
 
     static IEnumerable<TestCaseData> BloomTestCases =
     [

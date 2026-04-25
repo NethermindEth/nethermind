@@ -38,7 +38,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
         Hash256 currentHash = startingNodeHash;
         TreePath currentPath = startingPath;
-        TreePath queryPath = new TreePath(fullPath, 64);
+        TreePath queryPath = new(fullPath, 64);
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.
@@ -52,10 +52,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         {
             // In case of deeper node that already exist.
             byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
-            if (nodeRlp is null)
-            {
-                nodeRlp = await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
-            }
+            nodeRlp ??= await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
 
             if (nodeRlp is null)
             {
@@ -65,7 +62,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
             recoveredNodes.Add((currentPath, nodeRlp));
 
-            TrieNode? node = new TrieNode(NodeType.Unknown, nodeRlp);
+            TrieNode? node = new(NodeType.Unknown, nodeRlp);
             node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
 
             if (node.IsBranch)

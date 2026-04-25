@@ -7,14 +7,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public class NoBlockProductionContext : IBlockProductionContext
+public class NoBlockProductionContext(Block? currentBestBlock, UInt256 blockFees) : IBlockProductionContext
 {
-    public NoBlockProductionContext(Block? currentBestBlock, UInt256 blockFees)
-    {
-        CurrentBestBlock = currentBestBlock;
-        BlockFees = blockFees;
-    }
-
-    public Block? CurrentBestBlock { get; }
-    public UInt256 BlockFees { get; }
+    public Block? CurrentBestBlock { get; } = currentBestBlock;
+    public UInt256 BlockFees { get; } = blockFees;
 }

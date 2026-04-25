@@ -9,17 +9,11 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State;
 
-public class WorldStateMetricsScopeProvider : IWorldStateScopeProvider
+public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvider, Action<double> updateMetrics) : IWorldStateScopeProvider
 {
-    private readonly IWorldStateScopeProvider _baseProvider;
-    private readonly Action<double> _updateMetrics;
+    private readonly IWorldStateScopeProvider _baseProvider = baseProvider;
+    private readonly Action<double> _updateMetrics = updateMetrics;
     private double _stateMerkleizationTime;
-
-    public WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvider, Action<double> updateMetrics)
-    {
-        _baseProvider = baseProvider;
-        _updateMetrics = updateMetrics;
-    }
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new MetricsScope(_baseProvider.BeginScope(baseBlock), this);

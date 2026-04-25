@@ -129,8 +129,8 @@ public class L1OriginStoreTests
 
         _store.WriteL1Origin(blockId, origin);
 
-        var testDb = (TestMemDb)_db;
-        var allKeys = testDb.Keys.ToArray();
+        TestMemDb testDb = (TestMemDb)_db;
+        byte[][] allKeys = testDb.Keys.ToArray();
         allKeys.Should().HaveCount(1);
         allKeys[0].Length.Should().Be(33, "Keys should be 33 bytes (1 prefix + 32 UInt256)");
         allKeys[0][0].Should().Be(0x00, "L1Origin keys should have prefix 0x00");
@@ -141,8 +141,8 @@ public class L1OriginStoreTests
     {
         _store.WriteBatchToLastBlockID(1, 100);
 
-        var testDb = (TestMemDb)_db;
-        var allKeys = testDb.Keys.ToArray();
+        TestMemDb testDb = (TestMemDb)_db;
+        byte[][] allKeys = testDb.Keys.ToArray();
         allKeys.Should().HaveCount(1);
         allKeys[0].Length.Should().Be(33);
         allKeys[0][0].Should().Be(0x01, "Batch keys should have prefix 0x01");
@@ -153,8 +153,8 @@ public class L1OriginStoreTests
     {
         _store.WriteHeadL1Origin(1);
 
-        var testDb = (TestMemDb)_db;
-        var allKeys = testDb.Keys.ToArray();
+        TestMemDb testDb = (TestMemDb)_db;
+        byte[][] allKeys = testDb.Keys.ToArray();
         allKeys.Should().HaveCount(1);
         allKeys[0].Length.Should().Be(1);
         allKeys[0][0].Should().Be(0xFF, "Head key should have prefix 0xFF");

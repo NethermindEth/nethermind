@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip()
         {
-            var dictionary = new Dictionary<Address, string>
+            Dictionary<Address, string> dictionary = new()
             {
                 {TestItem.AddressA, "A"},
                 {TestItem.AddressB, "B"},
@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip_as_key()
         {
-            var dictionary = new Dictionary<AddressAsKey, string>
+            Dictionary<AddressAsKey, string> dictionary = new()
             {
                 {TestItem.AddressA, "A"},
                 {TestItem.AddressB, "B"},

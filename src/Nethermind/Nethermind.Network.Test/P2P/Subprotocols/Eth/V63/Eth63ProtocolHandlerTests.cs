@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             _ctx.ProtocolHandler.HandleMessage(receiptsPacket);
 
-            using var result = await task;
+            using IOwnedReadOnlyList<TxReceipt[]> result = await task;
             result.Should().HaveCount(count);
         }
 
@@ -165,7 +165,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         return _protocolHandler;
                     }
 
-                    var nodeStatsManager = Substitute.For<INodeStatsManager>();
+                    SyncServer.FindHeader(Arg.Any<Hash256>()).Returns(Build.A.BlockHeader.TestObject);
+
+                    INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
                     nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
 
                     _protocolHandler = new Eth63ProtocolHandler(

@@ -16,28 +16,22 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-internal class XdcBlockTree : BlockTree
+internal class XdcBlockTree(
+    IXdcConsensusContext xdcConsensus,
+    IBlockStore? blockStore,
+    IHeaderStore? headerDb,
+    [KeyFilter("blockInfos")] IDb? blockInfoDb,
+    [KeyFilter("metadata")] IDb? metadataDb,
+    IBadBlockStore? badBlockStore,
+    IBlockAccessListStore? balStore,
+    IChainLevelInfoRepository? chainLevelInfoRepository,
+    ISpecProvider? specProvider,
+    IBloomStorage? bloomStorage,
+    ISyncConfig? syncConfig,
+    ILogManager? logManager,
+    long genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
 {
-    private const int MaxSearchDepth = 1024;
-    private readonly IXdcConsensusContext _xdcConsensus;
-
-    public XdcBlockTree(
-        IXdcConsensusContext xdcConsensus,
-        IBlockStore? blockStore,
-        IHeaderStore? headerDb,
-        [KeyFilter("blockInfos")] IDb? blockInfoDb,
-        [KeyFilter("metadata")] IDb? metadataDb,
-        IBadBlockStore? badBlockStore,
-        IBlockAccessListStore? balStore,
-        IChainLevelInfoRepository? chainLevelInfoRepository,
-        ISpecProvider? specProvider,
-        IBloomStorage? bloomStorage,
-        ISyncConfig? syncConfig,
-        ILogManager? logManager,
-        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
-    {
-        _xdcConsensus = xdcConsensus;
-    }
+    private readonly IXdcConsensusContext _xdcConsensus = xdcConsensus;
 
     protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
     {
@@ -51,13 +45,6 @@ internal class XdcBlockTree : BlockTree
         }
         if (finalizedBlockInfo.BlockNumber >= header.Number)
         {
-            return AddBlockResult.InvalidBlock;
-        }
-        if (header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
-        {
-            //Theoretically very deep reorgs could happen, if the chain doesn't finalize for a long time
-            //TODO Maybe this needs to be revisited later
-            Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
             return AddBlockResult.InvalidBlock;
         }
         BlockHeader current = header;

@@ -335,7 +335,7 @@ namespace Nethermind.Consensus.Processing
                         > 3 => darkCyanText, // 5.625 MGas
                         _ => blueText
                     };
-                    var chunkColor = chunkMs switch
+                    string chunkColor = chunkMs switch
                     {
                         < 200 => greenText,
                         < 300 => darkGreenText,
@@ -358,7 +358,7 @@ namespace Nethermind.Consensus.Processing
                     > 0.5f => orangeText, // 15 MGas/s
                     _ => redText
                 };
-                var sstoreColor = chunkBlocks > 1 ? "" : chunkSstore switch
+                string sstoreColor = chunkBlocks > 1 ? "" : chunkSstore switch
                 {
                     > 3500 => redText,
                     > 2500 => orangeText,
@@ -367,7 +367,7 @@ namespace Nethermind.Consensus.Processing
                     > 900 when chunkCalls > 900 => whiteText,
                     _ => ""
                 };
-                var callsColor = chunkBlocks > 1 ? "" : chunkCalls switch
+                string callsColor = chunkBlocks > 1 ? "" : chunkCalls switch
                 {
                     > 3500 => redText,
                     > 2500 => orangeText,
@@ -376,7 +376,7 @@ namespace Nethermind.Consensus.Processing
                     > 900 when chunkSstore > 900 => whiteText,
                     _ => ""
                 };
-                var createsColor = chunkBlocks > 1 ? "" : chunkCreates switch
+                string createsColor = chunkBlocks > 1 ? "" : chunkCreates switch
                 {
                     > 300 => redText,
                     > 200 => orangeText,
@@ -385,8 +385,8 @@ namespace Nethermind.Consensus.Processing
                     _ => ""
                 };
 
-                var recoveryQueue = Metrics.RecoveryQueueSize;
-                var processingQueue = Metrics.ProcessingQueueSize;
+                long recoveryQueue = Metrics.RecoveryQueueSize;
+                long processingQueue = Metrics.ProcessingQueueSize;
 
                 _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0} " : $"{(isMev ? " mb" : "   ")} {rewards.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,8:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
                 string blobsOrBlocksPerSec = _showBlobs switch
@@ -432,7 +432,7 @@ namespace Nethermind.Consensus.Processing
 
         private class BlockDataPolicy() : IPooledObjectPolicy<BlockData>
         {
-            public BlockData Create() => new BlockData();
+            public BlockData Create() => new();
             public bool Return(BlockData data)
             {
                 // Release the object references so we don't hold them from being GC'd

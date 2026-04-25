@@ -63,10 +63,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         }
 
         [StackTraceHidden, DoesNotReturn]
-        static void ThrowTooManyOutstandingRequests()
-        {
-            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
-        }
+        static void ThrowTooManyOutstandingRequests() => throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
     }
 
     private async Task CleanOldRequests()

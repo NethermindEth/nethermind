@@ -131,6 +131,9 @@ public class DisposableScopeOverridableEnvTests
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
             throw new NotImplementedException();
 
+        public TransactionResult Simulate(Transaction transaction, ITxTracer txTracer) =>
+            throw new NotImplementedException();
+
         public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             throw new NotImplementedException();
 

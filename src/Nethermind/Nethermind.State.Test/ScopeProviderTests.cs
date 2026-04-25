@@ -50,10 +50,10 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
 
         Hash256 stateRoot;
-        using (var scope = ctx.ScopeProvider.BeginScope(null))
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
             scope.Get(TestItem.AddressA).Should().Be(null);
-            using (var writeBatch = scope.StartWriteBatch(1))
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
             }
@@ -65,7 +65,7 @@ public class ScopeProviderTests(bool useFlat)
         stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
         if (!useFlat) ctx.Kv.WritesCount.Should().Be(1);
 
-        using (var scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             scope.Get(TestItem.AddressA).Balance.Should().Be(100);
         }
@@ -77,15 +77,15 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
 
         Hash256 stateRoot;
-        using (var scope = ctx.ScopeProvider.BeginScope(null))
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
             scope.Get(TestItem.AddressA).Should().Be(null);
 
-            using (var writeBatch = scope.StartWriteBatch(1))
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
 
-                using (var storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+                using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
                 {
                     storageSet.Set(1, [1, 2, 3]);
                 }
@@ -98,9 +98,9 @@ public class ScopeProviderTests(bool useFlat)
         stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
         if (!useFlat) ctx.Kv.WritesCount.Should().Be(2);
 
-        using (var scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            var storage = scope.CreateStorageTree(TestItem.AddressA);
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
             storage.Get(1).Should().BeEquivalentTo([1, 2, 3]);
         }
     }
@@ -110,9 +110,9 @@ public class ScopeProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
 
-        using (var scope = ctx.ScopeProvider.BeginScope(null))
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
-            using (var writer = scope.CodeDb.BeginCodeWrite())
+            using (IWorldStateScopeProvider.ICodeSetter writer = scope.CodeDb.BeginCodeWrite())
             {
                 writer.Set(TestItem.KeccakA, [1, 2, 3]);
             }
@@ -124,7 +124,7 @@ public class ScopeProviderTests(bool useFlat)
         }
         else
         {
-            using var scope = ctx.ScopeProvider.BeginScope(null);
+            using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
             scope.CodeDb.GetCode(TestItem.KeccakA).Should().BeEquivalentTo([1, 2, 3]);
         }
     }
@@ -133,14 +133,14 @@ public class ScopeProviderTests(bool useFlat)
     public void Test_NullAccountWithNonEmptyStorageDoesNotThrow()
     {
         using Context ctx = new(useFlat);
-        using var scope = ctx.ScopeProvider.BeginScope(null);
+        using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
 
         // Simulates the EIP-161 scenario: storage is flushed for an account that was
         // then deleted (set to null) during state commit. The write batch Dispose should
         // skip the storage root update for the deleted account instead of throwing.
-        using (var writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
-            using (var storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
             {
                 storageSet.Set(1, [1, 2, 3]);
             }

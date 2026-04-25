@@ -85,33 +85,27 @@ public sealed class SnapshotContent : IDisposable, IResettable
         StorageNodes.NoResizeClear();
     }
 
-    public long EstimateMemory()
-    {
+    public long EstimateMemory() =>
         // ConcurrentDictionary entry overhead ~48 bytes for Accounts/Storages/SelfDestruct
-        return
-            Accounts.Count * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
+        Accounts.Count * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
             Storages.Count * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
             SelfDestructedStorageAddresses.Count * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
             StateNodes.Count * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
             StorageNodes.Count * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
-    }
 
     /// <summary>
     /// Estimates memory for compacted snapshots, counting only dictionary overhead + keys + value-type values.
     /// Does not count reference type values (Account and TrieNode) as they are already accounted for
     /// by non-compacted snapshots (compacted snapshots share these references with the original snapshots).
     /// </summary>
-    public long EstimateCompactedMemory()
-    {
+    public long EstimateCompactedMemory() =>
         // ConcurrentDictionary entry overhead ~48 bytes
         // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
-        return
-            Accounts.Count * 68 +                          // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48)
+        Accounts.Count * 68 +                          // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48)
             Storages.Count * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
             SelfDestructedStorageAddresses.Count * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
             StateNodes.Count * 76 +                        // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
             StorageNodes.Count * 84;                       // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
-    }
 
     public void Dispose()
     {

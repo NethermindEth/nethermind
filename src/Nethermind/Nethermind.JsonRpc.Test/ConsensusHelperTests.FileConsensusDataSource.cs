@@ -11,16 +11,10 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class FileConsensusDataSource<T> : IConsensusDataSource<T>, IDisposable
+        private class FileConsensusDataSource<T>(Uri file, IJsonSerializer serializer) : IConsensusDataSource<T>, IDisposable
         {
-            private readonly Uri _file;
-            private readonly IJsonSerializer _serializer;
-
-            public FileConsensusDataSource(Uri file, IJsonSerializer serializer)
-            {
-                _file = file;
-                _serializer = serializer;
-            }
+            private readonly Uri _file = file;
+            private readonly IJsonSerializer _serializer = serializer;
 
             public async Task<(T, string)> GetData()
             {

@@ -1,15 +1,6 @@
 name: Sync Supported Chains
 
 on:
-  workflow_run:
-    workflows: ["Publish Docker image"]
-    branches: [release/*]
-    types:
-      - completed
-
-  schedule:
-    - cron: "0 0 * * *"
-
   workflow_dispatch:
     inputs:
       nethermind_image:
@@ -17,9 +8,14 @@ on:
         default: ""
         required: false
       mode:
-        description: "Sync mode to run. Leave empty to run both HalfPath and Flat."
-        default: ""
-        required: false
+        description: "Sync mode to run"
+        type: choice
+        options:
+          - Both
+          - HalfPath
+          - Flat
+        default: Both
+        required: true
       network_filter:
         description: "Useful for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
         default: ""
@@ -43,7 +39,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: nethermind
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+          ref: ${{ github.ref_name || 'master' }}
+
       - name: Set Matrix
         id: set-matrix
         run: |
@@ -53,46 +50,60 @@ jobs:
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
           fi
 
-          requested_mode="${{ github.event.inputs.mode }}"
-          requested_mode=$(echo "$requested_mode" | tr '[:upper:]' '[:lower:]')
+          requested_mode=$(echo "${{ github.event.inputs.mode }}" | tr '[:upper:]' '[:lower:]')
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            case "$requested_mode" in
-              "")
-                modes='["HalfPath","Flat"]'
-                ;;
-              halfpath)
-                modes='["HalfPath"]'
-                ;;
-              flat)
-                modes='["Flat"]'
-                ;;
-              *)
-                echo "Unsupported mode '$requested_mode'. Expected empty, 'halfpath', or 'flat'."
-                exit 1
-                ;;
-            esac
-          elif [ "${{ github.event_name }}" = "schedule" ]; then
-            modes='["HalfPath","Flat"]'
-          else
-            modes='["HalfPath"]'
-          fi
+          case "$requested_mode" in
+            both)
+              modes='["HalfPath","Flat"]'
+              ;;
+            halfpath)
+              modes='["HalfPath"]'
+              ;;
+            flat)
+              modes='["Flat"]'
+              ;;
+            *)
+              echo "Unsupported mode '$requested_mode'. Expected 'Both', 'HalfPath', or 'Flat'."
+              exit 1
+              ;;
+          esac
 
-          matrix=$(echo "$matrix" | jq --argjson modes "$modes" '[.[] as $config | $modes[] as $mode | ($config + {mode: $mode})]')
+          matrix=$(echo "$matrix" | jq --argjson modes "$modes" --arg run_id "$GITHUB_RUN_ID" '
+            [.[] as $config
+             | $modes[] as $mode
+             | $config + {
+                 mode: $mode,
+                 runner_label: (
+                   (if $mode == "Flat" then "f-" else "hp-" end)
+                   + $run_id + "-" + $config.network
+                 )
+               }]
+            | sort_by(if .mode == "Flat" then 0 else 1 end)
+            | to_entries
+            | map(.value + { batch_index: ((.key / 5) | floor) })
+          ')
 
-          echo "matrix=$(echo "$matrix" | jq -c .)" >> $GITHUB_OUTPUT
+          echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 
   create_a_runner:
     needs: [setup-matrix]
     strategy:
       fail-fast: false
       matrix:
-        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
     runs-on: ubuntu-latest
     outputs:
       runner_label: ${{ steps.run-linode-action.outputs.runner_label }}
       machine_id: ${{ steps.run-linode-action.outputs.machine_id }}
     steps:
+      - name: Stagger runner creation (rate limit)
+        if: ${{ matrix.config.batch_index > 0 }}
+        env:
+          BATCH: ${{ matrix.config.batch_index }}
+        run: |
+          echo "Batch $BATCH — sleeping $(( BATCH * 10 ))s to avoid Linode rate limit"
+          sleep $(( BATCH * 10 ))
+
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
@@ -110,7 +121,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "create"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
+          runner_label: ${{ matrix.config.runner_label }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
@@ -124,10 +135,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
 
-    name: "Run sync of ${{ matrix.config.network }} (${{ matrix.config.mode || 'HalfPath' }}) chain"
-    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
+    name: "Run sync of ${{ matrix.config.network }} (${{ matrix.config.mode }}) chain"
+    runs-on: ${{ matrix.config.runner_label }}
     timeout-minutes: ${{ matrix.config.timeout }}
 
     steps:
@@ -143,7 +154,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           clean: true
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+          ref: ${{ github.ref_name || 'master' }}
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -184,7 +195,7 @@ jobs:
         run: |
           docker_image=""
           network="${{ matrix.config.network }}"
-          sync_mode="${{ matrix.config.mode || 'HalfPath' }}"
+          sync_mode="${{ matrix.config.mode }}"
 
           case "${sync_mode,,}" in
             halfpath)
@@ -202,7 +213,7 @@ jobs:
           node_name="SyncSupportedChains-${network}-${sync_mode}-${GITHUB_RUN_ID}"
 
           if [ -z "${{ inputs.nethermind_image }}" ]; then
-            REF_NAME=${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+            REF_NAME="${{ github.ref_name }}"
             CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}")
             if [[ $CLEAN_REF == release/* ]]; then
               CLEAN_REF=$(echo "$CLEAN_REF" | sed 's/[^a-zA-Z0-9._-]/-/g')
@@ -217,7 +228,6 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
-          # Define metrics flags
           GENERIC_METRICS_FLAGS=(
             --el-extra-flag "Metrics.NodeName=${node_name}" \
             --el-extra-flag Metrics.Enabled=true \
@@ -245,6 +255,8 @@ jobs:
             --el-l2-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
             --el-l2-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
           )
+
+          extra_param=""
 
           if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
             if [[ "$network" == *mainnet* ]]; then
@@ -374,15 +386,16 @@ jobs:
         id: wait
         env:
           NETWORK: ${{ matrix.config.network }}
-          SYNC_MODE: ${{ matrix.config.mode || 'HalfPath' }}
+          SYNC_MODE: ${{ matrix.config.mode }}
         run: |
           python scripts/wait-for-sync.py
+
       - name: Get Nethermind Debug Logs
         if: ${{ failure() || cancelled() }}
         id: find-and-upload
         env:
           NETWORK: ${{ matrix.config.network }}
-          SYNC_MODE: ${{ matrix.config.mode || 'HalfPath' }}
+          SYNC_MODE: ${{ matrix.config.mode }}
         run: |
           target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
           cd "$target_dir"
@@ -395,6 +408,7 @@ jobs:
           echo "Compressed log file into ${artifact_name}.zip"
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV
           echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
+
       - name: Upload Nethermind Debug logs artifact
         if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
@@ -404,7 +418,7 @@ jobs:
           retention-days: 7
 
       - name: Get Consensus Logs
-        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
+        if: always()
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
@@ -414,9 +428,11 @@ jobs:
           else
             docker logs sedge-consensus-client
           fi
+
       - name: Check size of DB
         run: |
           du -h $GITHUB_WORKSPACE/sedge
+
       - name: Destroy VM
         if: always()
         id: run-linode-action
@@ -425,8 +441,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine-async"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
+          runner_label: ${{ matrix.config.runner_label }}
+          search_phrase: ${{ matrix.config.runner_label }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -437,7 +453,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
     runs-on: ubuntu-latest
     steps:
       - name: Authenticate App
@@ -454,8 +470,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-machine"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
+          runner_label: ${{ matrix.config.runner_label }}
+          search_phrase: ${{ matrix.config.runner_label }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -466,8 +482,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-runner"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
+          runner_label: ${{ matrix.config.runner_label }}
+          search_phrase: ${{ matrix.config.runner_label }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"

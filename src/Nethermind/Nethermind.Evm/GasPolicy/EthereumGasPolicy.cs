@@ -190,6 +190,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, VmState<EthereumGasPolicy> vmState)
+    {
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas(ref EthereumGasPolicy gas,
         long gasCost)
     {
@@ -217,10 +228,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void UpdateGasUp(ref EthereumGasPolicy gas,
-        long refund)
-    {
-        gas.Value += refund;
-    }
+        long refund) => gas.Value += refund;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RefundStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
@@ -247,7 +255,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor)
     {
         if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
-            RefundStateGas(ref gas, GasCostOf.NewAccountState * codeInsertRefunds, stateGasFloor);
+        {
+            long stateRefund = GasCostOf.NewAccountState * codeInsertRefunds;
+            long stateGasAboveFloor = Math.Max(0, gas.StateGasUsed - stateGasFloor);
+            long refundToReservoir = Math.Max(0, stateRefund - stateGasAboveFloor);
+            gas.StateReservoir += refundToReservoir;
+
+            long newFloor = Math.Max(0, stateGasFloor - stateRefund);
+            gas.StateGasUsed = Math.Max(gas.StateGasUsed - stateRefund, newFloor);
+        }
+
         return GetCodeInsertRegularRefund(codeInsertRefunds, spec);
     }
 
@@ -256,14 +273,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         => UpdateGas(ref gas, GasCostOf.CallValue);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag
+    public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
     {
-        return TEip8037.IsActive switch
-        {
-            true => ConsumeStateGas(ref gas, GasCostOf.NewAccountState),
-            false => UpdateGas(ref gas, GasCostOf.NewAccount)
-        };
-    }
+        true => ConsumeStateGas(ref gas, GasCostOf.NewAccountState),
+        false => UpdateGas(ref gas, GasCostOf.NewAccount)
+    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeLogEmission(ref EthereumGasPolicy gas, long topicCount, long dataSize)
@@ -304,14 +318,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
+        long floorTokensInAccessList = IGasPolicy<EthereumGasPolicy>.CalculateFloorTokensInAccessList(tx, spec);
         (long authRegularCost, long authStateCost) = IGasPolicy<EthereumGasPolicy>.AuthorizationListCost(tx, spec);
 
         long regularGas = GasCostOf.Transaction
                           + DataCost(tx, spec, tokensInCallData)
                           + CreateCost(tx, spec)
-                          + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
+                          + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec, floorTokensInAccessList)
                           + authRegularCost;
-        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
+        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tx, spec, tokensInCallData, floorTokensInAccessList);
         long createStateCost = CreateStateCost(tx, spec);
         long totalStateCost = authStateCost + createStateCost;
         return spec.IsEip8037Enabled

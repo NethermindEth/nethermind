@@ -77,14 +77,14 @@ namespace Nethermind.Db
                 return;
             }
 
-            if (!_cacheSpan.TryGetValue(key, out var existingValue) || !Bytes.AreEqual(existingValue, value))
+            if (!_cacheSpan.TryGetValue(key, out byte[] existingValue) || !Bytes.AreEqual(existingValue, value))
             {
                 _cacheSpan[key] = value;
                 _hasPendingChanges = true;
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out byte[] value) ? value : null)).ToArray();
 
         public void Remove(ReadOnlySpan<byte> key)
         {
@@ -211,7 +211,7 @@ namespace Nethermind.Db
 
             using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
 
-            using var handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
+            using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
             int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
 
             long offset = 0L;

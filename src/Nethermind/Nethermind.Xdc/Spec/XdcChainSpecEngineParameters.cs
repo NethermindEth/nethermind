@@ -12,7 +12,7 @@ namespace Nethermind.Xdc.Spec;
 public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public string EngineName => SealEngineType;
-    public string SealEngineType => Core.SealEngineType.XDPoS;
+    public string SealEngineType => XdcConstants.XDPoS;
     public int Epoch { get; set; }
     public int Gap { get; set; }
     public int Period { get; set; }
@@ -68,10 +68,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
-    {
-        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
-    }
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp) => spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {

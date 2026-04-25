@@ -16,14 +16,9 @@ public interface IEnrRecordParser
     NodeRecord ParseRecord(string nodeRecordText);
 }
 
-public class EnrRecordParser : IEnrRecordParser
+public class EnrRecordParser(INodeRecordSigner nodeRecordSigner) : IEnrRecordParser
 {
-    private readonly INodeRecordSigner _nodeRecordSigner;
-
-    public EnrRecordParser(INodeRecordSigner nodeRecordSigner)
-    {
-        _nodeRecordSigner = nodeRecordSigner;
-    }
+    private readonly INodeRecordSigner _nodeRecordSigner = nodeRecordSigner;
 
     public NodeRecord ParseRecord(string nodeRecordText)
     {

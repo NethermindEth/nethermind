@@ -23,10 +23,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     [TestCase(null)]
     [TestCase(new byte[0])]
     [TestCase(new byte[] { 1 })]
-    public void Test_roundtrip(byte[]? bytes)
-    {
-        TestConverter(bytes, static (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
-    }
+    public void Test_roundtrip(byte[]? bytes) => TestConverter(bytes, static (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
 
     [Test]
     public void Test_roundtrip_large()
@@ -458,6 +455,51 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ["0xzz"],
     };
 
+
+    [TestCaseSource(nameof(StrictHexCases))]
+    public void StrictConverter_HexCases(string name, string hex, object expected)
+    {
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+
+        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
+        {
+            Utf8JsonReader reader = new(seq);
+            reader.Read();
+
+            try
+            {
+                byte[]? result = new StrictHexByteArrayConverter()
+                    .Read(ref reader, typeof(byte[]), JsonSerializerOptions.Default);
+
+                Assert.That(result, Is.EqualTo((byte[])expected));
+            }
+            catch (JsonException ex)
+            {
+                Assert.That(ex.Message, Is.EqualTo((string)expected));
+            }
+        }
+    }
+
+    public static IEnumerable<TestCaseData> StrictHexCases()
+    {
+        yield return new("Rejects_SingleNibble", "0xF", Bytes.ErrOddLength);
+        yield return new("Rejects_ThreeDigits_Numeric", "0x123", Bytes.ErrOddLength);
+        yield return new("Rejects_ThreeDigits_MixedCase", "0x1fF", Bytes.ErrOddLength);
+        yield return new("Rejects_ThreeDigits_Alpha", "0xabc", Bytes.ErrOddLength);
+
+        yield return new("Rejects_NoPrefix_SingleDigit", "F", Bytes.ErrMissingPrefix);
+        yield return new("Rejects_NoPrefix_Numeric", "123", Bytes.ErrMissingPrefix);
+        yield return new("Rejects_NoPrefix_Alpha", "abc", Bytes.ErrMissingPrefix);
+        yield return new("Rejects_NoPrefix_Byte", "1f", Bytes.ErrMissingPrefix);
+        yield return new("Rejects_NoPrefix_LongHex", "DEADBEEF", Bytes.ErrMissingPrefix);
+
+        yield return new("Rejects_InvalidPrefixFormat", "0xxx", Bytes.ErrSyntax);
+        yield return new("Rejects_InvalidHexCharacters", "0x01zz01", Bytes.ErrSyntax);
+
+        yield return new("Parses_EmptyHex", "0x", Array.Empty<byte>());
+        yield return new("Parses_SingleByte", "0x1f", new byte[] { 0x1f });
+        yield return new("Parses_DeadBeef", "0xDEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef });
+    }
     private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
     {
         public BufferSegment(ReadOnlyMemory<byte> memory) => Memory = memory;

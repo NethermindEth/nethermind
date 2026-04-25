@@ -17,7 +17,7 @@ public class RevertTest : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
+        TestsSourceLoader loader = new(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
         IEnumerable<GeneralStateTest> tests = loader.LoadTests<GeneralStateTest>();
         HashSet<string> ignoredTests = ["RevertPrecompiledTouch"];
         return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern)));

@@ -37,8 +37,5 @@ public class Scope<T>(T component, IDisposable scopeCloser) : IDisposable
 {
     public T Component { get; } = component;
 
-    public void Dispose()
-    {
-        scopeCloser.Dispose();
-    }
+    public void Dispose() => scopeCloser.Dispose();
 }
