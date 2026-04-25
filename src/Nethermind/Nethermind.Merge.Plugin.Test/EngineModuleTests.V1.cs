@@ -569,13 +569,17 @@ public partial class EngineModuleTests
     public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorWithinOrAtDepthLimit_ReorgsToAncestor(int chainLength)
     {
         // Spec: MUST support a reorg to a canonical ancestor no more than 32 blocks behind head.
+        // We submit blocks without finalizing them — reorging below finalized is a protocol violation
+        // that spec point 2 permits the client to skip. Keep finalized at zero so the reorg is allowed.
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, chainLength, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, chainLength, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
         Hash256 b1Hash = branch[0].BlockHash;
         Hash256 headHash = branch[chainLength - 1].BlockHash;
 
+        // Advance head to the last block without setting finalized
+        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(headHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         chain.BlockTree.HeadHash.Should().Be(headHash, $"precondition: head is at H={chainLength}");
 
         ForkchoiceStateV1 fcuToAncestor = new(b1Hash, Keccak.Zero, Keccak.Zero);
@@ -1621,13 +1625,15 @@ public partial class EngineModuleTests
 
         // Count FindHeader calls made by the repeated FCU only. Safe=Keccak.Zero skips its
         // ValidateBlockHash lookup, so the baseline calls are: 1 to resolve head, 1 for finalized
-        // validation, plus the IsInconsistent walk (1 under the optimization, 2 without).
+        // validation, 1 for ShouldProceedWithReorg's stored-finalized lookup, 1 for
+        // FindMainChainAncestorNumber (a3→a2, stops at first main-chain ancestor), plus the
+        // IsInconsistent walk (1 under the optimization — stops at a2 rather than continuing to a1).
         spy.ResetCounters();
         ForkchoiceStateV1 repeated = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-        spy.FindHeaderCalls.Should().Be(3, "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
+        spy.FindHeaderCalls.Should().Be(5, "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
     }
 
     [Test]
