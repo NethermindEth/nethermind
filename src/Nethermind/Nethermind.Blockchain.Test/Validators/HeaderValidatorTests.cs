@@ -318,8 +318,7 @@ public class HeaderValidatorTests
     {
         HeaderValidator sut = new(_blockTree, Always.Valid, Substitute.For<ISpecProvider>(), new OneLoggerLogManager(new(_testLogger)));
         _block.Header.Hash = Keccak.Zero;
-        string? error;
-        sut.Validate(_block.Header, _parentBlock.Header, false, out error);
+        sut.Validate(_block.Header, _parentBlock.Header, false, out string? error);
 
         Assert.That(error, Does.StartWith("InvalidHeaderHash"));
     }

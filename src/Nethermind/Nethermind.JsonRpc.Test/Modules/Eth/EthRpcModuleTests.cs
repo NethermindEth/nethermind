@@ -73,6 +73,15 @@ public partial class EthRpcModuleTests
         .Op(Instruction.RETURN)
         .Done;
 
+    private static readonly byte[] CoinbaseReturnCode = Prepare.EvmCode
+        .Op(Instruction.COINBASE)
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .PushData("0x20")
+        .PushData("0x0")
+        .Op(Instruction.RETURN)
+        .Done;
+
     private static void AssertAccountDoesNotExist(Context ctx, Address account) => Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
 
     [TestCase("earliest", "0x3635c9adc5dea00000")]
@@ -103,6 +112,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task EthFeeHistory_WhenRewardPercentilesIsMissing_ReturnsInvalidParams()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_feeHistory", "0x1", "latest");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 2\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_transaction_by_block_hash_and_index()
     {
         using Context ctx = await Context.Create();
@@ -123,7 +140,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", ctx.Test.BlockTree.FindHeadBlock()!.Transactions.Last().Hash!.ToString());
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"f85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"id\":67}"), serialized.Replace("\"", "\\\""));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
 
@@ -133,7 +150,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithCancunEnabled();
         await ctx.Test.AddBlock(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei).WithMaxFeePerGas(11.GWei).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", ctx.Test.BlockTree.FindHeadBlock()!.Transactions.Last().Hash!.ToString());
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"02f86c0180850165a0bc0085028fa6ae008252089400000000000000000000000000000000000000000180c080a063b08cc0a06c88fb1dd79f273736b3463af12c6754f9df764aa222d2693a5d43a0606b869eab1c9d01ff462f887826cb8f349ea8f1b59d0635ae77155b3b84ad86\",\"id\":67}"), serialized.Replace("\"", "\\\""));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x02f86c0180850165a0bc0085028fa6ae008252089400000000000000000000000000000000000000000180c080a063b08cc0a06c88fb1dd79f273736b3463af12c6754f9df764aa222d2693a5d43a0606b869eab1c9d01ff462f887826cb8f349ea8f1b59d0635ae77155b3b84ad86\",\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
     [Test]
@@ -971,7 +988,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccount", account_address, "0xffff");
 
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"65535 could not be found\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"block not found: 0xffff\"},\"id\":67}");
     }
 
     [Test]
@@ -1014,7 +1031,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address, "0xffff");
 
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"65535 could not be found\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"block not found: 0xffff\"},\"id\":67}");
     }
 
     [Test]
@@ -1381,6 +1398,31 @@ public partial class EthRpcModuleTests
 
         long gasUsed = Convert.ToInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
         gasUsed.Should().BeLessOrEqualTo(gasCap);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+
+        long blockGasLimit = ctx.Test.BlockTree.FindHeadBlock()!.Header.GasLimit;
+        long gasCap = blockGasLimit + 500_000;
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        // Inject infinite-loop contract — with no gas field it should consume all of gasCap, not blockGasLimit
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"0xc200000000000000000000000000000000000000\":{{\"code\":\"{InfiniteLoopCode.ToHexString(true)}\"}}}}")!;
+
+        // No gas field — should default to gasCap, not blockGasLimit
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"to":"0xc200000000000000000000000000000000000000"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
+
+        long gasUsed = Convert.ToInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
+        gasUsed.Should().BeGreaterThan(blockGasLimit,
+            "gas used ({0}) should reflect gasCap ({1}), not block gas limit ({2})",
+            gasUsed, gasCap, blockGasLimit);
     }
 
     [Test]

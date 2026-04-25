@@ -9,6 +9,9 @@ namespace Nethermind.Xdc;
 
 internal static class XdcConstants
 {
+    public const string XDPoS = nameof(XDPoS);
+    public const string XDPoSSubnet = nameof(XDPoSSubnet);
+
     public const ulong EpochLength = 900UL; // Default number of blocks after which to checkpoint and reset the pending votes
 
     public const int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity

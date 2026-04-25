@@ -154,6 +154,37 @@ public partial class DebugRpcModuleTests
         gasAvailable.Should().BeGreaterThan(0);
     }
 
+    [Test]
+    public async Task Debug_traceCall_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+
+        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        long gasCap = blockGasLimit * 10;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns gas available at start of execution as a uint256
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
+
+        // No gas field — should default to gasCap, not blockGasLimit
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = "0xc200000000000000000000000000000000000000" },
+            null,
+            new { stateOverrides = stateOverride }
+        );
+
+        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
+            .Subject;
+
+        UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
+        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
+            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
+    }
+
     [TestCase(
         "When balance is overridden",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f","value":"0x100"}""",

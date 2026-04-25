@@ -20,7 +20,7 @@ public class Eip7623Tests : VirtualMachineTestsBase
         Transaction transaction = new() { Data = new byte[] { 1 }, To = Address.Zero };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
         cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028,
-            FloorGas: GasCostOf.Transaction + GasCostOf.TotalCostFloorPerTokenEip7623 * 4));
+            FloorGas: GasCostOf.Transaction + Spec.GasCosts.TotalCostFloorPerToken * 4));
     }
 
     [Test]
@@ -29,6 +29,6 @@ public class Eip7623Tests : VirtualMachineTestsBase
         Transaction transaction = new() { Data = new byte[] { 0 }, To = Address.Zero };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
         cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
-            FloorGas: GasCostOf.Transaction + GasCostOf.TotalCostFloorPerTokenEip7623));
+            FloorGas: GasCostOf.Transaction + Spec.GasCosts.TotalCostFloorPerToken));
     }
 }

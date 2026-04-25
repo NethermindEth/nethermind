@@ -216,6 +216,17 @@ public class JsonRpcServiceTests
         Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
+    [TestCase("eth_getBlockByNumber", new object?[] { }, "missing value for required argument 0", TestName = "FirstArgOmitted")]
+    [TestCase("eth_feeHistory", new object?[] { "0x1", "latest" }, "missing value for required argument 2", TestName = "LaterArgOmitted")]
+    public void MissingRequiredArgument_ReturnsGethStyleError(string method, object?[] parameters, string expectedMessage)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcErrorResponse? response = TestRequest(ethRpcModule, method, parameters) as JsonRpcErrorResponse;
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(response?.Error?.Message, Is.EqualTo(expectedMessage));
+        Assert.That(response?.Error?.Data, Is.Null);
+    }
+
     [Test]
     public void IncorrectMethodNameTest()
     {

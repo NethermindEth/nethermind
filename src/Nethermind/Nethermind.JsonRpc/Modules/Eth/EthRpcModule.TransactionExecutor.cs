@@ -13,7 +13,6 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -25,10 +24,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
             private bool NoBaseFee { get; set; }
+            private BlockOverride? _blockOverride;
+            protected BlockOverride? BlockOverride => _blockOverride;
+            protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
+
+            protected IReleaseSpec GetSpec(BlockHeader header) => specProvider.GetSpec(header);
 
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
-                IReleaseSpec spec = specProvider.GetSpec(header);
+                IReleaseSpec spec = GetSpec(header);
                 Result<Transaction> result = call.ToTransaction(validateUserInput: true, spec: spec);
                 if (result.IsError) return result;
 
@@ -47,6 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 clonedHeader.GasUsed = 0;
+                _blockOverride?.ApplyOverrides(clonedHeader);
 
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
@@ -57,24 +62,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Dictionary<Address, AccountOverride>? stateOverride = null,
                 SearchResult<BlockHeader>? searchResult = null)
             {
-                NoBaseFee = !transactionCall.ShouldSetBaseFee();
-
-                // default to previous block gas if unspecified
-                if (transactionCall.Gas is null)
-                {
-                    searchResult ??= _blockFinder.SearchForHeader(blockParameter);
-                    if (!searchResult.Value.IsError)
-                        transactionCall.Gas = searchResult.Value.Object!.GasLimit;
-                }
 
                 // enforces gas cap
+                NoBaseFee = !transactionCall.ShouldSetBaseFee();
+
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
-                => Execute(transactionCall, blockParameter, stateOverride);
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+            {
+                if (blockOverride?.GasLimit > (ulong)_rpcConfig.GasCap!.Value)
+                    return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {_rpcConfig.GasCap.Value}", ErrorCodes.InvalidInput);
+                _blockOverride = blockOverride;
+                return Execute(transactionCall, blockParameter, stateOverride);
+            }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 
@@ -115,7 +118,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
+                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, token);
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
             }
         }
@@ -125,9 +128,34 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private readonly int _errorMargin = rpcConfig.EstimateErrorMargin;
 
+            public override ResultWrapper<UInt256?> Execute(
+                TransactionForRpc transactionCall,
+                BlockParameter? blockParameter,
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                SearchResult<BlockHeader>? searchResult = null)
+            {
+                // Match Geth: when no gas is specified, binary search is bounded by blockGasLimit (then
+                // capped at gasCap by EnsureDefaults). eth_call uses gasCap directly because it is a
+                // pure simulation; estimateGas is computing gas for a real transaction that must fit in a block.
+                if (transactionCall.Gas is null)
+                {
+                    if (BlockOverride?.GasLimit is not null)
+                    {
+                        transactionCall.Gas = (long)BlockOverride.GasLimit.Value;
+                    }
+                    else
+                    {
+                        searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+                        if (!searchResult.Value.IsError)
+                            transactionCall.Gas = searchResult.Value.Object!.GasLimit;
+                    }
+                }
+                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
+            }
+
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, token);
 
                 return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent, result.ExecutionReverted, result.OutputData);
             }
@@ -138,11 +166,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, token, optimize);
+                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
+                IReleaseSpec spec = GetSpec(header);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: GetResultGas(tx, result),
+                    gasUsed: GetResultGas(tx, result, spec),
                     result.Error);
 
                 return result.InputError
@@ -150,15 +179,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     : ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
             }
 
-            private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
+            private static UInt256 GetResultGas(Transaction transaction, CallOutput result, IReleaseSpec spec)
             {
                 long gas = result.GasSpent;
                 long operationGas = result.OperationGas;
                 if (result.AccessList is not null)
                 {
-                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
                     transaction.AccessList = result.AccessList;
-                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
                     long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
                     if (gas > operationGas)
                     {
