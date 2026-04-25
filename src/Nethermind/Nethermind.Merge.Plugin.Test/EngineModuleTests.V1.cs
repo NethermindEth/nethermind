@@ -594,18 +594,19 @@ public partial class EngineModuleTests
     public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorOfFinalizedBlock_SkipsUpdate()
     {
         // Spec PR #786 point 2: client MAY skip the update when headBlockHash is a valid ancestor of the
-        // latest known finalized block. ProduceBranchV1 with setHead:true finalizes each block via FCU,
-        // so after building 34 blocks the finalized hash is b34. FCU to b1 (H=1 < H=34, canonical)
-        // triggers the MAY-skip — not any depth limit.
+        // latest known finalized block. Build 34 blocks, explicitly finalize b34, then FCU to b1
+        // (H=1 <= H=34, canonical) — the MAY-skip fires, not any depth limit.
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 34, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 34, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
         Hash256 b1Hash = branch[0].BlockHash;
         Hash256 b34Hash = branch[33].BlockHash;
 
+        // Set head to b34 and explicitly finalize it
+        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(b34Hash, b34Hash, b34Hash))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         chain.BlockTree.HeadHash.Should().Be(b34Hash, "precondition: head is at H=34");
-        chain.BlockTree.FinalizedHash.Should().Be(b34Hash, "precondition: b34 is finalized after setHead:true branch");
+        chain.BlockTree.FinalizedHash.Should().Be(b34Hash, "precondition: b34 is finalized");
 
         ForkchoiceStateV1 fcuToAncestorOfFinalized = new(b1Hash, Keccak.Zero, Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestorOfFinalized);
