@@ -446,6 +446,44 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
 
+    [Test]
+    public async Task Test_eth_simulate_no_validation_skips_balance_check()
+    {
+        // Regression: eth_simulateV1 with validation:false must not return -38014 (InsufficientFunds)
+        // for a value transfer from a zero-balance address.
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    Calls =
+                    [
+                        new EIP1559TransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = 1_000_000.Ether,
+                        }
+                    ]
+                }
+            ],
+            Validation = false
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        Assert.That(result.Data, Has.Count.EqualTo(1));
+        Assert.That(result.Data[0].Calls, Has.Count.EqualTo(1));
+        SimulateCallResult call = result.Data[0].Calls.First();
+        Assert.That(call.Error, Is.Null);
+        Assert.That(call.Status, Is.EqualTo(1ul));
+    }
+
     [TestCase(
         """{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000001":{"MovePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}}]}""",
         ErrorCodes.MovePrecompileSelfReference,
@@ -462,5 +500,59 @@ public class EthSimulateTestsBlocksAndTransactions
 
         result.ErrorCode.Should().Be(expectedErrorCode);
         result.Result.Error.Should().Be(expectedMessage);
+    }
+
+    // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
+    // Verifies that blockOverrides.time is respected by the EVM TIMESTAMP opcode in eth_simulateV1
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Test_eth_simulateV1_block_override_time_is_seen_by_timestamp_opcode(bool validation)
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+        ulong headTimestamp = chain.BlockFinder.Head!.Header.Timestamp;
+        ulong futureTimestamp = headTimestamp + 24000;
+
+        // Contract: TIMESTAMP PUSH1 0 MSTORE PUSH1 0x20 PUSH1 0 RETURN (reads block.timestamp and returns it)
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            Validation = validation,
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { Time = futureTimestamp, BaseFeePerGas = 0 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x4260005260206000f3") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractAddress,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        SimulateCallResult call = result.Data.First().Calls.First();
+        Assert.That(call.Error, Is.Null, call.Error?.Message);
+
+        // returnData should be the 32-byte ABI encoding of futureTimestamp
+        byte[] returnData = call.ReturnData ?? [];
+        UInt256 returnedTimestamp = new(returnData, isBigEndian: true);
+        Assert.That((ulong)returnedTimestamp, Is.EqualTo(futureTimestamp),
+            $"Expected block.timestamp = {futureTimestamp} (overridden), got {returnedTimestamp}");
     }
 }
