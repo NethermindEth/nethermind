@@ -21,16 +21,12 @@ namespace Nethermind.State;
 public class BlockAccessListBasedWorldState(
     IWorldState innerWorldState,
     int blockAccessIndex,
-    ILogManager logManager) : IWorldState, IPreBlockCaches
+    ILogManager logManager) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
     private BlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
-
-    public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
-
-    public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
 
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
@@ -67,6 +63,7 @@ public class BlockAccessListBasedWorldState(
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
+        CheckInitialized();
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
 
         if (accountChanges is not null)
@@ -79,11 +76,12 @@ public class BlockAccessListBasedWorldState(
             }
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
     }
 
     public byte[] GetOriginal(in StorageCell storageCell)
     {
+        CheckInitialized();
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
 
         if (accountChanges is not null)
@@ -96,7 +94,7 @@ public class BlockAccessListBasedWorldState(
             }
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
     }
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce) => oldNonce = GetNonce(address);
@@ -110,34 +108,40 @@ public class BlockAccessListBasedWorldState(
 
     public UInt256 GetBalance(Address address)
     {
+        CheckInitialized();
+
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
         if (accountChanges is not null)
         {
             return accountChanges.GetBalance(blockAccessIndex)
-                ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default,
+                ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader,
                     $"Suggested block-level access list missing balance for {address} at index {blockAccessIndex}.");
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public UInt256 GetNonce(Address address)
     {
+        CheckInitialized();
+
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
         if (accountChanges is not null)
         {
             return accountChanges.GetNonce(blockAccessIndex)
-                ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default,
+                ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader,
                     $"Suggested block-level access list missing nonce for {address} at index {blockAccessIndex}.");
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public ValueHash256 GetCodeHash(Address address)
     {
+        CheckInitialized();
+
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
         if (accountChanges is not null)
@@ -145,11 +149,13 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.GetCodeHash(blockAccessIndex);
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public byte[]? GetCode(Address address)
     {
+        CheckInitialized();
+
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
         if (accountChanges is not null)
@@ -157,7 +163,7 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.GetCode(blockAccessIndex);
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public byte[]? GetCode(in ValueHash256 _)
@@ -194,6 +200,8 @@ public class BlockAccessListBasedWorldState(
 
     public bool AccountExists(Address address)
     {
+        CheckInitialized();
+
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null)
         {
@@ -201,7 +209,7 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.AccountExists(blockAccessIndex);
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public bool IsContract(Address address)
@@ -209,6 +217,8 @@ public class BlockAccessListBasedWorldState(
 
     public bool IsStorageEmpty(Address address)
     {
+        CheckInitialized();
+
         // see https://eips.ethereum.org/EIPS/eip-7610
         // storage could only be non-empty for 28 old accounts
         AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
@@ -217,7 +227,7 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.EmptyBeforeBlock;
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public bool IsDeadAccount(Address address)
@@ -241,6 +251,8 @@ public class BlockAccessListBasedWorldState(
 
     public ArrayPoolList<AddressAsKey> GetAccountChanges()
     {
+        CheckInitialized();
+
         ArrayPoolList<AddressAsKey> result = new(_suggestedBlockAccessList.AccountChanges.Count);
         foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
@@ -261,6 +273,15 @@ public class BlockAccessListBasedWorldState(
     public void ResetTransient()
         => _transientStorageProvider.Reset();
 
-    // for testing
-    internal IWorldState Inner => _innerWorldState;
+    public void CreateEmptyAccountIfDeleted(Address address)
+        => _innerWorldState.CreateEmptyAccountIfDeleted(address);
+
+    private void CheckInitialized()
+    {
+        if (_suggestedBlockAccessList is null)
+            throw new InvalidOperationException($"{nameof(_suggestedBlockAccessList)} was not initialized.");
+
+        if (_suggestedBlockHeader is null)
+            throw new InvalidOperationException($"{nameof(_suggestedBlockHeader)} was not initialized.");
+    }
 }

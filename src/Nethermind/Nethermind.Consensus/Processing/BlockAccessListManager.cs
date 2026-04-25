@@ -67,12 +67,14 @@ public class BlockAccessListManager(
     {
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
+        _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
+
+        // Parallel execution requires the BAL body to be present on the block.
+        // Blocks from p2p/RLP fixtures only have the header hash, not the decoded BAL body.
+        ParallelExecutionEnabled = Enabled && blocksConfig.ParallelExecution && !_isBuilding && suggestedBlock.BlockAccessList is not null;
+
         if (Enabled)
         {
-            _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
-            // Parallel execution requires the BAL body to be present on the block.
-            // Blocks from p2p/RLP fixtures only have the header hash, not the decoded BAL body.
-            ParallelExecutionEnabled = blocksConfig.ParallelExecution && !_isBuilding && suggestedBlock.BlockAccessList is not null;
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
 
@@ -90,23 +92,31 @@ public class BlockAccessListManager(
         if (Enabled)
         {
             _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager : _sequentialTxProcessorWithWorldStateManager;
+            CheckInitialized();
             _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
         }
     }
 
     public void SpendGas(long gas)
-        => _gasRemaining -= gas;
+    {
+        CheckInitialized();
+        _gasRemaining -= gas;
+    }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => _blockExecutionContext = blockExecutionContext;
 
     public ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null)
-        => _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
+    {
+        CheckInitialized();
+        return _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
+    }
 
     public void NextTransaction()
     {
         if (Enabled)
         {
+            CheckInitialized();
             _txProcessorWithWorldStateManager.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
             _txProcessorWithWorldStateManager.NextTransaction();
         }
@@ -116,12 +126,15 @@ public class BlockAccessListManager(
     {
         if (Enabled)
         {
+            CheckInitialized();
             _txProcessorWithWorldStateManager.Rollback();
         }
     }
 
     public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
+        CheckInitialized();
+
         int len = block.Transactions.Length;
         _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
         ValidateBlockAccessList(block, 0);
@@ -174,11 +187,11 @@ public class BlockAccessListManager(
     {
         foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].BlockAccessIndex != -1)
+            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].Index != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
-                UInt256 newBalance = accountChanges.BalanceChanges[^1].PostBalance;
+                UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
                 if (newBalance > oldBalance)
                 {
                     stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
@@ -189,25 +202,25 @@ public class BlockAccessListManager(
                 }
             }
 
-            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].BlockAccessIndex != -1)
+            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].Index != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].NewNonce);
+                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
             }
 
-            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].BlockAccessIndex != -1)
+            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].Index != -1)
             {
-                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].NewCode, spec);
+                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
             }
 
             foreach (SlotChanges slotChange in accountChanges.StorageChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, slotChange.Slot);
+                StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
                 // could be empty since prestate loaded
                 int slotCount = slotChange.Changes.Count;
                 if (slotCount > 0 && slotChange.Changes.Keys[slotCount - 1] != -1)
                 {
-                    stateProvider.Set(storageCell, [.. slotChange.Changes.Values[slotCount - 1].NewValue.ToBigEndian().WithoutLeadingZeros()]);
+                    stateProvider.Set(storageCell, [.. slotChange.Changes.Values[slotCount - 1].Value.ToBigEndian().WithoutLeadingZeros()]);
                 }
             }
         }
@@ -243,6 +256,8 @@ public class BlockAccessListManager(
         }
         else
         {
+            CheckInitialized();
+
             _txProcessorWithWorldStateManager.GetPostExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
@@ -257,6 +272,8 @@ public class BlockAccessListManager(
         {
             return;
         }
+
+        CheckInitialized();
 
         IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
         IEnumerator<ChangeAtIndex> suggestedChanges = block.BlockAccessList.GetChangesAtIndex(index).GetEnumerator();
@@ -348,12 +365,16 @@ public class BlockAccessListManager(
 
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
+        CheckInitialized();
+
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
+        CheckInitialized();
+
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         IWithdrawalProcessor withdrawalProcessor = withdrawalProcessorFactory.Create(postExecution.WorldState, postExecution.TxProcessor);
         if (_isBuilding)
@@ -365,6 +386,8 @@ public class BlockAccessListManager(
 
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
     {
+        CheckInitialized();
+
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
@@ -386,7 +409,7 @@ public class BlockAccessListManager(
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
+                StorageCell storageCell = new(accountChanges.Address, slotChanges.Key);
                 slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
             }
 
@@ -410,6 +433,18 @@ public class BlockAccessListManager(
 
     private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
         => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
+
+    private void CheckInitialized()
+    {
+        if (_txProcessorWithWorldStateManager is null)
+            throw new InvalidOperationException($"{nameof(_txProcessorWithWorldStateManager)} was not initialized.");
+
+        if (_gasRemaining is null)
+            throw new InvalidOperationException($"{nameof(_gasRemaining)} was not initialized.");
+
+        if (_blockExecutionContext is null)
+            throw new InvalidOperationException($"{nameof(_blockExecutionContext)} was not initialized.");
+    }
 
     private interface ITxProcessorWithWorldStateManager
     {

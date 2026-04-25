@@ -20,7 +20,7 @@ public partial class BlockProcessor
         : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
     { }
 
-    public class SystemContractHandler(
+    public sealed class SystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
         IWithdrawalProcessor withdrawalProcessor,
@@ -29,22 +29,22 @@ public partial class BlockProcessor
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
             => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
 
-        public virtual void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer = null)
-            => beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+        public void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
+            => beaconBlockRootHandler.StoreBeaconRoot(block, spec, tracer);
 
         public AccessList? GetAccessList(Block block, IReleaseSpec spec)
             => beaconBlockRootHandler.GetAccessList(block, spec);
 
-        public virtual void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
+        public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
             => blockHashStore.ApplyBlockhashStateChanges(blockHeader, spec);
 
         public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber, IReleaseSpec spec)
             => blockHashStore.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
 
-        public virtual void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+        public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
             => executionRequestsProcessor.ProcessExecutionRequests(block, state, receipts, spec);
 
-        public virtual void ProcessWithdrawals(Block block, IReleaseSpec spec)
+        public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
     }
 }

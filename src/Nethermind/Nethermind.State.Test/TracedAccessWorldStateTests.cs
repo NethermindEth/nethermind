@@ -79,7 +79,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.BalanceChanges, Has.Count.EqualTo(1));
-                Assert.That(ac.BalanceChanges[0].PostBalance, Is.EqualTo((UInt256)expectedBalance));
+                Assert.That(ac.BalanceChanges[0].Value, Is.EqualTo((UInt256)expectedBalance));
             }
         }
     }
@@ -107,7 +107,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.NonceChanges, Has.Count.EqualTo(1));
-                Assert.That(ac.NonceChanges[0].NewNonce, Is.EqualTo(expectedNonce));
+                Assert.That(ac.NonceChanges[0].Value, Is.EqualTo(expectedNonce));
             }
         }
     }
@@ -128,7 +128,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.CodeChanges, Has.Count.EqualTo(1));
-                Assert.That(ac.CodeChanges[0].NewCode, Is.EquivalentTo(code));
+                Assert.That(ac.CodeChanges[0].Code, Is.EquivalentTo(code));
             }
         }
     }
@@ -148,7 +148,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
-                Assert.That(ac.StorageChanges[0].Slot, Is.EqualTo((UInt256)1));
+                Assert.That(ac.StorageChanges[0].Key, Is.EqualTo((UInt256)1));
             }
         }
     }
@@ -284,11 +284,11 @@ public class TracedAccessWorldStateTests(bool parallel)
 
             if (expectedBalChanges > 0)
             {
-                Assert.That(ac.BalanceChanges[0].PostBalance, Is.EqualTo((UInt256)balance));
+                Assert.That(ac.BalanceChanges[0].Value, Is.EqualTo((UInt256)balance));
             }
             if (expectedNonceChanges > 0)
             {
-                Assert.That(ac.NonceChanges[0].NewNonce, Is.EqualTo((ulong)nonce));
+                Assert.That(ac.NonceChanges[0].Value, Is.EqualTo((ulong)nonce));
             }
         }
     }
@@ -307,7 +307,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac!.BalanceChanges, Has.Count.EqualTo(1));
-                Assert.That(ac.BalanceChanges[0].PostBalance, Is.EqualTo(UInt256.Zero));
+                Assert.That(ac.BalanceChanges[0].Value, Is.EqualTo(UInt256.Zero));
             }
         }
     }
@@ -389,7 +389,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 // Within same tx, Pop+Push replaces entry: Count stays 1
                 Assert.That(ac!.BalanceChanges, Has.Count.EqualTo(1));
-                Assert.That(ac.BalanceChanges[0].PostBalance, Is.EqualTo((UInt256)1200));
+                Assert.That(ac.BalanceChanges[0].Value, Is.EqualTo((UInt256)1200));
             }
         }
     }
@@ -411,7 +411,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(oldNonce2, Is.EqualTo((UInt256)1), "second old nonce from BAL");
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.NonceChanges, Has.Count.EqualTo(1));
-                Assert.That(ac.NonceChanges[0].NewNonce, Is.EqualTo(2ul));
+                Assert.That(ac.NonceChanges[0].Value, Is.EqualTo(2ul));
             }
         }
     }
@@ -435,7 +435,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 // CodeChange doesn't Pop+Push, so both entries accumulate
                 Assert.That(ac!.CodeChanges.Count, Is.GreaterThanOrEqualTo(1));
-                Assert.That(ac.CodeChanges[ac.CodeChanges.Count - 1].NewCode, Is.EquivalentTo(code2));
+                Assert.That(ac.CodeChanges[ac.CodeChanges.Count - 1].Code, Is.EquivalentTo(code2));
             }
         }
     }
@@ -461,7 +461,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 SlotChanges slotChanges = ac.StorageChanges[0];
                 // Storage changes also Pop+Push at same Index, so Count stays 1
                 Assert.That(slotChanges.Changes, Has.Count.EqualTo(1));
-                Assert.That(slotChanges.Changes.Values[0].NewValue, Is.EqualTo((UInt256)2));
+                Assert.That(slotChanges.Changes.Values[0].Value, Is.EqualTo((UInt256)2));
             }
         }
     }

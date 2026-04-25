@@ -165,6 +165,8 @@ namespace Nethermind.State
             _stateProvider.CreateAccount(address, balance, nonce);
         }
 
+        public void CreateEmptyAccountIfDeleted(Address address) => _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
+
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             DebugGuardInScope();

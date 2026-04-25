@@ -289,6 +289,12 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
 
+    public void CreateEmptyAccountIfDeleted(Address address)
+    {
+        RecordEmptySlots(address);
+        inner.CreateEmptyAccountIfDeleted(address);
+    }
+
     private void RecordSlot(in StorageCell storageCell) => RecordEmptySlots(storageCell.Address).Add(storageCell.Index);
 
     private HashSet<UInt256> RecordEmptySlots(Address address)
