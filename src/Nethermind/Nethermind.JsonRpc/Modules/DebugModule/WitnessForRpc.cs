@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Consensus.Stateless;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
