@@ -627,7 +627,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!opts.HasFlag(ExecutionOptions.SkipBalanceValidation))
                 {
                     TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                    return BuildInsufficientFundsResult(tx, senderBalance, effectiveGasPrice);                }
+                    return BuildInsufficientFundsResult(tx, senderBalance, effectiveGasPrice);
+                }
                 balanceLeft = UInt256.Zero;
             }
 
