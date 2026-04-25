@@ -58,12 +58,12 @@ public class ForensicsTests
         QuorumCertificate[] highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
 
-        XdcBlockHeader? parentHeader = (XdcBlockHeader?)blockchain.BlockTree.FindHeader(targetHeader.ParentHash!);
-        Assert.That(parentHeader, Is.Not.Null);
-        Assert.That(parentHeader.ExtraConsensusData, Is.Not.Null);
+        XdcBlockHeader? targetParentHeader = (XdcBlockHeader?)blockchain.BlockTree.FindHeader(targetHeader.ParentHash!);
+        Assert.That(targetParentHeader, Is.Not.Null);
+        Assert.That(targetParentHeader.ExtraConsensusData, Is.Not.Null);
         Assert.That(targetHeader.ExtraConsensusData, Is.Not.Null);
 
-        Assert.That(highestCommittedQcs[0], Is.EqualTo(parentHeader.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[0], Is.EqualTo(targetParentHeader.ExtraConsensusData!.QuorumCert));
         Assert.That(highestCommittedQcs[1], Is.EqualTo(targetHeader.ExtraConsensusData!.QuorumCert));
         Assert.That(highestCommittedQcs[2], Is.EqualTo(context.HighestQC));
     }
@@ -74,46 +74,39 @@ public class ForensicsTests
         using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 5, configurer: RegisterRealForensicsProcessor);
         ForensicsProcessor forensicsProcessor = (ForensicsProcessor)blockchain.Container.Resolve<IForensicsProcessor>();
 
-        XdcBlockHeader currentHeader = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
-        XdcBlockHeader parentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(currentHeader.ParentHash!)!;
-        XdcBlockHeader grandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(parentHeader.ParentHash!)!;
-        XdcBlockHeader greatGrandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(grandParentHeader.ParentHash!)!;
-        XdcBlockHeader greatGreatGrandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(greatGrandParentHeader.ParentHash!)!;
-
-        Assert.That(currentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(parentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(grandParentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(greatGrandParentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(greatGreatGrandParentHeader.ExtraConsensusData, Is.Not.Null);
+        XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        XdcBlockHeader headerNMinus1 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerN.ParentHash!)!;
+        XdcBlockHeader headerNMinus2 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus1.ParentHash!)!;
+        XdcBlockHeader headerNMinus3 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus2.ParentHash!)!;
 
         QuorumCertificate[] beforeInvalidOrder = forensicsProcessor.GetHighestCommittedQcsSnapshot();
 
         await forensicsProcessor.SetCommittedQCs(
-            [grandParentHeader, greatGrandParentHeader],
-            currentHeader.ExtraConsensusData!.QuorumCert);
+            [headerNMinus2, headerNMinus3],
+            headerN.ExtraConsensusData!.QuorumCert);
 
         QuorumCertificate[] highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs, Is.EqualTo(beforeInvalidOrder));
 
         await forensicsProcessor.SetCommittedQCs(
-            [grandParentHeader, parentHeader],
-            currentHeader.ExtraConsensusData!.QuorumCert);
+            [headerNMinus2, headerNMinus1],
+            headerN.ExtraConsensusData!.QuorumCert);
 
         highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-        Assert.That(highestCommittedQcs[0], Is.EqualTo(grandParentHeader.ExtraConsensusData!.QuorumCert));
-        Assert.That(highestCommittedQcs[1], Is.EqualTo(parentHeader.ExtraConsensusData!.QuorumCert));
-        Assert.That(highestCommittedQcs[2], Is.EqualTo(currentHeader.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[2], Is.EqualTo(headerN.ExtraConsensusData!.QuorumCert));
 
         await forensicsProcessor.SetCommittedQCs(
-            [greatGrandParentHeader, grandParentHeader],
-            parentHeader.ExtraConsensusData!.QuorumCert);
+            [headerNMinus3, headerNMinus2],
+            headerNMinus1.ExtraConsensusData!.QuorumCert);
 
         highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-        Assert.That(highestCommittedQcs[0], Is.EqualTo(greatGrandParentHeader.ExtraConsensusData!.QuorumCert));
-        Assert.That(highestCommittedQcs[1], Is.EqualTo(grandParentHeader.ExtraConsensusData!.QuorumCert));
-        Assert.That(highestCommittedQcs[2], Is.EqualTo(parentHeader.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus3.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[2], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert));
     }
 
     [Test]
@@ -122,39 +115,31 @@ public class ForensicsTests
         using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 15, configurer: RegisterRealForensicsProcessor);
         ForensicsProcessor forensicsProcessor = (ForensicsProcessor)blockchain.Container.Resolve<IForensicsProcessor>();
 
-        XdcBlockHeader currentHeader = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
-        XdcBlockHeader parentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(currentHeader.ParentHash!)!;
-        XdcBlockHeader grandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(parentHeader.ParentHash!)!;
+        XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        XdcBlockHeader headerNMinus1 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerN.ParentHash!)!;
+        XdcBlockHeader headerNMinus2 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus1.ParentHash!)!;
 
-        XdcBlockHeader oldIncomingHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(grandParentHeader.ParentHash!)!;
-        XdcBlockHeader oldParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(oldIncomingHeader.ParentHash!)!;
-        XdcBlockHeader oldGrandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(oldParentHeader.ParentHash!)!;
-
-        Assert.That(currentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(parentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(grandParentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(oldIncomingHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(oldParentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(oldGrandParentHeader.ExtraConsensusData, Is.Not.Null);
+        XdcBlockHeader headerNMinus3 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus2.ParentHash!)!;
+        XdcBlockHeader headerNMinus4 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus3.ParentHash!)!;
+        XdcBlockHeader headerNMinus5 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus4.ParentHash!)!;
 
         // Seed forensics baseline with an older valid committed-QC triplet.
         await forensicsProcessor.SetCommittedQCs(
-            [oldGrandParentHeader, oldParentHeader],
-            oldIncomingHeader.ExtraConsensusData!.QuorumCert);
+            [headerNMinus5, headerNMinus4],
+            headerNMinus3.ExtraConsensusData!.QuorumCert);
 
-        QuorumCertificate[] previousCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
-        Assert.That(previousCommittedQcs.Length, Is.EqualTo(3));
+        Assert.That(forensicsProcessor.GetHighestCommittedQcsSnapshot().Length, Is.EqualTo(3));
 
         // Feed a newer same-chain window; happy-path behavior should update committed QCs without errors.
         Assert.That(async () => await forensicsProcessor.ForensicsMonitoring(
-            [grandParentHeader, parentHeader],
-            currentHeader.ExtraConsensusData!.QuorumCert), Throws.Nothing);
+            [headerNMinus2, headerNMinus1],
+            headerN.ExtraConsensusData!.QuorumCert), Throws.Nothing);
 
         QuorumCertificate[] highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-        Assert.That(highestCommittedQcs[0], Is.EqualTo(grandParentHeader.ExtraConsensusData!.QuorumCert));
-        Assert.That(highestCommittedQcs[1], Is.EqualTo(parentHeader.ExtraConsensusData!.QuorumCert));
-        Assert.That(highestCommittedQcs[2], Is.EqualTo(currentHeader.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[0], Is.EqualTo(headerNMinus2.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[1], Is.EqualTo(headerNMinus1.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[2], Is.EqualTo(headerN.ExtraConsensusData!.QuorumCert));
     }
 
     [Test]
@@ -163,74 +148,43 @@ public class ForensicsTests
         using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 15, configurer: RegisterRealForensicsProcessor);
         ForensicsProcessor forensicsProcessor = (ForensicsProcessor)blockchain.Container.Resolve<IForensicsProcessor>();
 
-        XdcBlockHeader currentHeader = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
-        XdcBlockHeader parentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(currentHeader.ParentHash!)!;
-        XdcBlockHeader grandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(parentHeader.ParentHash!)!;
+        XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        XdcBlockHeader headerNMinus1 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerN.ParentHash!)!;
+        XdcBlockHeader headerNMinus2 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus1.ParentHash!)!;
 
-        Assert.That(currentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(parentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(grandParentHeader.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerN.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus1.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus2.ExtraConsensusData, Is.Not.Null);
 
-        // Seed highest committed QCs from an older canonical window.
-        XdcBlockHeader oldIncomingHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(grandParentHeader.ParentHash!)!;
-        XdcBlockHeader oldParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(oldIncomingHeader.ParentHash!)!;
-        XdcBlockHeader oldGrandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(oldParentHeader.ParentHash!)!;
-
-        // Force a disjoint baseline round space while preserving required QC hash links.
-        QuorumCertificate oldGrandParentQc = new(
-            new BlockRoundInfo(
-                oldGrandParentHeader.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Hash,
-                1_000,
-                oldGrandParentHeader.ExtraConsensusData.QuorumCert.ProposedBlockInfo.BlockNumber),
-            oldGrandParentHeader.ExtraConsensusData.QuorumCert.Signatures,
-            oldGrandParentHeader.ExtraConsensusData.QuorumCert.GapNumber);
-        oldGrandParentHeader.ExtraConsensusData = new ExtraFieldsV2(oldGrandParentHeader.ExtraConsensusData.BlockRound, oldGrandParentQc);
-
-        QuorumCertificate oldParentQc = new(
-            new BlockRoundInfo(
-                oldGrandParentHeader.Hash!,
-                1_001,
-                oldGrandParentHeader.Number),
-            oldParentHeader.ExtraConsensusData!.QuorumCert.Signatures,
-            oldParentHeader.ExtraConsensusData.QuorumCert.GapNumber);
-        oldParentHeader.ExtraConsensusData = new ExtraFieldsV2(oldParentHeader.ExtraConsensusData.BlockRound, oldParentQc);
-
-        QuorumCertificate oldIncomingQc = new(
-            new BlockRoundInfo(
-                oldParentHeader.Hash!,
-                1_002,
-                oldParentHeader.Number),
-            oldIncomingHeader.ExtraConsensusData!.QuorumCert.Signatures,
-            oldIncomingHeader.ExtraConsensusData.QuorumCert.GapNumber);
-
+        // Seed highest committed QCs from canonical tip window.
         await forensicsProcessor.SetCommittedQCs(
-            [oldGrandParentHeader, oldParentHeader],
-            oldIncomingQc);
+            [headerNMinus2, headerNMinus1],
+            headerN.ExtraConsensusData!.QuorumCert);
 
         // Build a fork from the same grandparent; this gives a divergent chain segment.
-        Block forkBlock1 = await blockchain.AddBlockFromParent(grandParentHeader);
+        Block forkBlock1 = await blockchain.AddBlockFromParent(headerNMinus2);
         XdcBlockHeader forkHeader1 = (XdcBlockHeader)forkBlock1.Header;
         Block forkBlock2 = await blockchain.AddBlockFromParent(forkHeader1);
         XdcBlockHeader forkHeader2 = (XdcBlockHeader)forkBlock2.Header;
 
         Assert.That(forkHeader1.ExtraConsensusData, Is.Not.Null);
         Assert.That(forkHeader2.ExtraConsensusData, Is.Not.Null);
-        Assert.That(forkHeader1.Hash, Is.Not.EqualTo(parentHeader.Hash));
+        Assert.That(forkHeader1.Hash, Is.Not.EqualTo(headerNMinus1.Hash));
 
         // Normalize the fork window so SetCommittedQCs validation passes:
-        // qc on forkHeader1 must point to grandParentHeader.
+        // qc on forkHeader1 must point to headerNMinus2.
         QuorumCertificate forkHeader1Qc = new(
             new BlockRoundInfo(
-                grandParentHeader.Hash!,
-                parentHeader.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Round,
-                grandParentHeader.Number),
+                headerNMinus2.Hash!,
+                headerNMinus1.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Round,
+                headerNMinus2.Number),
             [],
             forkHeader1.ExtraConsensusData!.QuorumCert.GapNumber);
         forkHeader1.ExtraConsensusData = new ExtraFieldsV2(forkHeader1.ExtraConsensusData.BlockRound, forkHeader1Qc);
 
         // Compose incoming fork QCs in ancestor->descendant order and verify the same-round condition.
         QuorumCertificate[] incomingForkQcs = [
-            grandParentHeader.ExtraConsensusData!.QuorumCert,
+            headerNMinus2.ExtraConsensusData!.QuorumCert,
             forkHeader1Qc,
             forkHeader2.ExtraConsensusData!.QuorumCert
         ];
@@ -252,7 +206,7 @@ public class ForensicsTests
 
         ForensicsEvent forensicsEvent = await CaptureForensicsEvent(
             forensicsProcessor,
-            () => forensicsProcessor.ForensicsMonitoring([grandParentHeader, forkHeader1], incomingForkMonitoringQc));
+            () => forensicsProcessor.ForensicsMonitoring([headerNMinus2, forkHeader1], incomingForkMonitoringQc));
         Assert.That(forensicsEvent.ForensicsProof.ForensicsType, Is.EqualTo("QC"));
         using JsonDocument content = JsonDocument.Parse(forensicsEvent.ForensicsProof.Content);
         ulong smallerRound = ReadUInt64(content.RootElement
@@ -273,7 +227,7 @@ public class ForensicsTests
         // Forensics monitoring always refreshes committed-QC snapshot with the incoming valid window.
         highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-        Assert.That(highestCommittedQcs[0], Is.SameAs(grandParentHeader.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[0], Is.SameAs(headerNMinus2.ExtraConsensusData!.QuorumCert));
         Assert.That(highestCommittedQcs[1], Is.SameAs(forkHeader1Qc));
         Assert.That(highestCommittedQcs[2], Is.SameAs(incomingForkMonitoringQc));
     }
@@ -284,38 +238,65 @@ public class ForensicsTests
         using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 15, configurer: RegisterRealForensicsProcessor);
         ForensicsProcessor forensicsProcessor = (ForensicsProcessor)blockchain.Container.Resolve<IForensicsProcessor>();
 
-        XdcBlockHeader currentHeader = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
-        XdcBlockHeader parentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(currentHeader.ParentHash!)!;
-        XdcBlockHeader grandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(parentHeader.ParentHash!)!;
+        XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        XdcBlockHeader headerNMinus1 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerN.ParentHash!)!;
+        XdcBlockHeader headerNMinus2 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus1.ParentHash!)!;
 
-        Assert.That(currentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(parentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(grandParentHeader.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerN.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus1.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus2.ExtraConsensusData, Is.Not.Null);
 
-        // Seed highest committed QCs from the canonical chain tip window.
+        // Seed highest committed QCs with synthetic high rounds so incoming fork ancestry
+        // cannot match by round in the live ProcessForensics path.
+        QuorumCertificate baselineGrandParentQc = new(
+            new BlockRoundInfo(
+                headerNMinus2.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Hash,
+                1_000,
+                headerNMinus2.ExtraConsensusData.QuorumCert.ProposedBlockInfo.BlockNumber),
+            headerNMinus2.ExtraConsensusData.QuorumCert.Signatures,
+            headerNMinus2.ExtraConsensusData.QuorumCert.GapNumber);
+        headerNMinus2.ExtraConsensusData = new ExtraFieldsV2(headerNMinus2.ExtraConsensusData.BlockRound, baselineGrandParentQc);
+
+        QuorumCertificate baselineParentQc = new(
+            new BlockRoundInfo(
+                headerNMinus2.Hash!,
+                1_001,
+                headerNMinus2.Number),
+            headerNMinus1.ExtraConsensusData!.QuorumCert.Signatures,
+            headerNMinus1.ExtraConsensusData.QuorumCert.GapNumber);
+        headerNMinus1.ExtraConsensusData = new ExtraFieldsV2(headerNMinus1.ExtraConsensusData.BlockRound, baselineParentQc);
+
+        QuorumCertificate baselineIncomingQc = new(
+            new BlockRoundInfo(
+                headerNMinus1.Hash!,
+                1_002,
+                headerNMinus1.Number),
+            headerN.ExtraConsensusData!.QuorumCert.Signatures,
+            headerN.ExtraConsensusData.QuorumCert.GapNumber);
+
         await forensicsProcessor.SetCommittedQCs(
-            [grandParentHeader, parentHeader],
-            currentHeader.ExtraConsensusData!.QuorumCert);
+            [headerNMinus2, headerNMinus1],
+            baselineIncomingQc);
 
         // Build a fork from the same grandparent; this gives a divergent chain segment.
-        Block forkBlock1 = await blockchain.AddBlockFromParent(grandParentHeader);
+        Block forkBlock1 = await blockchain.AddBlockFromParent(headerNMinus2);
         XdcBlockHeader forkHeader1 = (XdcBlockHeader)forkBlock1.Header;
         Block forkBlock2 = await blockchain.AddBlockFromParent(forkHeader1);
         XdcBlockHeader forkHeader2 = (XdcBlockHeader)forkBlock2.Header;
 
         Assert.That(forkHeader1.ExtraConsensusData, Is.Not.Null);
         Assert.That(forkHeader2.ExtraConsensusData, Is.Not.Null);
-        Assert.That(forkHeader1.Hash, Is.Not.EqualTo(parentHeader.Hash));
+        Assert.That(forkHeader1.Hash, Is.Not.EqualTo(headerNMinus1.Hash));
 
         // Construct fork QCs with rounds intentionally far from canonical rounds.
-        ulong forkRound1 = currentHeader.ExtraConsensusData.BlockRound + 20;
+        ulong forkRound1 = headerN.ExtraConsensusData.BlockRound + 20;
         ulong forkRound2 = forkRound1 + 1;
 
         QuorumCertificate forkHeader1Qc = new(
             new BlockRoundInfo(
-                grandParentHeader.Hash!,
+                headerNMinus2.Hash!,
                 forkRound1,
-                grandParentHeader.Number),
+                headerNMinus2.Number),
             [],
             forkHeader1.ExtraConsensusData!.QuorumCert.GapNumber);
         forkHeader1.ExtraConsensusData = new ExtraFieldsV2(forkHeader1.ExtraConsensusData.BlockRound, forkHeader1Qc);
@@ -328,10 +309,23 @@ public class ForensicsTests
             [],
             forkHeader2.ExtraConsensusData!.QuorumCert.GapNumber);
 
+        // Force the incoming ancestry used by ProcessForensics to be disjoint in round space
+        // from highestCommittedQcs by replacing headerNMinus2 QC with a synthetic one.
+        QuorumCertificate syntheticAncestorQc = new(
+            new BlockRoundInfo(
+                headerNMinus2.Hash!,
+                forkRound1 + 100,
+                headerNMinus2.Number),
+            [],
+            forkHeader1Qc.GapNumber);
+        headerNMinus2.ExtraConsensusData = new ExtraFieldsV2(
+            headerNMinus2.ExtraConsensusData!.BlockRound,
+            syntheticAncestorQc);
+
         QuorumCertificate[] incomingForkQcs = [
             incomingForkMonitoringQc,
             forkHeader1Qc,
-            grandParentHeader.ExtraConsensusData!.QuorumCert
+            syntheticAncestorQc
         ];
         QuorumCertificate[] highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         bool hasSameRoundQc = forensicsProcessor.TryFindQCsInSameRound(
@@ -343,7 +337,7 @@ public class ForensicsTests
 
         ForensicsEvent forensicsEvent = await CaptureForensicsEvent(
             forensicsProcessor,
-            () => forensicsProcessor.ForensicsMonitoring([grandParentHeader, forkHeader1], incomingForkMonitoringQc));
+            () => forensicsProcessor.ForensicsMonitoring([headerNMinus2, forkHeader1], incomingForkMonitoringQc));
         Assert.That(forensicsEvent.ForensicsProof.ForensicsType, Is.EqualTo("QC"));
         using JsonDocument content = JsonDocument.Parse(forensicsEvent.ForensicsProof.Content);
         ulong smallerRound = ReadUInt64(content.RootElement
@@ -364,9 +358,66 @@ public class ForensicsTests
         // Even in the no-same-round case, committed-QC snapshot should refresh to incoming valid window.
         highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-        Assert.That(highestCommittedQcs[0], Is.SameAs(grandParentHeader.ExtraConsensusData!.QuorumCert));
+        Assert.That(highestCommittedQcs[0], Is.SameAs(headerNMinus2.ExtraConsensusData!.QuorumCert));
         Assert.That(highestCommittedQcs[1], Is.SameAs(forkHeader1Qc));
         Assert.That(highestCommittedQcs[2], Is.SameAs(incomingForkMonitoringQc));
+    }
+
+    [Test]
+    public async Task TestForensicsAcrossEpoch()
+    {
+        // Use a short epoch in tests so we can cross epoch boundaries with fewer blocks.
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, configurer: RegisterRealForensicsProcessor);
+        blockchain.ChangeReleaseSpec(spec =>
+        {
+            spec.EpochLength = 30;
+            spec.Gap = 15;
+        });
+        await blockchain.AddBlocks(121);
+
+        // Build proof from QCs in two different epochs.
+        ForensicsProcessor forensicsProcessor = (ForensicsProcessor)blockchain.Container.Resolve<IForensicsProcessor>();
+
+        XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        Assert.That(headerN.ExtraConsensusData, Is.Not.Null);
+
+        // Walk back far enough to guarantee a different epoch.
+        XdcBlockHeader oldEpochHeader = headerN;
+        for (int i = 0; i < 70; i++)
+        {
+            oldEpochHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(oldEpochHeader.ParentHash!)!;
+        }
+        Assert.That(oldEpochHeader.ExtraConsensusData, Is.Not.Null);
+
+        QuorumCertificate oldEpochQc = oldEpochHeader.ExtraConsensusData!.QuorumCert;
+        QuorumCertificate currentQc = headerN.ExtraConsensusData!.QuorumCert;
+
+        ForensicsEvent forensicsEvent = await CaptureForensicsEvent(
+            forensicsProcessor,
+            () => forensicsProcessor.SendForensicProof(oldEpochQc, currentQc));
+
+        Assert.That(forensicsEvent.ForensicsProof.ForensicsType, Is.EqualTo("QC"));
+
+        using JsonDocument content = JsonDocument.Parse(forensicsEvent.ForensicsProof.Content);
+        bool acrossEpoch = content.RootElement.GetProperty("acrossEpoch").GetBoolean();
+        string divergingBlockHash = content.RootElement.GetProperty("divergingBlockHash").GetString()!;
+        string smallerHash = content.RootElement
+            .GetProperty("smallerRoundInfo")
+            .GetProperty("quorumCert")
+            .GetProperty("proposedBlockInfo")
+            .GetProperty("hash")
+            .GetString()!;
+        string largerHash = content.RootElement
+            .GetProperty("largerRoundInfo")
+            .GetProperty("quorumCert")
+            .GetProperty("proposedBlockInfo")
+            .GetProperty("hash")
+            .GetString()!;
+
+        // XDC test also verifies ID composition from the emitted content.
+        string expectedId = $"{divergingBlockHash}:{smallerHash}:{largerHash}";
+        Assert.That(forensicsEvent.ForensicsProof.Id, Is.EqualTo(expectedId));
+        Assert.That(acrossEpoch, Is.True);
     }
 
     [Test]
@@ -376,22 +427,24 @@ public class ForensicsTests
         IForensicsProcessor forensicsProcessor = blockchain.Container.Resolve<IForensicsProcessor>();
         IXdcConsensusContext context = blockchain.XdcContext;
 
-        XdcBlockHeader currentHeader = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
-        XdcBlockHeader parentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(currentHeader.ParentHash!)!;
+        XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        XdcBlockHeader headerNMinus1 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerN.ParentHash!)!;
 
-        Assert.That(currentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(parentHeader.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerN.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus1.ExtraConsensusData, Is.Not.Null);
 
-        // Build a sibling fork block at the same height as currentHeader.
-        Block forkBlock = await blockchain.AddBlockFromParent(parentHeader);
+        // Build a sibling fork block at the same height as headerN.
+        Block forkBlock = await blockchain.AddBlockFromParent(headerNMinus1);
         XdcBlockHeader forkHeader = (XdcBlockHeader)forkBlock.Header;
-        Assert.That(forkHeader.Hash, Is.Not.EqualTo(currentHeader.Hash));
+        Assert.That(forkHeader.Hash, Is.Not.EqualTo(headerN.Hash));
 
         // Same signer, same round, different block hashes => vote equivocation scenario.
-        PrivateKey signerKey = blockchain.MasterNodeCandidates.First();
+        EpochSwitchInfo epochSwitchInfo = blockchain.EpochSwitchManager.GetEpochSwitchInfo(headerN)!;
+        Address currentMasternode = epochSwitchInfo.Masternodes.First();
+        PrivateKey signerKey = blockchain.MasterNodeCandidates.First(candidate => candidate.Address == currentMasternode);
         ulong round = context.CurrentRound;
-        ulong gap = currentHeader.ExtraConsensusData.QuorumCert.GapNumber;
-        BlockRoundInfo canonicalRoundInfo = new(currentHeader.Hash!, round, currentHeader.Number);
+        ulong gap = headerN.ExtraConsensusData.QuorumCert.GapNumber;
+        BlockRoundInfo canonicalRoundInfo = new(headerN.Hash!, round, headerN.Number);
         BlockRoundInfo forkRoundInfo = new(forkHeader.Hash!, round, forkHeader.Number);
         Vote canonicalVote = XdcTestHelper.BuildSignedVote(canonicalRoundInfo, gap, signerKey);
         Vote forkVote = XdcTestHelper.BuildSignedVote(forkRoundInfo, gap, signerKey);
@@ -423,25 +476,29 @@ public class ForensicsTests
         using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 15, configurer: RegisterRealForensicsProcessor);
         IForensicsProcessor forensicsProcessor = blockchain.Container.Resolve<IForensicsProcessor>();
 
-        XdcBlockHeader currentHeader = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
-        XdcBlockHeader parentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(currentHeader.ParentHash!)!;
-        XdcBlockHeader grandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(parentHeader.ParentHash!)!;
-        XdcBlockHeader greatGrandParentHeader = (XdcBlockHeader)blockchain.BlockTree.FindHeader(grandParentHeader.ParentHash!)!;
+        XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        XdcBlockHeader headerNMinus1 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerN.ParentHash!)!;
+        XdcBlockHeader headerNMinus2 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus1.ParentHash!)!;
+        XdcBlockHeader headerNMinus3 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus2.ParentHash!)!;
+        XdcBlockHeader headerNMinus4 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerNMinus3.ParentHash!)!;
 
-        Assert.That(currentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(parentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(grandParentHeader.ExtraConsensusData, Is.Not.Null);
-        Assert.That(greatGrandParentHeader.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerN.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus1.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus2.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus3.ExtraConsensusData, Is.Not.Null);
+        Assert.That(headerNMinus4.ExtraConsensusData, Is.Not.Null);
 
         // Mirror XDC test intent: set committed QCs on canonical chain, then submit
         // a vote that does not extend from the committed ancestor and has a higher round.
-        PrivateKey signerKey = blockchain.MasterNodeCandidates.First();
+        EpochSwitchInfo epochSwitchInfo = blockchain.EpochSwitchManager.GetEpochSwitchInfo(headerN)!;
+        Address currentMasternode = epochSwitchInfo.Masternodes.First();
+        PrivateKey signerKey = blockchain.MasterNodeCandidates.First(candidate => candidate.Address == currentMasternode);
         ulong baselineQcRound = 14;
         ulong incomingVoteRound = 16;
-        ulong gap = currentHeader.ExtraConsensusData!.QuorumCert.GapNumber;
+        ulong gap = headerN.ExtraConsensusData!.QuorumCert.GapNumber;
 
         Vote qcSignedVote = XdcTestHelper.BuildSignedVote(
-            new BlockRoundInfo(parentHeader.Hash!, baselineQcRound, parentHeader.Number),
+            new BlockRoundInfo(headerNMinus1.Hash!, baselineQcRound, headerNMinus1.Number),
             gap,
             signerKey);
         QuorumCertificate baselineIncomingQc = new(
@@ -450,11 +507,11 @@ public class ForensicsTests
             gap);
 
         await forensicsProcessor.SetCommittedQCs(
-            [grandParentHeader, parentHeader],
+            [headerNMinus2, headerNMinus1],
             baselineIncomingQc);
 
         Vote incomingVote = XdcTestHelper.BuildSignedVote(
-            new BlockRoundInfo(greatGrandParentHeader.Hash!, incomingVoteRound, greatGrandParentHeader.Number),
+            new BlockRoundInfo(headerNMinus4.Hash!, incomingVoteRound, headerNMinus4.Number),
             gap,
             signerKey);
 
@@ -481,18 +538,18 @@ public class ForensicsTests
 
     private static async Task<ForensicsEvent> CaptureForensicsEvent(IForensicsProcessor forensicsProcessor, Func<Task> trigger)
     {
-        TaskCompletionSource<ForensicsEvent> forensicsEventWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler<ForensicsEvent> handler = (_, args) => forensicsEventWaitHandle.TrySetResult(args);
+        TaskCompletionSource<ForensicsEvent> forensicsEventTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<ForensicsEvent> handler = (_, args) => forensicsEventTcs.TrySetResult(args);
         forensicsProcessor.ForensicsEventEmitted += handler;
         try
         {
             await trigger();
-            Task completedTask = await Task.WhenAny(forensicsEventWaitHandle.Task, Task.Delay(5_000));
-            if (completedTask != forensicsEventWaitHandle.Task)
+            Task completedTask = await Task.WhenAny(forensicsEventTcs.Task, Task.Delay(5_000));
+            if (completedTask != forensicsEventTcs.Task)
             {
                 Assert.Fail("Timed out waiting for forensics event.");
             }
-            return await forensicsEventWaitHandle.Task;
+            return await forensicsEventTcs.Task;
         }
         finally
         {
