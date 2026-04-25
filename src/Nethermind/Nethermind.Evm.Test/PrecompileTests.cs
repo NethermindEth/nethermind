@@ -70,12 +70,22 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     protected void RunTest(string input, string output, bool status)
     {
         byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Instance.Run(inputData, DefaultSpec);
+        byte[] outputData = Convert.FromHexString(output);
+        RunTest(inputData, outputData, status);
+
+        ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(inputData);
+        if (!normalized.Span.SequenceEqual(inputData))
+            RunTest(normalized, outputData, status, "normalized input should produce same output");
+    }
+
+    private static void RunTest(ReadOnlyMemory<byte> input, byte[] output, bool status, string? reason = null)
+    {
+        Result<byte[]> result = Instance.Run(input, DefaultSpec);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
+            Assert.That(result.IsSuccess, Is.EqualTo(status), reason);
+            Assert.That(result.Data, Is.EqualTo(output), reason);
         }
     }
 
