@@ -169,6 +169,20 @@ public class SimulateTxExecutor<TTrace>(
                 }
                 lastBlockNumber = (long)givenNumber;
 
+                if (blockToSimulate.StateOverrides is not null)
+                {
+                    IReleaseSpec spec = specProvider.GetSpec((long)givenNumber, blockToSimulate.BlockOverrides.Time);
+                    foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
+                    {
+                        if (accountOverride.MovePrecompileToAddress is null) continue;
+
+                        if (spec.IsPrecompile(address) && accountOverride.MovePrecompileToAddress == address)
+                            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
+                                "MovePrecompileToAddress referenced itself in replacement",
+                                ErrorCodes.MovePrecompileSelfReference);
+                    }
+                }
+
                 completeBlockStateCalls.Add(blockToSimulate);
             }
             call.BlockStateCalls = [.. completeBlockStateCalls];
