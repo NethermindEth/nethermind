@@ -4,7 +4,6 @@
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -31,22 +30,7 @@ public partial class BlockProcessor
             => beaconBlockRootHandler.GetAccessList(block, spec);
 
         public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
-        {
-            if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null)
-            {
-                return;
-            }
-
-            Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-            using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(Hash256.Size, out byte[] parentHashData);
-            blockHeader.ParentHash.Bytes.CopyTo(parentHashData);
-            SystemCall systemTx = new(eip2935Account)
-            {
-                Data = new System.ReadOnlyMemory<byte>(parentHashData, 0, Hash256.Size),
-            };
-
-            balManager.GetTxProcessor(0).Execute(systemTx, NullTxTracer.Instance);
-        }
+            => balManager.ApplyBlockhashStateChanges(blockHeader, spec);
 
         public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber, IReleaseSpec spec)
             => blockHashStore.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);

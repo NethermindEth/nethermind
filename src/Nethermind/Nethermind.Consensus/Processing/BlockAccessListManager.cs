@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
@@ -369,6 +370,12 @@ public class BlockAccessListManager(
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+    }
+
+    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+    {
+        CheckInitialized();
+        new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
