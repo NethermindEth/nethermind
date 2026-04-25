@@ -31,13 +31,13 @@ jobs:
           sdk_version=$(echo "$manifest" | jq -r '."latest-sdk"')
 
           # Get the digests for the specified tags
-          runtime_chiseled_tag=${runtime_version}-noble-chiseled
+          runtime_chiseled_tag=${runtime_version}-resolute-chiseled
           runtime_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_chiseled_tag} --no-tags | jq -r '.Digest')
 
-          runtime_tag=${runtime_version}-noble
+          runtime_tag=${runtime_version}-resolute
           runtime_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_tag} --no-tags | jq -r '.Digest')
 
-          sdk_tag=${sdk_version}-noble
+          sdk_tag=${sdk_version}-resolute
           sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:${sdk_tag} --no-tags | jq -r '.Digest')
 
           # Update Dockerfiles
