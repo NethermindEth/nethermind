@@ -1625,15 +1625,14 @@ public partial class EngineModuleTests
 
         // Count FindHeader calls made by the repeated FCU only. Safe=Keccak.Zero skips its
         // ValidateBlockHash lookup, so the baseline calls are: 1 to resolve head, 1 for finalized
-        // validation, 1 for ShouldProceedWithReorg's stored-finalized lookup, 1 for
-        // FindMainChainAncestorNumber (a3→a2, stops at first main-chain ancestor), plus the
-        // IsInconsistent walk (1 under the optimization — stops at a2 rather than continuing to a1).
+        // validation, plus the IsInconsistent walk (1 under the optimization, 2 without).
+        // ShouldProceedWithReorg is skipped because head is unchanged (blocks is null → no reorg).
         spy.ResetCounters();
         ForkchoiceStateV1 repeated = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-        spy.FindHeaderCalls.Should().Be(5, "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
+        spy.FindHeaderCalls.Should().Be(3, "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
     }
 
     [Test]

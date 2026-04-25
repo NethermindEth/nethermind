@@ -263,7 +263,7 @@ public class ForkchoiceUpdatedHandler(
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (!ShouldProceedWithReorg(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
+        if (blocks is not null && !ShouldProceedWithReorg(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
             return result;
         }
