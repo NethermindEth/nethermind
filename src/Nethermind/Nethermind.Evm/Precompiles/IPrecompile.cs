@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Precompiles
         bool SupportsCaching => true;
 
         /// <summary>
-        /// Returns the normalized input version, that should produce the same <see cref="Run"/> output.
+        /// Returns the normalized input version, that produces the same <see cref="Run"/> output.
         /// </summary>
         /// <remarks>
         /// Used to minimize caching memory usage.

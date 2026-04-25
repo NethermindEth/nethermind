@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class KzgPointEvaluationPrecompileTests: PrecompileTests<KzgPointEvaluationPrecompile, KzgPointEvaluationPrecompileTests>
+public class KzgPointEvaluationPrecompileTests : PrecompileTests<KzgPointEvaluationPrecompile, KzgPointEvaluationPrecompileTests>
 {
     private static readonly byte[] _predefinedSuccessAnswer =
         Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
