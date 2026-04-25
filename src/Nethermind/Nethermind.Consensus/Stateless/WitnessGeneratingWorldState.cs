@@ -155,16 +155,16 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return inner.IsDeadAccount(address);
     }
 
-    public ref readonly UInt256 GetBalance(Address address)
+    public UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
-        return ref inner.GetBalance(address);
+        return inner.GetBalance(address);
     }
 
-    public ref readonly ValueHash256 GetCodeHash(Address address)
+    public ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
-        return ref inner.GetCodeHash(address);
+        return inner.GetCodeHash(address);
     }
 
     public byte[] GetOriginal(in StorageCell storageCell)

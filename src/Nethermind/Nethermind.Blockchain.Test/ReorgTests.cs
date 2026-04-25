@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
@@ -90,25 +91,28 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
+        BlockAccessListManager balManager = new(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance));
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.ParallelBlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider, specProvider, balManager),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(stateProvider),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
+            new ExecutionRequestsProcessor(transactionProcessor),
+            balManager);
         BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             blockhashProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new BlocksConfig());
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

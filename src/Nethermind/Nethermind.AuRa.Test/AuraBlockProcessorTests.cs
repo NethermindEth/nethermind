@@ -6,10 +6,12 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -192,11 +194,15 @@ namespace Nethermind.AuRa.Test
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
+            BlockAccessListManager balManager = new(stateProvider, GnosisSpecProvider.Instance, blockhashProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider, HoodiSpecProvider.Instance, balManager);
             AuRaBlockProcessor processor = new(
                 GnosisSpecProvider.Instance,
+                new AuRaChainSpecEngineParameters(),
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+                transactionsExecutor,
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -204,6 +210,7 @@ namespace Nethermind.AuRa.Test
                 blockTree,
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
+                balManager,
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
@@ -213,8 +220,9 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                Substitute.For<IBlockhashProvider>(),
-                LimboLogs.Instance);
+                blockhashProvider,
+                LimboLogs.Instance,
+                new BlocksConfig());
 
             return (branchProcessor, stateProvider, blockTree);
         }
