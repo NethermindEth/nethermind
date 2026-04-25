@@ -20,7 +20,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State;
@@ -255,12 +254,12 @@ public partial class DebugRpcModuleTests
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
     {
         yield return new TestCaseData(0L) { TestName = "GenesisBlock" };
-        yield return new TestCaseData(1L) { TestName = "BlockWithTransfer" };
-        yield return new TestCaseData(2L) { TestName = "BlockWithContractDeploy" };
-        yield return new TestCaseData(3L) { TestName = "BlockWithContractCall" };
-        yield return new TestCaseData(4L) { TestName = "Block4" };
-        yield return new TestCaseData(5L) { TestName = "Block5" };
-        yield return new TestCaseData(6L) { TestName = "Block6" };
+        yield return new TestCaseData(1L) { TestName = "StartupBlock1" };
+        yield return new TestCaseData(2L) { TestName = "StartupBlock2" };
+        yield return new TestCaseData(3L) { TestName = "StartupBlock3" };
+        yield return new TestCaseData(4L) { TestName = "BlockWithTransfer" };
+        yield return new TestCaseData(5L) { TestName = "BlockWithContractDeploy" };
+        yield return new TestCaseData(6L) { TestName = "BlockWithContractCall" };
     }
 
     private static async Task<Block> CreateTransferTx(TestRpcBlockchain blockchain)

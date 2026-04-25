@@ -65,7 +65,7 @@ public class WitnessHeaderForRpc
     public Bloom? LogsBloom { get; }
 
     public UInt256 Difficulty { get; }
-    public long? Number { get; }
+    public long Number { get; }
     public long GasLimit { get; }
     public long GasUsed { get; }
     public UInt256 Timestamp { get; }

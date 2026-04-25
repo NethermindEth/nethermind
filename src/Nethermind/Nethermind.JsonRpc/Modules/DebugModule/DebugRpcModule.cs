@@ -630,6 +630,11 @@ public class DebugRpcModule(
             return ResultWrapper<WitnessForRpc>.Fail($"Unable to find parent for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
 
+        if (!blockchainBridge.HasStateForBlock(parent))
+        {
+            return GetStateFailureResult<WitnessForRpc>(parent);
+        }
+
         using Witness witness = blockchainBridge.GenerateExecutionWitness(parent, block);
         return ResultWrapper<WitnessForRpc>.Success(new WitnessForRpc(witness));
     }
@@ -649,7 +654,12 @@ public class DebugRpcModule(
             return ResultWrapper<WitnessForRpc>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
         }
 
-        callRequest.Gas ??= header.GasLimit;
+        if (!blockchainBridge.HasStateForBlock(header))
+        {
+            return GetStateFailureResult<WitnessForRpc>(header);
+        }
+
+        callRequest.EnsureDefaults(jsonRpcConfig.GasCap);
 
         Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: false);
         if (!txResult.Success(out Transaction? tx, out string? error))
