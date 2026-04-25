@@ -21,15 +21,12 @@ namespace Nethermind.Config.Test
         [TestCase(typeof(long), 0L)]
         public void GetDefault_returns_correct_default_value_for_value_types(Type type, object expected)
         {
-            object result = ConfigSourceHelper.GetDefault(type);
+            object? result = ConfigSourceHelper.GetDefault(type);
             Assert.That(result, Is.EqualTo(expected));
         }
 
         [Test]
-        public void GetDefault_returns_null_for_reference_types()
-        {
-            Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
-        }
+        public void GetDefault_returns_null_for_reference_types() => Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
     }
 
     [TestFixture]

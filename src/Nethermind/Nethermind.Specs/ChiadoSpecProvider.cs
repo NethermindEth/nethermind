@@ -53,7 +53,13 @@ public class ChiadoSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Chiado;
     public ulong ChainId => BlockchainIds.Chiado;
     public string SealEngine => SealEngineType.AuRa;
-    public ForkActivation[] TransitionActivations { get; }
+    public ForkActivation[] TransitionActivations { get; } =
+    [
+        (0, ShanghaiTimestamp),
+        (0, CancunTimestamp),
+        (0, PragueTimestamp),
+        (0, OsakaTimestamp),
+    ];
 
     public static ChiadoSpecProvider Instance { get; } = new();
 }

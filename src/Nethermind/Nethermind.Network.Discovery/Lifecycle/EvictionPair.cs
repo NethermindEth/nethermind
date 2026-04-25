@@ -3,14 +3,8 @@
 
 namespace Nethermind.Network.Discovery.Lifecycle;
 
-public class EvictionPair
+public class EvictionPair(INodeLifecycleManager evictionCandidate, INodeLifecycleManager replacementCandidate)
 {
-    public EvictionPair(INodeLifecycleManager evictionCandidate, INodeLifecycleManager replacementCandidate)
-    {
-        EvictionCandidate = evictionCandidate;
-        ReplacementCandidate = replacementCandidate;
-    }
-
-    public INodeLifecycleManager EvictionCandidate { get; init; }
-    public INodeLifecycleManager ReplacementCandidate { get; init; }
+    public INodeLifecycleManager EvictionCandidate { get; init; } = evictionCandidate;
+    public INodeLifecycleManager ReplacementCandidate { get; init; } = replacementCandidate;
 }

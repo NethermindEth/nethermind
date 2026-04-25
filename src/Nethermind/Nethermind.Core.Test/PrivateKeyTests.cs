@@ -15,10 +15,7 @@ public class PrivateKeyTests
     private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
     [OneTimeSetUp]
-    public void SetUp()
-    {
-        Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-    }
+    public void SetUp() => Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
 
     [TestCase(0)]
     [TestCase(1)]
@@ -33,18 +30,14 @@ public class PrivateKeyTests
     }
 
     [Test]
-    public void Cannot_be_initialized_with_null_bytes()
-    {
+    public void Cannot_be_initialized_with_null_bytes() =>
         // ReSharper disable once ObjectCreationAsStatement
         Assert.Throws<ArgumentNullException>(static () => new PrivateKey((byte[])null!));
-    }
 
     [Test]
-    public void Cannot_be_initialized_with_null_string()
-    {
+    public void Cannot_be_initialized_with_null_string() =>
         // ReSharper disable once ObjectCreationAsStatement
         Assert.Throws<ArgumentNullException>(static () => new PrivateKey((string)null!));
-    }
 
     [Test]
     public void Bytes_are_stored_correctly()

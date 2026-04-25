@@ -18,30 +18,21 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-internal class QuorumCertificateManager : IQuorumCertificateManager
+internal class QuorumCertificateManager(
+    IXdcConsensusContext context,
+    IBlockTree blockTree,
+    ISpecProvider xdcConfig,
+    IEpochSwitchManager epochSwitchManager,
+    ILogManager logManager) : IQuorumCertificateManager
 {
-    public QuorumCertificateManager(
-        IXdcConsensusContext context,
-        IBlockTree blockTree,
-        ISpecProvider xdcConfig,
-        IEpochSwitchManager epochSwitchManager,
-        ILogManager logManager)
-    {
-        _context = context;
-        _blockTree = blockTree;
-        _specProvider = xdcConfig;
-        _epochSwitchManager = epochSwitchManager;
-        _logger = logManager.GetClassLogger<QuorumCertificateManager>();
-    }
+    private IXdcConsensusContext _context { get; } = context;
+    private readonly IBlockTree _blockTree = blockTree;
+    private IEpochSwitchManager _epochSwitchManager { get; } = epochSwitchManager;
 
-    private IXdcConsensusContext _context { get; }
-    private readonly IBlockTree _blockTree;
-    private IEpochSwitchManager _epochSwitchManager { get; }
+    private ILogger _logger = logManager.GetClassLogger<QuorumCertificateManager>();
 
-    private ILogger _logger;
-
-    private ISpecProvider _specProvider { get; }
-    private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
+    private ISpecProvider _specProvider { get; } = xdcConfig;
+    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly static VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
@@ -54,7 +45,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             _context.HighestQC = qc;
         }
 
-        var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
+        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
             throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 
@@ -148,7 +139,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
 
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
-        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Full)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
+        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
         //Mark grand parent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
         error = null;

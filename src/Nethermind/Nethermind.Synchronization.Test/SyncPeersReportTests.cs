@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.Test
             IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
-            StubSyncPeer syncPeer = new StubSyncPeer(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
+            StubSyncPeer syncPeer = new(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
 
             syncPeer.HeadNumber = head;
 
@@ -178,22 +178,14 @@ namespace Nethermind.Synchronization.Test
             protected override TimeSpan InitTimeout { get; } = default;
             public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = static delegate { };
             public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = static delegate { };
-            public override void Init()
-            {
+            public override void Init() =>
                 throw new NotImplementedException();
-            }
-            public override void HandleMessage(ZeroPacket message)
-            {
+            protected override void HandleMessageCore(ZeroPacket message) =>
                 throw new NotImplementedException();
-            }
-            public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
-            {
+            public override void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
                 throw new NotImplementedException();
-            }
-            protected override void OnDisposed()
-            {
+            protected override void OnDisposed() =>
                 throw new NotImplementedException();
-            }
         }
     }
 }

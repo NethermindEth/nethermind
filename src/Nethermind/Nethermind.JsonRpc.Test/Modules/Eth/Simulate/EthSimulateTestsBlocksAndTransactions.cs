@@ -182,7 +182,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
@@ -223,7 +223,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
@@ -264,7 +264,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
@@ -342,7 +342,7 @@ public class EthSimulateTestsBlocksAndTransactions
             ]
         };
 
-        var result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         SimulateCallResult callResult = result.Data.First().Calls.First();
@@ -366,8 +366,8 @@ public class EthSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
         spec.IsEip7708Enabled = eip7708;
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        var logs = result.Data.First().Calls.First().Logs.ToArray();
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+        Log[] logs = result.Data.First().Calls.First().Logs.ToArray();
         Assert.That(logs.Length, Is.EqualTo(1));
         Assert.That(logs.First().Address == (eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender));
     }
@@ -381,7 +381,7 @@ public class EthSimulateTestsBlocksAndTransactions
         response.Should().BeOfType<JsonRpcSuccessResponse>();
         JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = (IReadOnlyList<SimulateBlockResult<SimulateCallResult>>)successResponse.Result!;
-        var logs = data[0].Calls.First().Logs.ToArray();
+        Log[] logs = data[0].Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
     }
 
@@ -426,23 +426,133 @@ public class EthSimulateTestsBlocksAndTransactions
             ]
         };
 
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
-        var block = result.Data.First();
+        SimulateBlockResult<SimulateCallResult> block = result.Data.First();
         Assert.That(block.Calls, Has.Count.EqualTo(2));
 
-        var calls = block.Calls.ToArray();
+        SimulateCallResult[] calls = block.Calls.ToArray();
 
-        var tx0Logs = calls[0].Logs.ToArray();
+        Log[] tx0Logs = calls[0].Logs.ToArray();
         Assert.That(tx0Logs, Has.Length.EqualTo(2));
         Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
         Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
 
-        var tx1Logs = calls[1].Logs.ToArray();
+        Log[] tx1Logs = calls[1].Logs.ToArray();
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
+    }
+
+    [Test]
+    public async Task Test_eth_simulate_no_validation_skips_balance_check()
+    {
+        // Regression: eth_simulateV1 with validation:false must not return -38014 (InsufficientFunds)
+        // for a value transfer from a zero-balance address.
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    Calls =
+                    [
+                        new EIP1559TransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = 1_000_000.Ether,
+                        }
+                    ]
+                }
+            ],
+            Validation = false
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        Assert.That(result.Data, Has.Count.EqualTo(1));
+        Assert.That(result.Data[0].Calls, Has.Count.EqualTo(1));
+        SimulateCallResult call = result.Data[0].Calls.First();
+        Assert.That(call.Error, Is.Null);
+        Assert.That(call.Status, Is.EqualTo(1ul));
+    }
+
+    [TestCase(
+        """{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000001":{"MovePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}}]}""",
+        ErrorCodes.MovePrecompileSelfReference,
+        "MovePrecompileToAddress referenced itself in replacement",
+        TestName = "SelfReference_38022")]
+    public async Task eth_simulateV1_MovePrecompileToAddress_invalid_override_returns_error(string payloadJson, int expectedErrorCode, string expectedMessage)
+    {
+        EthereumJsonSerializer serializer = new();
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        result.ErrorCode.Should().Be(expectedErrorCode);
+        result.Result.Error.Should().Be(expectedMessage);
+    }
+
+    // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
+    // Verifies that blockOverrides.time is respected by the EVM TIMESTAMP opcode in eth_simulateV1
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Test_eth_simulateV1_block_override_time_is_seen_by_timestamp_opcode(bool validation)
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+        ulong headTimestamp = chain.BlockFinder.Head!.Header.Timestamp;
+        ulong futureTimestamp = headTimestamp + 24000;
+
+        // Contract: TIMESTAMP PUSH1 0 MSTORE PUSH1 0x20 PUSH1 0 RETURN (reads block.timestamp and returns it)
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            Validation = validation,
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { Time = futureTimestamp, BaseFeePerGas = 0 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x4260005260206000f3") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractAddress,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        SimulateCallResult call = result.Data.First().Calls.First();
+        Assert.That(call.Error, Is.Null, call.Error?.Message);
+
+        // returnData should be the 32-byte ABI encoding of futureTimestamp
+        byte[] returnData = call.ReturnData ?? [];
+        UInt256 returnedTimestamp = new(returnData, isBigEndian: true);
+        Assert.That((ulong)returnedTimestamp, Is.EqualTo(futureTimestamp),
+            $"Expected block.timestamp = {futureTimestamp} (overridden), got {returnedTimestamp}");
     }
 }

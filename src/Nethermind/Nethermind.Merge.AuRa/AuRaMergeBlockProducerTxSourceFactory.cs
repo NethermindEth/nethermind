@@ -10,8 +10,5 @@ namespace Nethermind.Merge.AuRa;
 
 public class AuRaMergeBlockProducerTxSourceFactory(Func<StartBlockProducerAuRa> startBlockProducerFactory) : IBlockProducerTxSourceFactory
 {
-    public ITxSource Create()
-    {
-        return startBlockProducerFactory().CreateTxPoolTxSource();
-    }
+    public ITxSource Create() => startBlockProducerFactory().CreateTxPoolTxSource();
 }

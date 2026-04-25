@@ -67,7 +67,7 @@ namespace Nethermind.Crypto
             bool applyEip155 = useSignatureChainId
                                || tx.Signature.V == CalculateV(ecdsa.ChainId, false)
                                || tx.Signature.V == CalculateV(ecdsa.ChainId, true);
-            var chainId = tx.Type switch
+            ulong chainId = tx.Type switch
             {
                 TxType.Legacy when useSignatureChainId => tx.Signature.ChainId.Value,
                 TxType.Legacy => ecdsa.ChainId,

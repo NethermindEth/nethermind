@@ -7,15 +7,10 @@ using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class BlockHeadersMessageSerializer : IZeroInnerMessageSerializer<BlockHeadersMessage>
+    public class BlockHeadersMessageSerializer(IHeaderDecoder headerDecoder = null) : IZeroInnerMessageSerializer<BlockHeadersMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockHeadersMessage>(NethermindSyncLimits.MaxHeaderFetch, nameof(BlockHeadersMessage.BlockHeaders));
-        private readonly IHeaderDecoder _headerDecoder;
-
-        public BlockHeadersMessageSerializer(IHeaderDecoder headerDecoder = null)
-        {
-            _headerDecoder = headerDecoder ?? new HeaderDecoder();
-        }
+        private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
 
         public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
         {

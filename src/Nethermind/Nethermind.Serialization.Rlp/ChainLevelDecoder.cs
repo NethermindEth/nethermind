@@ -9,11 +9,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class ChainLevelDecoder : RlpValueDecoder<ChainLevelInfo>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
+    public sealed class ChainLevelDecoder() : RlpValueDecoder<ChainLevelInfo>
     {
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
-        public ChainLevelDecoder() { }
-
         public override void Encode(RlpStream stream, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -75,10 +73,7 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
-        }
+        public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotImplementedException();
 
         private static int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

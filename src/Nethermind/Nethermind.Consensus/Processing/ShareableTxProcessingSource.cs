@@ -31,29 +31,16 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
 
     private class EnvPoolPolicy(IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public IReadOnlyTxProcessorSource Create()
-        {
-            return envFactory.Create();
-        }
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create();
 
-        public bool Return(IReadOnlyTxProcessorSource obj)
-        {
-            return true;
-        }
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private class ScopeWrapper : IReadOnlyTxProcessingScope
+    private class ScopeWrapper(IReadOnlyTxProcessorSource source, ObjectPool<IReadOnlyTxProcessorSource> envPool, IReadOnlyTxProcessingScope scope) : IReadOnlyTxProcessingScope
     {
-        private readonly IReadOnlyTxProcessingScope _scope;
-        private readonly IReadOnlyTxProcessorSource _source;
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
-
-        public ScopeWrapper(IReadOnlyTxProcessorSource source, ObjectPool<IReadOnlyTxProcessorSource> envPool, IReadOnlyTxProcessingScope scope)
-        {
-            _scope = scope;
-            _source = source;
-            _envPool = envPool;
-        }
+        private readonly IReadOnlyTxProcessingScope _scope = scope;
+        private readonly IReadOnlyTxProcessorSource _source = source;
+        private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = envPool;
 
         public void Dispose()
         {

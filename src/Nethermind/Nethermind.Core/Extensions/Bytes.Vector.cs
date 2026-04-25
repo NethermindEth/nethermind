@@ -198,7 +198,7 @@ public static unsafe partial class Bytes
     {
         if (Vector256.IsHardwareAccelerated)
         {
-            var cmp = Vector256.Equals(v, Vector256<byte>.Zero);
+            Vector256<byte> cmp = Vector256.Equals(v, Vector256<byte>.Zero);
             uint nonZeroMask = ~cmp.ExtractMostSignificantBits();
             if (nonZeroMask == 0)
                 return 256;

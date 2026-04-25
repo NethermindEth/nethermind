@@ -46,10 +46,7 @@ public class FullPruningDiskTest
         public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
         public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
-        public PruningTestBlockchain()
-        {
-            TempDirectory = TempPath.GetTempDirectory();
-        }
+        public PruningTestBlockchain() => TempDirectory = TempPath.GetTempDirectory();
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {

@@ -13,33 +13,20 @@ using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {
-    public class ProtectedKeyStoreWallet : IWallet
+    public class ProtectedKeyStoreWallet(IKeyStore keyStore, IProtectedPrivateKeyFactory protectedPrivateKeyFactory, ITimestamper timestamper, ILogManager logManager) : IWallet
     {
         private static readonly TimeSpan DefaultExpirationTime = TimeSpan.FromMinutes(5);
 
-        private readonly IKeyStore _keyStore;
-        private readonly IProtectedPrivateKeyFactory _protectedPrivateKeyFactory;
-        private readonly ITimestamper _timestamper;
-        private readonly ILogger _logger;
+        private readonly IKeyStore _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+        private readonly IProtectedPrivateKeyFactory _protectedPrivateKeyFactory = protectedPrivateKeyFactory ?? throw new ArgumentNullException(nameof(protectedPrivateKeyFactory));
+        private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
+        private readonly ILogger _logger = logManager?.GetClassLogger<ProtectedKeyStoreWallet>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        private readonly LruCache<String, ProtectedPrivateKey> _unlockedAccounts;
+        private readonly LruCache<String, ProtectedPrivateKey> _unlockedAccounts = new(100, nameof(ProtectedKeyStoreWallet));
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
-        public ProtectedKeyStoreWallet(IKeyStore keyStore, IProtectedPrivateKeyFactory protectedPrivateKeyFactory, ITimestamper timestamper, ILogManager logManager)
-        {
-            _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
-            _protectedPrivateKeyFactory = protectedPrivateKeyFactory ?? throw new ArgumentNullException(nameof(protectedPrivateKeyFactory));
-            _timestamper = timestamper ?? Timestamper.Default;
-            _logger = logManager?.GetClassLogger<ProtectedKeyStoreWallet>() ?? throw new ArgumentNullException(nameof(logManager));
-            // maxCapacity - 100, is just an estimate here
-            _unlockedAccounts = new LruCache<string, ProtectedPrivateKey>(100, nameof(ProtectedKeyStoreWallet));
-        }
-
-        public void Import(byte[] keyData, SecureString passphrase)
-        {
-            _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
-        }
+        public void Import(byte[] keyData, SecureString passphrase) => _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
 
         public Address[] GetAccounts() => _keyStore.GetKeyAddresses().Addresses.ToArray();
 
@@ -95,9 +82,9 @@ namespace Nethermind.Wallet
 
         private Signature SignCore(Hash256 message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
         {
-            var protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
+            ProtectedPrivateKey protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
             using PrivateKey key = protectedPrivateKey is not null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
-            var rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

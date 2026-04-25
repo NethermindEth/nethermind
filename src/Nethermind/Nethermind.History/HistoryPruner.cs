@@ -263,7 +263,7 @@ public class HistoryPruner : IHistoryPruner
                                 {
                                     try
                                     {
-                                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
+                                        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
                                             cancellationToken);
                                         TryPruneHistory(cts.Token);
                                     }
@@ -293,7 +293,6 @@ public class HistoryPruner : IHistoryPruner
     {
         if (_blockTree.Head is null ||
             _blockTree.SyncPivot.BlockNumber == 0 ||
-            !_hasLoadedDeletePointer ||
             !ShouldPruneHistory(out ulong? cutoffTimestamp))
         {
             SkipLocalPruning();

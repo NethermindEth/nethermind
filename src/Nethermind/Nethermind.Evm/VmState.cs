@@ -6,9 +6,11 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm;
 
@@ -147,10 +149,7 @@ public class VmState<TGasPolicy> : IDisposable
         _creationStackTrace = new StackTrace();
 #endif
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowIsInUse()
-        {
-            throw new InvalidOperationException("Already in use");
-        }
+        static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
 
     public Address From => ExecutionType switch
@@ -216,13 +215,64 @@ public class VmState<TGasPolicy> : IDisposable
     }
 #endif
 
-    public void InitializeStacks()
+    public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (DataStack is null)
+        byte[] dataStack = DataStack;
+        if (dataStack is null)
         {
-            DataStack = _stackPool.RentStacks();
+            DataStack = dataStack = AllocateStacks();
         }
+
+        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan);
+    }
+
+    public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        byte[] dataStack = DataStack;
+        if (dataStack is null)
+        {
+            DataStack = dataStack = AllocateStacks();
+        }
+
+        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static byte[] AllocateStacks() => _stackPool.RentStacks();
+
+    private static ref byte As32AlignedRef(byte[] array)
+    {
+        nuint offset = GetAlignmentOffset32(array);
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), offset);
+    }
+
+    public Memory<byte> MemoryStacks(int count)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        byte[] dataStack = DataStack;
+        if (dataStack is null)
+        {
+            DataStack = dataStack = AllocateStacks();
+        }
+        return AsAligned32Memory(dataStack, size: count * EvmStack.WordSize);
+    }
+
+    private static Memory<byte> AsAligned32Memory(byte[] array, int size)
+    {
+        nuint offset = GetAlignmentOffset32(array);
+        return array.AsMemory((int)(uint)offset, size);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe static nuint GetAlignmentOffset32(byte[] array)
+    {
+        // The input array should be pinned and we are just using the Pointer to
+        // calculate alignment, not using data so not creating memory hole.
+        Debug.Assert(array is not null);
+        nint addr = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+        return (nuint)((-addr) & 31);
     }
 
     public void CommitToParent(VmState<TGasPolicy> parentState)

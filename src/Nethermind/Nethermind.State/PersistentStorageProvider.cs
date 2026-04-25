@@ -72,7 +72,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns></returns>
     public byte[] GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out var value))
+        if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
@@ -254,10 +254,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    public void ClearStorageMap()
-    {
-        _storages.Clear();
-    }
+    public void ClearStorageMap() => _storages.Clear();
 
     private PerContractState GetOrCreateStorage(Address address)
     {
@@ -272,10 +269,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             LoadFromTree(in storageCell);
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
-    {
-        return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
-    }
+    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) => GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
@@ -369,10 +363,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
         }
 
-        public void UnmarkClear()
-        {
-            _missingAreDefault = false;
-        }
+        public void UnmarkClear() => _missingAreDefault = false;
     }
 
     private sealed class PerContractState : IReturnable
@@ -507,7 +498,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
-            foreach (var kvp in BlockChange)
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
@@ -526,10 +517,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return (writes, skipped);
         }
 
-        public void RemoveStorageTree()
-        {
-            _backend = null;
-        }
+        public void RemoveStorageTree() => _backend = null;
 
         internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)
             => Pool.Rent(address, persistentStorageProvider);

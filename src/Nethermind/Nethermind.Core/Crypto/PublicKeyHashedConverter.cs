@@ -33,8 +33,5 @@ public class PublicKeyHashedConverter : JsonConverter<PublicKey>
         }
     }
 
-    public override void Write(Utf8JsonWriter writer, PublicKey publicKey, JsonSerializerOptions options)
-    {
-        writer.WriteStringValue(publicKey.Hash.ToString(false));
-    }
+    public override void Write(Utf8JsonWriter writer, PublicKey publicKey, JsonSerializerOptions options) => writer.WriteStringValue(publicKey.Hash.ToString(false));
 }

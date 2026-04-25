@@ -19,10 +19,7 @@ namespace Nethermind.Benchmarks.State
 
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _tracer = new StorageTracer();
-        }
+        public void Setup() => _tracer = new StorageTracer();
 
         [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
         public void Parameter_Passing()

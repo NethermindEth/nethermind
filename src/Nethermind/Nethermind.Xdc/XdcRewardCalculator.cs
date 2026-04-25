@@ -73,7 +73,7 @@ public class XdcRewardCalculator : IRewardCalculator
         // Rewards in XDC are calculated only if it's an epoch switch block
         if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
 
-        var number = xdcHeader.Number;
+        long number = xdcHeader.Number;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
         if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
 
@@ -82,8 +82,8 @@ public class XdcRewardCalculator : IRewardCalculator
 
         UInt256 totalFoundationWalletReward = UInt256.Zero;
         UInt256 totalMintedInEpoch = UInt256.Zero;
-        var rewards = new List<BlockReward>();
-        var (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
+        List<BlockReward> rewards = new();
+        (Dictionary<Address, long> masternodeSigners, Dictionary<Address, long> protectorSigners, Dictionary<Address, long> observerSigners, UInt256 burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
 
         if (!spec.IsTipUpgradeRewardEnabled)
         {
@@ -125,21 +125,21 @@ public class XdcRewardCalculator : IRewardCalculator
         Dictionary<Address, long> ObserverSigners,
         UInt256 BurnedInOneEpoch) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
     {
-        var masternodeSigners = new Dictionary<Address, long>();
-        var protectorSigners = new Dictionary<Address, long>();
-        var observerSigners = new Dictionary<Address, long>();
+        Dictionary<Address, long> masternodeSigners = new();
+        Dictionary<Address, long> protectorSigners = new();
+        Dictionary<Address, long> observerSigners = new();
         UInt256 burnedInOneEpoch = UInt256.Zero;
         long number = epochHeader.Number;
         if (number == 0) return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
 
         long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0;
 
-        var blockNumberToHash = new Dictionary<long, Hash256>();
-        var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
-        var masternodes = new HashSet<Address>();
-        var protectors = new HashSet<Address>();
-        var observers = new HashSet<Address>();
-        var mergeSignRange = spec.MergeSignRange;
+        Dictionary<long, Hash256> blockNumberToHash = new();
+        Dictionary<Hash256, HashSet<Address>> hashToSigningAddress = new();
+        HashSet<Address> masternodes = new();
+        HashSet<Address> protectors = new();
+        HashSet<Address> observers = new();
+        long mergeSignRange = spec.MergeSignRange;
 
         XdcBlockHeader h = epochHeader;
         for (long i = number - 1; i >= 0; i--)
@@ -171,7 +171,7 @@ public class XdcRewardCalculator : IRewardCalculator
                         // Exclude current masternodes and penalized nodes from the checkpoint header.
                         Address[] candidatesByStake = GetCandidatesByStakeForReward(epochHeader);
                         int penaltiesCount = h.PenaltiesAddress?.Length ?? 0;
-                        var excludedCandidates = new HashSet<Address>(masternodes.Count + penaltiesCount);
+                        HashSet<Address> excludedCandidates = new(masternodes.Count + penaltiesCount);
                         excludedCandidates.UnionWith(masternodes);
                         if (h.PenaltiesAddress is not null)
                             excludedCandidates.UnionWith(h.PenaltiesAddress);
@@ -271,7 +271,7 @@ public class XdcRewardCalculator : IRewardCalculator
     private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
         Dictionary<Address, long> signers)
     {
-        var rewardSigners = new Dictionary<Address, UInt256>();
+        Dictionary<Address, UInt256> rewardSigners = new();
         long totalSigningCount = 0;
         foreach (long signerCount in signers.Values)
             totalSigningCount += signerCount;
@@ -288,7 +288,7 @@ public class XdcRewardCalculator : IRewardCalculator
         UInt256 rewardPerSigner,
         Dictionary<Address, long> signers)
     {
-        var rewardSigners = new Dictionary<Address, UInt256>();
+        Dictionary<Address, UInt256> rewardSigners = new();
         if (rewardPerSigner == UInt256.Zero)
             return rewardSigners;
 
@@ -315,8 +315,8 @@ public class XdcRewardCalculator : IRewardCalculator
         }
 
         // Convert to UInt256 for precision
-        var signatures = (UInt256)signatureCount;
-        var total = (UInt256)totalSignatures;
+        UInt256 signatures = (UInt256)signatureCount;
+        UInt256 total = (UInt256)totalSignatures;
 
 
         UInt256 portion = totalReward / total;

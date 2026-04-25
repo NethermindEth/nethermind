@@ -13,25 +13,18 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public abstract class DiscoveryMsgSerializerBase
+public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
+    IPrivateKeyGenerator nodeKey,
+    INodeIdResolver nodeIdResolver)
 {
     protected static readonly RlpLimit IpAddressRlpLimit = RlpLimit.For<IPEndPoint>(16, nameof(IPEndPoint.Address));
     protected static readonly RlpLimit NodeIdRlpLimit = RlpLimit.L64;
-    private readonly PrivateKey _privateKey;
-    protected readonly IEcdsa _ecdsa;
+    private readonly PrivateKey _privateKey = nodeKey.Generate();
+    protected readonly IEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
 
-    private readonly INodeIdResolver _nodeIdResolver;
+    private readonly INodeIdResolver _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
 
     protected const int MdcSigOffset = 32 + 64 + 1;
-
-    protected DiscoveryMsgSerializerBase(IEcdsa ecdsa,
-        IPrivateKeyGenerator nodeKey,
-        INodeIdResolver nodeIdResolver)
-    {
-        _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-        _privateKey = nodeKey.Generate();
-        _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
-    }
 
     protected void Serialize(byte type, Span<byte> data, IByteBuffer byteBuffer)
     {

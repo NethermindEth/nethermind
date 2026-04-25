@@ -15,21 +15,15 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class BaseEngineModuleTests
 {
-    public class StoringBlockImprovementContextFactory : IBlockImprovementContextFactory
+    public class StoringBlockImprovementContextFactory(IBlockImprovementContextFactory blockImprovementContextFactory, bool skipDuplicatedContext = false) : IBlockImprovementContextFactory
     {
-        private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
-        private readonly bool _skipDuplicatedContext;
+        private readonly IBlockImprovementContextFactory _blockImprovementContextFactory = blockImprovementContextFactory;
+        private readonly bool _skipDuplicatedContext = skipDuplicatedContext;
         public List<IBlockImprovementContext> CreatedContexts { get; } = new List<IBlockImprovementContext>();
 
         public event EventHandler<ImprovementStartedEventArgs>? ImprovementStarted;
 
         public event EventHandler<BlockEventArgs>? BlockImproved;
-
-        public StoringBlockImprovementContextFactory(IBlockImprovementContextFactory blockImprovementContextFactory, bool skipDuplicatedContext = false)
-        {
-            _blockImprovementContextFactory = blockImprovementContextFactory;
-            _skipDuplicatedContext = skipDuplicatedContext;
-        }
 
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
@@ -75,22 +69,15 @@ public partial class BaseEngineModuleTests
             return t.Result;
         }
 
-        public Task WaitForImprovedBlockWithCondition(CancellationToken cancellationToken, Func<Block, bool> cond)
-        {
-            return Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
+        public Task WaitForImprovedBlockWithCondition(CancellationToken cancellationToken, Func<Block, bool> cond) =>
+            Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
                 e => BlockImproved += e,
                 e => BlockImproved -= e,
                 b => cond(b.Block));
-        }
     }
 
-    public class ImprovementStartedEventArgs : EventArgs
+    public class ImprovementStartedEventArgs(IBlockImprovementContext blockImprovementContext) : EventArgs
     {
-        public IBlockImprovementContext BlockImprovementContext { get; }
-
-        public ImprovementStartedEventArgs(IBlockImprovementContext blockImprovementContext)
-        {
-            BlockImprovementContext = blockImprovementContext;
-        }
+        public IBlockImprovementContext BlockImprovementContext { get; } = blockImprovementContext;
     }
 }

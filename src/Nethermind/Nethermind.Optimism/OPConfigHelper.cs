@@ -20,55 +20,25 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
 
     public Address? L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
 
-    public bool IsRegolith(BlockHeader header)
-    {
-        return header.Timestamp >= _regolithTimestamp;
-    }
+    public bool IsRegolith(BlockHeader header) => header.Timestamp >= _regolithTimestamp;
 
-    public bool IsBedrock(BlockHeader header)
-    {
-        return header.Number >= _bedrockBlockNumber;
-    }
+    public bool IsBedrock(BlockHeader header) => header.Number >= _bedrockBlockNumber;
 
-    public bool IsCanyon(BlockHeader header)
-    {
-        return header.Timestamp >= _canyonTimestamp;
-    }
+    public bool IsCanyon(BlockHeader header) => header.Timestamp >= _canyonTimestamp;
 
-    public bool IsDelta(BlockHeader header)
-    {
-        return header.Timestamp >= _deltaTimestamp;
-    }
+    public bool IsDelta(BlockHeader header) => header.Timestamp >= _deltaTimestamp;
 
-    public bool IsEcotone(BlockHeader header)
-    {
-        return header.Timestamp >= _ecotoneTimestamp;
-    }
+    public bool IsEcotone(BlockHeader header) => header.Timestamp >= _ecotoneTimestamp;
 
-    public bool IsFjord(BlockHeader header)
-    {
-        return header.Timestamp >= _fjordTimestamp;
-    }
+    public bool IsFjord(BlockHeader header) => header.Timestamp >= _fjordTimestamp;
 
-    public bool IsGranite(BlockHeader header)
-    {
-        return header.Timestamp >= _graniteTimestamp;
-    }
+    public bool IsGranite(BlockHeader header) => header.Timestamp >= _graniteTimestamp;
 
-    public bool IsHolocene(BlockHeader header)
-    {
-        return header.Timestamp >= _holoceneTimestamp;
-    }
+    public bool IsHolocene(BlockHeader header) => header.Timestamp >= _holoceneTimestamp;
 
-    public bool IsIsthmus(BlockHeader header)
-    {
-        return header.Timestamp >= _isthmusTimestamp;
-    }
+    public bool IsIsthmus(BlockHeader header) => header.Timestamp >= _isthmusTimestamp;
 
-    public bool IsJovian(BlockHeader header)
-    {
-        return header.Timestamp >= _jovianTimestamp;
-    }
+    public bool IsJovian(BlockHeader header) => header.Timestamp >= _jovianTimestamp;
 
     public Address? Create2DeployerAddress { get; } = parameters.Create2DeployerAddress;
     public byte[]? Create2DeployerCode { get; } = parameters.Create2DeployerCode;

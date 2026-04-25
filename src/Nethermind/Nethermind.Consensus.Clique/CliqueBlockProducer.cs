@@ -90,10 +90,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
     }
 
-    public void ProduceOnTopOf(Hash256 hash)
-    {
-        _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
-    }
+    public void ProduceOnTopOf(Hash256 hash) => _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
 
     public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
 
@@ -215,10 +212,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         return tcs.Task;
     }
 
-    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        _signalsQueue.Writer.TryWrite(e.Block);
-    }
+    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e) => _signalsQueue.Writer.TryWrite(e.Block);
 
     private async Task ConsumeSignal()
     {
@@ -457,7 +451,7 @@ public class CliqueBlockProducer : IBlockProducer
         // Ensure the timestamp has the correct delay
         header.Timestamp = Math.Max(parentHeader.Timestamp + _config.BlockPeriod, _timestamper.UnixTime.Seconds);
 
-        var spec = _specProvider.GetSpec(header);
+        IReleaseSpec spec = _specProvider.GetSpec(header);
 
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
         // Set the correct difficulty

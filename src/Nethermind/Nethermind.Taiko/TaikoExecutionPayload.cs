@@ -35,7 +35,7 @@ public class TaikoExecutionPayload : ExecutionPayload
     {
         if (Withdrawals is null && Transactions is null)
         {
-            BlockHeader header = new BlockHeader(
+            BlockHeader header = new(
                 ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,

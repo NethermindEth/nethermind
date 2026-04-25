@@ -7,7 +7,7 @@ namespace Nethermind.Db.Rocks.Config;
 
 public class DbConfig : IDbConfig
 {
-    public static DbConfig Default = new DbConfig();
+    public static DbConfig Default = new();
 
     public ulong SharedBlockCacheSize { get; set; } = (ulong)256.MiB;
     public bool SkipMemoryHintSetting { get; set; } = false;
