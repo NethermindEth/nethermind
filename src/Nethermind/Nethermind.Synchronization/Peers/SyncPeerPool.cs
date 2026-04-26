@@ -74,7 +74,10 @@ namespace Nethermind.Synchronization.Peers
 
         }
 
-        public SyncPeerPool(IBlockTree blockTree,
+        // Internal so Autofac auto-wire only sees the public ctor above. The int defaults here would otherwise
+        // win Autofac's "greediest resolvable constructor" race over the INetworkConfig/ISyncConfig overload.
+        // Tests reach this via [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")].
+        internal SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager,
@@ -89,7 +92,7 @@ namespace Nethermind.Synchronization.Peers
             PeerMaxCount = peersMaxCount;
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
-            _logger = logManager?.GetClassLogger<SyncPeerPool>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<SyncPeerPool>();
 
             // The packed AllocationAllowances representation reserves 1 byte (8 bits) per context but only honours
             // values up to MaxAllocationSlots; anything higher is clamped at registration time.
@@ -170,7 +173,7 @@ namespace Nethermind.Synchronization.Peers
             StartUpgradeTimer();
         }
 
-        public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
+        public PeerInfo? GetPeer(Node node) => _peers.GetValueOrDefault(node.Id);
         public event EventHandler<PeerBlockNotificationEventArgs>? NotifyPeerBlock;
         public event EventHandler<PeerHeadRefreshedEventArgs>? PeerRefreshed;
 
@@ -196,7 +199,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
-                    if (peerInfo.SyncPeer.Node?.IsStatic == false)
+                    if (!peerInfo.SyncPeer.Node.IsStatic)
                     {
                         yield return peerInfo;
                     }
@@ -221,7 +224,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        public int PriorityPeerCount = 0;
+        public int PriorityPeerCount;
         public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
         private int PriorityPeerMaxCount { get; }
@@ -671,11 +674,9 @@ namespace Nethermind.Synchronization.Peers
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
 
-            if (exception is OperationCanceledException || exception is TimeoutException)
+            if (exception is OperationCanceledException or TimeoutException)
             {
-                // We don't want to disconnect on timeout. It could be that we are downloading from the peer,
-                // or we have some connection issue. Report against the live PeerInfo so the weakness/sleep state
-                // actually persists; the previous code constructed a throwaway PeerInfo whose mutations vanished.
+                // We don't want to disconnect on timeout. It could be that we are downloading from the peer, or we have some connection issue.
                 if (_peers.TryGetValue(syncPeer.Node.Id, out PeerInfo? existing))
                 {
                     ReportWeakPeer(existing, AllocationContexts.All);

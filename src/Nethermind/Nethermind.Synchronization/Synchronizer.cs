@@ -349,16 +349,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync)
 
-            // Explicit factory: SyncPeerPool has two public constructors and Autofac's default selector picks the
-            // greediest one. The test-only ctor has more (int-default) parameters, so we point Autofac at the
-            // INetworkConfig/ISyncConfig overload directly.
-            .AddSingleton<SyncPeerPool>(static ctx => new SyncPeerPool(
-                    ctx.Resolve<IBlockTree>(),
-                    ctx.Resolve<INodeStatsManager>(),
-                    ctx.Resolve<IBetterPeerStrategy>(),
-                    ctx.Resolve<INetworkConfig>(),
-                    ctx.Resolve<ISyncConfig>(),
-                    ctx.Resolve<ILogManager>()))
+            .AddSingleton<SyncPeerPool>()
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
 
