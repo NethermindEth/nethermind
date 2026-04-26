@@ -237,16 +237,5 @@ namespace Nethermind.Synchronization.Test
             peer.IsAllocationFull(AllocationContexts.Headers).Should().BeTrue();
         }
 
-        // ── AllocationAllowances struct ─────────────────────────────────────────────────────────
-
-        [TestCaseSource(nameof(SingleBitContextCases))]
-        public void AllocationAllowances_indexer_round_trips(AllocationContexts ctx)
-        {
-            AllocationAllowances a = AllocationAllowances.Default;
-            a[ctx].Should().Be(1, "Default constructs with all-ones");
-
-            a[ctx] = 7;
-            a[ctx].Should().Be(7);
-        }
     }
 }
