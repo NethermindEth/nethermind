@@ -497,7 +497,7 @@ public class BlockAccessListManager(
         void Setup(Block block, BlockExecutionContext blockExecutionContext);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0);
-        TxProcessorWithWorldState GetPostExecution() => Get(int.MaxValue);
+        TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
         void NextTransaction();
         void Rollback();
     }

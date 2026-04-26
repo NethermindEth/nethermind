@@ -158,12 +158,13 @@ namespace Nethermind.Serialization.Rlp
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpValueDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
+            ArrayPoolList<T>? result = null;
             try
             {
                 int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
                 int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
                 decoderContext.GuardLimit(length, limit);
-                ArrayPoolList<T> result = new(length);
+                result = new(length);
                 for (int i = 0; i < length; i++)
                 {
                     result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
@@ -178,6 +179,7 @@ namespace Nethermind.Serialization.Rlp
             }
             catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
+                result?.Dispose();
                 throw new RlpException($"Truncated or out-of-bounds RLP while decoding array of {typeof(T).Name}.", e);
             }
         }
@@ -1045,8 +1047,7 @@ namespace Nethermind.Serialization.Rlp
                 switch (prefix)
                 {
                     case 0:
-                        RlpHelpers.ThrowNonCanonicalInteger(Position);
-                        return default;
+                        return RlpHelpers.ThrowNonCanonicalInteger(Position);
                     case < 128:
                         return (uint)prefix;
                     case 128:

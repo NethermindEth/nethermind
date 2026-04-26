@@ -175,7 +175,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         {
             if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
             {
-                yield return new(slotChanges.Key, new SortedList<uint, StorageChange>(GenericComparer.GetOptimized<uint>()) { { index, storageChange } });
+                yield return new(slotChanges.Key, new SortedList<uint, StorageChange>(PrestateAwareIndexComparer.Instance) { { index, storageChange } });
             }
         }
     }
