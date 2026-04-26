@@ -73,6 +73,15 @@ public partial class EthRpcModuleTests
         .Op(Instruction.RETURN)
         .Done;
 
+    private static readonly byte[] CoinbaseReturnCode = Prepare.EvmCode
+        .Op(Instruction.COINBASE)
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .PushData("0x20")
+        .PushData("0x0")
+        .Op(Instruction.RETURN)
+        .Done;
+
     private static void AssertAccountDoesNotExist(Context ctx, Address account) => Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
 
     [TestCase("earliest", "0x3635c9adc5dea00000")]
