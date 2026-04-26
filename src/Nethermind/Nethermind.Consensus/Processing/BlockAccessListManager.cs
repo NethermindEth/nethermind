@@ -25,7 +25,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Specs;
@@ -450,21 +449,21 @@ public class BlockAccessListManager(
             accountChanges.ExistedBeforeBlock = exists;
             accountChanges.EmptyBeforeBlock = !account.HasStorage;
 
-            accountChanges.AddBalanceChange(new(Eip7928Constants.PrestateIndex,account.Balance));
-            accountChanges.AddNonceChange(new(Eip7928Constants.PrestateIndex,(ulong)account.Nonce));
-            accountChanges.AddCodeChange(new(Eip7928Constants.PrestateIndex,stateProvider.GetCode(accountChanges.Address)));
+            accountChanges.AddBalanceChange(new(Eip7928Constants.PrestateIndex, account.Balance));
+            accountChanges.AddNonceChange(new(Eip7928Constants.PrestateIndex, (ulong)account.Nonce));
+            accountChanges.AddCodeChange(new(Eip7928Constants.PrestateIndex, stateProvider.GetCode(accountChanges.Address)));
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
                 StorageCell storageCell = new(accountChanges.Address, slotChanges.Key);
-                slotChanges.AddStorageChange(new(Eip7928Constants.PrestateIndex,new(stateProvider.Get(storageCell), true)));
+                slotChanges.AddStorageChange(new(Eip7928Constants.PrestateIndex, new(stateProvider.Get(storageCell), true)));
             }
 
             foreach (UInt256 storageRead in accountChanges.StorageReads)
             {
                 SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead);
                 StorageCell storageCell = new(accountChanges.Address, storageRead);
-                slotChanges.AddStorageChange(new(Eip7928Constants.PrestateIndex,new(stateProvider.Get(storageCell), true)));
+                slotChanges.AddStorageChange(new(Eip7928Constants.PrestateIndex, new(stateProvider.Get(storageCell), true)));
             }
         }
     }
