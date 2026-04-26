@@ -29,6 +29,8 @@ public class CustomTimeDurationConverterTests
     private static IEnumerable<TestCaseData> ValidGoDurationCases() =>
     [
         new TestCaseData("\"0\"", TimeSpan.Zero).SetName("zero"),
+        new TestCaseData("\"-0\"", TimeSpan.Zero).SetName("negative_zero"),
+        new TestCaseData("\"+0\"", TimeSpan.Zero).SetName("positive_zero"),
         new TestCaseData("\"0s\"", TimeSpan.Zero).SetName("zero_with_unit"),
         new TestCaseData("\"5s\"", TimeSpan.FromSeconds(5)).SetName("seconds"),
         new TestCaseData("\"100ms\"", TimeSpan.FromMilliseconds(100)).SetName("milliseconds"),
@@ -78,6 +80,12 @@ public class CustomTimeDurationConverterTests
         new TestCaseData("\"1.2.3s\"").SetName("double_fractional_separator"),
         new TestCaseData("\"5 s\"").SetName("whitespace_before_unit"),
         new TestCaseData("\"1ss\"").SetName("duplicated_unit_char"),
+        new TestCaseData("\"9223372036854775808ns9223372036854775808ns\"").SetName("multi_segment_overflow_wraps_ulong"),
+        new TestCaseData("\"" + new string('0', 200) + "s\"").SetName("input_exceeds_max_length"),
+        new TestCaseData("123").SetName("non_string_token_number"),
+        new TestCaseData("true").SetName("non_string_token_boolean"),
+        new TestCaseData("{}").SetName("non_string_token_object"),
+        new TestCaseData("[]").SetName("non_string_token_array"),
     ];
 
     [TestCaseSource(nameof(InvalidDurationCases))]
@@ -111,6 +119,18 @@ public class CustomTimeDurationConverterTests
     public void write_serializes_as_go_duration_string(TimeSpan? value, string expected) =>
         Serialize(value).Should().Be(expected);
 
+    private static IEnumerable<TestCaseData> ExtremeWriteCases() =>
+    [
+        new TestCaseData(TimeSpan.MaxValue, "\"256204778h").SetName("timespan_max_value"),
+        new TestCaseData(TimeSpan.MinValue, "\"-256204778h").SetName("timespan_min_value"),
+        new TestCaseData(TimeSpan.FromDays(10000), "\"240000h").SetName("ten_thousand_days"),
+        new TestCaseData(TimeSpan.FromDays(-10000), "\"-240000h").SetName("ten_thousand_days_negative"),
+    ];
+
+    [TestCaseSource(nameof(ExtremeWriteCases))]
+    public void write_extreme_timespan_emits_correct_hour_prefix(TimeSpan value, string expectedPrefix) =>
+        Serialize(value).Should().StartWith(expectedPrefix).And.EndWith("s\"");
+
     private static IEnumerable<TestCaseData> RoundTripCases() =>
     [
         new TestCaseData(TimeSpan.FromSeconds(5)).SetName("seconds"),
@@ -123,6 +143,8 @@ public class CustomTimeDurationConverterTests
         new TestCaseData(TimeSpan.FromSeconds(-5)).SetName("negative"),
         new TestCaseData(TimeSpan.FromMicroseconds(1500)).SetName("microseconds_cross_unit"),
         new TestCaseData(TimeSpan.FromHours(24)).SetName("full_day"),
+        new TestCaseData(TimeSpan.FromDays(100)).SetName("hundred_days"),
+        new TestCaseData(TimeSpan.FromDays(-100)).SetName("hundred_days_negative"),
     ];
 
     [TestCaseSource(nameof(RoundTripCases))]
