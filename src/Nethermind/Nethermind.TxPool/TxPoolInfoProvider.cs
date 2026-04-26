@@ -168,12 +168,14 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
                 ulong transactionNonce = (ulong)transaction.Nonce;
                 if (transaction.Nonce == expectedNonce)
                 {
-                    pending.Add(transactionNonce, transaction);
+                    pending[transactionNonce] = transaction;
                     expectedNonce = transaction.Nonce + 1;
                 }
                 else
                 {
-                    queued.Add(transactionNonce, transaction);
+                    // Indexer (not Add) so a duplicate nonce — should be impossible given
+                    // TxTypeTxFilter, but defensive — does not crash the RPC handler.
+                    queued[transactionNonce] = transaction;
                 }
             }
         }

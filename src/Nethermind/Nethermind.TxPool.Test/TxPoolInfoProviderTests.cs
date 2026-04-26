@@ -217,8 +217,13 @@ public class TxPoolInfoProviderTests
     private Transaction[] GetTransactions() =>
         BuildTransactions([1, 2, 3, 4, 5, 8, 9]);
 
-    private Transaction[] BuildTransactions(ulong[] nonces) =>
-        nonces.Select(n => Build.A.Transaction.WithNonce(n).WithSenderAddress(_address).TestObject).ToArray();
+    private Transaction[] BuildTransactions(ulong[] nonces)
+    {
+        Transaction[] result = new Transaction[nonces.Length];
+        for (int i = 0; i < nonces.Length; i++)
+            result[i] = Build.A.Transaction.WithNonce(nonces[i]).WithSenderAddress(_address).TestObject;
+        return result;
+    }
 
     public record SenderScenario(uint AccountNonce, ulong[] TxNonces, ulong[] ExpectedPending, ulong[] ExpectedQueued);
 }
