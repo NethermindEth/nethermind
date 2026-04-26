@@ -3,7 +3,9 @@
 
 using System;
 using System.ComponentModel;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using NonBlocking;
 using System.Collections.Generic;
@@ -25,6 +27,11 @@ namespace Nethermind.Synchronization.Peers
         private const int SingleContextCount = 6;
         private const int TrackedContextCount = 7;
 
+        private const int SlotBits = AllocationAllowances.BitsPerSlot;        // 8 bits per slot in the available-slot word
+        private const ulong SlotByteMask = 0xFFul;
+        private const int WeaknessBits = 4;                                   // 4 bits per weakness counter (range 0..15, threshold 2)
+        private const uint WeaknessNibbleMask = 0xFu;
+
         private static readonly AllocationContexts[] _orderedContexts =
         [
             AllocationContexts.Headers,
@@ -37,8 +44,8 @@ namespace Nethermind.Synchronization.Peers
         ];
 
         private readonly AllocationAllowances _allocationAllowances = allocationAllowances ?? AllocationAllowances.Default;
-        private SlotsArray _availableSlots = InitialSlots(allocationAllowances ?? AllocationAllowances.Default);
-        private WeaknessArray _weaknesses;
+        private ulong _availableSlots = (allocationAllowances ?? AllocationAllowances.Default).Packed;
+        private uint _weaknesses;
         private uint _sleepingContexts;
 
         private long _lastNotifiedEarliestNumber;
@@ -50,24 +57,20 @@ namespace Nethermind.Synchronization.Peers
         {
             get
             {
+                ulong available = Volatile.Read(ref _availableSlots);
+                ulong max = _allocationAllowances.Packed;
                 AllocationContexts result = AllocationContexts.None;
                 for (int i = 0; i < SingleContextCount; i++)
                 {
-                    AllocationContexts ctx = _orderedContexts[i];
-                    if (Volatile.Read(ref _availableSlots[i]) < _allocationAllowances[ctx])
-                        result |= ctx;
+                    int shift = i * SlotBits;
+                    if (((available >> shift) & SlotByteMask) < ((max >> shift) & SlotByteMask))
+                        result |= _orderedContexts[i];
                 }
                 return result;
             }
         }
 
-        public AllocationAllowances AvailableAllocationSlots => new(
-            (byte)Math.Max(0, Volatile.Read(ref _availableSlots[0])),
-            (byte)Math.Max(0, Volatile.Read(ref _availableSlots[1])),
-            (byte)Math.Max(0, Volatile.Read(ref _availableSlots[2])),
-            (byte)Math.Max(0, Volatile.Read(ref _availableSlots[3])),
-            (byte)Math.Max(0, Volatile.Read(ref _availableSlots[4])),
-            (byte)Math.Max(0, Volatile.Read(ref _availableSlots[5])));
+        public AllocationAllowances AvailableAllocationSlots => new() { Packed = Volatile.Read(ref _availableSlots) };
 
         public AllocationContexts SleepingContexts => (AllocationContexts)Volatile.Read(ref _sleepingContexts);
 
@@ -97,18 +100,7 @@ namespace Nethermind.Synchronization.Peers
             return true;
         }
 
-        public bool HasAnyAllocation
-        {
-            get
-            {
-                for (int i = 0; i < SingleContextCount; i++)
-                {
-                    if (Volatile.Read(ref _availableSlots[i]) < _allocationAllowances[_orderedContexts[i]])
-                        return true;
-                }
-                return false;
-            }
-        }
+        public bool HasAnyAllocation => Volatile.Read(ref _availableSlots) != _allocationAllowances.Packed;
 
         public bool CanBeAllocated(AllocationContexts contexts) =>
             !IsAsleep(contexts) && !IsAllocationFull(contexts) && this.SupportsAllocation(contexts);
@@ -121,11 +113,14 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         public bool IsAllocated(AllocationContexts contexts)
         {
+            ulong available = Volatile.Read(ref _availableSlots);
+            ulong max = _allocationAllowances.Packed;
             for (int i = 0; i < SingleContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
-                if ((contexts & ctx) == ctx && Volatile.Read(ref _availableSlots[i]) < _allocationAllowances[ctx])
-                    return true;
+                if ((contexts & ctx) != ctx) continue;
+                int shift = i * SlotBits;
+                if (((available >> shift) & SlotByteMask) < ((max >> shift) & SlotByteMask)) return true;
             }
             return false;
         }
@@ -135,11 +130,12 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         public bool IsAllocationFull(AllocationContexts contexts)
         {
+            ulong available = Volatile.Read(ref _availableSlots);
             for (int i = 0; i < SingleContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
-                if ((contexts & ctx) == ctx && Volatile.Read(ref _availableSlots[i]) <= 0)
-                    return true;
+                if ((contexts & ctx) != ctx) continue;
+                if (((available >> (i * SlotBits)) & SlotByteMask) == 0) return true;
             }
             return false;
         }
@@ -148,29 +144,63 @@ namespace Nethermind.Synchronization.Peers
         {
             if (IsAsleep(contexts) || !this.SupportsAllocation(contexts)) return false;
 
-            AllocationContexts allocated = AllocationContexts.None;
+            // Build a "delta" mask: for each single-bit context in `contexts`, decrement the corresponding byte slot
+            // atomically via a single CAS on the whole ulong, retrying if any slot is empty.
+            ulong delta = 0;
             for (int i = 0; i < SingleContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
-                if ((contexts & ctx) != ctx) continue;
+                if ((contexts & ctx) == ctx) delta |= 1ul << (i * SlotBits);
+            }
+            // Vacuous success when the request carries no single-bit contexts (e.g. AllocationContexts.None);
+            // matches the bitmask-era behaviour callers depend on.
+            if (delta == 0) return true;
 
-                if (!TryDecrement(i))
-                {
-                    Free(allocated);
-                    return false;
-                }
-                allocated |= ctx;
+            ulong old = Volatile.Read(ref _availableSlots);
+            while (true)
+            {
+                if (HasZeroSlot(old, delta)) return false;
+                ulong updated = old - delta;
+                ulong observed = Interlocked.CompareExchange(ref _availableSlots, updated, old);
+                if (observed == old) break;
+                old = observed;
+            }
+
+            // Lock-free TOCTOU close-out: the IsAsleep check above and the CAS are not atomic, so a concurrent
+            // PutToSleep can fire after we've taken the slots. Re-check and roll back so a sleeping peer never
+            // holds an active allocation slot once the sleeping flag is observable.
+            if (IsAsleep(contexts))
+            {
+                Free(contexts);
+                return false;
             }
             return true;
         }
 
         public void Free(AllocationContexts contexts)
         {
+            ulong delta = 0;
+            ulong cap = 0;
             for (int i = 0; i < SingleContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
                 if ((contexts & ctx) != ctx) continue;
-                TryIncrementBoundedTo(i, _allocationAllowances[ctx]);
+                int shift = i * SlotBits;
+                delta |= 1ul << shift;
+                cap |= ((ulong)_allocationAllowances[ctx]) << shift;
+            }
+            if (delta == 0) return;
+
+            ulong old = Volatile.Read(ref _availableSlots);
+            while (true)
+            {
+                // Mask off the slots that are already at their ceiling so spurious frees can't overflow past max.
+                ulong increments = delta & ~CarryOnSaturation(old, delta, cap);
+                if (increments == 0) return;
+                ulong updated = old + increments;
+                ulong observed = Interlocked.CompareExchange(ref _availableSlots, updated, old);
+                if (observed == old) return;
+                old = observed;
             }
         }
 
@@ -195,27 +225,48 @@ namespace Nethermind.Synchronization.Peers
         {
             Interlocked.And(ref _sleepingContexts, ~(uint)requested);
 
+            // Clear weakness counters for every (single-bit + composite) context whose flags are fully set in `requested`.
+            uint clearMask = 0;
             for (int i = 0; i < TrackedContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
                 if ((requested & ctx) == ctx)
-                    Volatile.Write(ref _weaknesses[i], 0);
+                    clearMask |= WeaknessNibbleMask << (i * WeaknessBits);
             }
+            if (clearMask != 0) Interlocked.And(ref _weaknesses, ~clearMask);
 
             SleepingSince.TryRemove(requested, out _);
         }
 
         public AllocationContexts IncreaseWeakness(AllocationContexts requested)
         {
+            // Build the per-slot increment mask once, then CAS-add it to the packed weakness word.
+            uint delta = 0;
+            for (int i = 0; i < TrackedContextCount; i++)
+            {
+                AllocationContexts ctx = _orderedContexts[i];
+                if ((requested & ctx) == ctx) delta |= 1u << (i * WeaknessBits);
+            }
+            if (delta == 0) return AllocationContexts.None;
+
+            uint old = Volatile.Read(ref _weaknesses);
+            uint updated;
+            while (true)
+            {
+                updated = SaturatingAdd(old, delta);
+                uint observed = Interlocked.CompareExchange(ref _weaknesses, updated, old);
+                if (observed == old) break;
+                old = observed;
+            }
+
+            // Anything that crossed the threshold becomes a sleep candidate.
             AllocationContexts sleeps = AllocationContexts.None;
             for (int i = 0; i < TrackedContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
-                if ((requested & ctx) == ctx &&
-                    Interlocked.Increment(ref _weaknesses[i]) >= SleepThreshold)
-                {
+                if ((requested & ctx) != ctx) continue;
+                if (((updated >> (i * WeaknessBits)) & WeaknessNibbleMask) >= SleepThreshold)
                     sleeps |= ctx;
-                }
             }
             return sleeps;
         }
@@ -239,73 +290,94 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
+        /// <summary>
+        /// Returns a mask of byte-slots in <paramref name="value"/> that are zero, restricted to slots set in <paramref name="participating"/>.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool TryDecrement(int slotIndex)
+        private static bool HasZeroSlot(ulong value, ulong participating)
         {
-            ref int slot = ref _availableSlots[slotIndex];
-            int current = Volatile.Read(ref slot);
-            while (current > 0)
+            // For each participating slot, check the byte is non-zero. We do this by ORing the byte into the slot's
+            // low bit and seeing if the participating bit survives.
+            for (ulong remaining = participating; remaining != 0;)
             {
-                int observed = Interlocked.CompareExchange(ref slot, current - 1, current);
-                if (observed == current) return true;
-                current = observed;
+                int bit = BitOperations.TrailingZeroCount(remaining);
+                int slotShift = bit & ~7;          // align to byte boundary
+                if (((value >> slotShift) & SlotByteMask) == 0) return true;
+                remaining &= ~(SlotByteMask << slotShift); // clear the whole byte from the search mask
             }
             return false;
         }
 
+        /// <summary>
+        /// For each participating slot, returns its low bit if the slot is already at <paramref name="cap"/>'s value.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void TryIncrementBoundedTo(int slotIndex, byte ceiling)
+        private static ulong CarryOnSaturation(ulong value, ulong delta, ulong cap)
         {
-            // Skip Free of unallocated contexts: ceiling clamps the slot at its allowance.
-            ref int slot = ref _availableSlots[slotIndex];
-            int current = Volatile.Read(ref slot);
-            while (current < ceiling)
+            ulong saturated = 0;
+            for (ulong remaining = delta; remaining != 0;)
             {
-                int observed = Interlocked.CompareExchange(ref slot, current + 1, current);
-                if (observed == current) return;
-                current = observed;
+                int bit = BitOperations.TrailingZeroCount(remaining);
+                int shift = bit & ~7;
+                ulong cur = (value >> shift) & SlotByteMask;
+                ulong limit = (cap >> shift) & SlotByteMask;
+                if (cur >= limit) saturated |= 1ul << bit;
+                remaining &= ~(SlotByteMask << shift);
             }
+            return saturated;
         }
 
+        /// <summary>
+        /// Adds <paramref name="delta"/> to <paramref name="value"/> nibble-wise, clamping each nibble at <see cref="WeaknessNibbleMask"/>.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static SlotsArray InitialSlots(AllocationAllowances allowances)
+        private static uint SaturatingAdd(uint value, uint delta)
         {
-            SlotsArray slots = default;
-            slots[0] = allowances.Headers;
-            slots[1] = allowances.Bodies;
-            slots[2] = allowances.Receipts;
-            slots[3] = allowances.State;
-            slots[4] = allowances.Snap;
-            slots[5] = allowances.ForwardHeader;
-            return slots;
+            uint result = value;
+            for (uint remaining = delta; remaining != 0;)
+            {
+                int bit = BitOperations.TrailingZeroCount(remaining);
+                int shift = bit & ~3;
+                uint cur = (result >> shift) & WeaknessNibbleMask;
+                uint inc = (delta >> shift) & WeaknessNibbleMask;
+                uint sum = Math.Min(cur + inc, WeaknessNibbleMask);
+                result = (result & ~(WeaknessNibbleMask << shift)) | (sum << shift);
+                remaining &= ~(WeaknessNibbleMask << shift);
+            }
+            return result;
         }
 
-        private static string BuildContextString(AllocationContexts contexts) =>
-            $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}{((contexts & AllocationContexts.ForwardHeader) == AllocationContexts.ForwardHeader ? "F" : " ")}";
-
-        // Letters track each single-bit context in the same order as _orderedContexts (Headers, Bodies, Receipts, State, Snap, ForwardHeader).
+        // Per-single-bit-context glyphs in the order of _orderedContexts.
+        private static ReadOnlySpan<char> ContextChars => ['H', 'B', 'R', 'N', 'S', 'F'];
         private static ReadOnlySpan<char> SlotChars => ['h', 'b', 'r', 'n', 's', 'f'];
 
-        private string BuildSlotContextString()
+        private static string BuildContextString(AllocationContexts contexts)
         {
-            // Renders one character per slot:
-            //  ' '          – all slots free (available == allowance)
-            //  uppercase    – fully taken (available == 0)
-            //  lowercase    – one slot taken (allowance - available == 1)
-            //  digit        – multiple slots taken (allowance - available)
             Span<char> buf = stackalloc char[SingleContextCount];
             for (int i = 0; i < SingleContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
-                int available = Math.Max(0, Volatile.Read(ref _availableSlots[i]));
-                int allowance = _allocationAllowances[ctx];
+                buf[i] = (contexts & ctx) == ctx ? ContextChars[i] : ' ';
+            }
+            return new string(buf);
+        }
+
+        private string BuildSlotContextString()
+        {
+            ulong available = Volatile.Read(ref _availableSlots);
+            Span<char> buf = stackalloc char[SingleContextCount];
+            for (int i = 0; i < SingleContextCount; i++)
+            {
+                int shift = i * SlotBits;
+                int avail = (int)((available >> shift) & SlotByteMask);
+                int allowance = _allocationAllowances[_orderedContexts[i]];
                 char ch = SlotChars[i];
-                int taken = allowance - available;
+                int taken = allowance - avail;
                 buf[i] = taken switch
                 {
                     <= 0 => ' ',
                     1 when allowance > 1 => ch,
-                    _ when available == 0 => char.ToUpper(ch),
+                    _ when avail == 0 => char.ToUpper(ch),
                     _ => (char)('0' + Math.Min(taken, 9)),
                 };
             }
@@ -316,17 +388,5 @@ namespace Nethermind.Synchronization.Peers
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsOnlyOneContext(AllocationContexts x) => (x & (x - 1)) == 0;
-
-        [InlineArray(SingleContextCount)]
-        private struct SlotsArray
-        {
-            private int _slot0;
-        }
-
-        [InlineArray(TrackedContextCount)]
-        private struct WeaknessArray
-        {
-            private int _slot0;
-        }
     }
 }

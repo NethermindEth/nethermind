@@ -12,228 +12,265 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test
 {
-    [TestFixture(AllocationContexts.Blocks)]
-    [TestFixture(AllocationContexts.Receipts)]
-    [TestFixture(AllocationContexts.Headers)]
-    [TestFixture(AllocationContexts.Bodies)]
-    [TestFixture(AllocationContexts.State)]
-    [TestFixture(AllocationContexts.All)]
     [Parallelizable(ParallelScope.All)]
-    public class PeerInfoTests(AllocationContexts contexts)
+    public class PeerInfoTests
     {
-        private readonly AllocationContexts _contexts = contexts;
+        // The contexts that pass through TryAllocate/Free/IncreaseWeakness for parameterised tests.
+        // Includes a mix of single-bit, composite (Blocks), and full (All) values to flush bit-position bugs.
+        private static readonly AllocationContexts[] ContextCases =
+        [
+            AllocationContexts.Blocks,
+            AllocationContexts.Receipts,
+            AllocationContexts.Headers,
+            AllocationContexts.Bodies,
+            AllocationContexts.State,
+            AllocationContexts.All,
+        ];
 
-        [Test]
-        public void Can_put_to_sleep_by_contexts()
+        private static readonly AllocationContexts[] SingleBitContextCases =
+        [
+            AllocationContexts.Headers,
+            AllocationContexts.Bodies,
+            AllocationContexts.Receipts,
+            AllocationContexts.State,
+            AllocationContexts.Snap,
+            AllocationContexts.ForwardHeader,
+        ];
+
+        private static PeerInfo NewPeer(AllocationAllowances? allowances = null) =>
+            new(Substitute.For<ISyncPeer>(), allowances);
+
+        /// <summary>
+        /// Bump weakness up to (but not including) the sleep threshold and assert it has not slept,
+        /// then bump once more and assert all <paramref name="contexts"/> have crossed the threshold.
+        /// </summary>
+        private static void RaiseWeaknessUntilSleeping(PeerInfo peer, AllocationContexts contexts)
         {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
-            {
-                AllocationContexts sleeps = peerInfo.IncreaseWeakness(_contexts);
-                sleeps.Should().Be(AllocationContexts.None);
-            }
-
-            AllocationContexts sleeps2 = peerInfo.IncreaseWeakness(_contexts);
-            sleeps2.Should().Be(_contexts);
+                peer.IncreaseWeakness(contexts).Should().Be(AllocationContexts.None);
+            peer.IncreaseWeakness(contexts).Should().Be(contexts);
         }
 
-        [Test]
-        public void Can_put_to_sleep()
-        {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
-            {
-                AllocationContexts sleeps = peerInfo.IncreaseWeakness(_contexts);
-                sleeps.Should().Be(AllocationContexts.None);
-            }
+        // ── Sleep / wake lifecycle, parameterised over context combinations ─────────────────────
 
-            AllocationContexts sleeps2 = peerInfo.IncreaseWeakness(_contexts);
-            sleeps2.Should().Be(_contexts);
-            peerInfo.PutToSleep(sleeps2, DateTime.MinValue);
-            peerInfo.IsAsleep(_contexts).Should().BeTrue();
+        [TestCaseSource(nameof(ContextCases))]
+        public void Sleep_lifecycle_succeeds_when_wake_window_elapsed(AllocationContexts contexts)
+        {
+            PeerInfo peer = NewPeer();
+            RaiseWeaknessUntilSleeping(peer, contexts);
+
+            peer.PutToSleep(contexts, DateTime.MinValue);
+            peer.IsAsleep(contexts).Should().BeTrue();
+
+            peer.TryToWakeUp(DateTime.MinValue, TimeSpan.Zero);
+            peer.IsAsleep(contexts).Should().BeFalse();
         }
 
-        [Test]
-        public void Can_wake_up()
+        [TestCaseSource(nameof(ContextCases))]
+        public void Sleep_lifecycle_stays_asleep_within_wake_window(AllocationContexts contexts)
         {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
-            {
-                AllocationContexts sleeps = peerInfo.IncreaseWeakness(_contexts);
-                sleeps.Should().Be(AllocationContexts.None);
-            }
+            PeerInfo peer = NewPeer();
+            RaiseWeaknessUntilSleeping(peer, contexts);
 
-            AllocationContexts sleeps2 = peerInfo.IncreaseWeakness(_contexts);
-            sleeps2.Should().Be(_contexts);
-            peerInfo.PutToSleep(sleeps2, DateTime.MinValue);
-            peerInfo.IsAsleep(_contexts).Should().BeTrue();
-            peerInfo.TryToWakeUp(DateTime.MinValue, TimeSpan.Zero);
-            peerInfo.IsAsleep(_contexts).Should().BeFalse();
+            peer.PutToSleep(contexts, DateTime.MinValue);
+            peer.TryToWakeUp(DateTime.MinValue.AddSeconds(2), TimeSpan.FromSeconds(3));
+
+            peer.IsAsleep(contexts).Should().BeTrue();
+            peer.CanBeAllocated(contexts).Should().BeFalse();
         }
 
-        [Test]
-        public void Can_fail_to_wake_up()
-        {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
-            {
-                AllocationContexts sleeps = peerInfo.IncreaseWeakness(_contexts);
-                sleeps.Should().Be(AllocationContexts.None);
-            }
+        // ── Allocate / free, parameterised ──────────────────────────────────────────────────────
 
-            AllocationContexts sleeps2 = peerInfo.IncreaseWeakness(_contexts);
-            sleeps2.Should().Be(_contexts);
-            peerInfo.PutToSleep(sleeps2, DateTime.MinValue);
-            peerInfo.IsAsleep(_contexts).Should().BeTrue();
-            peerInfo.TryToWakeUp(DateTime.MinValue.Add(TimeSpan.FromSeconds(2)), TimeSpan.FromSeconds(3));
-            peerInfo.IsAsleep(_contexts).Should().BeTrue();
-            peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
+        [TestCaseSource(nameof(ContextCases))]
+        public void TryAllocate_then_Free_round_trip(AllocationContexts contexts)
+        {
+            PeerInfo peer = NewPeer();
+
+            peer.IsAllocated(contexts).Should().BeFalse();
+            peer.TryAllocate(contexts).Should().BeTrue();
+            peer.IsAllocated(contexts).Should().BeTrue();
+            peer.CanBeAllocated(contexts).Should().BeFalse();
+
+            peer.Free(contexts);
+            peer.IsAllocated(contexts).Should().BeFalse();
+            peer.CanBeAllocated(contexts).Should().BeTrue();
         }
 
-        [Test]
-        public void Can_allocate()
+        [TestCaseSource(nameof(SingleBitContextCases))]
+        public void TryAllocate_drains_extra_slots_until_full(AllocationContexts ctx)
         {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            peerInfo.IsAllocated(_contexts).Should().BeFalse();
-            peerInfo.TryAllocate(_contexts);
-            peerInfo.IsAllocated(_contexts).Should().BeTrue();
-            peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
-        }
-
-        [Test]
-        public void Can_free()
-        {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            peerInfo.IsAllocated(_contexts).Should().BeFalse();
-            peerInfo.TryAllocate(_contexts);
-            peerInfo.IsAllocated(_contexts).Should().BeTrue();
-            peerInfo.Free(_contexts);
-            peerInfo.IsAllocated(_contexts).Should().BeFalse();
-            peerInfo.CanBeAllocated(_contexts).Should().BeTrue();
-        }
-
-        [Test]
-        public void Cannot_allocate_subcontext()
-        {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            peerInfo.TryAllocate(AllocationContexts.Blocks);
-            peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
-            peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeFalse();
-            peerInfo.IsAllocated(AllocationContexts.Receipts).Should().BeTrue();
-            peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
-            peerInfo.CanBeAllocated(AllocationContexts.Headers).Should().BeTrue();
-            peerInfo.CanBeAllocated(AllocationContexts.Receipts).Should().BeFalse();
-
-            peerInfo.Free(AllocationContexts.Receipts);
-            peerInfo.IsAllocated(AllocationContexts.Receipts).Should().BeFalse();
-            peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
-        }
-
-        [Test]
-        public void Cannot_allocate_subcontext_of_sleeping()
-        {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            peerInfo.PutToSleep(AllocationContexts.Blocks, DateTime.MinValue);
-            peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
-        }
-
-        [Test]
-        public void Free_does_not_set_unallocated_context()
-        {
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            peerInfo.TryAllocate(AllocationContexts.Headers);
-
-            peerInfo.Free(AllocationContexts.Bodies);
-
-            peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeTrue();
-            peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeFalse();
-        }
-
-        [Test]
-        public void WakeUp_does_not_put_awake_context_to_sleep()
-        {
-            DateTime t0 = DateTime.UtcNow;
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-
-            peerInfo.PutToSleep(AllocationContexts.Blocks, t0);
-            peerInfo.PutToSleep(AllocationContexts.Bodies, t0 - TimeSpan.FromSeconds(10));
-
-            peerInfo.TryToWakeUp(t0, TimeSpan.FromSeconds(5));
-
-            peerInfo.TryToWakeUp(t0 + TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
-
-            peerInfo.IsAsleep(AllocationContexts.Bodies).Should().BeFalse();
-            peerInfo.IsAsleep(AllocationContexts.Receipts).Should().BeFalse();
-        }
-
-        [Test]
-        public void Can_allocate_multiple()
-        {
-            if (!PeerInfo.IsOnlyOneContext(_contexts) || _contexts == AllocationContexts.None) return;
-
+            const byte slots = 5;
             AllocationAllowances allowances = AllocationAllowances.Default;
-            allowances[_contexts] = 5;
+            allowances[ctx] = slots;
+            PeerInfo peer = NewPeer(allowances);
 
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>(), allowances);
-
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < slots; i++)
             {
-                peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
-                peerInfo.TryAllocate(_contexts).Should().BeTrue();
+                peer.IsAllocationFull(ctx).Should().BeFalse();
+                peer.TryAllocate(ctx).Should().BeTrue();
             }
-            peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
-            peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
+            peer.IsAllocationFull(ctx).Should().BeTrue();
+            peer.CanBeAllocated(ctx).Should().BeFalse();
 
-            peerInfo.Free(_contexts);
-            peerInfo.IsAllocationFull(_contexts).Should().BeFalse();
-            peerInfo.TryAllocate(_contexts).Should().BeTrue();
-            peerInfo.IsAllocationFull(_contexts).Should().BeTrue();
-            peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
+            // One free re-opens exactly one slot.
+            peer.Free(ctx);
+            peer.IsAllocationFull(ctx).Should().BeFalse();
+            peer.TryAllocate(ctx).Should().BeTrue();
+            peer.IsAllocationFull(ctx).Should().BeTrue();
         }
+
+        // ── Composite-context behaviour ─────────────────────────────────────────────────────────
+
+        [Test]
+        public void Allocating_Blocks_takes_only_its_member_subcontexts()
+        {
+            // Master's Blocks = Bodies | Receipts (Headers is excluded), so allocating Blocks must leave
+            // Headers free while marking Bodies and Receipts as taken.
+            PeerInfo peer = NewPeer();
+            peer.TryAllocate(AllocationContexts.Blocks).Should().BeTrue();
+
+            peer.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
+            peer.IsAllocated(AllocationContexts.Receipts).Should().BeTrue();
+            peer.IsAllocated(AllocationContexts.Headers).Should().BeFalse();
+
+            peer.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
+            peer.CanBeAllocated(AllocationContexts.Receipts).Should().BeFalse();
+            peer.CanBeAllocated(AllocationContexts.Headers).Should().BeTrue();
+
+            peer.Free(AllocationContexts.Receipts);
+            peer.IsAllocated(AllocationContexts.Receipts).Should().BeFalse();
+            peer.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
+        }
+
+        [Test]
+        public void Sleeping_a_composite_context_blocks_allocation_of_its_members()
+        {
+            PeerInfo peer = NewPeer();
+            peer.PutToSleep(AllocationContexts.Blocks, DateTime.MinValue);
+            peer.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
+        }
+
+        [Test]
+        public void WakeUp_only_clears_contexts_past_their_individual_sleep_window()
+        {
+            // Bodies was put to sleep 10s ago and Blocks just now. With a 5s window only Bodies should wake first;
+            // 10s later Blocks (and the rest of its sub-contexts) wakes too.
+            DateTime t0 = DateTime.UtcNow;
+            PeerInfo peer = NewPeer();
+
+            peer.PutToSleep(AllocationContexts.Blocks, t0);
+            peer.PutToSleep(AllocationContexts.Bodies, t0 - TimeSpan.FromSeconds(10));
+
+            peer.TryToWakeUp(t0, TimeSpan.FromSeconds(5));
+            peer.TryToWakeUp(t0 + TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
+
+            peer.IsAsleep(AllocationContexts.Bodies).Should().BeFalse();
+            peer.IsAsleep(AllocationContexts.Receipts).Should().BeFalse();
+        }
+
+        // ── Multi-slot edge cases ───────────────────────────────────────────────────────────────
 
         [Test]
         public void Free_does_not_exceed_allowance()
         {
-            // Multi-slot Free guards: calling Free without a prior TryAllocate must not push the slot above its allowance.
+            // Spurious frees (no prior TryAllocate) must not push the slot above its configured allowance.
             AllocationAllowances allowances = new(headers: 2, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1);
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>(), allowances);
+            PeerInfo peer = NewPeer(allowances);
 
-            peerInfo.AvailableAllocationSlots.Headers.Should().Be(2);
-            peerInfo.Free(AllocationContexts.Headers);
-            peerInfo.AvailableAllocationSlots.Headers.Should().Be(2);
+            peer.AvailableAllocationSlots.Headers.Should().Be(2);
+            peer.Free(AllocationContexts.Headers);
+            peer.AvailableAllocationSlots.Headers.Should().Be(2);
 
-            peerInfo.TryAllocate(AllocationContexts.Headers).Should().BeTrue();
-            peerInfo.AvailableAllocationSlots.Headers.Should().Be(1);
-            peerInfo.Free(AllocationContexts.Headers);
-            peerInfo.AvailableAllocationSlots.Headers.Should().Be(2);
-            peerInfo.Free(AllocationContexts.Headers);
-            peerInfo.AvailableAllocationSlots.Headers.Should().Be(2, "Free should not exceed the configured allowance");
+            peer.TryAllocate(AllocationContexts.Headers).Should().BeTrue();
+            peer.AvailableAllocationSlots.Headers.Should().Be(1);
+            peer.Free(AllocationContexts.Headers);
+            peer.AvailableAllocationSlots.Headers.Should().Be(2);
+            peer.Free(AllocationContexts.Headers);
+            peer.AvailableAllocationSlots.Headers.Should().Be(2, "Free should clamp at the configured allowance");
+        }
+
+        [Test]
+        public void Free_of_unallocated_context_leaves_other_contexts_intact()
+        {
+            // TryAllocate(Headers) should not be undone by Free(Bodies).
+            PeerInfo peer = NewPeer();
+            peer.TryAllocate(AllocationContexts.Headers).Should().BeTrue();
+
+            peer.Free(AllocationContexts.Bodies);
+
+            peer.IsAllocated(AllocationContexts.Headers).Should().BeTrue();
+            peer.IsAllocated(AllocationContexts.Bodies).Should().BeFalse();
         }
 
         [Test]
         public void TryAllocate_rolls_back_on_partial_failure()
         {
-            // Take Bodies first, then attempt Blocks (= Bodies | Receipts) which will fail because Bodies is full.
-            // The Receipts slot must not be left decremented.
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
-            peerInfo.TryAllocate(AllocationContexts.Bodies).Should().BeTrue();
+            // Take Bodies first; then Blocks (= Bodies | Receipts) must fail without leaking the Receipts slot.
+            PeerInfo peer = NewPeer();
+            peer.TryAllocate(AllocationContexts.Bodies).Should().BeTrue();
 
-            peerInfo.TryAllocate(AllocationContexts.Blocks).Should().BeFalse();
+            peer.TryAllocate(AllocationContexts.Blocks).Should().BeFalse();
 
-            peerInfo.AvailableAllocationSlots.Bodies.Should().Be(0);
-            peerInfo.AvailableAllocationSlots.Receipts.Should().Be(1, "rollback must restore the partially-claimed slot");
-            peerInfo.IsAllocationFull(AllocationContexts.Receipts).Should().BeFalse();
+            peer.AvailableAllocationSlots.Bodies.Should().Be(0);
+            peer.AvailableAllocationSlots.Receipts.Should().Be(1, "rollback must restore the partially-claimed slot");
+            peer.IsAllocationFull(AllocationContexts.Receipts).Should().BeFalse();
+        }
+
+        [Test]
+        public void AllocationAllowances_is_packed_ulong_size() =>
+            System.Runtime.InteropServices.Marshal.SizeOf<AllocationAllowances>().Should().Be(sizeof(ulong));
+
+        [Test]
+        public void AllocationAllowances_default_static_has_all_ones()
+        {
+            // Sanity: Default must initialize Packed via the primary ctor's field initializer.
+            AllocationAllowances d = AllocationAllowances.Default;
+            d.Headers.Should().Be(1);
+            d.Bodies.Should().Be(1);
+            d.Receipts.Should().Be(1);
+            d.State.Should().Be(1);
+            d.Snap.Should().Be(1);
+            d.ForwardHeader.Should().Be(1);
+        }
+
+        [Test]
+        public void AllocationAllowances_packs_and_unpacks_correctly()
+        {
+            AllocationAllowances a = new(headers: 1, bodies: 2, receipts: 3, state: 4, snap: 5, forwardHeader: 6);
+            a.Headers.Should().Be(1);
+            a.Bodies.Should().Be(2);
+            a.Receipts.Should().Be(3);
+            a.State.Should().Be(4);
+            a.Snap.Should().Be(5);
+            a.ForwardHeader.Should().Be(6);
+            a[AllocationContexts.Headers].Should().Be(1);
+            a[AllocationContexts.Bodies].Should().Be(2);
+            a[AllocationContexts.Receipts].Should().Be(3);
+            a[AllocationContexts.State].Should().Be(4);
+            a[AllocationContexts.Snap].Should().Be(5);
+            a[AllocationContexts.ForwardHeader].Should().Be(6);
+        }
+
+        [Test]
+        public void Default_peer_can_allocate_state()
+        {
+            // Mirrors the failing StateSyncDispatcherTests scenario: a fresh peer with 1-slot allowance
+            // must accept State allocation.
+            PeerInfo peer = NewPeer();
+            peer.CanBeAllocated(AllocationContexts.State).Should().BeTrue();
+            peer.TryAllocate(AllocationContexts.State).Should().BeTrue();
+            peer.IsAllocationFull(AllocationContexts.State).Should().BeTrue();
         }
 
         [Test]
         public void Concurrent_TryAllocate_does_not_oversubscribe()
         {
-            // Many threads racing against a fixed slot count: total successful allocations must equal the allowance,
-            // proving the lock-free CAS loop in TryAllocate does not lose or duplicate slots under contention.
+            // Many threads racing on a fixed slot count: total successful allocations must equal the allowance,
+            // verifying the lock-free CAS loop in TryAllocate neither loses nor duplicates slots under contention.
             const byte slots = 8;
             const int threads = 32;
             AllocationAllowances allowances = new(headers: slots, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1);
-            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>(), allowances);
+            PeerInfo peer = NewPeer(allowances);
             int succeeded = 0;
             using Barrier barrier = new(threads);
 
@@ -243,15 +280,15 @@ namespace Nethermind.Synchronization.Test
                 tasks[t] = Task.Run(() =>
                 {
                     barrier.SignalAndWait();
-                    if (peerInfo.TryAllocate(AllocationContexts.Headers))
+                    if (peer.TryAllocate(AllocationContexts.Headers))
                         Interlocked.Increment(ref succeeded);
                 });
             }
             Task.WaitAll(tasks);
 
             succeeded.Should().Be(slots);
-            peerInfo.AvailableAllocationSlots.Headers.Should().Be(0);
-            peerInfo.IsAllocationFull(AllocationContexts.Headers).Should().BeTrue();
+            peer.AvailableAllocationSlots.Headers.Should().Be(0);
+            peer.IsAllocationFull(AllocationContexts.Headers).Should().BeTrue();
         }
     }
 }

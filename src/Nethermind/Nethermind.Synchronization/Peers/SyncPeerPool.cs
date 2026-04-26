@@ -36,6 +36,7 @@ namespace Nethermind.Synchronization.Peers
     public class SyncPeerPool : ISyncPeerPool, IPeerDifficultyRefreshPool
     {
         public const int DefaultUpgradeIntervalInMs = 1000;
+        public const int MaxAllocationSlots = 16;
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -90,7 +91,9 @@ namespace Nethermind.Synchronization.Peers
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager?.GetClassLogger<SyncPeerPool>() ?? throw new ArgumentNullException(nameof(logManager));
 
-            byte slots = (byte)Math.Clamp(allocationSlots, 1, byte.MaxValue);
+            // The packed AllocationAllowances representation reserves 1 byte (8 bits) per context but only honours
+            // values up to MaxAllocationSlots; anything higher is clamped at registration time.
+            byte slots = (byte)Math.Clamp(allocationSlots, 1, MaxAllocationSlots);
             // Headers reliably hang when given a high allowance, so they remain pinned at 1 (see PR #7174 history).
             _allocationAllowances = new AllocationAllowances(headers: 1, bodies: slots, receipts: slots, state: slots, snap: slots, forwardHeader: 1);
 
@@ -671,8 +674,12 @@ namespace Nethermind.Synchronization.Peers
             if (exception is OperationCanceledException || exception is TimeoutException)
             {
                 // We don't want to disconnect on timeout. It could be that we are downloading from the peer,
-                // or we have some connection issue
-                ReportWeakPeer(new PeerInfo(syncPeer, _allocationAllowances), AllocationContexts.All);
+                // or we have some connection issue. Report against the live PeerInfo so the weakness/sleep state
+                // actually persists; the previous code constructed a throwaway PeerInfo whose mutations vanished.
+                if (_peers.TryGetValue(syncPeer.Node.Id, out PeerInfo? existing))
+                {
+                    ReportWeakPeer(existing, AllocationContexts.All);
+                }
             }
             else
             {
