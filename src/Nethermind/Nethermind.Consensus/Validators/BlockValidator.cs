@@ -452,7 +452,7 @@ public class BlockValidator(
     private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
     {
         BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
-        int maxBalItems = (int)(block.Header.GasLimit / Eip7928Constants.ItemCost);
+        long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
         if (bal.ItemCount > maxBalItems)
         {
