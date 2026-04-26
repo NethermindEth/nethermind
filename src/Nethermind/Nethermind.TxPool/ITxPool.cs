@@ -36,6 +36,11 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <returns></returns>
         Transaction[] GetPendingTransactionsBySender(Address address);
+
+        /// <summary>
+        /// Blob txs light equivalences from a specific sender, sorted by nonce and later tx pool sorting
+        /// </summary>
+        Transaction[] GetPendingLightBlobTransactionsBySender(Address address);
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         bool ContainsTx(Hash256 hash, TxType txType);

@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.TxPool
+using Nethermind.Core;
+
+namespace Nethermind.TxPool;
+
+public interface ITxPoolInfoProvider
 {
-    public interface ITxPoolInfoProvider
-    {
-        TxPoolInfo GetInfo();
-    }
+    TxPoolInfo GetInfo();
+    TxPoolSenderInfo GetSenderInfo(Address address);
+    TxPoolCounts GetCounts();
 }
