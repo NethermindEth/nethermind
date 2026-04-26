@@ -59,7 +59,7 @@ public class ForkchoiceUpdatedHandler(
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
     // Spec point 6: implementation-specific limit for -38006. Matches pruning boundary
     // because the client cannot serve state older than that. See execution-apis/pull/786.
-    private readonly int _maxReorgDepth = pruningConfig.PruningBoundary;
+    private readonly IPruningConfig _pruningConfig = pruningConfig;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -92,9 +92,10 @@ public class ForkchoiceUpdatedHandler(
         }
 
         long reorgDepth = (_blockTree.Head?.Number ?? 0) - FindMainChainAncestorNumber(newHeadHeader);
-        if (reorgDepth > _maxReorgDepth)
+        int maxReorgDepth = _pruningConfig.PruningBoundary;
+        if (reorgDepth > maxReorgDepth)
         {
-            if (_logger.IsWarn) _logger.Warn($"Too deep reorg. Reorg depth: {reorgDepth}, limit: {_maxReorgDepth}. Request: {forkchoiceState}.");
+            if (_logger.IsWarn) _logger.Warn($"Too deep reorg. Reorg depth: {reorgDepth}, limit: {maxReorgDepth}. Request: {forkchoiceState}.");
             errorResult = ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("Too deep reorg", MergeErrorCodes.TooDeepReorg);
             return false;
         }
