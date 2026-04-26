@@ -14,6 +14,7 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -652,10 +653,15 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdatedV1_WhenReorgDepthExceedsPruningBoundary_ReturnsTooDeepReorg()
     {
-        // Spec PR #786 point 6: MUST return -38006 when reorg depth > PruningBoundary (default 64).
-        // Build 66 blocks (no finalized), then FCU to H=1.
-        // reorgDepth = head(66) - commonAncestor(1) = 65 > 64 → -38006.
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        // Spec PR #786 point 6: MUST return -38006 when reorg depth > client-specific limit.
+        // Disable SnapServing so PruningTrieStateFactory.AdviseConfig doesn't bump the boundary
+        // to SnapServingMaxDepth=128 (TestBlockchain wiring auto-flips SnapServingEnabled on for
+        // HalfPath key schemes via WorldStateModule; setting it to false here keeps the auto-flip
+        // a no-op since `|=` only fires when the value is null).
+        // AdviseConfig also enforces a hard floor of 64 on PruningBoundary, so the smallest
+        // chain that exercises the -38006 path is 66 blocks: reorgDepth = 66 - 1 = 65 > 64 → -38006.
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: b => b
+            .Intercept<ISyncConfig>(cfg => cfg.SnapServingEnabled = false));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 66, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
@@ -663,12 +669,13 @@ public partial class EngineModuleTests
         Hash256 b66Hash = branch[65].BlockHash;
 
         (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(b66Hash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
         chain.BlockTree.HeadHash.Should().Be(b66Hash, "precondition: head is at H=66");
 
         ForkchoiceStateV1 fcuTooDeep = new(b1Hash, Keccak.Zero, Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuTooDeep);
 
-        result.ErrorCode.Should().Be(MergeErrorCodes.TooDeepReorg, "reorg depth 65 exceeds default PruningBoundary 64 — must return -38006");
+        result.ErrorCode.Should().Be(MergeErrorCodes.TooDeepReorg, "reorg depth 65 exceeds PruningBoundary 64 — must return -38006");
         chain.BlockTree.HeadHash.Should().Be(b66Hash, "head must not change when -38006 is returned");
     }
 
