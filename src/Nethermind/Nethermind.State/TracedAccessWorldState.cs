@@ -70,10 +70,6 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
-    public IDisposable? BeginSystemPreBlockScope() => new SystemPreBlockScopeReleaser(this);
-
-    private int _systemPreBlockDepth;
-
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         _generatingBlockAccessList.AddStorageRead(storageCell);
@@ -107,20 +103,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public void Set(in StorageCell storageCell, byte[] newValue)
     {
         ReadOnlySpan<byte> oldValue = GetInternal(storageCell);
-        if (_systemPreBlockDepth > 0)
-        {
-            // EIP-7928 v5.7.0: SSTOREs during system pre-block calls (2935/4788) are
-            // recorded as storage reads when the value actually changes, and skipped
-            // entirely when the value is unchanged. The state mutation still applies.
-            if (!oldValue.SequenceEqual(newValue))
-            {
-                _generatingBlockAccessList.AddStorageRead(storageCell);
-            }
-        }
-        else
-        {
-            _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
-        }
+        _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
         _innerWorldState.Set(storageCell, newValue);
     }
 
@@ -401,25 +384,6 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         if (!nonce.IsZero)
         {
             _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
-        }
-    }
-
-    private sealed class SystemPreBlockScopeReleaser : IDisposable
-    {
-        private TracedAccessWorldState? _stateProvider;
-
-        public SystemPreBlockScopeReleaser(TracedAccessWorldState stateProvider)
-        {
-            _stateProvider = stateProvider;
-            stateProvider._systemPreBlockDepth++;
-        }
-
-        public void Dispose()
-        {
-            TracedAccessWorldState? stateProvider = _stateProvider;
-            if (stateProvider is null) return;
-            _stateProvider = null;
-            stateProvider._systemPreBlockDepth--;
         }
     }
 
