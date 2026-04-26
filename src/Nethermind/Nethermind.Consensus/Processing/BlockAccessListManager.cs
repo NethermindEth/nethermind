@@ -408,13 +408,19 @@ public class BlockAccessListManager(
         CheckInitialized();
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        // EIP-7928 v5.7.0: SSTOREs from system pre-block calls are recorded in the BAL as
+        // storage reads (no post-value) instead of changes. The state mutation still applies
+        // because the system slot's WorldState writes through to the canonical stateProvider.
+        using IDisposable? _ = preExecution.WorldState.BeginSystemPreBlockScope();
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
     }
 
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
     {
         CheckInitialized();
-        new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
+        IWorldState worldState = _txProcessorWithWorldStateManager.GetPreExecution().WorldState;
+        using IDisposable? _ = worldState.BeginSystemPreBlockScope();
+        new BlockhashStore(worldState).ApplyBlockhashStateChanges(header, spec);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
@@ -435,6 +441,10 @@ public class BlockAccessListManager(
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
+        // EIP-7928 v5.7.0: post-execution system contract calls (EIP-7002 withdrawal requests,
+        // EIP-7251 consolidation requests) follow the same BAL convention as pre-execution
+        // system calls — SSTOREs are recorded as storage reads, not changes.
+        using IDisposable? _ = postExecution.WorldState.BeginSystemPreBlockScope();
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 
@@ -519,7 +529,8 @@ public class BlockAccessListManager(
             {
                 // todo: could be a lot of allocations here
                 // will optimize to allocate ~16 worldstates upfront, and reuse them as they are ready
-                _txProcessorsWithWorldStates[i] = new((uint)i, true, blockHashProvider, specProvider, stateProvider, logManager);
+                bool isSystemSlot = i == 0 || i == _len - 1;
+                _txProcessorsWithWorldStates[i] = new((uint)i, true, blockHashProvider, specProvider, stateProvider, logManager, isSystemSlot);
                 _txProcessorsWithWorldStates[i].Setup(block, blockExecutionContext);
             }
         }
@@ -569,12 +580,18 @@ public class BlockAccessListManager(
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            bool isSystemSlot = false)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
             IWorldState worldState = stateProvider;
-            if (parallel)
+            // System slots (pre-execution and post-execution) carry the system pre/post block
+            // contract calls (EIP-2935/4788/7002/7251). Their writes must mutate the canonical
+            // stateProvider directly — under the EIP-7928 spec they are recorded as storage
+            // reads in the BAL (no post-value), so ApplyStateChanges has nothing to replay
+            // for them. Skip the BAL-backed world state wrapper for those slots.
+            if (parallel && !isSystemSlot)
             {
                 _balWorldState = new BlockAccessListBasedWorldState(stateProvider, balIndex, logManager);
                 worldState = _balWorldState;

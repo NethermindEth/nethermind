@@ -145,6 +145,15 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
+    /// <summary>
+    /// EIP-7928 v5.7.0: while this scope is active, the BAL recorder reclassifies SSTOREs
+    /// performed by system pre-block calls (EIP-2935 BlockHashHistory and EIP-4788
+    /// BeaconRootContract) as storage reads on the touched slot — and skips them entirely
+    /// when the slot value would be unchanged. The actual state mutation still applies
+    /// via the inner world state.
+    /// </summary>
+    public IDisposable? BeginSystemPreBlockScope() => null;
+
     // See https://eips.ethereum.org/EIPS/eip-7610
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {
