@@ -7,9 +7,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct StorageChange(int index, UInt256 value) : IEquatable<StorageChange>, IIndexedChange
+public readonly struct StorageChange(uint index, UInt256 value) : IEquatable<StorageChange>, IIndexedChange
 {
-    public int Index { get; init; } = index;
+    public uint Index { get; init; } = index;
 
     public UInt256 Value { get; init; } = value;
 

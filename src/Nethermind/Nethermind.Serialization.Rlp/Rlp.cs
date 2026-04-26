@@ -158,21 +158,28 @@ namespace Nethermind.Serialization.Rlp
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpValueDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
-            int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
-            decoderContext.GuardLimit(length, limit);
-            ArrayPoolList<T> result = new(length);
-            for (int i = 0; i < length; i++)
+            try
             {
-                result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
-            }
+                int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
+                int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
+                decoderContext.GuardLimit(length, limit);
+                ArrayPoolList<T> result = new(length);
+                for (int i = 0; i < length; i++)
+                {
+                    result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
+                }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                {
+                    decoderContext.Check(checkPosition);
+                }
+
+                return result;
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
-                decoderContext.Check(checkPosition);
+                throw new RlpException($"Truncated or out-of-bounds RLP while decoding array of {typeof(T).Name}.", e);
             }
-
-            return result;
         }
 
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -180,9 +187,17 @@ namespace Nethermind.Serialization.Rlp
             IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
             bool shouldCheckStream = decoderContext.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
             int length = decoderContext.Length;
-            T? result = rlpDecoder is not null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
-            if (shouldCheckStream)
-                decoderContext.Check(length);
+            T? result;
+            try
+            {
+                result = rlpDecoder is not null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+                if (shouldCheckStream)
+                    decoderContext.Check(length);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                throw new RlpException($"Truncated or out-of-bounds RLP while decoding {typeof(T).Name}.", e);
+            }
             return result;
         }
 
@@ -1023,6 +1038,46 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
+            public uint DecodeUInt()
+            {
+                int prefix = ReadByte();
+
+                switch (prefix)
+                {
+                    case 0:
+                        RlpHelpers.ThrowNonCanonicalInteger(Position);
+                        return default;
+                    case < 128:
+                        return (uint)prefix;
+                    case 128:
+                        return 0;
+                }
+
+                int length = prefix - 128;
+                if (length > 4)
+                {
+                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
+                }
+
+                uint result = 0;
+                for (int i = 4; i > 0; i--)
+                {
+                    result <<= 8;
+                    if (i <= length)
+                    {
+                        result |= Data[Position + length - i];
+                        if (result == 0)
+                        {
+                            RlpHelpers.ThrowNonCanonicalInteger(Position);
+                        }
+                    }
+                }
+
+                Position += length;
+
+                return result;
+            }
+
             public byte[] DecodeByteArray(RlpLimit? limit = null) => ByteSpanToArray(DecodeByteArraySpan(limit));
 
             public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null)
@@ -1600,6 +1655,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static int LengthOf(int value) => LengthOf((long)value);
+
+        public static int LengthOf(uint value) => LengthOf((ulong)value);
 
         public static int LengthOf(ushort value) => LengthOf((long)value);
 

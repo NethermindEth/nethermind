@@ -441,6 +441,11 @@ public class BlockValidator(
             {
                 return false;
             }
+
+            if (!ValidateBlockLevelAccessListIndexBounds(block, ref error))
+            {
+                return false;
+            }
         }
 
         error = null;
@@ -459,6 +464,60 @@ public class BlockValidator(
             error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(bal.ItemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
+        }
+
+        return true;
+    }
+
+    // EIP-7928: BlockAccessIndex valid range is [0, txCount + 1]
+    // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
+    // Mirrors geth bal-devnet-4 check `txIdx >= blockTxCount + 2`.
+    private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
+    {
+        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
+        uint maxAllowed = (uint)block.Transactions.Length + 1;
+
+        foreach (AccountChanges accountChanges in bal.AccountChanges)
+        {
+            foreach (BalanceChange change in accountChanges.BalanceChanges)
+            {
+                if (change.Index > maxAllowed)
+                {
+                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
+                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+                    return false;
+                }
+            }
+            foreach (NonceChange change in accountChanges.NonceChanges)
+            {
+                if (change.Index > maxAllowed)
+                {
+                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
+                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+                    return false;
+                }
+            }
+            foreach (CodeChange change in accountChanges.CodeChanges)
+            {
+                if (change.Index > maxAllowed)
+                {
+                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
+                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+                    return false;
+                }
+            }
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                foreach (StorageChange change in slotChanges.Changes.Values)
+                {
+                    if (change.Index > maxAllowed)
+                    {
+                        error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
+                        if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+                        return false;
+                    }
+                }
+            }
         }
 
         return true;

@@ -111,7 +111,7 @@ public class BlockAccessListManager(
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => _blockExecutionContext = blockExecutionContext;
 
-    public ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null)
+    public ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null)
     {
         CheckInitialized();
         return _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
@@ -171,8 +171,8 @@ public class BlockAccessListManager(
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
                 bool validateStorageReads = j == chunkEnd - 1;
-                _txProcessorWithWorldStateManager.Get(j + 1).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
-                ValidateBlockAccessList(block, (ushort)(j + 1), validateStorageReads);
+                _txProcessorWithWorldStateManager.Get((uint)(j + 1)).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
+                ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
             }
         }
 
@@ -228,7 +228,7 @@ public class BlockAccessListManager(
     {
         foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].Index != -1)
+            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].Index != Eip7928Constants.PrestateIndex)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
@@ -243,13 +243,13 @@ public class BlockAccessListManager(
                 }
             }
 
-            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].Index != -1)
+            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].Index != Eip7928Constants.PrestateIndex)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
             }
 
-            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].Index != -1)
+            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].Index != Eip7928Constants.PrestateIndex)
             {
                 stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
             }
@@ -259,7 +259,7 @@ public class BlockAccessListManager(
                 StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
                 // could be empty since prestate loaded
                 int slotCount = slotChange.Changes.Count;
-                if (slotCount > 0 && slotChange.Changes.Keys[slotCount - 1] != -1)
+                if (slotCount > 0 && slotChange.Changes.Keys[slotCount - 1] != Eip7928Constants.PrestateIndex)
                 {
                     stateProvider.Set(storageCell, [.. slotChange.Changes.Values[slotCount - 1].Value.ToBigEndian().WithoutLeadingZeros()]);
                 }
@@ -307,7 +307,7 @@ public class BlockAccessListManager(
     }
 
     // todo: optimize early validation
-    public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true)
+    public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
     {
         if (block.BlockAccessList is null)
         {
@@ -450,21 +450,21 @@ public class BlockAccessListManager(
             accountChanges.ExistedBeforeBlock = exists;
             accountChanges.EmptyBeforeBlock = !account.HasStorage;
 
-            accountChanges.AddBalanceChange(new(-1, account.Balance));
-            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
-            accountChanges.AddCodeChange(new(-1, stateProvider.GetCode(accountChanges.Address)));
+            accountChanges.AddBalanceChange(new(Eip7928Constants.PrestateIndex,account.Balance));
+            accountChanges.AddNonceChange(new(Eip7928Constants.PrestateIndex,(ulong)account.Nonce));
+            accountChanges.AddCodeChange(new(Eip7928Constants.PrestateIndex,stateProvider.GetCode(accountChanges.Address)));
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
                 StorageCell storageCell = new(accountChanges.Address, slotChanges.Key);
-                slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
+                slotChanges.AddStorageChange(new(Eip7928Constants.PrestateIndex,new(stateProvider.Get(storageCell), true)));
             }
 
             foreach (UInt256 storageRead in accountChanges.StorageReads)
             {
                 SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead);
                 StorageCell storageCell = new(accountChanges.Address, storageRead);
-                slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
+                slotChanges.AddStorageChange(new(Eip7928Constants.PrestateIndex,new(stateProvider.Get(storageCell), true)));
             }
         }
     }
@@ -478,7 +478,7 @@ public class BlockAccessListManager(
     private static bool HasOptionalStorageReads(in ChangeAtIndex c)
         => HasNoChanges(c) && c.Reads > 0;
 
-    private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
+    private static bool IsSystemAccountRead(in ChangeAtIndex c, uint index)
         => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
 
     private void CheckInitialized()
@@ -496,7 +496,7 @@ public class BlockAccessListManager(
     private interface ITxProcessorWithWorldStateManager
     {
         void Setup(Block block, BlockExecutionContext blockExecutionContext);
-        TxProcessorWithWorldState Get(int? balIndex = null);
+        TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0);
         TxProcessorWithWorldState GetPostExecution() => Get(int.MaxValue);
         void NextTransaction();
@@ -520,13 +520,13 @@ public class BlockAccessListManager(
             {
                 // todo: could be a lot of allocations here
                 // will optimize to allocate ~16 worldstates upfront, and reuse them as they are ready
-                _txProcessorsWithWorldStates[i] = new(i, true, blockHashProvider, specProvider, stateProvider, logManager);
+                _txProcessorsWithWorldStates[i] = new((uint)i, true, blockHashProvider, specProvider, stateProvider, logManager);
                 _txProcessorsWithWorldStates[i].Setup(block, blockExecutionContext);
             }
         }
 
-        public TxProcessorWithWorldState Get(int? balIndex)
-            => _txProcessorsWithWorldStates[int.Min(balIndex ?? 0, _len - 1)];
+        public TxProcessorWithWorldState Get(uint? balIndex)
+            => _txProcessorsWithWorldStates[(int)uint.Min(balIndex ?? 0, (uint)(_len - 1))];
 
         public void NextTransaction() { }
 
@@ -544,7 +544,7 @@ public class BlockAccessListManager(
         public void Setup(Block block, BlockExecutionContext blockExecutionContext)
             => _txProcessorWithWorldState.Setup(block, blockExecutionContext);
 
-        public TxProcessorWithWorldState Get(int? _)
+        public TxProcessorWithWorldState Get(uint? _)
             => _txProcessorWithWorldState;
 
         public void NextTransaction()
@@ -562,10 +562,10 @@ public class BlockAccessListManager(
         public readonly TransactionProcessor<EthereumGasPolicy> TxProcessor;
         public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
-        private readonly int _balIndex;
+        private readonly uint _balIndex;
 
         public TxProcessorWithWorldState(
-            int balIndex,
+            uint balIndex,
             bool parallel,
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,

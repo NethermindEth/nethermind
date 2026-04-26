@@ -20,7 +20,7 @@ namespace Nethermind.State;
 
 public class BlockAccessListBasedWorldState(
     IWorldState innerWorldState,
-    int blockAccessIndex,
+    uint blockAccessIndex,
     ILogManager logManager) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;

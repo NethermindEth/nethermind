@@ -56,11 +56,11 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
-                balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
+                balManager.ValidateBlockAccessList(block, (uint)(i + 1));
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -104,7 +104,7 @@ public partial class BlockProcessor
                     {
                         Transaction tx = state.txs[txIndex];
                         ProcessTransaction(
-                            state.balManager.GetTxProcessor(i),
+                            state.balManager.GetTxProcessor((uint)i),
                             state.stateProvider,
                             state.block,
                             tx,
