@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using NonBlocking;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using FastEnumUtility;
 using Nethermind.Blockchain.Synchronization;
@@ -18,11 +20,27 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public class PeerInfo(ISyncPeer syncPeer)
+    public class PeerInfo(ISyncPeer syncPeer, FrozenDictionary<AllocationContexts, int>? allocationAllowances = null)
     {
+        public static readonly FrozenDictionary<AllocationContexts, int> DefaultAllowances = new Dictionary<AllocationContexts, int>()
+        {
+            {AllocationContexts.Headers, 1},
+            {AllocationContexts.Bodies, 1},
+            {AllocationContexts.Receipts, 1},
+            {AllocationContexts.State, 1},
+            {AllocationContexts.Snap, 1},
+            {AllocationContexts.ForwardHeader, 1},
+        }.ToFrozenDictionary();
+
+        private readonly FrozenDictionary<AllocationContexts, int> _allocationAllowances = allocationAllowances ?? DefaultAllowances;
+
         public NodeClientType PeerClientType => SyncPeer?.ClientType ?? NodeClientType.Unknown;
 
-        public AllocationContexts AllocatedContexts { get; private set; }
+        public ConcurrentDictionary<AllocationContexts, int> AllocationSlots { get; } = new(allocationAllowances ?? DefaultAllowances);
+
+        public Dictionary<AllocationContexts, int> AvailableAllocationSlots => AllocationSlots
+            .Select(kv => (kv.Key, _allocationAllowances[kv.Key] - kv.Value))
+            .ToDictionary();
 
         public AllocationContexts SleepingContexts { get; private set; }
 
@@ -40,6 +58,23 @@ namespace Nethermind.Synchronization.Peers
         public long HeadNumber => SyncPeer.HeadNumber;
 
         public Hash256 HeadHash => SyncPeer.HeadHash;
+        public bool HasAnyAllocation => AllocationSlots.Any(kv => kv.Value < _allocationAllowances[kv.Key]);
+
+        public AllocationContexts AllocatedContexts
+        {
+            get
+            {
+                AllocationContexts result = AllocationContexts.None;
+                foreach (KeyValuePair<AllocationContexts, int> kv in AllocationSlots)
+                {
+                    if (kv.Value < _allocationAllowances[kv.Key])
+                    {
+                        result |= kv.Key;
+                    }
+                }
+                return result;
+            }
+        }
 
         private long _lastNotifiedEarliestNumber;
         private long _lastNotifiedLatestNumber;
@@ -57,21 +92,41 @@ namespace Nethermind.Synchronization.Peers
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool CanBeAllocated(AllocationContexts contexts) => !IsAsleep(contexts) &&
-                   !IsAllocated(contexts) &&
+                   !IsAllocationFull(contexts) &&
                    this.SupportsAllocation(contexts);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool IsAsleep(AllocationContexts contexts) => (contexts & SleepingContexts) != AllocationContexts.None;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool IsAllocated(AllocationContexts contexts) => (contexts & AllocatedContexts) != AllocationContexts.None;
+        public bool IsAllocationFull(AllocationContexts contexts) => SeparateAllocationContexts(contexts).Any(aCtx => AllocationSlots[aCtx] <= 0);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryAllocate(AllocationContexts contexts)
         {
             if (CanBeAllocated(contexts))
             {
-                AllocatedContexts |= contexts;
+                bool failed = false;
+                AllocationContexts updatedCtx = AllocationContexts.None;
+
+                foreach (AllocationContexts aCtx in SeparateAllocationContexts(contexts))
+                {
+                    int current = AllocationSlots[aCtx];
+                    if (current <= 0 || !AllocationSlots.TryUpdate(aCtx, current - 1, current))
+                    {
+                        failed = true;
+                        break;
+                    }
+
+                    updatedCtx |= aCtx;
+                }
+
+                if (failed)
+                {
+                    Free(updatedCtx);
+                    return false;
+                }
+
                 return true;
             }
 
@@ -79,7 +134,13 @@ namespace Nethermind.Synchronization.Peers
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Free(AllocationContexts contexts) => AllocatedContexts &= ~contexts;
+        public void Free(AllocationContexts contexts)
+        {
+            foreach (AllocationContexts aCtx in SeparateAllocationContexts(contexts))
+            {
+                AllocationSlots[aCtx]++;
+            }
+        }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void PutToSleep(AllocationContexts contexts, DateTime dateTime)
@@ -175,6 +236,64 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public override string ToString() => $"[{BuildContextString(AllocatedContexts)} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";
+        private string BuildSlotContextString()
+        {
+            StringBuilder ctxStringBuilder = new();
+
+            (AllocationContexts, char)[] stringOrders =
+            [
+                (AllocationContexts.Headers, 'h'),
+                (AllocationContexts.Bodies, 'b'),
+                (AllocationContexts.Receipts, 'r'),
+                (AllocationContexts.State, 'n'),
+                (AllocationContexts.Snap, 's'),
+                (AllocationContexts.ForwardHeader, 'f'),
+            ];
+
+            foreach ((AllocationContexts ctx, char chRep) in stringOrders)
+            {
+                int count = AllocationSlots[ctx];
+                int allowances = _allocationAllowances[ctx];
+                if (count == allowances)
+                {
+                    ctxStringBuilder.Append(' ');
+                }
+                else if (count == 0)
+                {
+                    ctxStringBuilder.Append(Char.ToUpper(chRep));
+                }
+                else if (allowances - count == 1)
+                {
+                    ctxStringBuilder.Append(chRep);
+                }
+                else
+                {
+                    ctxStringBuilder.Append(allowances - count);
+                }
+            }
+
+            return ctxStringBuilder.ToString();
+        }
+
+        public override string ToString() => $"[{BuildSlotContextString()} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";
+
+        private AllocationContexts[] SeparateAllocationContexts(AllocationContexts contexts)
+        {
+            if (SeparatedContextsCache.TryGetValue(contexts, out AllocationContexts[] cachedContext))
+            {
+                return cachedContext;
+            }
+
+            cachedContext = FastEnum.GetValues<AllocationContexts>()
+                .Where(aCtx => IsOnlyOneContext(aCtx) && (contexts & aCtx) != 0)
+                .ToArray();
+
+            SeparatedContextsCache.TryAdd(contexts, cachedContext);
+            return cachedContext;
+        }
+
+        private static readonly ConcurrentDictionary<AllocationContexts, AllocationContexts[]> SeparatedContextsCache = new();
+
+        public static bool IsOnlyOneContext(AllocationContexts x) => (x & (x - 1)) == 0;
     }
 }

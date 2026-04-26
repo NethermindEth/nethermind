@@ -73,6 +73,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
         public bool NeedToWaitForHeader { get; set; }
         public bool VerifyTrieOnStateSyncFinished { get; set; }
+        public int AllocationSlots { get; set; } = 2;
         public bool TrieHealing { get; set; } = true;
         public int StateMaxDistanceFromHead { get; set; } = 128;
         public int StateMinDistanceFromHead { get; set; } = 32;

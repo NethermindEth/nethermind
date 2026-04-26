@@ -349,9 +349,9 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync)
 
-            .AddSingleton<SyncPeerPool, IBlockTree, INodeStatsManager, IBetterPeerStrategy, INetworkConfig, ILogManager>(
-                    (blockTree, stats, betterPeerStrategy, networkConfig, logManager) =>
-                        new SyncPeerPool(blockTree, stats, betterPeerStrategy, networkConfig, logManager))
+            .AddSingleton<SyncPeerPool, IBlockTree, INodeStatsManager, IBetterPeerStrategy, INetworkConfig, ISyncConfig, ILogManager>(
+                    (blockTree, stats, betterPeerStrategy, networkConfig, syncConfig, logManager) =>
+                        new SyncPeerPool(blockTree, stats, betterPeerStrategy, networkConfig, syncConfig, logManager))
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
 
