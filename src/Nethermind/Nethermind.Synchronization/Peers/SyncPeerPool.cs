@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.Peers
     public class SyncPeerPool : ISyncPeerPool, IPeerDifficultyRefreshPool
     {
         public const int DefaultUpgradeIntervalInMs = 1000;
-        public const int MaxAllocationSlots = 16;
+        public const int MaxAllocationSlots = byte.MaxValue;
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;

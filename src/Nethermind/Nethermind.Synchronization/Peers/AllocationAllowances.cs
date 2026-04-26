@@ -2,74 +2,70 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Numerics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Synchronization.Peers
 {
     /// <summary>
-    /// Per-peer concurrent-request allowance for each single-bit <see cref="AllocationContexts"/> flag.
-    /// Stored as six bytes packed into a single <see cref="ulong"/> so the whole state can be read or
-    /// compare-exchanged in a single 64-bit instruction.
+    /// Per-peer concurrent-request allowance, one byte per single-bit <see cref="AllocationContexts"/> flag.
+    /// Configured once when the peer is created and read-only afterwards, so it stays a simple struct of named
+    /// fields. <see cref="PeerInfo"/> packs the live counters into a single <see cref="ulong"/> internally to
+    /// enable atomic compound CAS — that is a private implementation detail of <see cref="PeerInfo"/>.
     /// </summary>
     public struct AllocationAllowances(byte headers, byte bodies, byte receipts, byte state, byte snap, byte forwardHeader) : IEquatable<AllocationAllowances>
     {
-        public const int BitsPerSlot = 8;
-
-        internal ulong Packed = ((ulong)headers << (0 * BitsPerSlot))
-                              | ((ulong)bodies << (1 * BitsPerSlot))
-                              | ((ulong)receipts << (2 * BitsPerSlot))
-                              | ((ulong)state << (3 * BitsPerSlot))
-                              | ((ulong)snap << (4 * BitsPerSlot))
-                              | ((ulong)forwardHeader << (5 * BitsPerSlot));
-
-        public byte Headers { readonly get => Get(0); set => Set(0, value); }
-        public byte Bodies { readonly get => Get(1); set => Set(1, value); }
-        public byte Receipts { readonly get => Get(2); set => Set(2, value); }
-        public byte State { readonly get => Get(3); set => Set(3, value); }
-        public byte Snap { readonly get => Get(4); set => Set(4, value); }
-        public byte ForwardHeader { readonly get => Get(5); set => Set(5, value); }
+        public byte Headers = headers;
+        public byte Bodies = bodies;
+        public byte Receipts = receipts;
+        public byte State = state;
+        public byte Snap = snap;
+        public byte ForwardHeader = forwardHeader;
 
         public static AllocationAllowances Default { get; } = new(1, 1, 1, 1, 1, 1);
 
-        /// <summary>
-        /// Indexer for single-bit allocation contexts. Pre-check with <see cref="PeerInfo.IsOnlyOneContext"/>;
-        /// passing a multi-bit value silently aliases to the lowest set bit's slot.
-        /// </summary>
         public byte this[AllocationContexts context]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            readonly get
+            readonly get => context switch
             {
-                Debug.Assert(IsSingleBit(context), "AllocationAllowances indexer requires a single-bit context.");
-                return Get(BitOperations.Log2((uint)context));
-            }
+                AllocationContexts.Headers => Headers,
+                AllocationContexts.Bodies => Bodies,
+                AllocationContexts.Receipts => Receipts,
+                AllocationContexts.State => State,
+                AllocationContexts.Snap => Snap,
+                AllocationContexts.ForwardHeader => ForwardHeader,
+                _ => ThrowNotSingle(context),
+            };
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set
             {
-                Debug.Assert(IsSingleBit(context), "AllocationAllowances indexer requires a single-bit context.");
-                Set(BitOperations.Log2((uint)context), value);
+                switch (context)
+                {
+                    case AllocationContexts.Headers: Headers = value; break;
+                    case AllocationContexts.Bodies: Bodies = value; break;
+                    case AllocationContexts.Receipts: Receipts = value; break;
+                    case AllocationContexts.State: State = value; break;
+                    case AllocationContexts.Snap: Snap = value; break;
+                    case AllocationContexts.ForwardHeader: ForwardHeader = value; break;
+                    default: ThrowNotSingle(context); break;
+                }
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private readonly byte Get(int slotIndex) => (byte)(Packed >> (slotIndex * BitsPerSlot));
+        public readonly bool Equals(AllocationAllowances other) =>
+            Headers == other.Headers && Bodies == other.Bodies && Receipts == other.Receipts &&
+            State == other.State && Snap == other.Snap && ForwardHeader == other.ForwardHeader;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void Set(int slotIndex, byte value)
-        {
-            int shift = slotIndex * BitsPerSlot;
-            Packed = (Packed & ~(0xFFul << shift)) | ((ulong)value << shift);
-        }
+        public readonly override bool Equals(object? obj) => obj is AllocationAllowances other && Equals(other);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsSingleBit(AllocationContexts ctx) => ctx != 0 && ((uint)ctx & ((uint)ctx - 1)) == 0;
+        public readonly override int GetHashCode() => HashCode.Combine(Headers, Bodies, Receipts, State, Snap, ForwardHeader);
 
-        public readonly bool Equals(AllocationAllowances other) => Packed == other.Packed;
-        public readonly override bool Equals(object? obj) => obj is AllocationAllowances o && Equals(o);
-        public readonly override int GetHashCode() => Packed.GetHashCode();
-        public static bool operator ==(AllocationAllowances left, AllocationAllowances right) => left.Packed == right.Packed;
-        public static bool operator !=(AllocationAllowances left, AllocationAllowances right) => left.Packed != right.Packed;
+        public static bool operator ==(AllocationAllowances left, AllocationAllowances right) => left.Equals(right);
+        public static bool operator !=(AllocationAllowances left, AllocationAllowances right) => !left.Equals(right);
+
+        [DoesNotReturn]
+        private static byte ThrowNotSingle(AllocationContexts context) =>
+            throw new ArgumentOutOfRangeException(nameof(context), context, "Expected a single allocation context flag.");
     }
 }
