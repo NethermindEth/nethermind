@@ -91,20 +91,20 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
 
         UInt256 value = _testAccountBalance;
+        Block block = Build.A.Block.TestObject;
 
         Transaction templateTx = Build.A.Transaction
             .WithCode(code)
             .WithGasLimit(0)
             .WithValue(value)
             .TestObject;
-        long gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas + _gasLimit;
+        long gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas + _gasLimit;
 
         Transaction createTx = Build.A.Transaction
             .WithCode(code)
             .WithGasLimit(gasLimit)
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
-        Block block = Build.A.Block.TestObject;
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
@@ -149,13 +149,14 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         InitWorldState(TestState, extraCode);
 
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        Block block = Build.A.Block.TestObject;
 
         Transaction templateTx = Build.A.Transaction
             .WithCode(code)
             .WithGasLimit(0)
             .WithValue(_testAccountBalance)
             .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
         long gasLimit = intrinsicGas + executionGas;
 
         Transaction createTx = Build.A.Transaction
@@ -163,7 +164,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(gasLimit)
             .WithValue(_testAccountBalance)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
-        Block block = Build.A.Block.TestObject;
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
@@ -390,11 +390,17 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.REVERT)
                 .Done;
+            Address revertedCreateAddress = ContractAddress.From(_testAddress, 1);
             // revert should convert storage load to read, nonce and balance changes revert
-            changes = [Build.An.AccountChanges
-                .WithAddress(_testAddress)
-                .WithStorageReads(slot)
-                .TestObject];
+            changes =
+            [
+                Build.An.AccountChanges
+                    .WithAddress(_testAddress)
+                    .WithStorageReads(slot)
+                    .TestObject,
+                new AccountChanges(revertedCreateAddress),
+                new AccountChanges(TestItem.AddressB),
+            ];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
             UInt256 changedValue = 2;
@@ -843,7 +849,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
+                GasCostOf.CreateRegular + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "create_oog_pre_state_access" };
 
@@ -864,7 +870,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
+                GasCostOf.CreateRegular + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "create2_oog_pre_state_access" };
 
@@ -925,7 +931,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.ColdSLoad + GasCostOf.SSet - 1,
+                GasCostOf.ColdSLoad + GasCostOf.SSetRegular - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "sstore_oog_post_state_access" };
 
