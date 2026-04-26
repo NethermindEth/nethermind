@@ -283,7 +283,36 @@ namespace Nethermind.Synchronization.Peers
         private static string BuildContextString(AllocationContexts contexts) =>
             $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}{((contexts & AllocationContexts.ForwardHeader) == AllocationContexts.ForwardHeader ? "F" : " ")}";
 
-        public override string ToString() => $"[{BuildContextString(AllocatedContexts)} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";
+        // Letters track each single-bit context in the same order as _orderedContexts (Headers, Bodies, Receipts, State, Snap, ForwardHeader).
+        private static ReadOnlySpan<char> SlotChars => ['h', 'b', 'r', 'n', 's', 'f'];
+
+        private string BuildSlotContextString()
+        {
+            // Renders one character per slot:
+            //  ' '          – all slots free (available == allowance)
+            //  uppercase    – fully taken (available == 0)
+            //  lowercase    – one slot taken (allowance - available == 1)
+            //  digit        – multiple slots taken (allowance - available)
+            Span<char> buf = stackalloc char[SingleContextCount];
+            for (int i = 0; i < SingleContextCount; i++)
+            {
+                AllocationContexts ctx = _orderedContexts[i];
+                int available = Math.Max(0, Volatile.Read(ref _availableSlots[i]));
+                int allowance = _allocationAllowances[ctx];
+                char ch = SlotChars[i];
+                int taken = allowance - available;
+                buf[i] = taken switch
+                {
+                    <= 0 => ' ',
+                    1 when allowance > 1 => ch,
+                    _ when available == 0 => char.ToUpper(ch),
+                    _ => (char)('0' + Math.Min(taken, 9)),
+                };
+            }
+            return new string(buf);
+        }
+
+        public override string ToString() => $"[{BuildSlotContextString()} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsOnlyOneContext(AllocationContexts x) => (x & (x - 1)) == 0;
