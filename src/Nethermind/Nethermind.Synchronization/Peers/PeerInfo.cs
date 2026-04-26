@@ -230,8 +230,6 @@ namespace Nethermind.Synchronization.Peers
             return true;
         }
 
-        // ── Slot-word helpers ────────────────────────────────────────────────────────────────────
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private ulong ReadSlots() => Volatile.Read(ref _availableSlots);
 
@@ -284,8 +282,6 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        // ── Weakness-word helpers ────────────────────────────────────────────────────────────────
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint BuildWeaknessDelta(AllocationContexts contexts)
         {
@@ -309,8 +305,6 @@ namespace Nethermind.Synchronization.Peers
                 old = observed;
             }
         }
-
-        // ── Bit math primitives ──────────────────────────────────────────────────────────────────
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong Pack(AllocationAllowances a) =>
@@ -372,8 +366,6 @@ namespace Nethermind.Synchronization.Peers
             }
             return result;
         }
-
-        // ── Display ──────────────────────────────────────────────────────────────────────────────
 
         // Per-single-bit-context glyphs in the order of _orderedContexts.
         private static ReadOnlySpan<char> ContextChars => ['H', 'B', 'R', 'N', 'S', 'F'];

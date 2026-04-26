@@ -50,8 +50,6 @@ namespace Nethermind.Synchronization.Test
             peer.IncreaseWeakness(contexts).Should().Be(contexts);
         }
 
-        // ── Sleep / wake lifecycle ──────────────────────────────────────────────────────────────
-
         [TestCaseSource(nameof(ContextCases))]
         public void Sleep_wakes_when_window_elapsed(AllocationContexts contexts)
         {
@@ -96,8 +94,6 @@ namespace Nethermind.Synchronization.Test
             peer.IsAsleep(AllocationContexts.Receipts).Should().BeFalse();
         }
 
-        // ── Allocate / free ─────────────────────────────────────────────────────────────────────
-
         [TestCaseSource(nameof(ContextCases))]
         public void TryAllocate_then_Free_round_trip(AllocationContexts contexts)
         {
@@ -135,8 +131,6 @@ namespace Nethermind.Synchronization.Test
             peer.IsAllocationFull(ctx).Should().BeTrue();
         }
 
-        // ── Composite-context behaviour ─────────────────────────────────────────────────────────
-
         [Test]
         public void Allocating_Blocks_takes_only_its_member_subcontexts()
         {
@@ -162,8 +156,6 @@ namespace Nethermind.Synchronization.Test
             peer.PutToSleep(AllocationContexts.Blocks, DateTime.MinValue);
             peer.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
         }
-
-        // ── Multi-slot edge cases ───────────────────────────────────────────────────────────────
 
         [Test]
         public void Free_clamps_at_allowance()
