@@ -26,9 +26,9 @@ namespace Nethermind.Synchronization.Peers
         private const int SingleContextCount = 6;
         private const int TrackedContextCount = 7;
 
-        private const int SlotBits = 8;                                       // 8 bits per slot in the available-slot word
+        private const int SlotBits = 8; // 8 bits per slot in the available-slot word
         private const ulong SlotByteMask = 0xFFul;
-        private const int WeaknessBits = 4;                                   // 4 bits per weakness counter (range 0..15, threshold 2)
+        private const int WeaknessBits = 4; // 4 bits per weakness counter (range 0..15, threshold 2)
         private const uint WeaknessNibbleMask = 0xFu;
 
         private static readonly AllocationContexts[] _orderedContexts =
@@ -97,8 +97,6 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public bool HasAnyAllocation => ReadSlots() != _maxPacked;
-
         public bool CanBeAllocated(AllocationContexts contexts) =>
             !IsAsleep(contexts) && !IsAllocationFull(contexts) && this.SupportsAllocation(contexts);
 
@@ -112,9 +110,12 @@ namespace Nethermind.Synchronization.Peers
             for (int i = 0; i < SingleContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
-                if ((contexts & ctx) != ctx) continue;
-                int shift = i * SlotBits;
-                if (((available >> shift) & SlotByteMask) < ((_maxPacked >> shift) & SlotByteMask)) return true;
+                if ((contexts & ctx) == ctx)
+                {
+                    int shift = i * SlotBits;
+                    if (((available >> shift) & SlotByteMask) < ((_maxPacked >> shift) & SlotByteMask))
+                        return true;
+                }
             }
             return false;
         }
@@ -126,8 +127,11 @@ namespace Nethermind.Synchronization.Peers
             for (int i = 0; i < SingleContextCount; i++)
             {
                 AllocationContexts ctx = _orderedContexts[i];
-                if ((contexts & ctx) != ctx) continue;
-                if (((available >> (i * SlotBits)) & SlotByteMask) == 0) return true;
+                if ((contexts & ctx) == ctx)
+                {
+                    if (((available >> (i * SlotBits)) & SlotByteMask) == 0)
+                        return true;
+                }
             }
             return false;
         }
@@ -404,8 +408,5 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public override string ToString() => $"[{BuildSlotContextString()} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsOnlyOneContext(AllocationContexts x) => (x & (x - 1)) == 0;
     }
 }

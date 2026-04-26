@@ -97,11 +97,7 @@ namespace Nethermind.Synchronization.Peers
             // The packed AllocationAllowances representation reserves 1 byte (8 bits) per context but only honours
             // values up to MaxAllocationSlots; anything higher is clamped at registration time.
             byte slots = (byte)Math.Clamp(allocationSlots, 1, MaxAllocationSlots);
-            // Headers and ForwardHeader pinned at 1 carrying over from PR #7174's "Disable for header" commit
-            // and #11360's same workaround. Original report was that header sync "reliably hangs" at higher
-            // allowances; root cause was never characterised. Suspect candidates: FastHeadersSyncFeed range
-            // dispatch concurrency, the chain-walk parent-validation dependency forcing serial completion, or
-            // peer-side eth/66 batch limits. Worth revisiting once this PR ships well at default=2 elsewhere.
+            // Headers reliably hang when given a high allowance, so they remain pinned at 1
             _allocationAllowances = new AllocationAllowances(headers: 1, bodies: slots, receipts: slots, state: slots, snap: slots, forwardHeader: 1);
 
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}, AllocationSlots: {slots}");
