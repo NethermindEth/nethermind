@@ -65,7 +65,7 @@ jobs:
             # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
             # test timeout before the syncing client starts.
             # engine-cancun and engine-api split into two runners each (I* vs non-I*)
-            # to reduce memory pressure that causes segfaults/OOM kills.
+            # to reduce contention.
             # engine-[^acw] catches exchange-capabilities and any future engine suites.
             {
               echo 'matrix<<MATRIX_END'
