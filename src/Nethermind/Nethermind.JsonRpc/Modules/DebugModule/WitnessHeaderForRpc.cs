@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -48,7 +49,7 @@ public class WitnessHeaderForRpc
             return (header.Beneficiary, header.MixHash, nonce, null, null);
         }
 
-        return (header.Author, null, null, header.AuRaStep, header.AuRaSignature);
+        return (header.Beneficiary, null, null, header.AuRaStep, header.AuRaSignature);
     }
 
     public Hash256? ParentHash { get; }
@@ -75,6 +76,7 @@ public class WitnessHeaderForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? Nonce { get; }
 
+    [JsonConverter(typeof(NullableRawLongConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public long? Step { get; }
 
