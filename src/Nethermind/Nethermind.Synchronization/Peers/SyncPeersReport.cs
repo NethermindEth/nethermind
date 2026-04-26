@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.Peers
                 PeersContextCounts sleepingContexts = new();
                 foreach (PeerInfo peerInfo in peers)
                 {
-                    CountContextDict(peerInfo.AvailableAllocationSlots, ref activeContexts);
+                    CountAvailableSlots(peerInfo.AvailableAllocationSlots, ref activeContexts);
                     CountContexts(peerInfo.SleepingContexts, ref sleepingContexts);
                 }
 
@@ -139,22 +139,22 @@ namespace Nethermind.Synchronization.Peers
                 contextCounts.Snap += contexts.HasFlag(AllocationContexts.Snap) ? 1 : 0;
             }
 
-            static void CountContextDict(Dictionary<AllocationContexts, int> availableSlots, ref PeersContextCounts contextCounts)
+            static void CountAvailableSlots(AllocationAllowances available, ref PeersContextCounts contextCounts)
             {
                 contextCounts.Total++;
 
-                if (!availableSlots.Any(kv => kv.Value > 0))
+                if (available.Headers == 0 && available.Bodies == 0 && available.Receipts == 0 && available.State == 0 && available.Snap == 0)
                 {
                     contextCounts.None++;
                     return;
                 }
 
-                contextCounts.Headers += availableSlots[AllocationContexts.Headers];
-                contextCounts.Bodies += availableSlots[AllocationContexts.Bodies];
-                contextCounts.Receipts += availableSlots[AllocationContexts.Receipts];
-                contextCounts.Blocks += availableSlots[AllocationContexts.Blocks];
-                contextCounts.State += availableSlots[AllocationContexts.State];
-                contextCounts.Snap += availableSlots[AllocationContexts.Snap];
+                contextCounts.Headers += available.Headers;
+                contextCounts.Bodies += available.Bodies;
+                contextCounts.Receipts += available.Receipts;
+                contextCounts.Blocks += Math.Min(available.Headers, Math.Min(available.Bodies, available.Receipts));
+                contextCounts.State += available.State;
+                contextCounts.Snap += available.Snap;
             }
         }
 

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -40,7 +39,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new();
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
-        private readonly FrozenDictionary<AllocationContexts, int> _allocationAllowances;
+        private readonly AllocationAllowances _allocationAllowances;
 
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
         private readonly ConcurrentDictionary<SyncPeerAllocation, object?> _replaceableAllocations = new();
@@ -78,18 +77,9 @@ namespace Nethermind.Synchronization.Peers
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-            Dictionary<AllocationContexts, int> allocationAllowances = new();
-            foreach (AllocationContexts ctx in Enum.GetValues<AllocationContexts>())
-            {
-                if (PeerInfo.IsOnlyOneContext(ctx))
-                {
-                    allocationAllowances[ctx] = allocationSlots;
-                }
-            }
-
-            // These is a problem with header where it reliably hangs when setting a high enough allowance. So we disable it for now.
-            allocationAllowances[AllocationContexts.Headers] = 1;
-            _allocationAllowances = allocationAllowances.ToFrozenDictionary();
+            byte slots = (byte)Math.Clamp(allocationSlots, 1, byte.MaxValue);
+            // Headers reliably hang when given a high allowance, so they remain pinned at 1.
+            _allocationAllowances = new AllocationAllowances(headers: 1, bodies: slots, receipts: slots, state: slots, snap: slots);
 
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }
