@@ -25,6 +25,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Specs;
@@ -72,7 +73,10 @@ public class BlockAccessListManager(
 
         // Parallel execution requires the BAL body to be present on the block.
         // Blocks from p2p/RLP fixtures only have the header hash, not the decoded BAL body.
-        ParallelExecutionEnabled = Enabled && blocksConfig.ParallelExecution && !_isBuilding && suggestedBlock.BlockAccessList is not null;
+        ParallelExecutionEnabled = Enabled
+            && blocksConfig.ParallelExecution
+            && !_isBuilding
+            && suggestedBlock.BlockAccessList is not null;
 
         if (Enabled)
         {
@@ -153,6 +157,8 @@ public class BlockAccessListManager(
             for (int j = chunkStart; j < chunkEnd; j++)
             {
                 (long blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                ValidateTransactionGasAllowance(block, j, totalRegularGas, totalStateGas);
+
                 totalRegularGas += blockGasUsed;
                 totalStateGas += blockStateGasUsed;
                 SpendGas(blockGasUsed);
@@ -181,6 +187,40 @@ public class BlockAccessListManager(
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
             }
+        }
+    }
+
+    private void ValidateTransactionGasAllowance(Block block, int index, long totalRegularGas, long totalStateGas)
+    {
+        IReleaseSpec spec = _blockExecutionContext!.Value.Spec;
+        if (!spec.IsEip8037Enabled)
+        {
+            return;
+        }
+
+        Transaction tx = block.Transactions[index];
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
+        EthereumGasPolicy standard = intrinsicGas.Standard;
+        EthereumGasPolicy floorGas = intrinsicGas.FloorGas;
+
+        long intrinsicRegularGas = EthereumGasPolicy.GetRemainingGas(in standard);
+        long intrinsicStateGas = EthereumGasPolicy.GetStateReservoir(in standard);
+        long minGasRequired = Math.Max(intrinsicRegularGas + intrinsicStateGas, EthereumGasPolicy.GetRemainingGas(in floorGas));
+        if (tx.GasLimit < minGasRequired)
+        {
+            return;
+        }
+
+        long regularGasAvailable = block.Header.GasLimit - totalRegularGas;
+        long stateGasAvailable = block.Header.GasLimit - totalStateGas;
+        long worstCaseRegularContribution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, tx.GasLimit - intrinsicStateGas);
+        long worstCaseStateContribution = tx.GasLimit - intrinsicRegularGas;
+
+        if (worstCaseRegularContribution > regularGasAvailable || worstCaseStateContribution > stateGasAvailable)
+        {
+            throw new InvalidTransactionException(block.Header,
+                $"Transaction {tx.Hash} at index {index} failed with error {TransactionResult.BlockGasLimitExceeded.ErrorDescription}",
+                TransactionResult.BlockGasLimitExceeded);
         }
     }
 

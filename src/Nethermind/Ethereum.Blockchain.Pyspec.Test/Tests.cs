@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
@@ -17,7 +17,11 @@ public class IstanbulBlockchainTests : PyspecBlockchainTestFixture<IstanbulBlock
 
 public class BerlinBlockchainTests : PyspecBlockchainTestFixture<BerlinBlockchainTests>;
 
+public class ConstantinopleFixBlockchainTests : PyspecBlockchainTestFixture<ConstantinopleFixBlockchainTests>;
+
 public class ParisBlockchainTests : PyspecBlockchainTestFixture<ParisBlockchainTests>;
+
+public class LondonBlockchainTests : PyspecBlockchainTestFixture<LondonBlockchainTests>;
 
 public class ShanghaiBlockchainTests : PyspecBlockchainTestFixture<ShanghaiBlockchainTests>;
 
@@ -27,16 +31,50 @@ public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchai
 
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
 
+public class AmsterdamBlockchainTests : PyspecBlockchainTestFixture<AmsterdamBlockchainTests>;
+
+public class ParisToShanghaiAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ParisToShanghaiAtTime15kBlockchainTests>;
+
+public class ShanghaiToCancunAtTime15kBlockchainTests : PyspecBlockchainTestFixture<ShanghaiToCancunAtTime15kBlockchainTests>;
+
+public class CancunToPragueAtTime15kBlockchainTests : PyspecBlockchainTestFixture<CancunToPragueAtTime15kBlockchainTests>;
+
+public class PragueToOsakaAtTime15kBlockchainTests : PyspecBlockchainTestFixture<PragueToOsakaAtTime15kBlockchainTests>;
+
+public class OsakaToBpo1AtTime15kBlockchainTests : PyspecBlockchainTestFixture<OsakaToBpo1AtTime15kBlockchainTests>;
+
+public class Bpo1ToBpo2AtTime15kBlockchainTests : PyspecBlockchainTestFixture<Bpo1ToBpo2AtTime15kBlockchainTests>;
+
+public class Bpo2ToAmsterdamAtTime15kBlockchainTests : PyspecBlockchainTestFixture<Bpo2ToAmsterdamAtTime15kBlockchainTests>;
+
 // Engine blockchain tests - post-merge forks with Engine API-specific coverage.
 // Directory derived from class name by convention (strip "EngineBlockchainTests", lowercase)
 
 public class ParisEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisEngineBlockchainTests>;
+
+public class ShanghaiEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ShanghaiEngineBlockchainTests>;
 
 public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunEngineBlockchainTests>;
 
 public class PragueEngineBlockchainTests : PyspecEngineBlockchainTestFixture<PragueEngineBlockchainTests>;
 
 public class OsakaEngineBlockchainTests : PyspecEngineBlockchainTestFixture<OsakaEngineBlockchainTests>;
+
+public class AmsterdamEngineBlockchainTests : PyspecEngineBlockchainTestFixture<AmsterdamEngineBlockchainTests>;
+
+public class ParisToShanghaiAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisToShanghaiAtTime15kEngineBlockchainTests>;
+
+public class ShanghaiToCancunAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ShanghaiToCancunAtTime15kEngineBlockchainTests>;
+
+public class CancunToPragueAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunToPragueAtTime15kEngineBlockchainTests>;
+
+public class PragueToOsakaAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<PragueToOsakaAtTime15kEngineBlockchainTests>;
+
+public class OsakaToBpo1AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<OsakaToBpo1AtTime15kEngineBlockchainTests>;
+
+public class Bpo1ToBpo2AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo1ToBpo2AtTime15kEngineBlockchainTests>;
+
+public class Bpo2ToAmsterdamAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo2ToAmsterdamAtTime15kEngineBlockchainTests>;
 
 // State tests - directory derived from class name by convention (strip "StateTests", lowercase)
 
@@ -50,6 +88,12 @@ public class IstanbulStateTests : PyspecStateTestFixture<IstanbulStateTests>;
 
 public class BerlinStateTests : PyspecStateTestFixture<BerlinStateTests>;
 
+public class ConstantinopleFixStateTests : PyspecStateTestFixture<ConstantinopleFixStateTests>;
+
+public class LondonStateTests : PyspecStateTestFixture<LondonStateTests>;
+
+public class ParisStateTests : PyspecStateTestFixture<ParisStateTests>;
+
 public class ShanghaiStateTests : PyspecStateTestFixture<ShanghaiStateTests>;
 
 public class CancunStateTests : PyspecStateTestFixture<CancunStateTests>;
@@ -57,3 +101,7 @@ public class CancunStateTests : PyspecStateTestFixture<CancunStateTests>;
 public class PragueStateTests : PyspecStateTestFixture<PragueStateTests>;
 
 public class OsakaStateTests : PyspecStateTestFixture<OsakaStateTests>;
+
+public class AmsterdamStateTests : PyspecStateTestFixture<AmsterdamStateTests>;
+
+public class ShanghaiToCancunAtTime15kStateTests : PyspecStateTestFixture<ShanghaiToCancunAtTime15kStateTests>;
