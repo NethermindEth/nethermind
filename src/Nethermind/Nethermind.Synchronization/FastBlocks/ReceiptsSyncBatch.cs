@@ -16,5 +16,7 @@ namespace Nethermind.Synchronization.FastBlocks
             base.Dispose();
             Response?.Dispose();
         }
+
+        public override long? MinNumber => Infos[0].BlockNumber;
     }
 }

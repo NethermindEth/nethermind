@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-
 namespace Nethermind.Trie.Pruning
 {
     public class NoPruning : IPruningStrategy
@@ -11,14 +9,9 @@ namespace Nethermind.Trie.Pruning
 
         public static NoPruning Instance { get; } = new();
 
-        public bool PruningEnabled => false;
-        public int MaxDepth => (int)Reorganization.MaxDepth;
+        public bool DeleteObsoleteKeys => false;
+        public bool ShouldPruneDirtyNode(TrieStoreState state) => false;
 
-        public bool ShouldPrune(in long currentMemory)
-        {
-            return false;
-        }
-
-        public int TrackedPastKeyCount => 0;
+        public bool ShouldPrunePersistedNode(TrieStoreState state) => false;
     }
 }

@@ -1,0 +1,104 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Runtime.CompilerServices;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Core.ExecutionRequest;
+
+using SHA256 =
+#if ZK_EVM
+    ExecutionRequestExtensions.Sha256;
+#else
+    System.Security.Cryptography.SHA256;
+#endif
+
+public static class ExecutionRequestExtensions
+{
+    public const int PublicKeySize = 48;
+    public const int WithdrawalCredentialsSize = Hash256.Size;
+    public const int AmountSize = sizeof(ulong);
+    public const int SignatureSize = 96;
+    public const int IndexSize = sizeof(ulong);
+    public const int DepositRequestsBytesSize = PublicKeySize + WithdrawalCredentialsSize + AmountSize + SignatureSize + IndexSize;
+
+    public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
+    public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
+    public const int MaxRequestsCount = 3;
+
+    public static readonly byte[][] EmptyRequests = [];
+    public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
+
+    [SkipLocalsInit]
+    public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
+    {
+        // TODO: Make sure that length <= 3
+        ArgumentNullException.ThrowIfNull(flatEncodedRequests);
+
+        using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
+        foreach (byte[] requests in flatEncodedRequests)
+        {
+            if (requests.Length <= 1) continue;
+            concatenatedHashes.AddRange(SHA256.HashData(requests));
+        }
+
+        // Compute sha256 of the concatenated hashes
+        return new Hash256(SHA256.HashData(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count)));
+    }
+
+
+    // the following functions are only used in tests
+    public static ArrayPoolList<byte[]> GetFlatEncodedRequests(
+        ExecutionRequest[] depositRequests,
+        ExecutionRequest[] withdrawalRequests,
+        ExecutionRequest[] consolidationRequests
+    )
+    {
+        ArrayPoolList<byte[]> result = new(MaxRequestsCount);
+
+        if (depositRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(depositRequests, depositRequests.Length * DepositRequestsBytesSize, (byte)ExecutionRequestType.Deposit));
+        }
+
+        if (withdrawalRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(withdrawalRequests, withdrawalRequests.Length * WithdrawalRequestsBytesSize, (byte)ExecutionRequestType.WithdrawalRequest));
+        }
+
+        if (consolidationRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(consolidationRequests, consolidationRequests.Length * ConsolidationRequestsBytesSize, (byte)ExecutionRequestType.ConsolidationRequest));
+        }
+
+        return result;
+
+        static byte[] FlatEncodeRequests(ExecutionRequest[] requests, int bufferSize, byte type)
+        {
+            using ArrayPoolListRef<byte> buffer = new(bufferSize + 1, type);
+
+            foreach (ExecutionRequest request in requests)
+            {
+                buffer.AddRange(request.RequestData!);
+            }
+
+            return buffer.ToArray();
+        }
+    }
+
+#if ZK_EVM
+    internal static class Sha256
+    {
+        internal static byte[] HashData(ReadOnlySpan<byte> data)
+        {
+            byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
+
+            ZiskBindings.Crypto.sha256_c(data, (nuint)data.Length, output);
+
+            return output;
+        }
+    }
+#endif
+}

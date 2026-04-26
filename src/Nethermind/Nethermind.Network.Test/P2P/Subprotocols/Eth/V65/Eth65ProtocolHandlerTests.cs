@@ -1,12 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -19,7 +17,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -41,11 +39,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         private IMessageSerializationService _svc = null!;
         private ISyncServer _syncManager = null!;
         private ITxPool _transactionPool = null!;
-        private IPooledTxsRequestor _pooledTxsRequestor = null!;
         private ISpecProvider _specProvider = null!;
         private Block _genesisBlock = null!;
         private Eth65ProtocolHandler _handler = null!;
         private ITxGossipPolicy _txGossipPolicy = null!;
+        private CompositeDisposable _disposables = null!;
 
         [SetUp]
         public void Setup()
@@ -54,12 +52,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             NetworkDiagTracer.IsEnabled = true;
 
+            _disposables = new();
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
+            _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
-            _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _specProvider = Substitute.For<ISpecProvider>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
@@ -75,9 +74,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
-                _pooledTxsRequestor,
                 Policy.FullGossip,
-                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+                new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance,
                 _txGossipPolicy);
             _handler.Init();
@@ -89,6 +87,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _handler?.Dispose();
             _session?.Dispose();
             _syncManager?.Dispose();
+            _disposables.Dispose();
         }
 
         [Test]
@@ -154,7 +153,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     return true;
                 });
             using GetPooledTransactionsMessage request = new(TestItem.Keccaks.ToPooledList());
-            PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
 
@@ -178,7 +177,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     return true;
                 });
             using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
-            PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
 
@@ -191,21 +190,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IReadOnlyList<Hash256>>());
+            _session.Received(canGossipTransactions ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
 
         private void HandleIncomingStatusMessage()
         {
-            var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            using StatusMessage statusMsg = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
-            IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+            using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }

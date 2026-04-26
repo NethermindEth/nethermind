@@ -13,23 +13,18 @@ public interface IPruningConfig : IConfig
     [Obsolete]
     public bool Enabled { get; set; }
 
-    [ConfigItem(
-        Description = """
-            The pruning mode:
-
-            - `None`: No pruning (full archive)
-            - `Memory`: In-memory pruning
-            - `Full`: Full pruning
-            - `Hybrid`: Combined in-memory and full pruning
-            """, DefaultValue = "Hybrid")]
+    [ConfigItem(Description = "The pruning mode.", DefaultValue = "Hybrid")]
     PruningMode Mode { get; set; }
 
-    [ConfigItem(Description = "The in-memory cache size, in MB. The bigger the cache size, the bigger the disk space savings.", DefaultValue = "1024")]
+    [ConfigItem(Description = "The in-memory cache size, in MB. Bigger size tend to improve performance.", DefaultValue = "1792")]
     long CacheMb { get; set; }
 
+    [ConfigItem(Description = "The in-memory cache size for dirty nodes, in MB. Increasing this reduces pruning interval but cause increased pruning time.", DefaultValue = "1536")]
+    long DirtyCacheMb { get; set; }
+
     [ConfigItem(
-        Description = "The block persistence frequency. If set to `N`, it caches after each `Nth` block even if not required by cache memory usage.",
-        DefaultValue = "8192")]
+        Description = "The block persistence frequency. Only applied with archive node.",
+        DefaultValue = "1")]
     long PersistenceInterval { get; set; }
 
     [ConfigItem(
@@ -38,25 +33,18 @@ public interface IPruningConfig : IConfig
     long FullPruningThresholdMb { get; set; }
 
     [ConfigItem(
-        Description = """
-            The full pruning trigger:
-
-            - `Manual`: Triggered manually.
-            - `StateDbSize`: Trigger when the state DB size is above the threshold.
-            - `VolumeFreeSpace`: Trigger when the free disk space where the state DB is stored is below the threshold.
-            """,
-        DefaultValue = "Manual")]
+        Description = "The full pruning trigger.", DefaultValue = "Manual")]
     FullPruningTrigger FullPruningTrigger { get; set; }
 
     [ConfigItem(
         Description = """
-            The max number of parallel tasks that can be used by full pruning:
+            The max number of parallel tasks that can be used by full pruning.
 
             Allowed values:
 
-            - `-1` to use the number of logical processors
-            - `0` to use 25% of logical processors
-            - `1` to run on single thread
+            - `-1`: Uses the number of logical processors.
+            - `0`: Uses 25% of logical processors.
+            - `1`: Runs on a single thread.
 
             The recommended value depends on the type of the node:
 
@@ -80,22 +68,42 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "The minimum delay, in hours, between full pruning operations not to exhaust disk writes.", DefaultValue = "240")]
     int FullPruningMinimumDelayHours { get; set; }
 
-    [ConfigItem(Description = """
-            The behavior after pruning completion:
-
-            - `None`: Do nothing.
-            - `ShutdownOnSuccess`: Shut Nethermind down if pruning has succeeded but leave it running if failed.
-            - `AlwaysShutdown`: Shut Nethermind down when pruning completes, regardless of its status.
-            """,
-        DefaultValue = "None")]
+    [ConfigItem(Description = "The action to take on pruning completion.", DefaultValue = "None")]
     FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
 
     [ConfigItem(Description = "Whether to enables available disk space check.", DefaultValue = "true")]
     bool AvailableSpaceCheckEnabled { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Ratio of memory out of CacheMb to allocate for LRU used to track past keys for live pruning.", DefaultValue = "0.1")]
+    [ConfigItem(Description = "_DEPRECATED_ Pruning trie store uses pruning cache as past keys.", DefaultValue = "0.1", HiddenFromDocs = true)]
     double TrackedPastKeyCountMemoryRatio { get; set; }
 
-    [ConfigItem(Description = "Past N state before state gets pruned Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
+    [ConfigItem(Description = "Enable tracking of past key to reduce database and pruning cache growth", DefaultValue = "true")]
+    bool TrackPastKeys { get; set; }
+
+    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
     int PruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
+    int DirtyNodeShardBit { get; set; }
+
+    [ConfigItem(Description = "Portion of persisted node to be prune at a time", DefaultValue = "0.05")]
+    double PrunePersistedNodePortion { get; set; }
+
+    [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "50000000")]
+    long PrunePersistedNodeMinimumTarget { get; set; }
+
+    [ConfigItem(Description = "Maximum number of blocks worth of unpersisted state in memory. Default is 297, which is the number of mainnet blocks per hour.", DefaultValue = "297")]
+    long MaxUnpersistedBlockCount { get; set; }
+
+    [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
+    long MinUnpersistedBlockCount { get; set; }
+
+    [ConfigItem(Description = "Maximum number of block in commit buffer before blocking.", DefaultValue = "128", HiddenFromDocs = true)]
+    int MaxBufferedCommitCount { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Simulate long finalization by not moving finalized block pointer until after this depth.", DefaultValue = "0", HiddenFromDocs = true)]
+    int SimulateLongFinalizationDepth { get; set; }
+
+    [ConfigItem(Description = "If in-memory pruning is scheduled, the duration between `newPayload` and the GC trigger. If too short, it may clash with fork choice; if too long, it may overlap with GC.", DefaultValue = "75", HiddenFromDocs = true)]
+    int PruneDelayMilliseconds { get; set; }
 }

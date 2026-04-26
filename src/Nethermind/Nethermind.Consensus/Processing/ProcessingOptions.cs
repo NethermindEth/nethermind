@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// Does not verify transaction nonces during processing.
         /// </summary>
-        DoNotVerifyNonce = 32,
+        LoadNonceFromState = 32,
 
         /// <summary>
         /// After processing it will not update the block tree head even if the processed block has the highest
@@ -51,7 +51,10 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         MarkAsProcessed = 128,
 
-        All = 255,
+        /// <summary>
+        /// Forces to run on top of the specified block state, instead of reverting to the previous one.
+        /// </summary>
+        ForceSameBlock = 1 << 8,
 
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.
@@ -61,7 +64,13 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// EVM tracing needs to process blocks without storing the data on chain.
         /// </summary>
-        Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
+        Trace = ForceProcessing | ReadOnlyChain | LoadNonceFromState | NoValidation,
+
+        /// <summary>
+        /// EVM tracing needs to process one or more transactions on top of the specified block (instead of the previous one)
+        /// without storing the data on chain.
+        /// </summary>
+        TraceTransactions = Trace | ForceSameBlock,
 
         /// <summary>
         /// Processing options for engine_NewPayload

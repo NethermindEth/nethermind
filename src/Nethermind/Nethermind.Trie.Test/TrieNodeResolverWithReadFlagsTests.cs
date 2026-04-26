@@ -11,6 +11,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class TrieNodeResolverWithReadFlagsTests
 {
     [Test]
@@ -18,7 +19,7 @@ public class TrieNodeResolverWithReadFlagsTests
     {
         ReadFlags theFlags = ReadFlags.HintCacheMiss;
         TestMemDb memDb = new();
-        ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
+        ITrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
         TrieNodeResolverWithReadFlags resolver = new(trieStore.GetTrieStore(null), theFlags);
 
         Hash256 theKeccak = TestItem.KeccakA;
@@ -29,11 +30,11 @@ public class TrieNodeResolverWithReadFlagsTests
     }
 
     [Test]
-    public void LoadRlp_combine_passed_flaeg()
+    public void LoadRlp_combine_passed_flag()
     {
         ReadFlags theFlags = ReadFlags.HintCacheMiss;
         TestMemDb memDb = new();
-        ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
+        ITrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
         TrieNodeResolverWithReadFlags resolver = new(trieStore.GetTrieStore(null), theFlags);
 
         Hash256 theKeccak = TestItem.KeccakA;
@@ -48,7 +49,7 @@ public class TrieNodeResolverWithReadFlagsTests
     {
         ReadFlags theFlags = ReadFlags.HintCacheMiss;
         TestMemDb memDb = new();
-        ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
+        ITrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
         ITrieNodeResolver resolver = new TrieNodeResolverWithReadFlags(trieStore.GetTrieStore(null), theFlags);
         resolver = resolver.GetStorageTrieNodeResolver(TestItem.KeccakA);
 

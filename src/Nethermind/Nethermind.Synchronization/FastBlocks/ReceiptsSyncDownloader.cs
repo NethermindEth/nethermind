@@ -14,14 +14,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncDispatcher : ISyncDownloader<ReceiptsSyncBatch>
+    public class ReceiptsSyncDispatcher(ILogManager logManager) : ISyncDownloader<ReceiptsSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public ReceiptsSyncDispatcher(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<ReceiptsSyncDispatcher>();
 
         public async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
         {
@@ -30,7 +25,7 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.MarkSent();
 
             using ArrayPoolList<Hash256> hashes = new(batch.Infos.Length);
-            hashes.AddRange(batch.Infos.Where(i => i is not null).Select(i => i!.BlockHash));
+            hashes.AddRange(batch.Infos.Where(static i => i is not null).Select(static i => i!.BlockHash));
             if (hashes.Count == 0)
             {
                 if (Logger.IsDebug) Logger.Debug($"{batch} - attempted send a request with no hash.");

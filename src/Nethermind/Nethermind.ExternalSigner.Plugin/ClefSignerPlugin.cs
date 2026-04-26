@@ -5,15 +5,15 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc;
 using Nethermind.Network;
 using Nethermind.Consensus;
 using Nethermind.KeyStore.Config;
 using System.Configuration;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.ExternalSigner.Plugin;
 
-public class ClefSignerPlugin : INethermindPlugin
+public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
 {
     private INethermindApi? _nethermindApi;
 
@@ -23,58 +23,47 @@ public class ClefSignerPlugin : INethermindPlugin
 
     public string Author => "Nethermind";
 
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
+    public bool MustInitialize => true;
+    public bool Enabled => !string.IsNullOrEmpty(miningConfig.Signer);
 
-    public async Task Init(INethermindApi nethermindApi)
+    public Task Init(INethermindApi nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-
-        if (_nethermindApi == null)
-            throw new InvalidOperationException("Init() must be called first.");
-
-        IMiningConfig miningConfig = _nethermindApi.Config<IMiningConfig>();
-        if (miningConfig.Enabled)
+        if (!string.IsNullOrEmpty(miningConfig.Signer))
         {
-            if (!string.IsNullOrEmpty(miningConfig.Signer))
+            if (!Uri.TryCreate(miningConfig.Signer, UriKind.Absolute, out Uri? uri))
             {
-                Uri? uri;
-                if (!Uri.TryCreate(miningConfig.Signer, UriKind.Absolute, out uri))
-                {
-                    throw new ConfigurationErrorsException($"{miningConfig.Signer} must have be a valid uri.");
-                }
-                ClefSigner signer =
-                    await SetupExternalSigner(uri, _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount);
-                _nethermindApi.EngineSigner = signer;
+                throw new ConfigurationErrorsException($"{miningConfig.Signer} must be a valid uri.");
             }
+
+            string blockAuthorAccount = _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount;
+
+            IJsonSerializer ethereumJsonSerializer = new EthereumJsonSerializer(new[] { new ChecksumAddressConverter() });
+
+            BasicJsonRpcClient rpcClient = new(uri, ethereumJsonSerializer, _nethermindApi.LogManager, TimeSpan.FromSeconds(10));
+            _nethermindApi.DisposeStack.Push(rpcClient);
+
+            ClefWallet clefWallet = new(rpcClient);
+            _nethermindApi.Wallet = clefWallet;
+
+            if (miningConfig.Enabled)
+                _nethermindApi.EngineSigner = SetupExternalSigner(clefWallet, blockAuthorAccount);
+
         }
-
-    }
-
-    public Task InitNetworkProtocol()
-    {
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
-    {
-        return Task.CompletedTask;
-    }
-
-    private async Task<ClefSigner> SetupExternalSigner(Uri urlSigner, string blockAuthorAccount)
+    private ClefSigner SetupExternalSigner(ClefWallet clefWallet, string blockAuthorAccount)
     {
         try
         {
             Address? address = string.IsNullOrEmpty(blockAuthorAccount) ? null : new Address(blockAuthorAccount);
-            BasicJsonRpcClient rpcClient = new(urlSigner, _nethermindApi!.EthereumJsonSerializer, _nethermindApi.LogManager, TimeSpan.FromSeconds(10));
-            _nethermindApi.DisposeStack.Push(rpcClient);
-            return await ClefSigner.Create(rpcClient, address);
+
+            return ClefSigner.Create(clefWallet, address);
         }
         catch (HttpRequestException e)
         {
-            throw new NetworkingException($"Remote signer at {urlSigner} did not respond.", NetworkExceptionType.TargetUnreachable, e);
+            throw new NetworkingException($"Remote signer did not respond during setup.", NetworkExceptionType.TargetUnreachable, e);
         }
     }
 }

@@ -12,7 +12,7 @@ namespace Nethermind.Precompiles.Benchmark
     {
         public readonly struct Param
         {
-            private static Random _random = new Random(42);
+            private static readonly Random _random = new(42);
 
             public Param(byte[] bytes)
             {
@@ -22,10 +22,7 @@ namespace Nethermind.Precompiles.Benchmark
 
             public byte[] Bytes { get; }
 
-            public override string ToString()
-            {
-                return $"bytes[{Bytes.Length.ToString().PadLeft(4, '0')}]";
-            }
+            public override string ToString() => $"bytes[{Bytes.Length.ToString().PadLeft(4, '0')}]";
         }
 
         public IEnumerable<Param> Inputs
@@ -43,9 +40,6 @@ namespace Nethermind.Precompiles.Benchmark
         public Param Input { get; set; }
 
         [Benchmark(Baseline = true)]
-        public Span<byte> Baseline()
-        {
-            return ValueKeccak.Compute(Input.Bytes).BytesAsSpan;
-        }
+        public Span<byte> Baseline() => ValueKeccak.Compute(Input.Bytes).BytesAsSpan;
     }
 }

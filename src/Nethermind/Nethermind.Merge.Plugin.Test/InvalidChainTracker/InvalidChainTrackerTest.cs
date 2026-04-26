@@ -215,11 +215,8 @@ public class InvalidChainTrackerTest
         AssertInvalid(blockHeader.GetOrCalculateHash(), parentBlockHeader.Hash);
     }
 
-    private void AssertValid(Hash256 hash)
-    {
-        Hash256? lastValidHash;
-        _tracker.IsOnKnownInvalidChain(hash, out lastValidHash).Should().BeFalse();
-    }
+    private void AssertValid(Hash256 hash) =>
+        _tracker.IsOnKnownInvalidChain(hash, out _).Should().BeFalse();
 
     private void AssertInvalid(Hash256 hash, Hash256? expectedLsatValidHash = null)
     {

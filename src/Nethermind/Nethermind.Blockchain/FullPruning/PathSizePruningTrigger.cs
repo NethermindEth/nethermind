@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.FullPruning
         private long GetPathSize(string path)
         {
             IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.New(path).EnumerateFiles();
-            long size = files.Sum(f => f.Length);
+            long size = files.Sum(static f => f.Length);
             return size;
         }
 
@@ -105,9 +105,6 @@ namespace Nethermind.Blockchain.FullPruning
         public event EventHandler<PruningTriggerEventArgs>? Prune;
 
         /// <inheritdoc />
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

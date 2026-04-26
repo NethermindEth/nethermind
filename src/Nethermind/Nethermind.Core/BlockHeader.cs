@@ -27,7 +27,9 @@ public class BlockHeader
         byte[] extraData,
         ulong? blobGasUsed = null,
         ulong? excessBlobGas = null,
-        Hash256? parentBeaconBlockRoot = null)
+        Hash256? parentBeaconBlockRoot = null,
+        Hash256? requestsHash = null,
+        ulong? slotNumber = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -38,12 +40,14 @@ public class BlockHeader
         Timestamp = timestamp;
         ExtraData = extraData;
         ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        RequestsHash = requestsHash;
         BlobGasUsed = blobGasUsed;
         ExcessBlobGas = excessBlobGas;
+        SlotNumber = slotNumber;
     }
 
-    public WeakReference<BlockHeader>? MaybeParent { get; set; }
-    public bool IsGenesis => Number == 0L;
+    public virtual long GenesisBlockNumber => 0;
+    public bool IsGenesis => Number == GenesisBlockNumber;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }
     public Address? Author { get; set; }
@@ -53,13 +57,13 @@ public class BlockHeader
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
-    public UInt256 Difficulty { get; set; }
+    public UInt256 Difficulty;
     public long Number { get; set; }
     public long GasUsed { get; set; }
     public long GasLimit { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
-    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
+    public byte[] ExtraData { get; set; } = [];
     public Hash256? MixHash { get; set; }
     public Hash256? Random => MixHash;
     public ulong Nonce { get; set; }
@@ -67,18 +71,21 @@ public class BlockHeader
     public UInt256? TotalDifficulty { get; set; }
     public byte[]? AuRaSignature { get; set; }
     public long? AuRaStep { get; set; }
-    public UInt256 BaseFeePerGas { get; set; }
+    public UInt256 BaseFeePerGas;
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
+    public Hash256? RequestsHash { get; set; }
+    public Hash256? BlockAccessListHash { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
+    public ulong? SlotNumber { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
-                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
+                           || (BlockAccessListHash is not null && BlockAccessListHash != Keccak.OfAnEmptySequenceRlp);
 
-    public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
+    public bool HasTransactions => TxRoot is not null && TxRoot != Keccak.EmptyTreeHash;
 
-    public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
 
     public string ToString(string indent)
@@ -115,6 +122,18 @@ public class BlockHeader
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
+        if (RequestsHash is not null)
+        {
+            builder.AppendLine($"{indent}RequestsHash: {RequestsHash}");
+        }
+        if (BlockAccessListHash is not null)
+        {
+            builder.AppendLine($"{indent}BlockAccessListHash: {BlockAccessListHash}");
+        }
+        if (SlotNumber is not null)
+        {
+            builder.AppendLine($"{indent}SlotNumber: {SlotNumber}");
+        }
 
         return builder.ToString();
     }

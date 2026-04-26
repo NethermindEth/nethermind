@@ -3,10 +3,11 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -34,12 +35,12 @@ namespace Nethermind.Evm.Test
                 .FromCode(createCode)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
             TestState.InsertCode(TestItem.AddressC, byteCode, Spec);
 
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
 
-            var tracer = Execute((BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1), callCode);
+            TestAllTracerWithOutput tracer = Execute((BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1), callCode);
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(tracer.GasSpent - _transactionCallCost, Is.EqualTo(expectedGasUsage));
         }
@@ -48,21 +49,21 @@ namespace Nethermind.Evm.Test
         [TestCase("60006000F5")]
         public void Test_EIP_3860_InitCode_Create_Exceeds_Limit(string createCode)
         {
-            string dataLenghtHex = (Spec.MaxInitCodeSize + 1).ToString("X");
-            Instruction dataPush = Instruction.PUSH1 + (byte)(dataLenghtHex.Length / 2 - 1);
+            string dataLengthHex = (Spec.MaxInitCodeSize + 1).ToString("X");
+            Instruction dataPush = Instruction.PUSH1 + (byte)(dataLengthHex.Length / 2 - 1);
 
             bool isCreate2 = createCode[^2..] == Instruction.CREATE2.ToString("X");
             byte[] evmCode = isCreate2
-                ? Prepare.EvmCode.PushSingle(0).FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done
-                : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done;
+                ? Prepare.EvmCode.PushSingle(0).FromCode(dataPush.ToString("X") + dataLengthHex + createCode).Done
+                : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLengthHex + createCode).Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
             TestState.InsertCode(TestItem.AddressC, evmCode, Spec);
 
             const int contractCreationGasLimit = 50000;
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, contractCreationGasLimit).Done;
 
-            var tracer = Execute(callCode);
+            TestAllTracerWithOutput tracer = Execute(callCode);
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(tracer.ReportedActionErrors.Count, Is.EqualTo(1));
             Assert.That(tracer.ReportedActionErrors[0], Is.EqualTo(EvmExceptionType.OutOfGas));
@@ -73,7 +74,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_EIP_3860_Disabled_InitCode_TxCreation_Exceeds_Limit_Succeeds()
         {
-            (_, var tracer) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp - 1, Spec.MaxInitCodeSize + 1);
+            (_, TestAllTracerWithOutput tracer) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp - 1, Spec.MaxInitCodeSize + 1);
 
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         }
@@ -81,36 +82,35 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_EIP_3860_Enabled_InitCode_TxCreation_Exceeds_Limit_Fails()
         {
-            (var result, _) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize + 1);
+            (TransactionResult result, _) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize + 1);
 
-            Assert.That(result.Fail, Is.True);
-            Assert.That(result.Error, Is.EqualTo("EIP-3860 - transaction size over max init code size"));
+            Assert.That(result, Is.EqualTo(TransactionResult.TransactionSizeOverMaxInitCodeSize));
         }
 
         [Test]
         public void Test_EIP_3860_Enabled_InitCode_TxCreation_Within_Limit_Succeeds()
         {
             //7680 is the size of create instructions - Prepare.EvmCode.Create
-            (_, var tracer) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize - 7680);
+            (_, TestAllTracerWithOutput tracer) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize - 7680);
 
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
         protected (TransactionResult, TestAllTracerWithOutput tracer) PrepExecuteCreateTransaction(ulong timestamp, long byteCodeSize)
         {
-            var byteCode = new byte[byteCodeSize];
+            byte[] byteCode = new byte[byteCodeSize];
 
             byte[] createCode = Prepare.EvmCode.Create(byteCode, 0).Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
 
             (Block block, Transaction transaction) = PrepareTx((BlockNumber, timestamp), 500000, createCode);
 
-            transaction.GasPrice = 2.GWei();
+            transaction.GasPrice = 2.GWei;
             transaction.To = null;
             transaction.Data = createCode;
             TestAllTracerWithOutput tracer = CreateTracer();
-            TransactionResult result = _processor.Execute(transaction, block.Header, tracer);
+            TransactionResult result = _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
             return (result, tracer);
         }
     }

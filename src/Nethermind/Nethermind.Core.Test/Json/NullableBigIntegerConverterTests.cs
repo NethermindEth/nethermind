@@ -1,48 +1,38 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Text.Json;
 
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Json
+namespace Nethermind.Core.Test.Json;
+
+[TestFixture]
+public class NullableBigIntegerConverterTests : ConverterTestBase<BigInteger?>
 {
-    [TestFixture]
-    public class NullableBigIntegerConverterTests : ConverterTestBase<BigInteger?>
+    static readonly NullableBigIntegerConverter converter = new();
+    static readonly JsonSerializerOptions options = new() { Converters = { converter } };
+
+    [TestCaseSource(nameof(RoundtripTestCases))]
+    public void Test_roundtrip(BigInteger? value) => TestConverter(value, static (a, b) => a.Equals(b), converter);
+
+    static IEnumerable<TestCaseData> RoundtripTestCases =
+    [
+        new TestCaseData(null).SetName("null"),
+        new TestCaseData((BigInteger?)int.MaxValue).SetName("intMaxValue"),
+        new TestCaseData((BigInteger?)BigInteger.One).SetName("one"),
+        new TestCaseData((BigInteger?)BigInteger.Zero).SetName("zero"),
+    ];
+
+    [TestCase("0", "0")]
+    [TestCase("1", "1")]
+    [TestCase("null", null)]
+    public void Can_read_value(string json, string? expected)
     {
-        static readonly NullableBigIntegerConverter converter = new NullableBigIntegerConverter();
-        static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
-        public void Test_roundtrip()
-        {
-            TestConverter(null, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(BigInteger.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(BigInteger.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-        }
-
-        [Test]
-        public void Can_read_0()
-        {
-            BigInteger? result = JsonSerializer.Deserialize<BigInteger?>("0", options);
-            Assert.That(result, Is.EqualTo(BigInteger.Parse("0")));
-        }
-
-        [Test]
-        public void Can_read_1()
-        {
-            BigInteger? result = JsonSerializer.Deserialize<BigInteger?>("1", options);
-            Assert.That(result, Is.EqualTo(BigInteger.Parse("1")));
-        }
-
-        [Test]
-        public void Can_read_null()
-        {
-            BigInteger? result = JsonSerializer.Deserialize<BigInteger?>("null", options);
-            Assert.That(result, Is.EqualTo(null));
-        }
+        BigInteger? result = JsonSerializer.Deserialize<BigInteger?>(json, options);
+        Assert.That(result, Is.EqualTo(expected is null ? null : BigInteger.Parse(expected)));
     }
 }

@@ -71,8 +71,8 @@ namespace Nethermind.Core.Test
         public void Cannot_be_initialized_with_null()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PublicKey((string)null!));
-            Assert.Throws<ArgumentException>(() => new PublicKey((byte[])null!));
+            Assert.Throws<ArgumentNullException>(static () => new PublicKey((string)null!));
+            Assert.Throws<ArgumentException>(static () => new PublicKey((byte[])null!));
         }
 
         [Test]
@@ -87,7 +87,7 @@ namespace Nethermind.Core.Test
         [Explicit]
         public void Generate_Keys()
         {
-            var key = new PrivateKey(new CryptoRandom().GenerateRandomBytes(32));
+            PrivateKey key = new(new CryptoRandom().GenerateRandomBytes(32));
             TestContext.Out.WriteLine(key);
             TestContext.Out.WriteLine(key.PublicKey);
             TestContext.Out.WriteLine(key.Address);

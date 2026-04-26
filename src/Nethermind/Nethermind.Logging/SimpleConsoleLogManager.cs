@@ -1,36 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Logging
 {
-    public class SimpleConsoleLogManager : ILogManager
+    public class SimpleConsoleLogManager(LogLevel logLevel = LogLevel.Trace, string dateFormat = "yyyy-MM-dd HH-mm-ss.ffff|") : ILogManager
     {
-        private SimpleConsoleLogManager()
-        {
-        }
-
+        private readonly SimpleConsoleLogger _logger = new(logLevel, dateFormat);
         public static ILogManager Instance { get; } = new SimpleConsoleLogManager();
-
-        public ILogger GetClassLogger(Type type)
-        {
-            return new(SimpleConsoleLogger.Instance);
-        }
-
-        public ILogger GetClassLogger<T>()
-        {
-            return new(SimpleConsoleLogger.Instance);
-        }
-
-        public ILogger GetClassLogger()
-        {
-            return new(SimpleConsoleLogger.Instance);
-        }
-
-        public ILogger GetLogger(string loggerName)
-        {
-            return new(SimpleConsoleLogger.Instance);
-        }
+        public ILogger GetClassLogger<T>() => new(_logger);
+        public ILogger GetLogger(string loggerName) => new(_logger);
     }
 }

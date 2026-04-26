@@ -11,27 +11,21 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
+    public class StateSyncFeed(
+        TreeSync treeSync,
+        ILogManager logManager) : SyncFeed<StateSyncBatch?>, IDisposable
     {
         private const StateSyncBatch EmptyBatch = null;
 
         private readonly Stopwatch _handleWatch = new();
-        private readonly ILogger _logger;
-        private readonly TreeSync _treeSync;
+        private readonly ILogger _logger = logManager?.GetClassLogger<StateSyncFeed>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly TreeSync _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync));
         private bool _disposed = false;
         private SyncMode _currentSyncMode = SyncMode.None;
 
         public override bool IsMultiFeed => true;
 
         public override AllocationContexts Contexts => AllocationContexts.State;
-
-        public StateSyncFeed(
-            TreeSync treeSync,
-            ILogManager logManager)
-        {
-            _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         public override async Task<StateSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
@@ -54,7 +48,7 @@ namespace Nethermind.Synchronization.FastSync
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult(EmptyBatch);
+                return EmptyBatch;
             }
         }
 
@@ -64,10 +58,7 @@ namespace Nethermind.Synchronization.FastSync
             return _treeSync.HandleResponse(b, peer);
         }
 
-        public void Dispose()
-        {
-            _disposed = true;
-        }
+        public void Dispose() => _disposed = true;
 
         public override void SyncModeSelectorOnChanged(SyncMode current)
         {
@@ -94,5 +85,6 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         public override bool IsFinished => false; // Check MultiSyncModeSelector
+        public override string FeedName => nameof(StateSyncFeed);
     }
 }

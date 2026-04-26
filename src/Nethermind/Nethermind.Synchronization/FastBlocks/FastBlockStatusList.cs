@@ -145,10 +145,6 @@ internal class FastBlockStatusList
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int EncodeValue(FastBlockStatus newState, int oldValue, int shift) => (oldValue & ~(0b11 << shift)) | ((int)newState << shift);
 
-    [DoesNotReturn]
-    [StackTraceHidden]
-    private static void ThrowIndexOutOfRange()
-    {
-        throw new IndexOutOfRangeException();
-    }
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowIndexOutOfRange() => throw new IndexOutOfRangeException();
 }

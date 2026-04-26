@@ -12,11 +12,10 @@ namespace Nethermind.Consensus.Transactions
     {
         private EmptyTxSource() { }
 
+        public bool SupportsBlobs => false;
+
         public static ITxSource Instance { get; } = new EmptyTxSource();
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
-        {
-            return Array.Empty<Transaction>();
-        }
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource) => Array.Empty<Transaction>();
     }
 }

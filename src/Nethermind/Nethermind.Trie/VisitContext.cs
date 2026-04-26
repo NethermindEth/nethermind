@@ -3,80 +3,52 @@
 
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
+    public readonly struct OldStyleTrieVisitContext(int level, bool isStorage, int? branchChildIndex) : INodeContext<OldStyleTrieVisitContext>
+    {
+        public readonly int Level = level;
+        public readonly bool IsStorage = isStorage;
+        public readonly int? BranchChildIndex = branchChildIndex;
+
+        public OldStyleTrieVisitContext Add(ReadOnlySpan<byte> nibblePath) => new(Level + 1, IsStorage, null);
+
+        public OldStyleTrieVisitContext Add(byte nibble) => new(Level + 1, IsStorage, nibble);
+
+        public OldStyleTrieVisitContext AddStorage(in ValueHash256 storage) => new(Level + 1, true, null);
+    }
+
     public class TrieVisitContext : IDisposable
     {
-        private SemaphoreSlim? _semaphore;
         private readonly int _maxDegreeOfParallelism = 1;
-        private int _visitedNodes;
-
-        public int Level { get; internal set; }
-        public bool IsStorage { get; set; }
-        public int? BranchChildIndex { get; internal set; }
-        public bool ExpectAccounts { get; init; }
-        public int VisitedNodes => _visitedNodes;
 
         public int MaxDegreeOfParallelism
         {
             get => _maxDegreeOfParallelism;
-            internal init => _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
-        }
-
-        public SemaphoreSlim Semaphore
-        {
-            get
+            internal init
             {
-                if (_semaphore is null)
-                {
-                    if (MaxDegreeOfParallelism == 1) throw new InvalidOperationException("Can not create semaphore for single threaded trie visitor.");
-                    _semaphore = new SemaphoreSlim(MaxDegreeOfParallelism, MaxDegreeOfParallelism);
-                }
-
-                return _semaphore;
+                _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
             }
         }
 
-        public TrieVisitContext Clone() => (TrieVisitContext)MemberwiseClone();
+        public bool IsStorage { get; set; }
 
         public void Dispose()
         {
-            _semaphore?.Dispose();
-        }
-
-        public void AddVisited()
-        {
-            int visitedNodes = Interlocked.Increment(ref _visitedNodes);
-
-            // TODO: Fine tune interval? Use TrieNode.GetMemorySize(false) to calculate memory usage?
-            if (visitedNodes % 1_000_000 == 0)
-            {
-                GC.Collect();
-            }
-
         }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct SmallTrieVisitContext
     {
-        public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
-        {
-            Level = (byte)trieVisitContext.Level;
-            IsStorage = trieVisitContext.IsStorage;
-            BranchChildIndex = (byte?)trieVisitContext.BranchChildIndex;
-            ExpectAccounts = trieVisitContext.ExpectAccounts;
-        }
+        public SmallTrieVisitContext(TrieVisitContext trieVisitContext) => IsStorage = trieVisitContext.IsStorage;
 
         public byte Level { get; internal set; }
-        private byte _branchChildIndex = 255;
         private byte _flags = 0;
 
         private const byte StorageFlag = 1;
-        private const byte ExpectAccountsFlag = 2;
 
         public bool IsStorage
         {
@@ -92,49 +64,6 @@ namespace Nethermind.Trie
                     _flags = (byte)(_flags & ~StorageFlag);
                 }
             }
-        }
-
-        public bool ExpectAccounts
-        {
-            readonly get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
-            internal set
-            {
-                if (value)
-                {
-                    _flags = (byte)(_flags | ExpectAccountsFlag);
-                }
-                else
-                {
-                    _flags = (byte)(_flags & ~ExpectAccountsFlag);
-                }
-            }
-        }
-
-        public byte? BranchChildIndex
-        {
-            readonly get => _branchChildIndex == 255 ? null : _branchChildIndex;
-            internal set
-            {
-                if (value is null)
-                {
-                    _branchChildIndex = 255;
-                }
-                else
-                {
-                    _branchChildIndex = (byte)value;
-                }
-            }
-        }
-
-        public readonly TrieVisitContext ToVisitContext()
-        {
-            return new TrieVisitContext()
-            {
-                Level = Level,
-                IsStorage = IsStorage,
-                BranchChildIndex = BranchChildIndex,
-                ExpectAccounts = ExpectAccounts
-            };
         }
     }
 }

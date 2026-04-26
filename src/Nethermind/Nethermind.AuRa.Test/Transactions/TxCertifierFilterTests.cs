@@ -1,25 +1,22 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Withdrawals;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -41,14 +38,14 @@ public class TxCertifierFilterTests
         _notCertifiedFilter = Substitute.For<ITxFilter>();
         _specProvider = Substitute.For<ISpecProvider>();
 
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
             .Returns(AcceptTxResult.Invalid);
 
         _certifierContract.Certified(Arg.Any<BlockHeader>(),
-            Arg.Is<Address>(a => TestItem.Addresses.Take(3).Contains(a)))
+            Arg.Is<Address>(static a => TestItem.Addresses.Take(3).Contains(a)))
             .Returns(true);
 
-        _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, _specProvider, LimboLogs.Instance);
+        _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, LimboLogs.Instance);
     }
 
     [Test]
@@ -61,16 +58,12 @@ public class TxCertifierFilterTests
     }
 
     [Test]
-    public void should_not_allow_addresses_from_outside_contract()
-    {
+    public void should_not_allow_addresses_from_outside_contract() =>
         ShouldAllowAddress(TestItem.AddressA, expected: false);
-    }
 
     [Test]
-    public void should_not_allow_null_sender()
-    {
+    public void should_not_allow_null_sender() =>
         ShouldAllowAddress(null, expected: false);
-    }
 
     [Test]
     public void should_not_allow_addresses_on_contract_error()
@@ -84,18 +77,16 @@ public class TxCertifierFilterTests
     [TestCase(true)]
     public void should_default_to_inner_contract_on_non_zero_transactions(bool expected)
     {
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
             .Returns(expected ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
 
         ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
     }
 
-    private void ShouldAllowAddress(Address? address, ulong gasPrice = 0ul, bool expected = true)
-    {
+    private void ShouldAllowAddress(Address? address, ulong gasPrice = 0ul, bool expected = true) =>
         _filter.IsAllowed(
             Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-            Build.A.BlockHeader.TestObject).Equals(AcceptTxResult.Accepted).Should().Be(expected);
-    }
+            Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create()).Equals(AcceptTxResult.Accepted).Should().Be(expected);
 
     [Test]
     public async Task should_only_allow_addresses_from_contract_on_chain()
@@ -114,51 +105,35 @@ public class TxCertifierFilterTests
     }
 
     [Test]
-    public async Task registry_contract_returns_not_found_when_key_doesnt_exist()
+    public async Task registry_contract_returns_not_found_when_key_does_not_exist()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
         chain.RegisterContract.TryGetAddress(chain.BlockTree.Head.Header, "not existing key", out Address _).Should().BeFalse();
     }
 
     [Test]
-    public async Task registry_contract_returns_not_found_when_contract_doesnt_exist()
+    public async Task registry_contract_returns_not_found_when_contract_does_not_exist()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
-        RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
+        RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());
         contract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address _).Should().BeFalse();
     }
 
     public class TestTxPermissionsBlockchain : TestContractBlockchain
     {
-        public ReadOnlyTxProcessingEnv ReadOnlyTransactionProcessorSource { get; private set; }
         public RegisterContract RegisterContract { get; private set; }
         public CertifierContract CertifierContract { get; private set; }
 
-        protected override BlockProcessor CreateBlockProcessor()
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            TestBlockchain blockchain = await base.Build(configurer);
             AbiEncoder abiEncoder = AbiEncoder.Instance;
-            ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
-                WorldStateManager,
-                BlockTree.AsReadOnly(), SpecProvider,
-                LimboLogs.Instance);
-            RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);
+            RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTxProcessingEnvFactory.Create());
             CertifierContract = new CertifierContract(
                 abiEncoder,
                 RegisterContract,
-                ReadOnlyTransactionProcessorSource);
-
-            return new AuRaBlockProcessor(
-                SpecProvider,
-                Always.Valid,
-                new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
-                ReceiptStorage,
-                LimboLogs.Instance,
-                BlockTree,
-                NullWithdrawalProcessor.Instance,
-                null
-                );
+                ReadOnlyTxProcessingEnvFactory.Create());
+            return blockchain;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

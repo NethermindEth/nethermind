@@ -8,19 +8,16 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class SinglePendingTxSelector : ITxSource
+    public class SinglePendingTxSelector(ITxSource innerSource) : ITxSource
     {
-        private readonly ITxSource _innerSource;
+        private readonly ITxSource _innerSource = innerSource;
 
-        public SinglePendingTxSelector(ITxSource innerSource)
-        {
-            _innerSource = innerSource;
-        }
+        public bool SupportsBlobs => _innerSource.SupportsBlobs;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null) =>
-            _innerSource.GetTransactions(parent, gasLimit, payloadAttributes)
-                .OrderBy(t => t.Nonce)
-                .ThenByDescending(t => t.Timestamp)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false) =>
+            _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource)
+                .OrderBy(static t => t.Nonce)
+                .ThenByDescending(static t => t.Timestamp)
                 .Take(1);
 
         public override string ToString() => $"{nameof(SinglePendingTxSelector)} [ {_innerSource} ]";

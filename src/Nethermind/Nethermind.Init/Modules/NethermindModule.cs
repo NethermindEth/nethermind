@@ -1,0 +1,110 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.IO.Abstractions;
+using Autofac;
+using Nethermind.Abi;
+using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Timers;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Db.LogIndex;
+using Nethermind.JsonRpc;
+using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
+using Nethermind.Network.Config;
+using Nethermind.Runner.Ethereum.Modules;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
+using Nethermind.TxPool;
+using Testably.Abstractions;
+
+namespace Nethermind.Init.Modules;
+
+/// <summary>
+/// Full currently on production nethermind module, excluding plugins, and fallback to INethermindApi.
+/// Not able to initialize all component without INethermindApi integration and running IStep correctly.
+/// For testing without having to run ISteps, see <see cref="PseudoNethermindModule"/>.
+/// </summary>
+/// <param name="configProvider"></param>
+public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager) : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder
+            .AddServiceStopper()
+            .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
+            .AddModule(new NetworkModule(configProvider))
+            .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
+            .AddModule(new DbModule(
+                configProvider.GetConfig<IInitConfig>(),
+                configProvider.GetConfig<IReceiptConfig>(),
+                configProvider.GetConfig<ISyncConfig>()
+            ))
+            .AddModule(new DbMonitoringModule())
+            .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
+            .AddModule(new BuiltInStepsModule())
+            .AddModule(new DatabaseMigrationsModule())
+            .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
+            .AddModule(new Era1.EraModule())
+            .AddModule(new EraE.EraEModule())
+            .AddSource(new ConfigRegistrationSource())
+            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
+            .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
+            .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
+            .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
+
+            .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
+            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
+            .AddSingleton<IEciesCipher, EciesCipher>()
+            .AddSingleton<ICryptoRandom, CryptoRandom>()
+
+            .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
+            .Bind<IEcdsa, IEthereumEcdsa>()
+
+            .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
+            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider, IBlockTree, IStateReader>(
+                (specProvider, blockTree, stateReader) => new ChainHeadInfoProvider(specProvider, blockTree, stateReader))
+            .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
+
+            .AddSingleton<IHardwareInfo, HardwareInfo>()
+
+            .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
+            .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
+            .AddSingleton<IFileSystem>(_ => new RealFileSystem())
+            ;
+
+        if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())
+        {
+            builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
+        }
+
+        if (configProvider.GetConfig<IFlatDbConfig>().Enabled)
+            builder.AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()));
+    }
+
+    // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.
+    private class AppInputModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager) : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+
+            builder
+                .AddSingleton(configProvider)
+                .AddSingleton<ChainSpec>(chainSpec)
+                .AddSingleton<ILogManager>(logManager)
+                .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
+                ;
+        }
+    }
+}

@@ -15,6 +15,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
 public class ShardBlobBlockValidatorTests
 {
     [TestCaseSource(nameof(BlobGasFieldsPerForkTestCases))]
@@ -23,43 +24,57 @@ public class ShardBlobBlockValidatorTests
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         HeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), Always.Valid, specProvider, TestLogManager.Instance);
         BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, TestLogManager.Instance);
-        return blockValidator.ValidateSuggestedBlock(Build.A.Block
-            .WithBlobGasUsed(blobGasUsed)
-            .WithExcessBlobGas(excessBlobGas)
-            .WithWithdrawalsRoot(TestItem.KeccakA)
-            .WithWithdrawals(TestItem.WithdrawalA_1Eth)
-            .WithParent(Build.A.BlockHeader.TestObject)
-            .TestObject);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        return blockValidator.ValidateSuggestedBlock(
+            Build.A.Block
+                .WithBlobGasUsed(blobGasUsed)
+                .WithExcessBlobGas(excessBlobGas)
+                .WithWithdrawalsRoot(TestItem.KeccakA)
+                .WithWithdrawals(TestItem.WithdrawalA_1Eth)
+                .WithParent(parent)
+                .TestObject,
+            parent,
+            out _);
     }
 
     [TestCaseSource(nameof(BlobsPerBlockCountTestCases))]
-    public bool Blobs_per_block_count_is_valid(ulong blobGasUsed)
+    public bool Blobs_per_block_count_is_valid(IReleaseSpec spec, ulong blobGasUsed)
     {
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
+                .WithParent(parent)
                 .WithWithdrawalsRoot(TestItem.KeccakA)
                 .WithWithdrawals(TestItem.WithdrawalA_1Eth)
                 .WithBlobGasUsed(blobGasUsed)
                 .WithExcessBlobGas(0)
                 .WithTransactions(Enumerable.Range(0, (int)(blobGasUsed / Eip4844Constants.GasPerBlob))
-                    .Select(i => Build.A.Transaction
+                    .Select(static i => Build.A.Transaction
                         .WithType(TxType.Blob)
                         .WithMaxFeePerBlobGas(ulong.MaxValue)
                         .WithBlobVersionedHashes(1).TestObject).ToArray())
-                .TestObject);
+                .TestObject,
+            parent,
+            out _);
     }
 
     private static IEnumerable<TestCaseData> BlobsPerBlockCountTestCases()
     {
-        yield return new TestCaseData(0UL) { ExpectedResult = true };
+        yield return new TestCaseData(Cancun.Instance, 0UL) { ExpectedResult = true };
 
-        yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock - Eip4844Constants.GasPerBlob) { ExpectedResult = true };
+        yield return new TestCaseData(Cancun.Instance, (Cancun.Instance.MaxBlobCount - 1) * Eip4844Constants.GasPerBlob) { ExpectedResult = true };
 
-        yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock) { ExpectedResult = true };
+        yield return new TestCaseData(Cancun.Instance, Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob) { ExpectedResult = true };
 
-        yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock + Eip4844Constants.GasPerBlob) { ExpectedResult = false };
+        yield return new TestCaseData(Cancun.Instance, (Cancun.Instance.MaxBlobCount + 1) * Eip4844Constants.GasPerBlob) { ExpectedResult = false };
+
+        yield return new TestCaseData(Prague.Instance, (Prague.Instance.MaxBlobCount - 1) * Eip4844Constants.GasPerBlob) { ExpectedResult = true };
+
+        yield return new TestCaseData(Prague.Instance, (Prague.Instance.MaxBlobCount) * Eip4844Constants.GasPerBlob) { ExpectedResult = true };
+
+        yield return new TestCaseData(Prague.Instance, (Prague.Instance.MaxBlobCount + 1) * Eip4844Constants.GasPerBlob) { ExpectedResult = false };
     }
 
     private static IEnumerable<TestCaseData> BlobGasFieldsPerForkTestCases()

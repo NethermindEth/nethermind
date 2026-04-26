@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core.Specs;
@@ -15,7 +14,7 @@ namespace Nethermind.Evm.Test
     {
         private bool _setAuthor;
 
-        protected override Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0)
+        protected override Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0, ulong slotNumber = 0)
         {
             Block block = base.BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
             if (_setAuthor) block.Header.Author = TestItem.AddressC;

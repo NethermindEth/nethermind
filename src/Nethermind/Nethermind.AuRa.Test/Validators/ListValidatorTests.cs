@@ -7,7 +7,6 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;
@@ -54,10 +53,8 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(2)]
         [TestCase(4)]
         [TestCase(10)]
-        public void should_get_current_sealers_count(int validatorCount)
-        {
+        public void should_get_current_sealers_count(int validatorCount) =>
             GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.Length.Should().Be(validatorCount);
-        }
 
         [TestCase(1, ExpectedResult = 1)]
         [TestCase(2, ExpectedResult = 2)]

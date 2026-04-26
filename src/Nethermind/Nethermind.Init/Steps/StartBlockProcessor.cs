@@ -3,28 +3,17 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
+using Nethermind.Api.Steps;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockchain))]
-    public class StartBlockProcessor : IStep
+    public class StartBlockProcessor(IMainProcessingContext mainProcessingContext) : IStep
     {
-        private readonly IApiWithBlockchain _api;
-
-        public StartBlockProcessor(INethermindApi api)
-        {
-            _api = api;
-        }
-
         public Task Execute(CancellationToken _)
         {
-            if (_api.BlockchainProcessor is null)
-            {
-                throw new StepDependencyException(nameof(_api.BlockchainProcessor));
-            }
-
-            _api.BlockchainProcessor.Start();
+            mainProcessingContext.BlockchainProcessor.Start();
             return Task.CompletedTask;
         }
     }

@@ -5,6 +5,7 @@ using System;
 using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -17,7 +18,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
 
 #pragma warning disable CS0067
-        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+        public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 #pragma warning restore CS0067
 
         public InMemoryReceiptStorage(bool allowReceiptIterator = true, IBlockTree? blockTree = null)
@@ -31,24 +33,24 @@ namespace Nethermind.Blockchain.Receipts
         private void BlockTree_BlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             EnsureCanonical(e.Block);
-            ReceiptsInserted?.Invoke(this, e);
+            NewCanonicalReceipts?.Invoke(this, e);
         }
 
         public Hash256 FindBlockHash(Hash256 txHash)
         {
-            _transactions.TryGetValue(txHash, out var receipt);
+            _transactions.TryGetValue(txHash, out TxReceipt receipt);
             return receipt?.BlockHash;
         }
 
-        public TxReceipt[] Get(Block block, bool recover = true) => Get(block.Hash);
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => Get(block.Hash);
 
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) =>
-            _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : Array.Empty<TxReceipt>();
+            _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : [];
 
         public bool CanGetReceiptsByHash(long blockNumber) => true;
         public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
-            if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out var receipts))
+            if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out TxReceipt[] receipts))
             {
 #pragma warning disable 618
                 iterator = new ReceiptsIterator(receipts);
@@ -62,32 +64,42 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+            => Insert(block, txReceipts, null, ensureCanonical, writeFlags, lastBlockNumber);
+
+        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
             if (ensureCanonical)
             {
                 EnsureCanonical(block);
             }
+
+            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
         public bool HasBlock(long blockNumber, Hash256 hash)
-        {
-            return _receipts.ContainsKey(hash);
-        }
+            => _receipts.ContainsKey(hash);
 
         public void EnsureCanonical(Block block)
         {
             TxReceipt[] txReceipts = Get(block);
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                var txReceipt = txReceipts[i];
+                TxReceipt txReceipt = txReceipts[i];
                 txReceipt.BlockHash = block.Hash;
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
         }
 
-        public long? LowestInsertedReceiptBlockNumber { get; set; }
+        public void RemoveReceipts(Block block)
+        {
+            _receipts.TryRemove(block.Hash, out _);
+            foreach (Transaction tx in block.Transactions)
+            {
+                _transactions.TryRemove(tx.Hash, out _);
+            }
+        }
 
         public long MigratedBlockNumber { get; set; }
 

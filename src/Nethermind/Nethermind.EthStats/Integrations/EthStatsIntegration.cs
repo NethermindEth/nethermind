@@ -24,80 +24,56 @@ using Transaction = Nethermind.EthStats.Messages.Models.Transaction;
 
 namespace Nethermind.EthStats.Integrations
 {
-    public class EthStatsIntegration : IEthStatsIntegration
+    public class EthStatsIntegration(
+        string name,
+        string node,
+        int port,
+        string network,
+        string protocol,
+        string api,
+        string client,
+        string contact,
+        bool canUpdateHistory,
+        string secret,
+        IEthStatsClient ethStatsClient,
+        IMessageSender sender,
+        ITxPool txPool,
+        IBlockTree blockTree,
+        IPeerManager peerManager,
+        IGasPriceOracle gasPriceOracle,
+        IEthSyncingInfo ethSyncingInfo,
+        bool isMining,
+        TimeSpan sendStatsInterval,
+        ILogManager logManager) : IEthStatsIntegration
     {
-        private readonly string _name;
-        private readonly string _node;
-        private readonly int _port;
-        private readonly string _network;
-        private readonly string _protocol;
-        private readonly string _api;
-        private readonly string _client;
-        private readonly string _contact;
-        private readonly bool _canUpdateHistory;
-        private readonly string _secret;
-        private readonly IEthStatsClient _ethStatsClient;
-        private readonly IMessageSender _sender;
-        private readonly ITxPool _txPool;
-        private readonly IBlockTree _blockTree;
-        private readonly IPeerManager _peerManager;
-        private readonly ILogger _logger;
-        private readonly IGasPriceOracle _gasPriceOracle;
-        private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly bool _isMining;
-        private readonly TimeSpan _sendStatsInterval;
+        private readonly string _name = name;
+        private readonly string _node = node;
+        private readonly int _port = port;
+        private readonly string _network = network;
+        private readonly string _protocol = protocol;
+        private readonly string _api = api;
+        private readonly string _client = client;
+        private readonly string _contact = contact;
+        private readonly bool _canUpdateHistory = canUpdateHistory;
+        private readonly string _secret = secret;
+        private readonly IEthStatsClient _ethStatsClient = ethStatsClient;
+        private readonly IMessageSender _sender = sender;
+        private readonly ITxPool _txPool = txPool;
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly IPeerManager _peerManager = peerManager;
+        private readonly ILogger _logger = logManager.GetClassLogger<EthStatsIntegration>();
+        private readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle;
+        private readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo;
+        private readonly bool _isMining = isMining;
+        private readonly TimeSpan _sendStatsInterval = sendStatsInterval > TimeSpan.Zero
+                ? sendStatsInterval
+                : throw new ArgumentOutOfRangeException(nameof(sendStatsInterval));
 
         private IWebsocketClient? _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
         private Timer? _timer;
         private const int ThrottlingThreshold = 250;
-
-        public EthStatsIntegration(
-            string name,
-            string node,
-            int port,
-            string network,
-            string protocol,
-            string api,
-            string client,
-            string contact,
-            bool canUpdateHistory,
-            string secret,
-            IEthStatsClient ethStatsClient,
-            IMessageSender sender,
-            ITxPool txPool,
-            IBlockTree blockTree,
-            IPeerManager peerManager,
-            IGasPriceOracle gasPriceOracle,
-            IEthSyncingInfo ethSyncingInfo,
-            bool isMining,
-            TimeSpan sendStatsInterval,
-            ILogManager logManager)
-        {
-            _name = name;
-            _node = node;
-            _port = port;
-            _network = network;
-            _protocol = protocol;
-            _api = api;
-            _client = client;
-            _contact = contact;
-            _canUpdateHistory = canUpdateHistory;
-            _secret = secret;
-            _ethStatsClient = ethStatsClient;
-            _sender = sender;
-            _txPool = txPool;
-            _blockTree = blockTree;
-            _peerManager = peerManager;
-            _gasPriceOracle = gasPriceOracle;
-            _ethSyncingInfo = ethSyncingInfo;
-            _isMining = isMining;
-            _sendStatsInterval = sendStatsInterval > TimeSpan.Zero
-                ? sendStatsInterval
-                : throw new ArgumentOutOfRangeException(nameof(sendStatsInterval));
-            _logger = logManager.GetClassLogger();
-        }
 
         public async Task InitAsync()
         {
@@ -138,12 +114,11 @@ namespace Nethermind.EthStats.Integrations
 
         private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
-            if (_connected)
-            {
-                if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
-                SendStatsAsync();
-                SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
-            }
+            if (!_connected)
+                return;
+            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
+            _ = SendStatsAsync();
+            SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -206,19 +181,19 @@ namespace Nethermind.EthStats.Integrations
                     block.GasLimit,
                     block.Difficulty.ToString(),
                     (block.TotalDifficulty ?? 0).ToString(),
-                    block.Transactions.Select(t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
+                    block.Transactions.Select(static t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
                     (block.TxRoot ?? Keccak.Zero).ToString(),
                     (block.StateRoot ?? Keccak.Zero).ToString(),
-                    block.Uncles.Select(_ => new Uncle()))));
+                    block.Uncles.Select(static _ => new Uncle()))));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendPendingAsync(int pending)
             => _sender.SendAsync(_websocketClient!, new PendingMessage(new PendingStats(pending)));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
-        private Task SendStatsAsync()
+        private async Task SendStatsAsync()
         {
-            UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+            UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
             if (gasPrice > long.MaxValue)
             {
                 // EthStats doesn't work with UInt256, long should be enough
@@ -226,8 +201,8 @@ namespace Nethermind.EthStats.Integrations
                 gasPrice = long.MaxValue;
             }
 
-            return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
-                _peerManager.ActivePeers.Count, (long)gasPrice, 100)));
+            await _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
+                _peerManager.ActivePeersCount, (long)gasPrice, 100)));
         }
     }
 }

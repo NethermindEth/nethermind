@@ -5,12 +5,12 @@ using System;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Contracts
@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Contracts
 
         protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, long gasLimit = DefaultContractGasLimit) where T : Transaction, new()
         {
-            var transaction = new T()
+            T transaction = new()
             {
                 Value = UInt256.Zero,
                 Data = transactionData,
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="transaction">Transaction to be executed.</param>
         /// <param name="callAndRestore">Is it restore call.</param>
         /// <returns>Bytes with result.</returns>
-        /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="CallOutputTracer.StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
+        /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
         protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
@@ -178,11 +178,11 @@ namespace Nethermind.Blockchain.Contracts
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header), tracer);
+                    transactionProcessor.CallAndRestore(transaction, header, tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
+                    transactionProcessor.Execute(transaction, header, tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;
@@ -201,7 +201,6 @@ namespace Nethermind.Blockchain.Contracts
                 return tracer.ReturnValue;
             }
         }
-
         protected object[] DecodeReturnData(string functionName, byte[] data)
         {
             AbiEncodingInfo abiEncodingInfo = AbiDefinition.GetFunction(functionName).GetReturnInfo();
@@ -224,7 +223,7 @@ namespace Nethermind.Blockchain.Contracts
         {
             Hash256[] eventNameTopic = { AbiDefinition.GetEvent(eventName).GetHash() };
             topics = topics.Length == 0 ? eventNameTopic : eventNameTopic.Concat(topics).ToArray();
-            return new LogEntry(ContractAddress, data ?? Array.Empty<byte>(), topics);
+            return new LogEntry(ContractAddress, data ?? [], topics);
         }
 
         protected LogEntry GetSearchLogEntry(string eventName, params Hash256[] topics) => GetSearchLogEntry(eventName, null, topics);

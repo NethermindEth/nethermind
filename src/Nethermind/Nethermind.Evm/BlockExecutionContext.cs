@@ -3,31 +3,67 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
 public readonly struct BlockExecutionContext
 {
-    public BlockHeader Header { get; }
-    public UInt256? BlobBaseFee { get; }
+    public readonly BlockHeader Header;
+    public readonly Address Coinbase;
+    public readonly ulong Number;
+    public readonly ulong GasLimit;
+    public readonly ValueHash256 BlobBaseFee;
+    public readonly IReleaseSpec Spec;
+    public readonly ValueHash256 PrevRandao;
+    public readonly bool IsGenesis;
 
-    public BlockExecutionContext(BlockHeader blockHeader)
+    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec)
+        : this(blockHeader, spec, GetBlobBaseFee(blockHeader, spec), GetDefaultPrevRandao(blockHeader)) { }
+
+    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec, in UInt256 blobBaseFee)
+        : this(blockHeader, spec, blobBaseFee, GetDefaultPrevRandao(blockHeader)) { }
+
+    public static BlockExecutionContext WithPrevRandao(
+        BlockHeader blockHeader,
+        IReleaseSpec spec,
+        in ValueHash256 prevRandao)
+        => new(blockHeader, spec, GetBlobBaseFee(blockHeader, spec), prevRandao);
+
+    public static BlockExecutionContext WithPrevRandaoAndBlobBaseFee(
+        BlockHeader blockHeader,
+        IReleaseSpec spec,
+        in ValueHash256 prevRandao,
+        in UInt256 blobBaseFee)
+        => new(blockHeader, spec, blobBaseFee, prevRandao);
+
+    private BlockExecutionContext(
+        BlockHeader blockHeader,
+        IReleaseSpec spec,
+        in UInt256 blobBaseFee,
+        in ValueHash256 prevRandao)
     {
         Header = blockHeader;
-        if (blockHeader?.ExcessBlobGas is not null)
-        {
-            if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(blockHeader.ExcessBlobGas.Value, out UInt256 blobBaseFeeResult))
-            {
-                throw new OverflowException("Blob gas price calculation led to overflow.");
-            }
-            BlobBaseFee = blobBaseFeeResult;
-        }
+        Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
+        Number = (ulong)blockHeader.Number;
+        GasLimit = (ulong)blockHeader.GasLimit;
+        BlobBaseFee = blobBaseFee.ToValueHash();
+        Spec = spec;
+        PrevRandao = prevRandao;
+        IsGenesis = blockHeader.IsGenesis;
     }
 
-    public static implicit operator BlockExecutionContext(BlockHeader header)
-    {
-        return new BlockExecutionContext(header);
-    }
+    private static ValueHash256 GetDefaultPrevRandao(BlockHeader blockHeader) => blockHeader.IsPostMerge
+        ? (blockHeader.Random ?? Hash256.Zero).ValueHash256
+        : blockHeader.Difficulty.ToValueHash();
 
+    private static UInt256 GetBlobBaseFee(BlockHeader? blockHeader, IReleaseSpec spec) =>
+        blockHeader?.ExcessBlobGas is not null
+            ? !BlobGasCalculator.TryCalculateFeePerBlobGas(blockHeader.ExcessBlobGas.Value, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
+                ? throw new OverflowException("Blob gas price calculation led to overflow.")
+                : feePerBlobGas
+            : UInt256.Zero;
 }

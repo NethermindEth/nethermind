@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain;
 
@@ -11,10 +16,10 @@ namespace Nethermind.Core.Test.Blockchain;
 /// </summary>
 public class BasicTestBlockchain : TestBlockchain
 {
-    public static async Task<BasicTestBlockchain> Create()
+    public static async Task<BasicTestBlockchain> Create(Action<ContainerBuilder>? configurer = null)
     {
-        BasicTestBlockchain chain = new BasicTestBlockchain();
-        await chain.Build();
+        BasicTestBlockchain chain = new();
+        await chain.Build(configurer);
         return chain;
     }
 
@@ -22,10 +27,17 @@ public class BasicTestBlockchain : TestBlockchain
 
     public async Task BuildSomeBlocks(int numOfBlocks)
     {
+        UInt256 nonce = WorldStateManager.GlobalStateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
         for (int i = 0; i < numOfBlocks; i++)
         {
-            await AddBlock(Core.Test.Builders.Build.A.Transaction.WithTo(TestItem.AddressD)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+            IReleaseSpec spec = SpecProvider.GetSpec(BlockTree.Head!.Header);
+
+            await AddBlock(Builders.Build.A.Transaction
+                .WithTo(TestItem.AddressD)
+                .WithNonce(nonce)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyA, spec.IsEip155Enabled).TestObject);
+            nonce++;
         }
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Test.Builders
@@ -11,7 +10,7 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder()
         {
             TestObjectInternal = new TxReceipt();
-            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { Keccak.Zero }) };
+            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, [], new[] { Keccak.Zero }) };
         }
 
         public ReceiptBuilder WithAllFieldsFilled => WithBloom(TestItem.NonZeroBloom)

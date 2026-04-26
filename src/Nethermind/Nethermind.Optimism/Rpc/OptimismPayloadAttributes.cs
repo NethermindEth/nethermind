@@ -30,6 +30,12 @@ public class OptimismPayloadAttributes : PayloadAttributes
     public bool NoTxPool { get; set; }
     public long GasLimit { get; set; }
     public override long? GetGasLimit() => GasLimit;
+
+    /// <remarks>
+    /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
+    /// </remarks>
+    public byte[]? EIP1559Params { get; set; }
+
     private int TransactionsLength => Transactions?.Length ?? 0;
 
     private Transaction[]? _transactions;
@@ -39,7 +45,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[]? GetTransactions() => _transactions ??= Transactions?
-        .Select((t, i) =>
+        .Select(static (t, i) =>
         {
             try
             {
@@ -58,18 +64,21 @@ public class OptimismPayloadAttributes : PayloadAttributes
     public void SetTransactions(params Transaction[] transactions)
     {
         Transactions = transactions
-            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
             .ToArray();
         _transactions = transactions;
     }
 
     protected override int ComputePayloadIdMembersSize() =>
-        // Add NoTxPool + Txs + GasLimit
-        base.ComputePayloadIdMembersSize() + sizeof(bool) + Keccak.Size * TransactionsLength + sizeof(long);
+        base.ComputePayloadIdMembersSize()
+        + sizeof(bool) // noTxPool
+        + (Keccak.Size * TransactionsLength) // Txs
+        + sizeof(long) // gasLimit
+        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
+        int offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
 
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
         offset += 1;
@@ -87,16 +96,49 @@ public class OptimismPayloadAttributes : PayloadAttributes
         BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), GasLimit);
         offset += sizeof(long);
 
+        if (EIP1559Params is not null)
+        {
+            EIP1559Params.CopyTo(inputSpan.Slice(offset));
+            offset += EIP1559Params.Length;
+        }
+
         return offset;
     }
 
-    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,
+    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)
     {
         if (GasLimit == 0)
         {
             error = "Gas Limit should not be zero";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
+        IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
+        if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
+        {
+            error = $"{nameof(EIP1559Params)} should be null before Holocene";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+        if (releaseSpec.IsOpHoloceneEnabled)
+        {
+            if (!this.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out string? decodeError))
+            {
+                error = decodeError;
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+
+            (int version, string reason) versionCheck = parameters switch
+            {
+                // Newer forks should be added on top
+                _ when releaseSpec.IsOpJovianEnabled => (1, "since Jovian"),
+                _ => (0, "before Jovian")
+            };
+            if (versionCheck.version != parameters.Version)
+            {
+                error = $"{nameof(EIP1559Params)} version should be {versionCheck.version} {versionCheck.reason}";
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
         }
 
         try
@@ -108,7 +150,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"Error decoding transactions: {e}";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        return base.Validate(specProvider, apiVersion, out error);
+        return base.Validate(specProvider, fcuVersion, out error);
     }
 
     public override string ToString()
@@ -119,6 +161,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}, ")
             .Append($"{nameof(GasLimit)}: {GasLimit}, ")
             .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
+            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}")
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)

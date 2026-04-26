@@ -13,16 +13,14 @@ namespace Nethermind.Init.Steps
         {
         }
 
-        public StepDependencyException(string message)
-            : base(message)
+        public StepDependencyException(string message, Exception? innerException = null)
+            : base(message, innerException)
         {
         }
 
         public static void ThrowIfNull([NotNull] object? argument, [CallerArgumentExpression(nameof(argument))] string? paramName = null)
         {
-            if (argument is not null)
-                return;
-            throw new StepDependencyException(paramName ?? "");
+            if (argument is null) throw new StepDependencyException(paramName ?? "");
         }
     }
 }

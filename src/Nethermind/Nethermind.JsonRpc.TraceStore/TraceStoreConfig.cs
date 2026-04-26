@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 
 namespace Nethermind.JsonRpc.TraceStore;
 

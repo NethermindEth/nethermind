@@ -15,16 +15,20 @@ namespace Nethermind.Core.Extensions
             CancellationTokenRegistration tokenRegistration = default;
             try
             {
-                var tcs = new TaskCompletionSource<bool>();
+                TaskCompletionSource<bool> tcs = new();
                 registeredHandle = ThreadPool.RegisterWaitForSingleObject(
                     handle,
-                    (state, timedOut) => ((TaskCompletionSource<bool>)state!).TrySetResult(!timedOut),
+                    static (state, timedOut) => ((TaskCompletionSource<bool>)state!).TrySetResult(!timedOut),
                     tcs,
                     millisecondsTimeout,
                     true);
                 tokenRegistration = cancellationToken.Register(
-                    state => ((TaskCompletionSource<bool>)state!).TrySetCanceled(),
-                    tcs);
+                    static state =>
+                    {
+                        (TaskCompletionSource<bool>? tcs, CancellationToken ct) = ((TaskCompletionSource<bool> tcs, CancellationToken ct))state!;
+                        tcs.TrySetCanceled(ct);
+                    },
+                    (tcs, cancellationToken));
 
                 return await tcs.Task;
             }
@@ -35,14 +39,8 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static Task<bool> WaitOneAsync(this WaitHandle handle, TimeSpan timeout, CancellationToken cancellationToken)
-        {
-            return handle.WaitOneAsync((int)timeout.TotalMilliseconds, cancellationToken);
-        }
+        public static Task<bool> WaitOneAsync(this WaitHandle handle, TimeSpan timeout, CancellationToken cancellationToken) => handle.WaitOneAsync((int)timeout.TotalMilliseconds, cancellationToken);
 
-        public static Task<bool> WaitOneAsync(this WaitHandle handle, CancellationToken cancellationToken)
-        {
-            return handle.WaitOneAsync(Timeout.Infinite, cancellationToken);
-        }
+        public static Task<bool> WaitOneAsync(this WaitHandle handle, CancellationToken cancellationToken) => handle.WaitOneAsync(Timeout.Infinite, cancellationToken);
     }
 }

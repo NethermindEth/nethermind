@@ -42,8 +42,8 @@ public class TransactionsOption : IJsonRpcParam
         }
 
         string? text = jsonValue.GetString();
-        bool isTrue = string.Equals(text, bool.TrueString, StringComparison.InvariantCultureIgnoreCase);
-        bool isFalse = string.Equals(text, bool.FalseString, StringComparison.InvariantCultureIgnoreCase);
+        bool isTrue = string.Equals(text, bool.TrueString, StringComparison.OrdinalIgnoreCase);
+        bool isFalse = string.Equals(text, bool.FalseString, StringComparison.OrdinalIgnoreCase);
 
         IncludeTransactions = isTrue || isFalse
             ? isTrue

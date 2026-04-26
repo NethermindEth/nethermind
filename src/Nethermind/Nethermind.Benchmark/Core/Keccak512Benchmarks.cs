@@ -17,7 +17,7 @@ namespace Nethermind.Benchmarks.Core
 
         private byte[][] _scenarios =
         {
-            new byte[]{},
+            Array.Empty<byte>(),
             new byte[]{1},
             new byte[100000],
             TestItem.AddressA.Bytes
@@ -27,22 +27,13 @@ namespace Nethermind.Benchmarks.Core
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _a = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _a = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public byte[] Improved()
-        {
-            throw new NotImplementedException();
-        }
+        public byte[] Improved() => throw new NotImplementedException();
 
         [Benchmark]
-        public byte[] Current()
-        {
-            return Keccak512.Compute(_a).Bytes;
-        }
+        public byte[] Current() => Keccak512.Compute(_a).Bytes;
 
         //[Benchmark]
         //public byte[] HashLib()

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Network.StaticNodes;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test
@@ -24,8 +26,8 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void Setup()
         {
-            var path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "test-static-nodes.json");
-            var logManager = LimboLogs.Instance;
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "test-static-nodes.json");
+            LimboLogs logManager = LimboLogs.Instance;
             _staticNodesManager = new StaticNodesManager(path, logManager);
         }
 
@@ -37,14 +39,14 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task add_should_save_a_new_static_node_and_trigger_an_event()
+        public async Task add_should_save_a_new_static_node_and_pass_it_to_output()
         {
-            var eventRaised = false;
-            _staticNodesManager.NodeAdded += (s, e) => { eventRaised = true; };
+            ValueTask<List<Node>> listTask = _staticNodesManager.DiscoverNodes(default).Take(1).ToListAsync();
+
             _staticNodesManager.Nodes.Count().Should().Be(0);
             await _staticNodesManager.AddAsync(Enode, false);
             _staticNodesManager.Nodes.Count().Should().Be(1);
-            eventRaised.Should().BeTrue();
+            (await listTask).Count.Should().Be(1);
         }
 
         [Test]
@@ -56,9 +58,20 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task add_should_emit_node_with_static_flag()
+        {
+            ValueTask<List<Node>> listTask = _staticNodesManager.DiscoverNodes(default).Take(1).ToListAsync();
+
+            await _staticNodesManager.AddAsync(Enode, false);
+            List<Node> nodes = await listTask;
+
+            nodes[0].IsStatic.Should().BeTrue();
+        }
+
+        [Test]
         public async Task remove_should_delete_an_existing_static_node_and_trigger_an_event()
         {
-            var eventRaised = false;
+            bool eventRaised = false;
             _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; };
             await _staticNodesManager.AddAsync(Enode, false);
             _staticNodesManager.Nodes.Count().Should().Be(1);
@@ -70,7 +83,7 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task init_should_load_static_nodes_from_empty_file()
         {
-            using var tempFile = TempPath.GetTempFile();
+            using TempPath tempFile = TempPath.GetTempFile();
             await File.WriteAllTextAsync(tempFile.Path, string.Empty);
             _staticNodesManager = new StaticNodesManager(tempFile.Path, LimboLogs.Instance);
             await _staticNodesManager.InitAsync();

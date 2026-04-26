@@ -16,6 +16,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
+using Snappier;
+using System.Linq;
 
 namespace Nethermind.Network.Test.Rlpx;
 
@@ -26,7 +28,7 @@ public class ZeroNettyP2PHandlerTests
     {
         ISession session = Substitute.For<ISession>();
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
-        ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
 
         handler.ExceptionCaught(channelHandlerContext, new Exception());
 
@@ -38,7 +40,7 @@ public class ZeroNettyP2PHandlerTests
     {
         ISession session = Substitute.For<ISession>();
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
-        ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
 
         handler.ExceptionCaught(channelHandlerContext, new TestInternalNethermindException());
 
@@ -62,14 +64,40 @@ public class ZeroNettyP2PHandlerTests
                 packet.Content.ReadAllBytesAsArray().Should().BeEquivalentTo(msg);
             });
 
-        ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
 
         IByteBuffer buff = Unpooled.Buffer(2);
         buff.WriteBytes(msg);
-        ZeroPacket packet = new ZeroPacket(buff);
+        ZeroPacket packet = new(buff);
 
-        handler.ChannelRead(channelHandlerContext, packet);
+        handler.ChannelRead(channelHandlerContext, packet); // releases buffer
+    }
+
+    [Test]
+    public void When_message_exceeds_max_size_then_disconnect_with_breach_of_protocol()
+    {
+        // Arrange
+        ISession session = Substitute.For<ISession>();
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        channelHandlerContext.Allocator.Returns(UnpooledByteBufferAllocator.Default);
+
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+
+        // Create compressed data that will exceed MaxSnappyLength when decompressed
+        byte[] data = Snappy.CompressToArray(Enumerable.Repeat<byte>(0, SnappyParameters.MaxSnappyLength + 1).ToArray());
+
+        // Create a packet with our compressed data
+        IByteBuffer content = Unpooled.Buffer(data.Length);
+        content.WriteBytes(data);
+        ZeroPacket packet = new(content);
+
+        // Act
+        handler.ChannelRead(channelHandlerContext, packet); // releases buffer
+
+        // Assert
+        session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
     }
 
     private class TestInternalNethermindException : Exception, IInternalNethermindException

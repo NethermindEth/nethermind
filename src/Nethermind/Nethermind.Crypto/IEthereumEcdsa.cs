@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -9,10 +8,10 @@ namespace Nethermind.Crypto
 {
     public interface IEthereumEcdsa : IEcdsa
     {
-        void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled = true);
-        Address? RecoverAddress(Transaction tx, bool useSignatureChainId = false);
-        Address? RecoverAddress(Signature signature, Hash256 message);
-        Address? RecoverAddress(Span<byte> signatureBytes, Hash256 message);
-        bool Verify(Address sender, Transaction tx);
+        ulong ChainId { get; }
+        Address? RecoverAddress(Signature signature, Hash256 message)
+            => RecoverAddress(signature, in message.ValueHash256);
+
+        Address? RecoverAddress(Signature signature, in ValueHash256 message);
     }
 }

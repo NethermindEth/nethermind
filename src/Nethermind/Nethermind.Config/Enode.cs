@@ -1,13 +1,14 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Config
 {
@@ -31,12 +32,17 @@ namespace Nethermind.Config
             ArgumentException GetPortException(string hostName) =>
                 new($"Can't get Port for host {hostName}.");
 
+            if (!IsEnode(enodeString, out Uri? parsed))
+            {
+                throw new ArgumentException($"Invalid enode value '{enodeString}'");
+            }
+
             string[] enodeParts = enodeString.Split(':');
             string[] enodeParts2 = enodeParts[1].Split('@');
-            _nodeKey = new PublicKey(enodeParts2[0].TrimStart('/'));
-            string host = enodeParts2[1];
+            _nodeKey = new PublicKey(parsed.UserInfo);
+            string host = parsed.Host;
 
-            if (enodeParts.Length != 3)
+            if (parsed.Port == -1)
             {
                 throw GetPortException(host);
             }
@@ -79,9 +85,9 @@ namespace Nethermind.Config
 
         public static IPAddress? GetHostIpFromDnsAddresses(params IPAddress[] hostAddresses)
         {
-            for (var index = 0; index < hostAddresses.Length; index++)
+            for (int index = 0; index < hostAddresses.Length; index++)
             {
-                var hostAddress = hostAddresses[index];
+                IPAddress hostAddress = hostAddresses[index];
                 if (Equals(hostAddress, hostAddress.MapToIPv4()))
                 {
                     return hostAddress;
@@ -101,5 +107,8 @@ namespace Nethermind.Config
             : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={DiscoveryPort}";
 
         public override string ToString() => Info;
+
+        public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
+            Uri.TryCreate(enodeString, new UriCreationOptions(), out parsed) && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase);
     }
 }

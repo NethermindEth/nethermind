@@ -19,35 +19,13 @@ namespace Nethermind.Abi
 
         public AbiFixed(int length, int precision)
         {
-            if (length % 8 != 0)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiFixed)} has to be a multiple of 8");
-            }
+            ThrowIfNotMultipleOf8(length);
 
-            if (length > MaxLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiFixed)} has to be less or equal to {MaxLength}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxLength);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinLength);
 
-            if (length <= MinLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiFixed)} has to be greater than {MinLength}");
-            }
-
-            if (precision > MaxPrecision)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(precision)} of {nameof(AbiFixed)} has to be less or equal to {MaxPrecision}");
-            }
-
-            if (precision <= MinPrecision)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(precision)} of {nameof(AbiFixed)} has to be greater than {MinPrecision}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(precision, MaxPrecision);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(precision, MinPrecision);
 
             Length = length;
             Precision = precision;

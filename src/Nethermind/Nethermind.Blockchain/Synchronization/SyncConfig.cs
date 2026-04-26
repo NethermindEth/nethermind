@@ -1,6 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.Config;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -34,10 +36,10 @@ namespace Nethermind.Blockchain.Synchronization
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
-        private string _pivotNumber = "0";
-        public string PivotNumber
+        private long _pivotNumber = 0;
+        public long PivotNumber
         {
-            get => FastSync || SnapSync ? _pivotNumber : "0";
+            get => FastSync || SnapSync ? _pivotNumber : 0;
             set => _pivotNumber = value;
         }
 
@@ -64,15 +66,33 @@ namespace Nethermind.Blockchain.Synchronization
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
         public bool? SnapServingEnabled { get; set; } = null;
+        public int SnapServingMaxDepth { get; set; } = 128;
+        public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public int AllocationSlots { get; set; } = 2;
+        public int SyncDispatcherEmptyRequestDelayMs { get; set; } = 10;
+        public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
+        public bool NeedToWaitForHeader { get; set; }
+        public bool VerifyTrieOnStateSyncFinished { get; set; }
         public bool TrieHealing { get; set; } = true;
+        public int StateMaxDistanceFromHead { get; set; } = 128;
+        public int StateMinDistanceFromHead { get; set; } = 32;
+        public bool GCOnFeedFinished { get; set; } = true;
+        /// <summary>
+        /// Additional delay in blocks between best suggested header and synced state to allow faster state switching for PoW chains
+        /// with higher block processing frequency. Effectively this is the max allowed difference between best header (used as sync
+        /// pivot) and synced state block, to assume that state is synced and node can start processing blocks
+        /// </summary>
+        public int HeaderStateDistance { get; set; } = 0;
 
-        public override string ToString()
-        {
-            return
-                $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
-        }
+        public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB;
+        public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
+        public bool EnableSnapDoubleWriteCheck { get; set; } = false;
+        public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB;
+        public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB;
+
+        public override string ToString() =>
+            $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
 
     }
 }

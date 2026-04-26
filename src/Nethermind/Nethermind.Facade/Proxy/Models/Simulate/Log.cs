@@ -15,6 +15,7 @@ public class Log
     public Hash256 TransactionHash { get; set; }
     public ulong TransactionIndex { get; set; }
     public Hash256 BlockHash { get; set; }
+    public ulong BlockTimestamp { get; set; }
 
     public ulong LogIndex { get; set; }
     public bool Removed { get; set; } = false;

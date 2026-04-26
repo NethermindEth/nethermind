@@ -124,8 +124,8 @@ public class AccessListTests
 
         IEnumerable<(Address, IEnumerable<UInt256>)> expected = new List<(Address, IEnumerable<UInt256>)>
         {
-            (address1, new UInt256[] { }),
-            (address2, new UInt256[] { })
+            (address1, Array.Empty<UInt256>()),
+            (address2, Array.Empty<UInt256>())
         };
 
         accessList.Should().BeEquivalentTo(expected);
@@ -182,19 +182,16 @@ public class AccessListTests
             (address1, new[] { storageKey1, storageKey2 }),
             (address2, new[] { storageKey3 }),
             (address1, new[] { storageKey1 }),
-            (address2, new UInt256[] { }),
+            (address2, Array.Empty<UInt256>()),
         };
 
         accessList.Should().BeEquivalentTo(expected);
     }
 
     [Test]
-    public void Invalid_storage_when_no_previous_address()
+    public void Invalid_storage_when_no_previous_address() => Assert.Throws<InvalidOperationException>(static () =>
     {
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            AccessList.Builder _ = new AccessList.Builder()
-                .AddStorage(UInt256.Zero);
-        });
-    }
+        AccessList.Builder _ = new AccessList.Builder()
+            .AddStorage(UInt256.Zero);
+    });
 }

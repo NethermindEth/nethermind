@@ -3,21 +3,24 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Consensus.Producers
 {
     /// <summary>
@@ -31,17 +34,17 @@ namespace Nethermind.Consensus.Producers
     /// </summary>
     public abstract class BlockProducerBase : IBlockProducer
     {
-        private IBlockchainProcessor Processor { get; }
+        protected IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
+        protected readonly IGasLimitCalculator GasLimitCalculator;
         private ITimestamper Timestamper { get; }
 
-        private ISealer Sealer { get; }
+        protected ISealer Sealer { get; }
         private IWorldState StateProvider { get; }
-        private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
-        private readonly ITxSource _txSource;
-        protected const int BlockProductionTimeout = 2000;
+        protected internal ITxSource TxSource { get; set; }
+        protected readonly int BlockProductionTimeoutMs;
         protected readonly SemaphoreSlim _producingBlockLock = new(1);
         protected ILogger Logger { get; }
         protected readonly IBlocksConfig _blocksConfig;
@@ -59,31 +62,32 @@ namespace Nethermind.Consensus.Producers
             IDifficultyCalculator? difficultyCalculator,
             IBlocksConfig? blocksConfig)
         {
-            _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
+            TxSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
+            GasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
-            Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            Logger = logManager?.GetClassLogger<BlockProducerBase>() ?? throw new ArgumentNullException(nameof(logManager));
             _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
+
+            BlockProductionTimeoutMs = _blocksConfig.BlockProductionTimeoutMs;
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
+            PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
         {
-            token ??= default;
             Block? block = null;
-            if (await _producingBlockLock.WaitAsync(BlockProductionTimeout, token.Value))
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token))
             {
                 try
                 {
-                    block = await TryProduceNewBlock(token.Value, parentHeader, blockTracer, payloadAttributes);
+                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes, flags);
                 }
-                catch (Exception e) when (!(e is TaskCanceledException))
+                catch (Exception e) when (e is not TaskCanceledException)
                 {
                     if (Logger.IsError) Logger.Error("Failed to produce block", e);
                     Metrics.FailedBlockSeals++;
@@ -102,7 +106,7 @@ namespace Nethermind.Consensus.Producers
             return block;
         }
 
-        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
+        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             if (parentHeader is null)
             {
@@ -110,10 +114,11 @@ namespace Nethermind.Consensus.Producers
             }
             else
             {
-                if (Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                bool dontSeal = (flags & IBlockProducer.Flags.DontSeal) != 0;
+                if (dontSeal || Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
-                    return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes);
+                    return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes, flags);
                 }
                 else
                 {
@@ -125,14 +130,14 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
+        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            if (TrySetState(parent.StateRoot))
+            if (StateProvider.HasStateForBlock(parent))
             {
-                Block block = PrepareBlock(parent, payloadAttributes);
+                Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer);
+                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -140,14 +145,16 @@ namespace Nethermind.Consensus.Producers
                     }
                     else
                     {
+                        if ((flags & IBlockProducer.Flags.DontSeal) != 0) return Task.FromResult(processedBlock);
+
                         return SealBlock(processedBlock, parent, token).ContinueWith((Func<Task<Block?>, Block?>)(t =>
                         {
                             if (t.IsCompletedSuccessfully)
                             {
                                 if (t.Result is not null)
                                 {
-                                    if (Logger.IsInfo)
-                                        Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                    if (Logger.IsDebug)
+                                        Logger.Debug($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
                                     return t.Result;
                                 }
@@ -171,7 +178,7 @@ namespace Nethermind.Consensus.Producers
                             }
 
                             return null;
-                        }), token);
+                        }), CancellationToken.None);
                     }
                 }
             }
@@ -179,28 +186,11 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        /// <summary>
-        /// Sets the state to produce block on
-        /// </summary>
-        /// <param name="parentStateRoot">Parent block state</param>
-        /// <returns>True if succeeded, false otherwise</returns>
-        /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Hash256? parentStateRoot)
-        {
-            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
-            {
-                StateProvider.StateRoot = parentStateRoot;
-                return true;
-            }
-
-            return false;
-        }
-
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
-        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer) =>
-            Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance);
+        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
+            CancellationToken token = default) => Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);
 
         private bool PreparedBlockCanBeMined(Block? block)
         {
@@ -224,13 +214,14 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent),
+                payloadAttributes?.GetGasLimit() ?? GasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {
                 Author = blockAuthor,
                 MixHash = payloadAttributes?.PrevRandao,
-                ParentBeaconBlockRoot = payloadAttributes?.ParentBeaconBlockRoot
+                ParentBeaconBlockRoot = payloadAttributes?.ParentBeaconBlockRoot,
+                SlotNumber = payloadAttributes?.SlotNumber
             };
 
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
@@ -244,13 +235,22 @@ namespace Nethermind.Consensus.Producers
             return header;
         }
 
-        protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected virtual BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-            IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
+            IEnumerable<Transaction> transactions = (flags & IBlockProducer.Flags.EmptyBlock) != 0 ?
+                Array.Empty<Transaction>() :
+                TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+        }
+
+        private ProcessingOptions GetProcessingOptions()
+        {
+            if (_blocksConfig.BuildBlocksOnMainState)
+                return ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts | ProcessingOptions.DoNotUpdateHead;
+            return ProcessingOptions.ProducingBlock;
         }
     }
 }

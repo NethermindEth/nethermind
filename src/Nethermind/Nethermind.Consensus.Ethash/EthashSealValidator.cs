@@ -15,7 +15,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    internal class EthashSealValidator : ISealValidator
+    public class EthashSealValidator : ISealValidator
     {
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ICryptoRandom _cryptoRandom;
@@ -28,23 +28,21 @@ namespace Nethermind.Consensus.Ethash
         private const long AllowedFutureBlockTimeSeconds = 15;
         private int _sealValidationInterval = SealValidationIntervalConstantComponent;
 
-        internal EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash, ITimestamper timestamper)
+        public EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash, ITimestamper timestamper)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<EthashSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
 
             ResetValidationInterval();
         }
 
-        private void ResetValidationInterval()
-        {
+        private void ResetValidationInterval() =>
             // more or less at the constant component
             // prevents attack on all Nethermind nodes at once
             _sealValidationInterval = SealValidationIntervalConstantComponent - 8 + _cryptoRandom.NextInt(16);
-        }
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
@@ -68,10 +66,7 @@ namespace Nethermind.Consensus.Ethash
             return result;
         }
 
-        public void HintValidationRange(Guid guid, long start, long end)
-        {
-            _ethash.HintRange(guid, start, end);
-        }
+        public void HintValidationRange(Guid guid, long start, long end) => _ethash.HintRange(guid, start, end);
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {

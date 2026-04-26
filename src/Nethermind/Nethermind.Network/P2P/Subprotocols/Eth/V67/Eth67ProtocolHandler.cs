@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -16,26 +17,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V67;
 /// <summary>
 /// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-4938.md
 /// </summary>
-public class Eth67ProtocolHandler : Eth66ProtocolHandler
+public class Eth67ProtocolHandler(
+    ISession session,
+    IMessageSerializationService serializer,
+    INodeStatsManager nodeStatsManager,
+    ISyncServer syncServer,
+    IBackgroundTaskScheduler backgroundTaskScheduler,
+    ITxPool txPool,
+    IGossipPolicy gossipPolicy,
+    IForkInfo forkInfo,
+    ILogManager logManager,
+    ITxGossipPolicy? transactionsGossipPolicy = null)
+    : Eth66ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
+        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
-    public Eth67ProtocolHandler(ISession session,
-        IMessageSerializationService serializer,
-        INodeStatsManager nodeStatsManager,
-        ISyncServer syncServer,
-        IBackgroundTaskScheduler backgroundTaskScheduler,
-        ITxPool txPool,
-        IPooledTxsRequestor pooledTxsRequestor,
-        IGossipPolicy gossipPolicy,
-        ForkInfo forkInfo,
-        ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
-    {
-    }
-
     public override string Name => "eth67";
 
-    public override byte ProtocolVersion => EthVersions.Eth67;
+    public new static byte Version => EthVersions.Eth67;
+    public override byte ProtocolVersion => Version;
 
     public override void HandleMessage(ZeroPacket message)
     {

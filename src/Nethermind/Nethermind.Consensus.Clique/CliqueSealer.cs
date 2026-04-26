@@ -7,11 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 
@@ -26,7 +23,7 @@ namespace Nethermind.Consensus.Clique
 
         public CliqueSealer(ISigner signer, ICliqueConfig config, ISnapshotManager snapshotManager, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<CliqueSealer>() ?? throw new ArgumentNullException(nameof(logManager));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -65,13 +62,13 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Sign all the things!
-            Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+            ValueHash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature;
             if (_signer is IHeaderSigner headerSigner)
             {
                 BlockHeader clone = header.Clone();
                 clone.ExtraData = SnapshotManager.SliceExtraSealFromExtraData(clone.ExtraData);
-                clone.Hash = headerHash;
+                clone.Hash = new Hash256(headerHash);
                 signature = headerSigner.Sign(clone);
             }
             else
@@ -80,8 +77,8 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Copy signature bytes (R and S)
-            byte[] signatureBytes = signature.Bytes;
-            Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
+            ReadOnlySpan<byte> signatureBytes = signature.Bytes;
+            signatureBytes.CopyTo(header.ExtraData.AsSpan(header.ExtraData.Length - Clique.ExtraSealLength));
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
             header.ExtraData[^1] = recoveryId;
@@ -102,15 +99,6 @@ namespace Nethermind.Consensus.Clique
             {
                 if (_logger.IsTrace) _logger.Trace("Not on the signers list");
                 return false;
-            }
-
-            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
-            {
-                if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
-                {
-                    if (_logger.IsTrace) _logger.Trace("Signed recently");
-                    return false;
-                }
             }
 
             // If we're amongst the recent signers, wait for the next block

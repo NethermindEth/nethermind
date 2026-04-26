@@ -9,17 +9,12 @@ using System.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
-public abstract class SpecProviderBase
+public abstract class SpecProviderBase(ILogger logger = default)
 {
     protected (ForkActivation Activation, IReleaseSpec Spec)[] _blockTransitions;
     private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampTransitions;
     private ForkActivation? _firstTimestampActivation;
-    protected readonly ILogger _logger;
-
-    public SpecProviderBase(ILogger logger = default)
-    {
-        _logger = logger;
-    }
+    protected readonly ILogger _logger = logger;
 
     protected void LoadTransitions((ForkActivation Activation, IReleaseSpec Spec)[] transitions)
     {
@@ -33,8 +28,8 @@ public abstract class SpecProviderBase
             throw new ArgumentException($"First release specified when instantiating {GetType()} should be at genesis block (0)", $"{nameof(transitions)}");
         }
 
-        _blockTransitions = transitions.TakeWhile(t => t.Activation.Timestamp is null).ToArray();
-        _timestampTransitions = transitions.SkipWhile(t => t.Activation.Timestamp is null).ToArray();
+        _blockTransitions = transitions.TakeWhile(static t => t.Activation.Timestamp is null).ToArray();
+        _timestampTransitions = transitions.SkipWhile(static t => t.Activation.Timestamp is null).ToArray();
         _firstTimestampActivation = _timestampTransitions.Length != 0 ? _timestampTransitions.First().Activation : null;
         GenesisSpec = transitions.First().Spec;
     }

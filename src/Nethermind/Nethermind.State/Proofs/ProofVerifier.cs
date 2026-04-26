@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Proofs
 {
@@ -22,7 +20,7 @@ namespace Nethermind.State.Proofs
         {
             if (proof.Length == 0)
             {
-                return null;
+                return default(CappedArray<byte>);
             }
 
             for (int i = proof.Length; i > 0; i--)

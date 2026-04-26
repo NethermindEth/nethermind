@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -10,10 +9,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Ethereum.Test.Base
 {
-    public class BlockchainTest : IEthereumTest
+    public class BlockchainTest : EthereumTest
     {
-        public string? Category { get; set; }
-        public string? Name { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
         public ForkActivation? TransitionForkActivation { get; set; }
@@ -22,16 +19,12 @@ namespace Ethereum.Test.Base
 
         public TestBlockJson[]? Blocks { get; set; }
         public TestBlockHeaderJson? GenesisBlockHeader { get; set; }
+        public TestEngineNewPayloadsJson[]? EngineNewPayloads { get; set; }
 
         public Dictionary<Address, AccountState>? Pre { get; set; }
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Hash256? PostStateRoot { get; set; }
-        public bool SealEngineUsed { get; set; }
-        public string? LoadFailure { get; set; }
 
-        public override string? ToString()
-        {
-            return Name;
-        }
+        public override string? ToString() => Name;
     }
 }

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.Intrinsics;
-
 using FluentAssertions;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -14,8 +14,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     [TestFixture]
     public class CodeInfoTests
     {
-        private const string AnalyzerField = "_analyzer";
-
         [TestCase(-1, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]
@@ -104,7 +102,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Jumpdest_Over10k()
         {
-            var code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
+            byte[] code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
 
             CodeInfo codeInfo = new(code);
 
@@ -114,7 +112,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Push1_Over10k()
         {
-            var code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
+            byte[] code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
 
             CodeInfo codeInfo = new(code);
 
@@ -182,7 +180,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 //
             }
-            var triggerPushes = false;
+            bool triggerPushes = false;
             for (; i < code.Length; i++)
             {
                 if (i % (n + 1) == 0)
@@ -208,6 +206,57 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             for (; i < code.Length; i++)
             {
                 codeInfo.ValidateJump(i).Should().BeFalse(); // Are 0x5b but not JUMPDEST but data
+            }
+        }
+
+        [TestCaseSource(nameof(Codes))]
+        public void JumpDestinationAnalyzer_are_equivalent(byte[] codeInput)
+        {
+            for (int i = 1; i < codeInput.Length; i++)
+            {
+                ReadOnlySpan<byte> code = codeInput.AsSpan(0, i);
+
+                long[] scalar = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Scalar(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
+                long[] vector512 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector512(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
+                long[] vector128 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector128(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
+
+                Assert.That(vector512, Is.EquivalentTo(scalar));
+                Assert.That(vector128, Is.EquivalentTo(scalar));
+            }
+        }
+
+        private static IEnumerable Codes
+        {
+            get
+            {
+                byte[] code = new byte[1024];
+                TestCaseData test = new(code);
+                test.TestName = "Code_All_0x00";
+                yield return test;
+
+                code = new byte[1024];
+                code.AsSpan().Fill((byte)0x5b);
+                test = new TestCaseData(code);
+                test.TestName = "Code_All_JUMPDEST";
+                yield return test;
+
+                code = new byte[1024];
+
+                for (int start = 0; start <= 1; start++)
+                {
+                    for (int push = 0x60; push <= 0x7f; push++)
+                    {
+                        for (int i = 0; i < code.Length; i++)
+                        {
+                            code[i] = (i + start) % 2 == 0 ? (byte)push : (byte)0x5b;
+                        }
+                        test = new TestCaseData(code);
+                        test.TestName = start == 0 ?
+                            $"Code_All_PUSH{push - 0x5f:00}JUMPDEST" :
+                            $"Code_All_JUMPDESTPUSH{push - 0x5f:00}";
+                        yield return test;
+                    }
+                }
             }
         }
     }

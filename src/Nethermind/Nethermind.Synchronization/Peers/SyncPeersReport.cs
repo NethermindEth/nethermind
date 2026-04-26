@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -30,16 +30,16 @@ namespace Nethermind.Synchronization.Peers
             {
                 _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
                 _stats = statsManager ?? throw new ArgumentNullException(nameof(statsManager));
-                _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+                _logger = logManager?.GetClassLogger<SyncPeersReport>() ?? throw new ArgumentNullException(nameof(logManager));
             }
         }
 
-        private readonly object _writeLock = new();
+        private readonly Lock _writeLock = new();
 
         private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers
-            .OrderByDescending(p => p.SyncPeer?.HeadNumber)
-            .ThenByDescending(p => p.SyncPeer?.Node?.ClientId?.StartsWith("Nethermind") ?? false)
-            .ThenByDescending(p => p.SyncPeer?.Node?.ClientId).ThenBy(p => p.SyncPeer?.Node?.Host);
+            .OrderByDescending(static p => p.SyncPeer?.HeadNumber)
+            .ThenByDescending(static p => p.SyncPeer?.Node?.ClientId?.StartsWith("Nethermind") ?? false)
+            .ThenByDescending(static p => p.SyncPeer?.Node?.ClientId).ThenBy(static p => p.SyncPeer?.Node?.Host);
 
         public void WriteFullReport()
         {
@@ -74,8 +74,8 @@ namespace Nethermind.Synchronization.Peers
 
                 if (_logger.IsDebug)
                 {
-                    var header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
-                    _logger.Debug(MakeReportForPeers(OrderedPeers.Where(p => p.HasAnyAllocation), header));
+                    string header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
+                    _logger.Debug(MakeReportForPeers(OrderedPeers.Where(static p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
                 }
             }
         }
@@ -84,13 +84,13 @@ namespace Nethermind.Synchronization.Peers
         {
             lock (_writeLock)
             {
-                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(peerInfo => peerInfo.SyncPeer.ClientType);
-                float sum = peerGroups.Sum(x => x.Count());
+                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(static peerInfo => peerInfo.SyncPeer.ClientType);
+                float sum = peerGroups.Sum(static x => x.Count());
 
                 _stringBuilder.Append(header);
                 _stringBuilder.Append(" |");
                 bool isFirst = true;
-                foreach (var peerGroup in peers.GroupBy(peerInfo => peerInfo.SyncPeer.Name).OrderBy(p => p.Key))
+                foreach (IGrouping<string, PeerInfo> peerGroup in peers.GroupBy(static peerInfo => peerInfo.SyncPeer.Name).OrderBy(static p => p.Key))
                 {
                     if (isFirst)
                     {
@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.Peers
                 PeersContextCounts sleepingContexts = new();
                 foreach (PeerInfo peerInfo in peers)
                 {
-                    CountAvailableSlots(peerInfo.AvailableAllocationSlots, ref activeContexts);
+                    CountContexts(peerInfo.AllocatedContexts, ref activeContexts);
                     CountContexts(peerInfo.SleepingContexts, ref sleepingContexts);
                 }
 
@@ -138,37 +138,19 @@ namespace Nethermind.Synchronization.Peers
                 contextCounts.State += contexts.HasFlag(AllocationContexts.State) ? 1 : 0;
                 contextCounts.Snap += contexts.HasFlag(AllocationContexts.Snap) ? 1 : 0;
             }
-
-            static void CountAvailableSlots(AllocationAllowances available, ref PeersContextCounts contextCounts)
-            {
-                contextCounts.Total++;
-
-                if (available.Headers == 0 && available.Bodies == 0 && available.Receipts == 0 && available.State == 0 && available.Snap == 0)
-                {
-                    contextCounts.None++;
-                    return;
-                }
-
-                contextCounts.Headers += available.Headers;
-                contextCounts.Bodies += available.Bodies;
-                contextCounts.Receipts += available.Receipts;
-                contextCounts.Blocks += Math.Min(available.Headers, Math.Min(available.Bodies, available.Receipts));
-                contextCounts.State += available.State;
-                contextCounts.Snap += available.Snap;
-            }
         }
 
         internal string? MakeDiversityReportForPeers(IEnumerable<PeerInfo> peers, string header)
         {
             lock (_writeLock)
             {
-                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(peerInfo => peerInfo.SyncPeer.ClientType);
-                float sum = peerGroups.Sum(x => x.Count());
+                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(static peerInfo => peerInfo.SyncPeer.ClientType);
+                float sum = peerGroups.Sum(static x => x.Count());
 
                 _stringBuilder.Append(header);
 
                 bool isFirst = true;
-                foreach (var peerGroup in peerGroups.OrderByDescending(x => x.Count()))
+                foreach (IGrouping<NodeClientType, PeerInfo> peerGroup in peerGroups.OrderByDescending(static x => x.Count()))
                 {
                     if (isFirst)
                     {
@@ -235,7 +217,7 @@ namespace Nethermind.Synchronization.Peers
         {
             _stringBuilder.AppendLine();
             _stringBuilder.Append("===")
-                                .Append("[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)]")
+                                .Append("[Active ][Sleep  ][Peer(ProtocolVersion/Head/Host:Port/Direction)]")
                                 .Append("[Transfer Speeds (L/H/B/R/N/S)      ]")
                                 .Append("[Client Info (Name/Version/Operating System/Language)     ]")
                                 .AppendLine();

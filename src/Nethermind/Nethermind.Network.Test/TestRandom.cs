@@ -16,12 +16,12 @@ namespace Nethermind.Network.Test
         private readonly Queue<byte[]> _nextRandomBytesQueue = new();
 
         public TestRandom()
-            : this(i => i / 2, (Func<int, byte[]>)null)
+            : this(static i => i / 2, (Func<int, byte[]>)null)
         {
         }
 
         public TestRandom(params byte[][] randomBytesInQueue)
-            : this(i => i / 2, randomBytesInQueue)
+            : this(static i => i / 2, randomBytesInQueue)
         {
         }
 
@@ -40,24 +40,15 @@ namespace Nethermind.Network.Test
             _nextRandomBytesFunc = nextRandomBytesFuncFunc ?? (i => _nextRandomBytesQueue.Dequeue());
         }
 
-        public byte[] GenerateRandomBytes(int length)
-        {
-            return _nextRandomBytesFunc(length);
-        }
+        public byte[] GenerateRandomBytes(int length) => _nextRandomBytesFunc(length);
 
-        public void GenerateRandomBytes(Span<byte> bytes)
-        {
-            GenerateRandomBytes(bytes.Length).CopyTo(bytes);
-        }
+        public void GenerateRandomBytes(Span<byte> bytes) => GenerateRandomBytes(bytes.Length).CopyTo(bytes);
 
-        public int NextInt(int max)
-        {
-            return _nextIntFunc(max);
-        }
+        public int NextInt(int max) => _nextIntFunc(max);
 
         public void EnqueueRandomBytes(params byte[][] randomBytesInQueue)
         {
-            foreach (var randomBytes in randomBytesInQueue)
+            foreach (byte[] randomBytes in randomBytesInQueue)
             {
                 _nextRandomBytesQueue.Enqueue(randomBytes);
             }

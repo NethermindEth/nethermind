@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,56 +15,55 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
 public class WithdrawalValidatorTests
 {
-    [Test, Timeout(Timeout.MaxTestTime)]
-    public void Not_null_withdrawals_are_invalid_pre_shanghai()
+    [TestCaseSource(nameof(WithdrawalValidationCases))]
+    [MaxTime(Timeout.MaxTestTime)]
+    public bool Withdrawal_validation(IReleaseSpec spec, Withdrawal[]? withdrawals, Hash256? withdrawalRoot)
     {
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, London.Instance));
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(new Withdrawal[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }).TestObject);
-        Assert.False(isValid);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+
+        BlockBuilder blockBuilder = Build.A.Block.WithParent(parent);
+        if (withdrawals is not null)
+            blockBuilder = blockBuilder.WithWithdrawals(withdrawals);
+        if (withdrawalRoot is not null)
+            blockBuilder = blockBuilder.WithWithdrawalsRoot(withdrawalRoot);
+
+        return blockValidator.ValidateSuggestedBlock(blockBuilder.TestObject, parent, out _);
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
-    public void Null_withdrawals_are_invalid_post_shanghai()
+    private static IEnumerable<TestCaseData> WithdrawalValidationCases()
     {
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
-        Assert.False(isValid);
-    }
+        Withdrawal[] twoWithdrawals = [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth];
+        Withdrawal[] empty = [];
 
-    [Test, Timeout(Timeout.MaxTestTime)]
-    public void Withdrawals_with_incorrect_withdrawals_root_are_invalid()
-    {
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        Withdrawal[] withdrawals = { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth };
-        Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem.KeccakD).TestObject);
-        Assert.False(isValid);
-    }
-
-    [Test, Timeout(Timeout.MaxTestTime)]
-    public void Empty_withdrawals_are_valid_post_shanghai()
-    {
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        Withdrawal[] withdrawals = { };
-        Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
-        Assert.True(isValid);
-    }
-
-    [Test, Timeout(Timeout.MaxTestTime)]
-    public void Correct_withdrawals_block_post_shanghai()
-    {
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        Withdrawal[] withdrawals = { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth };
-        Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
-        Assert.True(isValid);
+        yield return new TestCaseData(London.Instance, twoWithdrawals, null)
+        {
+            TestName = "Not_null_withdrawals_are_invalid_pre_shanghai",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Shanghai.Instance, null, null)
+        {
+            TestName = "Null_withdrawals_are_invalid_post_shanghai",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Shanghai.Instance, twoWithdrawals, TestItem.KeccakD)
+        {
+            TestName = "Withdrawals_with_incorrect_withdrawals_root_are_invalid",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Shanghai.Instance, empty, new WithdrawalTrie(empty).RootHash)
+        {
+            TestName = "Empty_withdrawals_are_valid_post_shanghai",
+            ExpectedResult = true
+        };
+        yield return new TestCaseData(Shanghai.Instance, twoWithdrawals, new WithdrawalTrie(twoWithdrawals).RootHash)
+        {
+            TestName = "Correct_withdrawals_block_post_shanghai",
+            ExpectedResult = true
+        };
     }
 }

@@ -20,7 +20,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
     public void StartUpdating()
     {
-        var offsetInSec = dbConfig.StatsDumpPeriodSec * 1.1;
+        double offsetInSec = dbConfig.StatsDumpPeriodSec * 1.1;
 
         _timer = new Timer(UpdateMetrics, null, TimeSpan.FromSeconds(offsetInSec), TimeSpan.FromSeconds(offsetInSec));
     }
@@ -30,13 +30,13 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         try
         {
             // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
-            var compactionStatsString = "";
+            string compactionStatsString = "";
             compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
             ProcessCompactionStats(compactionStatsString);
 
             if (dbConfig.EnableDbStatistics)
             {
-                var dbStatsString = dbOptions.GetStatisticsString();
+                string dbStatsString = dbOptions.GetStatisticsString();
                 ProcessStatisticsString(dbStatsString);
                 // Currently we don't extract any DB statistics but we can do it here
             }
@@ -50,18 +50,18 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
     public void ProcessStatisticsString(string dbStatsString)
     {
-        foreach ((string Name, IDictionary<string, double> SubMetric) value in ExtractStatsFromStatisticString(dbStatsString))
+        foreach ((string Name, IDictionary<string, double> SubMetric) in ExtractStatsFromStatisticString(dbStatsString))
         {
             // The metric can be of several type, usually just a counter, but sometime its a histogram,
             // in which case we take both the sum and count.
-            if (value.SubMetric.TryGetValue("SUM", out var valueSum))
+            if (SubMetric.TryGetValue("SUM", out double valueSum))
             {
-                Metrics.DbStats[($"{dbName}Db", $"{value.Name}.sum")] = valueSum;
-                Metrics.DbStats[($"{dbName}Db", $"{value.Name}.count")] = value.SubMetric["COUNT"];
+                Metrics.DbStats[($"{dbName}Db", $"{Name}.sum")] = valueSum;
+                Metrics.DbStats[($"{dbName}Db", $"{Name}.count")] = SubMetric["COUNT"];
             }
             else
             {
-                Metrics.DbStats[($"{dbName}Db", value.Name)] = value.SubMetric["COUNT"];
+                Metrics.DbStats[($"{dbName}Db", Name)] = SubMetric["COUNT"];
             }
         }
     }
@@ -89,7 +89,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         if (!string.IsNullOrEmpty(compactionStatsString))
         {
             ExtractStatsPerLevel(compactionStatsString);
-            ExctractIntervalCompaction(compactionStatsString);
+            ExtractIntervalCompaction(compactionStatsString);
         }
         else
         {
@@ -121,9 +121,9 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
                     {
                         4 => m.Groups[++i].Value switch
                         {
-                            "KB" => 1.KiB(),
-                            "MB" => 1.MiB(),
-                            "GB" => 1.GiB(),
+                            "KB" => 1.KiB,
+                            "MB" => 1.MiB,
+                            "GB" => 1.GiB,
                             _ => 1
                         },
                         _ => 1
@@ -137,7 +137,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
     /// Example line:
     /// Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
     /// </summary>
-    private void ExctractIntervalCompaction(string compactionStatsDump)
+    private void ExtractIntervalCompaction(string compactionStatsDump)
     {
         if (!string.IsNullOrEmpty(compactionStatsDump))
         {
@@ -146,7 +146,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
             if (match?.Success == true)
             {
-                for (var index = 1; index < match.Groups.Count; index++)
+                for (int index = 1; index < match.Groups.Count; index++)
                 {
                     Group group = match.Groups[index];
                     Metrics.DbStats[($"{dbName}Db", group.Name)] = long.Parse(group.Value);
@@ -154,7 +154,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             }
             else
             {
-                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compation stats dump:{Environment.NewLine}{compactionStatsDump}");
+                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
             }
         }
     }
@@ -169,8 +169,5 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
     [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractSubStatsRegex();
 
-    public void Dispose()
-    {
-        _timer?.Dispose();
-    }
+    public void Dispose() => _timer?.Dispose();
 }

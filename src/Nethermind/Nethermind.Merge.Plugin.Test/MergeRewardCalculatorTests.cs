@@ -156,7 +156,7 @@ namespace Nethermind.Merge.Plugin.Test
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = 2;
             MergeConfig? mergeConfig = new() { };
-            IBlockCacheService blockCacheService = new BlockCacheService();
+            _ = new BlockCacheService();
             return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
         }
 

@@ -5,20 +5,23 @@ using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Store
 {
 
     [MemoryDiagnoser]
+    [MinIterationTime(1000)]
     public class PatriciaTreeBenchmarks
     {
         private static readonly Account _empty = Build.An.Account.WithBalance(0).TestObject;
@@ -46,8 +49,10 @@ namespace Nethermind.Benchmarks.Store
         private (Hash256, Account)[] _entries;
         private (Hash256, Account)[] _entriesShuffled;
 
-        private const int _largerEntryCount = 1024 * 10 * 10;
+        private const int _largerEntryCount = 1024 * 10;
+        private const int _repeatedlyFactor = 500;
         private (bool, Hash256, Account)[] _largerEntriesAccess;
+        private (Hash256, Account)[] _uniqueLargeSet;
 
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
@@ -56,14 +61,14 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(TestItem.AddressA, _account0);
                 tree.Set(TestItem.AddressB, _account0);
                 tree.Set(TestItem.AddressC, _account0);
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("set_3_via_hash", tree =>
             {
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("set_3_delete_1", tree =>
             {
@@ -71,7 +76,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("set_3_delete_2", tree =>
             {
@@ -80,7 +85,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("set_3_delete_all", tree =>
             {
@@ -90,7 +95,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("extension_read_full_match", tree =>
             {
@@ -99,7 +104,7 @@ namespace Nethermind.Benchmarks.Store
                 Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("extension_read_missing", tree =>
             {
@@ -108,7 +113,7 @@ namespace Nethermind.Benchmarks.Store
                 Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("extension_new_branch", tree =>
             {
@@ -117,7 +122,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), _account2);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("extension_delete_missing", tree =>
             {
@@ -126,9 +131,9 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
-            ("extenson_create_new_extension", tree =>
+            ("extension_create_new_extension", tree =>
             {
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
@@ -136,7 +141,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111"), _account3);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("leaf_new_value", tree =>
             {
@@ -144,7 +149,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account1);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("leaf_no_change", tree =>
             {
@@ -152,7 +157,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("leaf_delete", tree =>
             {
@@ -160,7 +165,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), null);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("leaf_delete_missing", tree =>
             {
@@ -168,7 +173,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("leaf_update_extension", tree =>
             {
@@ -176,7 +181,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), _account1);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("leaf_read", tree =>
             {
@@ -184,7 +189,7 @@ namespace Nethermind.Benchmarks.Store
                 Account account = tree.Get(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("leaf_update_missing", tree =>
             {
@@ -192,7 +197,7 @@ namespace Nethermind.Benchmarks.Store
                 Account account = tree.Get(new Hash256("111111111111111111111111111111111111111111111111111111111ddddddd"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("branch_update_missing", tree =>
             {
@@ -201,7 +206,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), _account2);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("branch_read_missing", tree =>
             {
@@ -210,7 +215,7 @@ namespace Nethermind.Benchmarks.Store
                 Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
             ("branch_delete_missing", tree =>
             {
@@ -219,7 +224,7 @@ namespace Nethermind.Benchmarks.Store
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
                 tree.UpdateRootHash();
                 Hash256 rootHash = tree.RootHash;
-                tree.Commit(1);
+                tree.Commit();
             }),
         };
 
@@ -242,12 +247,12 @@ namespace Nethermind.Benchmarks.Store
             new Random(0).Shuffle(_entriesShuffled);
 
             _backingMemory = new MemDb();
-            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
+            StateTree tempTree = new(new RawScopedTrieStore(new NodeStorage(_backingMemory), null), NullLogManager.Instance);
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
-            tempTree.Commit(0);
+            tempTree.Commit();
             _rootHash = tempTree.RootHash;
 
             _fullTree = new StateTree();
@@ -255,7 +260,7 @@ namespace Nethermind.Benchmarks.Store
             {
                 _fullTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
-            _fullTree.Commit(0);
+            _fullTree.Commit();
 
             _uncommittedFullTree = new StateTree();
             for (int i = 0; i < _entryCount; i++)
@@ -263,13 +268,14 @@ namespace Nethermind.Benchmarks.Store
                 _uncommittedFullTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
 
-            _memoryTrieStore = new TrieStore(_backingMemory, Prune.WhenCacheReaches(1.GB()), No.Persistence, NullLogManager.Instance);
+            _memoryTrieStore = TestTrieStoreFactory.Build(_backingMemory, Prune.WhenCacheReaches(1.GB), No.Persistence, NullLogManager.Instance);
 
             // Preparing access for large entries
             List<Hash256> currentItems = new();
 
             _largerEntriesAccess = new (bool, Hash256, Account)[_largerEntryCount];
-            Random rand = new Random(0);
+            _uniqueLargeSet = new (Hash256, Account)[_largerEntryCount];
+            Random rand = new(0);
             for (int i = 0; i < _largerEntryCount; i++)
             {
                 if (rand.NextDouble() < 0.4 && currentItems.Count != 0)
@@ -284,7 +290,7 @@ namespace Nethermind.Benchmarks.Store
                 {
                     // Its an existing write
                     _largerEntriesAccess[i] = (
-                        false,
+                        true,
                         currentItems[(int)(rand.NextInt64() % currentItems.Count)],
                         new Account((UInt256)rand.NextInt64()));
                 }
@@ -294,12 +300,17 @@ namespace Nethermind.Benchmarks.Store
                     Hash256 newAccount = Keccak.Compute(i.ToBigEndianByteArray());
                     currentItems.Add(newAccount);
                     _largerEntriesAccess[i] = (
-                        false,
+                        true,
                         newAccount,
                         new Account((UInt256)rand.NextInt64()));
                 }
-            }
 
+                Hash256 newAccount2 = Keccak.Compute(i.ToBigEndianByteArray());
+                currentItems.Add(newAccount2);
+                _uniqueLargeSet[i] = (
+                    newAccount2,
+                    new Account((UInt256)rand.NextInt64()));
+            }
         }
 
         [Benchmark]
@@ -314,7 +325,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void InsertAndHash()
         {
-            StateTree tempTree = new StateTree();
+            StateTree tempTree = new();
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
@@ -325,28 +336,28 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void InsertAndCommit()
         {
-            StateTree tempTree = new StateTree(new TrieStore(new MemDb(), NullLogManager.Instance), NullLogManager.Instance);
+            StateTree tempTree = new(new RawScopedTrieStore(new MemDb()), NullLogManager.Instance);
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
-            tempTree.Commit(0);
+            tempTree.Commit();
         }
 
         [Benchmark]
         public void InsertAndCommitRepeatedlyTimes()
         {
-            StateTree tempTree = new StateTree(
-                new TrieStore(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.IfBlockOlderThan(2),
-                NullLogManager.Instance), NullLogManager.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new(trieStore, NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
-                if (i % 2000 == 0)
+                if (i % _repeatedlyFactor == 0)
                 {
-                    tempTree.Commit(i / 2000);
+                    using IBlockCommitter _ = trieStore.BeginBlockCommit(i / _repeatedlyFactor);
+                    tempTree.Commit();
                 }
 
                 (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
@@ -359,6 +370,88 @@ namespace Nethermind.Benchmarks.Store
                     tempTree.Get(address);
                 }
             }
+        }
+
+        [Benchmark]
+        public void LargeInsertAndCommit()
+        {
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            tempTree.Commit();
+        }
+
+        TrieStore _largeUncommittedFullTree;
+        StateTree _largeUncommittedStateTree;
+
+        [IterationSetup(Targets = [
+            nameof(LargeCommit),
+            nameof(LargeHash),
+            nameof(LargeHashNoParallel),
+        ])]
+        public void SetupLargeUncommittedTree()
+        {
+            TrieStore trieStore = _largeUncommittedFullTree = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = _largeUncommittedStateTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+        }
+
+        [IterationCleanup(Targets = [
+            nameof(LargeCommit),
+            nameof(LargeHash),
+            nameof(LargeHashNoParallel),
+        ])]
+        public void CleanupLargeUncommittedTree() => _largeUncommittedFullTree.Dispose();
+
+        [Benchmark]
+        public void LargeCommit()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.Commit();
+        }
+
+        [Benchmark]
+        public void LargeHash()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.UpdateRootHash();
+        }
+
+        [Benchmark]
+        public void LargeHashNoParallel()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
         }
 
         [Benchmark]
@@ -382,7 +475,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void ReadWithMemoryTrieStore()
         {
-            StateTree tempTree = new StateTree(_memoryTrieStore, NullLogManager.Instance);
+            StateTree tempTree = new(_memoryTrieStore, NullLogManager.Instance);
             tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {
@@ -393,7 +486,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void ReadWithMemoryTrieStoreReadOnly()
         {
-            StateTree tempTree = new StateTree(_memoryTrieStore.AsReadOnly(), NullLogManager.Instance);
+            StateTree tempTree = new(_memoryTrieStore.AsReadOnly(), NullLogManager.Instance);
             tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {
@@ -404,7 +497,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void ReadAndDeserialize()
         {
-            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
+            StateTree tempTree = new(new RawScopedTrieStore(_backingMemory), NullLogManager.Instance);
             tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {

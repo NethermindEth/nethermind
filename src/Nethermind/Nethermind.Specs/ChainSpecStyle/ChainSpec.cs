@@ -1,17 +1,17 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
+using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
-    /// https://wiki.parity.io/Chain-specification
+    /// https://openethereum.github.io/Chain-specification
     /// </summary>
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
@@ -27,22 +27,16 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong ChainId { get; set; }
 
-        public NetworkNode[] Bootnodes { get; set; }
+        public NetworkNode[] Bootnodes { get; set; } = [];
 
         public bool GenesisStateUnavailable { get; set; }
         public Block Genesis { get; set; }
 
         public string SealEngineType { get; set; }
 
-        public AuRaParameters AuRa { get; set; }
-
-        public CliqueParameters Clique { get; set; }
-
-        public EthashParameters Ethash { get; set; }
-
-        public OptimismParameters Optimism { get; set; }
-
         public ChainParameters Parameters { get; set; }
+
+        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 
@@ -83,5 +77,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? ShanghaiTimestamp { get; set; }
 
         public ulong? CancunTimestamp { get; set; }
+
+        public ulong? PragueTimestamp { get; set; }
+
+        public ulong? OsakaTimestamp { get; set; }
+        public ulong? AmsterdamTimestamp { get; set; }
     }
 }

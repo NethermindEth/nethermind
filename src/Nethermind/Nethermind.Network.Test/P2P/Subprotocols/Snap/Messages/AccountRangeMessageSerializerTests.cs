@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,7 +27,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = 1,
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
-                Proofs = ArrayPoolList<byte[]>.Empty(),
+                Proofs = EmptyByteArrayList.Instance,
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
-                Proofs = ArrayPoolList<byte[]>.Empty()
+                Proofs = EmptyByteArrayList.Instance
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -52,12 +52,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_Many()
         {
-            var acc01 = Build.An.Account
+            Account acc01 = Build.An.Account
                 .WithBalance(1)
                 .WithCode(Code0)
                 .WithStorageRoot(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
                 .TestObject;
-            var acc02 = Build.An.Account
+            Account acc02 = Build.An.Account
                 .WithBalance(2)
                 .WithCode(Code1)
                 .WithStorageRoot(new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
@@ -66,8 +66,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new PathWithAccount(TestItem.KeccakA, acc01), new PathWithAccount(TestItem.KeccakB, acc02) },
-                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new(TestItem.KeccakA, acc01), new(TestItem.KeccakB, acc02) },
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -78,7 +78,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_EmptyStorageRoot()
         {
-            var acc01 = Build.An.Account
+            Account acc01 = Build.An.Account
                 .WithBalance(1)
                 .WithCode(Code0)
                 .WithStorageRoot(Keccak.EmptyTreeHash)
@@ -88,7 +88,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
-                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -100,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         public void Roundtrip_EmptyCode()
         {
 
-            var acc01 = Build.An.Account
+            Account acc01 = Build.An.Account
                 .WithBalance(1)
                 .WithStorageRoot(TestItem.KeccakA)
                 .TestObject;
@@ -109,7 +109,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
-                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             AccountRangeMessageSerializer serializer = new();

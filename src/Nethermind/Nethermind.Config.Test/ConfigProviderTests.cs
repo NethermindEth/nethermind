@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Network.Config;
@@ -11,6 +12,23 @@ using NUnit.Framework;
 
 namespace Nethermind.Config.Test
 {
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class ConfigSourceHelperTests
+    {
+        [TestCase(typeof(int), 0)]
+        [TestCase(typeof(bool), false)]
+        [TestCase(typeof(long), 0L)]
+        public void GetDefault_returns_correct_default_value_for_value_types(Type type, object expected)
+        {
+            object result = ConfigSourceHelper.GetDefault(type);
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void GetDefault_returns_null_for_reference_types() => Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
+    }
+
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
     public class DefaultConfigProviderTests
@@ -24,15 +42,6 @@ namespace Nethermind.Config.Test
         }
 
         public int DefaultTestProperty { get; set; } = 5;
-
-        // [Test]
-        // public void Can_read_defaults_from_registered_categories()
-        // {
-        //     ConfigProvider configProvider = new ConfigProvider();
-        //     configProvider.RegisterCategory("Nananana", typeof(DefaultConfigProviderTests));
-        //     var result = configProvider.GetRawValue("Nananana", nameof(DefaultTestProperty));
-        //     Assert.AreEqual(5, result);
-        // }
 
         [Test]
         public void Can_read_overwrites()
@@ -75,12 +84,22 @@ namespace Nethermind.Config.Test
                     ? bitArray.Get(5)
                     : bitArray.Get(2)
                         ? bitArray.Get(3)
-                        : bitArray.Get(0)
-                            ? bitArray.Get(1)
-                            : false;
+                        : bitArray.Get(0) && bitArray.Get(1);
 
                 Assert.That(config.Enabled, Is.EqualTo(expectedResult), bitArray.ToBitString());
             }
+        }
+
+        [Test]
+        public void Can_useExistingConfig()
+        {
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 12345,
+            };
+            IConfigProvider configProvider = new ConfigProvider(blocksConfig);
+
+            configProvider.GetConfig<IBlocksConfig>().MinGasPrice.Should().Be(12345);
         }
     }
 }

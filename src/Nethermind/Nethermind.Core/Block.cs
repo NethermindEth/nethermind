@@ -8,41 +8,49 @@ using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
+using System.Text.Unicode;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Core;
 
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    public Block(BlockHeader header, BlockBody body)
+    public Block(BlockHeader header, BlockBody body, BlockAccessList? bal = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = body ?? throw new ArgumentNullException(nameof(body));
+        BlockAccessList = bal;
     }
 
-    public Block(
-        BlockHeader header,
+    public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        BlockAccessList? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        BlockAccessList = blockAccessList;
     }
 
     public Block(BlockHeader header) : this(
         header,
-        new(null, null, header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
+        new(
+            null,
+            null,
+            header.WithdrawalsRoot is null ? null : [])
     )
     { }
 
-    public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList);
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList);
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody);
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList);
 
     public BlockHeader Header { get; }
 
@@ -58,7 +66,7 @@ public class Block
 
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
-    public Withdrawal[]? Withdrawals => Body.Withdrawals;
+    public Withdrawal[]? Withdrawals => Body.Withdrawals; // do not add setter here
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 
@@ -104,6 +112,8 @@ public class Block
 
     public ulong? ExcessBlobGas => Header.ExcessBlobGas; // do not add setter here
 
+    public ulong? SlotNumber => Header.SlotNumber; // do not add setter here
+
     public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
 
     public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;
@@ -111,26 +121,59 @@ public class Block
     public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
+    public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
+    public Hash256? BlockAccessListHash => Header.BlockAccessListHash; // do not add setter here
+
+    // suggested BAL from network
+    [JsonIgnore]
+    public BlockAccessList? BlockAccessList { get; set; }
+
+    [JsonIgnore]
+    public BlockAccessList? GeneratedBlockAccessList { get; set; }
+
+    [JsonIgnore]
+    public byte[][]? ExecutionRequests { get; set; }
+
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
+
     [JsonIgnore]
-    internal volatile int TransactionProcessed;
+    public int? EncodedSize { get; set; }
+
+    [JsonIgnore]
+    public byte[]? EncodedBlockAccessList { get; set; }
+
+    /// <summary>
+    /// Pre-encoded transaction bytes in SkipTypedWrapping format (as received from CL).
+    /// Used to avoid re-encoding transactions when storing blocks.
+    /// </summary>
+    [JsonIgnore]
+    public byte[][]? EncodedTransactions { get; set; }
 
     public override string ToString() => ToString(Format.Short);
 
     public string ToString(Format format) => format switch
     {
         Format.Full => ToFullString(),
-        Format.FullHashAndNumber => Hash is null ? $"{Number} null" : $"{Number} ({Hash})",
+        Format.FullHashAndNumber => ToFullHashAndNumber(),
+        Format.FullHashNumberAndExtraData => $"{ToFullHashAndNumber()},  ExtraData: {ExtraDataToString()}",
         Format.HashNumberAndTx => Hash is null
             ? $"{Number} null, tx count: {Body.Transactions.Length}"
             : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
-        Format.HashNumberDiffAndTx => Hash is null
-            ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}"
-            : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}",
-        _ => Hash is null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
+        Format.HashNumberDiffAndTx => $"{ToShortHashAndNumber()}  diff {Difficulty} | txs {Body.Transactions.Length,7:N0}",
+        Format.HashNumberMGasAndTx => $"{ToShortHashAndNumber()}  {GasUsed / 1_000_000.0,9:N2} MGas | {Body.Transactions.Length,7:N0} txs",
+        _ => ToShortHashAndNumber()
     };
 
+    private string ExtraDataToString()
+    {
+        if (ExtraData is null)
+            return "null";
+
+        return Utf8.IsValid(ExtraData) ? Encoding.UTF8.GetString(ExtraData) : ExtraData.ToHexString();
+    }
+    private string ToFullHashAndNumber() => Hash is null ? $"{Number} null" : $"{Number} ({Hash})";
+    private string ToShortHashAndNumber() => Hash is null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})";
     private string ToFullString()
     {
         StringBuilder builder = new();
@@ -139,20 +182,20 @@ public class Block
         builder.Append(Header.ToString("    "));
 
         builder.AppendLine("  Uncles:");
-        foreach (BlockHeader uncle in Body.Uncles ?? Array.Empty<BlockHeader>())
+        foreach (BlockHeader uncle in Body.Uncles ?? [])
         {
             builder.Append(uncle.ToString("    "));
         }
 
         builder.AppendLine("  Transactions:");
-        foreach (Transaction tx in Body?.Transactions ?? Array.Empty<Transaction>())
+        foreach (Transaction tx in Body?.Transactions ?? [])
         {
             builder.Append(tx.ToString("    "));
         }
 
         builder.AppendLine("  Withdrawals:");
 
-        foreach (var w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
+        foreach (Withdrawal w in Body?.Withdrawals ?? [])
         {
             builder.Append(w.ToString("    "));
         }
@@ -164,8 +207,10 @@ public class Block
     {
         Full,
         FullHashAndNumber,
+        FullHashNumberAndExtraData,
         HashNumberAndTx,
         HashNumberDiffAndTx,
+        HashNumberMGasAndTx,
         Short
     }
 }

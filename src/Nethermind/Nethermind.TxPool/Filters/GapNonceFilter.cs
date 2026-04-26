@@ -12,18 +12,11 @@ namespace Nethermind.TxPool.Filters
     /// Filters out transactions with nonces set too far in the future.
     /// Without this filter it would be possible to fill in TX pool with transactions that have low chance of being executed soon.
     /// </summary>
-    internal sealed class GapNonceFilter : IIncomingTxFilter
+    internal sealed class GapNonceFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger) : IIncomingTxFilter
     {
-        private readonly TxDistinctSortedPool _txs;
-        private readonly TxDistinctSortedPool _blobTxs;
-        private readonly ILogger _logger;
-
-        public GapNonceFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
-        {
-            _txs = txs;
-            _blobTxs = blobTxs;
-            _logger = logger;
-        }
+        private readonly TxDistinctSortedPool _txs = txs;
+        private readonly TxDistinctSortedPool _blobTxs = blobTxs;
+        private readonly ILogger _logger = logger;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
@@ -48,9 +41,7 @@ namespace Nethermind.TxPool.Filters
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
                 }
 
-                return !isLocal ?
-                    AcceptTxResult.NonceGap :
-                    AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
+                return AcceptTxResult.NonceGap;
             }
 
             return AcceptTxResult.Accepted;

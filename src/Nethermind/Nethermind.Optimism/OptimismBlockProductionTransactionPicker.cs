@@ -5,18 +5,14 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Optimism;
 
-public class OptimismBlockProductionTransactionPicker : BlockProcessor.BlockProductionTransactionPicker
+public class OptimismBlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes) : BlockProcessor.BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes)
 {
-    public OptimismBlockProductionTransactionPicker(ISpecProvider specProvider) : base(specProvider)
-    {
-    }
-
     public override BlockProcessor.AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx,
-        IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
+        IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider)
     {
         if (!currentTx.IsDeposit())
             return base.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);

@@ -1,20 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Test
 {
     public class TestAllTracerWithOutput : TxTracer
     {
-        public TestAllTracerWithOutput()
-        {
-            IsTracingAccess = true;
-        }
+        public TestAllTracerWithOutput() => IsTracingAccess = true;
 
         public override bool IsTracingReceipt => true;
         public override bool IsTracingActions => true;
@@ -38,33 +35,35 @@ namespace Nethermind.Evm.Test
 
         public byte StatusCode { get; private set; }
 
+        public GasConsumed GasConsumedResult { get; private set; }
+        public long CumulativeRegularGasUsed { get; private set; }
+
         public long Refund { get; private set; }
 
-        public List<EvmExceptionType> ReportedActionErrors { get; set; } = new List<EvmExceptionType>();
+        public List<EvmExceptionType> ReportedActionErrors { get; set; } = new();
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
-            GasSpent = gasSpent;
+            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
+            GasSpent = gasSpent.SpentGas;
+            GasConsumedResult = gasSpent;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
-            GasSpent = gasSpent;
+            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
+            GasSpent = gasSpent.SpentGas;
+            GasConsumedResult = gasSpent;
             Error = error;
-            ReturnValue = output ?? Array.Empty<byte>();
+            ReturnValue = output ?? [];
             StatusCode = Evm.StatusCode.Failure;
         }
 
-        public override void ReportActionError(EvmExceptionType exceptionType)
-        {
-            ReportedActionErrors.Add(exceptionType);
-        }
+        public override void ReportActionError(EvmExceptionType exceptionType) => ReportedActionErrors.Add(exceptionType);
 
-        public override void ReportRefund(long refund)
-        {
-            Refund += refund;
-        }
+        public override void ReportRefund(long refund) => Refund += refund;
+
     }
 }

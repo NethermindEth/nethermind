@@ -41,35 +41,14 @@ namespace Nethermind.Db
             }
         }
 
-        public T GetDb<T>(string dbName) where T : class, IDb
-        {
-            return (T)_registeredDbs
+        public T GetDb<T>(string dbName) where T : class, IDb => (T)_registeredDbs
                 .GetOrAdd(dbName, (_) => _wrappedProvider
                     .GetDb<T>(dbName)
                     .CreateReadOnly(_createInMemoryWriteStore));
-        }
 
-        public IColumnsDb<T> GetColumnDb<T>(string dbName)
-        {
-            return (IColumnsDb<T>)_registeredColumnDbs
+        public IColumnsDb<T> GetColumnDb<T>(string dbName) => (IColumnsDb<T>)_registeredColumnDbs
                 .GetOrAdd(dbName, (_) => _wrappedProvider
                     .GetColumnDb<T>(dbName)
                     .CreateReadOnly(_createInMemoryWriteStore));
-        }
-
-        public void RegisterDb<T>(string dbName, T db) where T : class, IDb
-        {
-            _wrappedProvider.RegisterDb(dbName, db);
-        }
-
-        public void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db)
-        {
-            _wrappedProvider.RegisterColumnDb(dbName, db);
-        }
-
-        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
-        {
-            return _wrappedProvider.GetAllDbMeta();
-        }
     }
 }

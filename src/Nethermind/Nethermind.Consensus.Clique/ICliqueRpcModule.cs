@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -15,7 +16,7 @@ namespace Nethermind.Consensus.Clique
         ResultWrapper<Address?> clique_getBlockSigner(Hash256? hash);
 
         [JsonRpcMethod(Description = "Retrieves a snapshot of all clique state at a given block.", IsImplemented = true)]
-        ResultWrapper<Snapshot> clique_getSnapshot();
+        ResultWrapper<Snapshot> clique_getSnapshot(long? number = null);
 
         [JsonRpcMethod(Description = "Retrieves the state snapshot at a given block.", IsImplemented = true)]
         ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash);
@@ -43,5 +44,8 @@ namespace Nethermind.Consensus.Clique
 
         [JsonRpcMethod(Description = "Forces Clique block producer to produce a new block", IsImplemented = true)]
         ResultWrapper<bool> clique_produceBlock(Hash256 parentHash);
+
+        [JsonRpcMethod(Description = "Retrieves the current proposals the node is voting on.", IsImplemented = true)]
+        ResultWrapper<IReadOnlyDictionary<Address, bool>> clique_proposals();
     }
 }

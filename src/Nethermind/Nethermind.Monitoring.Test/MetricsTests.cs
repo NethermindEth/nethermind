@@ -8,18 +8,18 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
-using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using NUnit.Framework;
 
 namespace Nethermind.Monitoring.Test;
 
-[TestFixture]
 public class MetricsTests
 {
     public static class TestMetrics
@@ -32,13 +32,28 @@ public class MetricsTests
         public static long OneTwoThreeSpecial { get; set; }
 
         [System.ComponentModel.Description("Another test description.")]
-        [KeyIsLabel("somelabel")]
+        [KeyIsLabel("some_label")]
         public static ConcurrentDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new();
 
         [KeyIsLabel("label1", "label2", "label3")]
         public static ConcurrentDictionary<CustomLabelType, long> WithCustomLabelType { get; set; } = new();
 
         public static IDictionary<string, long> OldDictionaryMetrics { get; set; } = new ConcurrentDictionary<string, long>();
+
+        [System.ComponentModel.Description("summary metric")]
+        [SummaryMetric]
+        public static IMetricObserver SomeObservation { get; set; } = NoopMetricObserver.Instance;
+
+        [System.ComponentModel.Description("Histogram metric")]
+        [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 10)]
+        public static IMetricObserver HistogramObservation { get; set; } = NoopMetricObserver.Instance;
+
+        [System.ComponentModel.Description("A test description")]
+        [DetailedMetric]
+        public static long DetailedMetric { get; set; }
+
+        [DetailedMetricOnFlag]
+        public static bool DetailedMetricsEnabled { get; set; }
     }
 
     public enum SomeEnum
@@ -49,7 +64,7 @@ public class MetricsTests
 
     public struct CustomLabelType(int num1, int num2, int num3) : IMetricLabels
     {
-        public string[] Labels => [num1.ToString(), num2.ToString(), num3.ToString()];
+        public readonly string[] Labels => [num1.ToString(), num2.ToString(), num3.ToString()];
     }
 
     [Test]
@@ -69,32 +84,58 @@ public class MetricsTests
         TestMetrics.WithCustomLabelType[new CustomLabelType(1, 11, 111)] = 1111;
         TestMetrics.OldDictionaryMetrics["metrics0"] = 4;
         TestMetrics.OldDictionaryMetrics["metrics1"] = 5;
-        metricsController.UpdateMetrics(null);
+        metricsController.UpdateAllMetrics();
 
-        var gauges = metricsController._gauges;
-        var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
-        var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
-        var keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
-        var keyDictionary2 = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithCustomLabelType)}";
-        var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
-        var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
+        Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
+        string keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
+        string keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
+        string keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
+        string keyDictionary2 = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithCustomLabelType)}";
+        string keyOldDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OldDictionaryMetrics)}";
+        string keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
+        string keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
+        string keySummary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.SomeObservation)}";
+        string keyHistogram = $"{nameof(TestMetrics)}.{nameof(TestMetrics.HistogramObservation)}";
 
-        Assert.Contains(keyDefault, gauges.Keys);
-        Assert.Contains(keySpecial, gauges.Keys);
+        Assert.That(updater.Keys, Has.Member(keyDefault));
+        Assert.That(updater.Keys, Has.Member(keySpecial));
 
-        Assert.That(gauges[keyDefault].Name, Is.EqualTo("nethermind_one_two_three"));
-        Assert.That(gauges[keySpecial].Name, Is.EqualTo("one_two_three"));
-        Assert.That(gauges[keyDictionary].Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
-        Assert.That(gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
-        Assert.That(gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
+        Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_one_two_three"));
+        Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Name, Is.EqualTo("one_two_three"));
+        Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
+        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
+        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
+        Assert.That(updater[keySummary], Is.TypeOf<MetricsController.SummaryMetricUpdater>());
+        Assert.That(updater[keyHistogram], Is.TypeOf<MetricsController.HistogramMetricUpdater>());
+        Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.SummaryMetricUpdater>());
+        Assert.That(TestMetrics.HistogramObservation, Is.TypeOf<MetricsController.HistogramMetricUpdater>());
 
-        Assert.That(gauges[keyDefault].Value, Is.EqualTo(123));
-        Assert.That(gauges[keySpecial].Value, Is.EqualTo(1234));
-        Assert.That(gauges[keyDictionary].WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(2));
-        Assert.That(gauges[keyDictionary].WithLabels(SomeEnum.Option2.ToString()).Value, Is.EqualTo(3));
-        Assert.That(gauges[keyDictionary2].WithLabels("1", "11", "111").Value, Is.EqualTo(1111));
-        Assert.That(gauges[keyOldDictionary0].Value, Is.EqualTo(4));
-        Assert.That(gauges[keyOldDictionary1].Value, Is.EqualTo(5));
+        Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(123));
+        Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(1234));
+        Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(2));
+        Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels(SomeEnum.Option2.ToString()).Value, Is.EqualTo(3));
+        Assert.That((updater[keyDictionary2] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels("1", "11", "111").Value, Is.EqualTo(1111));
+        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Value, Is.EqualTo(4));
+        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Value, Is.EqualTo(5));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Load_DetailedMetric(bool enableDetailedMetric)
+    {
+        MetricsConfig metricsConfig = new()
+        {
+            Enabled = true,
+            EnableDetailedMetric = enableDetailedMetric
+        };
+        MetricsController metricsController = new(metricsConfig);
+        metricsController.RegisterMetrics(typeof(TestMetrics));
+        metricsController.UpdateAllMetrics();
+
+        Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
+        string metricName = "TestMetrics.DetailedMetric";
+        Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
+        Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
     }
 
     [Test]
@@ -104,9 +145,8 @@ public class MetricsTests
         {
             Enabled = true
         };
-        List<Type> knownMetricsTypes = new()
-        {
-            typeof(Mev.Metrics),
+        List<Type> knownMetricsTypes =
+        [
             typeof(TxPool.Metrics),
             typeof(Blockchain.Metrics),
             typeof(Consensus.AuRa.Metrics),
@@ -118,10 +158,11 @@ public class MetricsTests
             typeof(Synchronization.Metrics),
             typeof(Trie.Metrics),
             typeof(Trie.Pruning.Metrics),
-        };
+            typeof(Shutter.Metrics),
+            typeof(History.Metrics)
+        ];
         MetricsController metricsController = new(metricsConfig);
-        MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);
-        List<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics)).ToList();
+        List<Type> metrics = [.. TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics))];
         metrics.AddRange(knownMetricsTypes);
 
         Assert.DoesNotThrow(() =>
@@ -131,20 +172,53 @@ public class MetricsTests
                 metricsController.RegisterMetrics(metric);
             }
 
-            metricsController.UpdateMetrics(null);
+            metricsController.UpdateAllMetrics();
         });
     }
 
     [Test]
-    public void All_config_items_have_descriptions()
+    public void UpdateAllMetrics_does_not_throw_when_registration_is_concurrent()
     {
-        ValidateMetricsDescriptions();
+        MetricsConfig metricsConfig = new() { Enabled = true };
+        MetricsController metricsController = new(metricsConfig);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
+        CancellationToken ct = cts.Token;
+
+        // Continuously call UpdateAllMetrics on one thread while registering metrics on another
+        Task updater = Task.Run(() =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                metricsController.UpdateAllMetrics();
+            }
+        });
+
+        Task registrar = Task.Run(() =>
+        {
+            Type[] types =
+            [
+                typeof(TestMetrics),
+                typeof(Blockchain.Metrics),
+                typeof(Evm.Metrics),
+                typeof(Network.Metrics),
+                typeof(Db.Metrics),
+            ];
+
+            for (int i = 0; !ct.IsCancellationRequested; i++)
+            {
+                metricsController.RegisterMetrics(types[i % types.Length]);
+                metricsController.AddMetricsUpdateAction(() => { });
+            }
+        });
+
+        Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
     }
 
-    public static void ValidateMetricsDescriptions()
-    {
-        ForEachProperty(CheckDescribedOrHidden);
-    }
+    [Test]
+    public void All_config_items_have_descriptions() => ValidateMetricsDescriptions();
+
+    public static void ValidateMetricsDescriptions() => ForEachProperty(CheckDescribedOrHidden);
 
     private static void CheckDescribedOrHidden(PropertyInfo property)
     {
@@ -158,20 +232,21 @@ public class MetricsTests
         foreach (string dll in dlls)
         {
             Assembly assembly = Assembly.LoadFile(dll);
-            Type[] configs = assembly.GetExportedTypes().Where(t => t.Name == "Metrics").ToArray();
+            Type[] configs = assembly.GetExportedTypes().Where(static t => t.Name == "Metrics").ToArray();
 
             foreach (Type metricsType in configs)
             {
                 PropertyInfo[] properties = metricsType.GetProperties(BindingFlags.Static | BindingFlags.Public);
                 foreach (PropertyInfo property in properties)
                 {
+                    if (property.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null) continue;
                     try
                     {
                         verifier(property);
                     }
-                    catch (Exception e)
+                    catch (AssertionException e)
                     {
-                        throw new Exception(property.Name, e);
+                        throw new AssertionException($"{property.Name}: {e.Message}", e);
                     }
                 }
             }

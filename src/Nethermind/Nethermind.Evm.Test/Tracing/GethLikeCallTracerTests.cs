@@ -5,11 +5,11 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikeCallTracerTests : VirtualMachineTestsBase
 {
-    private static readonly JsonSerializerOptions SerializerOptions = EthereumJsonSerializer.JsonOptionsIndented;
+    private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n" };
     private const string? WithLog = """{"withLog":true}""";
     private const string? OnlyTopCall = """{"onlyTopCall":true}""";
     private const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
@@ -25,16 +25,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     private string ExecuteCallTrace(byte[] code, string? tracerConfig = null)
     {
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
-        NativeCallTracer tracer = new(tx, GetGethTraceOptions(tracerConfig));
-
-        GethLikeTxTrace callTrace = Execute(
-                tracer,
-                code,
-                MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-        return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions)
-            // fix for windows, can be done better in .NET 9: https://github.com/dotnet/runtime/issues/84117
-            .ReplaceLineEndings("\n");
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(tracerConfig));
+        using GethLikeTxTrace callTrace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+        return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions);
     }
 
     private static GethTraceOptions GetGethTraceOptions(string? config) => GethTraceOptions.Default with
@@ -558,7 +551,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             .Log(0, 0, [TestItem.KeccakA, TestItem.KeccakB]);
         byte[] createCode = revertCreateCall ? createCodePrepare.Revert(0, 0).Done : createCodePrepare.STOP().Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
         Prepare callCodePrepare = Prepare.EvmCode
             .CallWithInput(TestItem.AddressC, 50000, SampleHexData1)

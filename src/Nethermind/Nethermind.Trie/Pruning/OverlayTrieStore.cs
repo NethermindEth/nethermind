@@ -4,24 +4,44 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning;
 
-public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOnlyTrieStore store, ILogManager? logManager) : TrieStore(keyValueStore, logManager)
+/// <summary>
+/// OverlayTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
+/// If a node is missing, then it will try to find from the base store.
+/// On reset the base db provider is expected to clear any diff which causes this overlay trie store to no longer
+/// see overlaid keys.
+/// </summary>
+public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {
-    public override bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) =>
-        base.IsPersisted(address, in path, in keccak) || store.IsPersisted(address, in path, in keccak);
+    private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
 
-    public override TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash)
+    public void Dispose() => baseStore.Dispose();
+
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
+        // We always return Unknown even if baseStore return unknown, like archive node.
+        baseStore.FindCachedOrUnknown(address, in path, hash);
+
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        TrieNode node = base.FindCachedOrUnknown(address, in path, hash);
-        return node.NodeType == NodeType.Unknown ? store.FindCachedOrUnknown(address, in path, hash) : node;
+        byte[]? rlp = TryLoadRlp(address, in path, hash, flags);
+        if (rlp is null) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
+        return rlp;
     }
 
-    public override byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        base.TryLoadRlp(address, in path, hash, flags) ?? store.LoadRlp(address, in path, hash, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
 
-    public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        base.TryLoadRlp(address, in path, hash, flags) ?? store.TryLoadRlp(address, in path, hash, flags);
+    public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
+
+    public IDisposable BeginScope(BlockHeader? baseBlock) => baseStore.BeginScope(baseBlock);
+
+    public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
+
+    public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
+
+    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
+
+    // Write directly to _nodeStorage, which goes to db provider.
+    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => new RawScopedTrieStore.Committer(_nodeStorage, address, writeFlags);
 }

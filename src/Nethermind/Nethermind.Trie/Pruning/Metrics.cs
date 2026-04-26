@@ -10,6 +10,10 @@ namespace Nethermind.Trie.Pruning
     {
         [GaugeMetric]
         [Description("Nodes that are currently kept in cache (either persisted or not)")]
+        public static long DirtyNodesCount { get; set; }
+
+        [GaugeMetric]
+        [Description("Nodes that are currently kept in cache (either persisted or not)")]
         public static long CachedNodesCount { get; set; }
 
         [GaugeMetric]
@@ -26,11 +30,11 @@ namespace Nethermind.Trie.Pruning
 
         [CounterMetric]
         [Description("Nodes that have been removed from the cache during pruning because they have been persisted before.")]
-        public static long PrunedPersistedNodesCount { get; set; }
+        public static long PrunedPersistedNodesCount;
 
         [CounterMetric]
         [Description("Nodes that have been removed from the cache during deep pruning because they have been persisted before.")]
-        public static long DeepPrunedPersistedNodesCount { get; set; }
+        public static long DeepPrunedPersistedNodesCount;
 
         [CounterMetric]
         [Description("Nodes that have been removed from the cache during pruning because they were no longer needed.")]
@@ -61,12 +65,20 @@ namespace Nethermind.Trie.Pruning
         public static long PruningTime { get; set; }
 
         [GaugeMetric]
+        [Description("Time taken by the last persisted node pruning.")]
+        public static long PersistedNodePruningTime { get; set; }
+
+        [GaugeMetric]
         [Description("Time taken by the last deep pruning.")]
         public static long DeepPruningTime { get; set; }
 
         [GaugeMetric]
         [Description("Last persisted block number (snapshot).")]
         public static long LastPersistedBlockNumber { get; set; }
+
+        [GaugeMetric]
+        [Description("Estimated memory used by cache.")]
+        public static long DirtyMemoryUsedByCache { get; set; }
 
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]

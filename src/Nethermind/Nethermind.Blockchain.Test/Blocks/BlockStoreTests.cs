@@ -3,8 +3,10 @@
 
 using System;
 using FluentAssertions;
+using FluentAssertions.Equivalency;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -14,20 +16,22 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
+[Parallelizable(ParallelScope.All)]
 public class BlockStoreTests
 {
+    private readonly Func<EquivalencyAssertionOptions<Block>, EquivalencyAssertionOptions<Block>> _ignoreEncodedSize = options => options.Excluding(b => b.EncodedSize);
     [TestCase(true)]
     [TestCase(false)]
     public void Test_can_insert_get_and_remove_blocks(bool cached)
     {
-        TestMemDb db = new TestMemDb();
-        BlockStore store = new BlockStore(db);
+        TestMemDb db = new();
+        BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        retrieved.Should().BeEquivalentTo(block);
+        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
 
         store.Delete(block.Number, block.Hash!);
 
@@ -35,10 +39,10 @@ public class BlockStoreTests
     }
 
     [Test]
-    public void Test_insert_would_pass_in_writeflag()
+    public void Test_insert_would_pass_in_write_flag()
     {
-        TestMemDb db = new TestMemDb();
-        BlockStore store = new BlockStore(db);
+        TestMemDb db = new();
+        BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block, WriteFlags.DisableWAL);
@@ -51,24 +55,24 @@ public class BlockStoreTests
     [TestCase(false)]
     public void Test_can_get_block_that_was_stored_with_hash(bool cached)
     {
-        TestMemDb db = new TestMemDb();
-        BlockStore store = new BlockStore(db);
+        TestMemDb db = new();
+        BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        db[block.Hash!.Bytes] = (new BlockDecoder()).Encode(block).Bytes;
+        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        retrieved.Should().BeEquivalentTo(block);
+        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
     }
 
     [Test]
     public void Test_can_set_and_get_metadata()
     {
-        TestMemDb db = new TestMemDb();
-        BlockStore store = new BlockStore(db);
+        TestMemDb db = new();
+        BlockStore store = new(db);
 
-        byte[] key = new byte[] { 1, 2, 3 };
-        byte[] value = new byte[] { 4, 5, 6 };
+        byte[] key = [1, 2, 3];
+        byte[] value = [4, 5, 6];
 
         store.SetMetadata(key, value);
         store.GetMetadata(key).Should().BeEquivalentTo(value);
@@ -77,26 +81,27 @@ public class BlockStoreTests
     [Test]
     public void Test_when_cached_does_not_touch_db_on_next_get()
     {
-        TestMemDb db = new TestMemDb();
-        BlockStore store = new BlockStore(db);
+        TestMemDb db = new();
+        BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
-        retrieved.Should().BeEquivalentTo(block);
+        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
 
         db.Clear();
 
         retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
-        retrieved.Should().BeEquivalentTo(block);
+        retrieved!.EncodedSize = null;
+        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
     }
 
     [Test]
     public void Test_getReceiptRecoveryBlock_produce_same_transaction_as_normal_get()
     {
-        TestMemDb db = new TestMemDb();
-        BlockStore store = new BlockStore(db);
+        TestMemDb db = new();
+        BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1)
             .WithTransactions(3, MainnetSpecProvider.Instance)
@@ -114,5 +119,42 @@ public class BlockStoreTests
             block.Transactions[i].Data = Array.Empty<byte>();
             retrieved.GetNextTransaction().Should().BeEquivalentTo(block.Transactions[i]);
         }
+    }
+
+    [Test]
+    public void Test_getReceiptRecoveryBlock_returns_null_when_block_not_in_db()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
+
+        result.Should().BeNull();
+    }
+
+    [Test]
+    public void Test_ClearCache_removes_cached_blocks()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+
+        // Populate cache
+        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        retrieved.Should().BeEquivalentTo(block, _ignoreEncodedSize);
+
+        // Clear the DB but block should still be in cache
+        db.Clear();
+        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        retrieved.Should().NotBeNull();
+
+        // Clear the cache - now block should not be retrievable
+        (store as IClearableCache)?.ClearCache();
+        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
+        retrieved.Should().BeNull();
     }
 }

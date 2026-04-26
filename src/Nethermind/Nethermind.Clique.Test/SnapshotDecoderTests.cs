@@ -31,7 +31,7 @@ namespace Nethermind.Clique.Test
             RlpStream stream = new(decoder.GetLength(expected, RlpBehaviors.None));
             decoder.Encode(stream, expected);
             // Decode snapshot
-            Snapshot actual = decoder.Decode(stream.Data.AsRlpStream());
+            Snapshot actual = decoder.Decode(stream.Data.AsSpan());
             // Validate fields
             Assert.That(actual.Number, Is.EqualTo(expected.Number));
             Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
@@ -67,8 +67,7 @@ namespace Nethermind.Clique.Test
             tally[candidate].Votes = 2;
             tally[_signer2] = new Tally(false);
             tally[_signer2].Votes = 1;
-            Snapshot snapshot = new(number, hash, signers, tally);
-            snapshot.Votes = votes;
+            Snapshot snapshot = new(number, hash, signers, tally) { Votes = votes };
             return snapshot;
         }
     }

@@ -5,30 +5,40 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.State;
+using System.Linq;
+using Nethermind.Evm.State;
+using System.Reflection;
+using System.IO;
 
 namespace Nethermind.Optimism;
 
-public class Create2DeployerContractRewriter
+public class Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, ISpecProvider specProvider, IBlockTree blockTree)
 {
-    private readonly IOptimismSpecHelper _opSpecHelper;
-    private readonly ISpecProvider _specProvider;
-    private readonly IBlockTree _blockTree;
-
-    public Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, ISpecProvider specProvider, IBlockTree blockTree)
-    {
-        _opSpecHelper = opSpecHelper;
-        _specProvider = specProvider;
-        _blockTree = blockTree;
-    }
-
     public void RewriteContract(BlockHeader header, IWorldState worldState)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(header);
-        BlockHeader? parent = _blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
-        if ((parent is null || !_opSpecHelper.IsCanyon(parent)) && _opSpecHelper.IsCanyon(header))
+        BlockHeader? parent = blockTree.FindParent(header, BlockTreeLookupOptions.None)?.Header;
+
+        // A migration at the first block of Canyon unless it's genesis
+        if ((parent is null || !opSpecHelper.IsCanyon(parent)) && opSpecHelper.IsCanyon(header) && !header.IsGenesis)
         {
-            worldState.InsertCode(_opSpecHelper.Create2DeployerAddress!, _opSpecHelper.Create2DeployerCode, spec);
+            IReleaseSpec spec = specProvider.GetSpec(header);
+
+            byte[] code = GetCreate2DeployerCode();
+
+            worldState.CreateAccountIfNotExists(PreInstalls.Create2Deployer, 0);
+            worldState.InsertCode(PreInstalls.Create2Deployer, code, spec);
         }
+    }
+
+    private static byte[] GetCreate2DeployerCode()
+    {
+        Assembly asm = typeof(Create2DeployerContractRewriter).Assembly;
+        string name = asm.GetManifestResourceNames()
+            .Single(name => name.EndsWith("Create2Deployer.data"));
+
+        using Stream? stream = asm.GetManifestResourceStream(name);
+        byte[] buffer = new byte[stream!.Length];
+        stream.ReadExactly(buffer, 0, buffer.Length);
+        return buffer;
     }
 }

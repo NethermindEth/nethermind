@@ -43,10 +43,10 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The diagnostic recording mode.", DefaultValue = "None")]
     RpcRecorderState RpcRecorderState { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC service HTTP port.", DefaultValue = "8545")]
+    [ConfigItem(Description = "The JSON-RPC service HTTP port.", DefaultValue = "8545", IsPortOption = true)]
     int Port { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC service WebSockets port.", DefaultValue = "8545")]
+    [ConfigItem(Description = "The JSON-RPC service WebSockets port.", DefaultValue = "8545", IsPortOption = true)]
     int WebSocketsPort { get; set; }
 
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
@@ -77,7 +77,7 @@ public interface IJsonRpcConfig : IConfig
 
 
             """,
-        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc]")]
+        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc]")]
     string[] EnabledModules { get; set; }
 
     [ConfigItem(
@@ -85,7 +85,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "[]")]
     string[] AdditionalRpcUrls { get; set; }
 
-    [ConfigItem(Description = "The gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
+    [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
     long? GasCap { get; set; }
 
     [ConfigItem(
@@ -106,9 +106,8 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
-
     [ConfigItem(
-        Description = "The max number of logs per response. For method `eth_getLogs`. If 0 then no limit.",
+        Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method. `0` to lift the limit.",
         DefaultValue = "20000")]
     public int MaxLogsPerResponse { get; set; }
 
@@ -128,7 +127,7 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
-    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "keystore/jwt-secret")]
+    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }
 
     [ConfigItem(Description = "Whether to disable authentication of the Engine API. Should not be used in production environments.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -141,13 +140,13 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of the method names not to log.",
-        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2]")]
+        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
     string EngineHost { get; set; }
 
-    [ConfigItem(Description = "The Engine API port.", DefaultValue = "null")]
+    [ConfigItem(Description = "The Engine API port.", DefaultValue = "null", IsPortOption = true)]
     int? EnginePort { get; set; }
 
     [ConfigItem(
@@ -158,12 +157,38 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]
     int MaxBatchSize { get; set; }
 
+    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "128")]
+    int JsonSerializationMaxDepth { get; set; }
+
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
 
-    [ConfigItem(Description = "The max blocks count limit for eth_simulate JSON-RPC calls.", DefaultValue = "256")]
+    [ConfigItem(Description = "The max block count limit for the `eth_simulate` JSON-RPC method.", DefaultValue = "256")]
     long? MaxSimulateBlocksCap { get; set; }
 
-    [ConfigItem(Description = "The error margin used in eth_estimateGas expressed in basis points.", DefaultValue = "150")]
+    [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
+
+    [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
+    string[] CorsOrigins { get; set; }
+
+    [ConfigItem(Description = "Concurrency level of websocket connection.", DefaultValue = "1")]
+    int WebSocketsProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
+    int IpcProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    bool EnablePerMethodMetrics { get; set; }
+
+    [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
+    int FiltersTimeout { get; set; }
+
+    [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
+    bool PreloadRpcModules { get; set; }
+
+    [ConfigItem(
+        Description = "Enable strict parsing rules for Block Params and Hashes in RPC requests. this will decrease compatibility but increase compliance with the spec.",
+        DefaultValue = "true")]
+    bool StrictHexFormat { get; set; }
 }

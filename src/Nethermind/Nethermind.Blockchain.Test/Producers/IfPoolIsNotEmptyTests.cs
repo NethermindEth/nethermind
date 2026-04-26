@@ -7,23 +7,23 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Producers
+namespace Nethermind.Blockchain.Test.Producers;
+
+[Parallelizable(ParallelScope.All)]
+public class IfPoolIsNotEmptyTests
 {
-    public class IfPoolIsNotEmptyTests
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0, false)]
+    [TestCase(1, true)]
+    public void Does_not_trigger_when_empty(int txCount, bool shouldTrigger)
     {
-        [Timeout(Timeout.MaxTestTime)]
-        [TestCase(0, false)]
-        [TestCase(1, true)]
-        public void Does_not_trigger_when_empty(int txCount, bool shouldTrigger)
-        {
-            var pool = Substitute.For<ITxPool>();
-            pool.GetPendingTransactionsCount().Returns(txCount);
-            bool triggered = false;
-            BuildBlocksWhenRequested trigger = new();
-            IBlockProductionTrigger withCondition = trigger.IfPoolIsNotEmpty(pool);
-            withCondition.TriggerBlockProduction += (s, e) => triggered = true;
-            trigger.BuildBlock();
-            triggered.Should().Be(shouldTrigger);
-        }
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.GetPendingTransactionsCount().Returns(txCount);
+        bool triggered = false;
+        BuildBlocksWhenRequested trigger = new();
+        IBlockProductionTrigger withCondition = trigger.IfPoolIsNotEmpty(pool);
+        withCondition.TriggerBlockProduction += (s, e) => triggered = true;
+        trigger.BuildBlock();
+        triggered.Should().Be(shouldTrigger);
     }
 }

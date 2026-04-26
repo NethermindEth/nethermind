@@ -16,10 +16,7 @@ namespace Nethermind.Trie
     {
         private const int StackAllocLengthLimit = 255;
 
-        public static Nibble[] FromBytes(params byte[] bytes)
-        {
-            return FromBytes(bytes.AsSpan());
-        }
+        public static Nibble[] FromBytes(params byte[] bytes) => FromBytes(bytes.AsSpan());
 
         public static Nibble[] FromBytes(ReadOnlySpan<byte> bytes)
         {
@@ -35,7 +32,7 @@ namespace Nethermind.Trie
             return output;
         }
 
-        public unsafe static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
+        public static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
         {
             // Ensure the length of the nibbles span is exactly twice the length of the bytes span.
             if (nibbles.Length != 2 * bytes.Length)
@@ -43,16 +40,60 @@ namespace Nethermind.Trie
                 ThrowArgumentException();
             }
 
+            int processed = 0;
+            if (Vector256.IsHardwareAccelerated)
+            {
+                int len256 = (bytes.Length - processed) / Vector256<byte>.Count;
+                if (len256 > 0)
+                {
+                    ReadOnlySpan<Vector256<byte>> input = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes)), len256);
+                    len256 *= Vector256<byte>.Count;
+
+                    ref Vector256<ushort> output = ref Unsafe.As<byte, Vector256<ushort>>(
+                        ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), processed * 2));
+
+                    for (int i = 0; i < input.Length; i++)
+                    {
+                        // Get the bytes where each byte contains 2 nibbles that we want to move into their own byte.
+                        Vector256<byte> value = input[i];
+
+                        // Mask off lower nibble 0x0f and split each byte into two bytes and store them in two separate vectors.
+                        (Vector256<ushort> lower0, Vector256<ushort> upper0) = Vector256.Widen(Vector256.BitwiseAnd(value, Vector256.Create((byte)0x0f)));
+                        // Arrange the 0x0f nibbles; we use the 1st element to represent 0s, and then order as 0,2,4,6,8,10,12,14th elements.
+                        // This leaves byte holes for the other set of nibbles to fill.
+                        lower0 = Vector256.Shuffle(lower0.AsByte(), Vector256.Create((byte)1, 0, 1, 2, 1, 4, 1, 6, 1, 8, 1, 10, 1, 12, 1, 14, 1, 16, 1, 18, 1, 20, 1, 22, 1, 24, 1, 26, 1, 28, 1, 30)).AsUInt16();
+                        upper0 = Vector256.Shuffle(upper0.AsByte(), Vector256.Create((byte)1, 0, 1, 2, 1, 4, 1, 6, 1, 8, 1, 10, 1, 12, 1, 14, 1, 16, 1, 18, 1, 20, 1, 22, 1, 24, 1, 26, 1, 28, 1, 30)).AsUInt16();
+
+                        // Mask off upper nibble 0xf0 and split each byte into two bytes and store them in two separate vectors.
+                        // Widening from byte -> ushort creates byte sized gaps so the two sets can be combined.
+                        (Vector256<ushort> lower1, Vector256<ushort> upper1) = Vector256.Widen(Vector256.BitwiseAnd(value, Vector256.Create((byte)0xf0)));
+                        // Arrange the 0xf0 nibbles they are already in correct place, but need to be shifted down by a nibble (e.g. >> 4)
+                        lower1 = Vector256.ShiftRightLogical(lower1.AsByte(), 4).AsUInt16();
+                        upper1 = Vector256.ShiftRightLogical(upper1.AsByte(), 4).AsUInt16();
+
+                        // Combine the two sets of nibbles from the original bytes as their own bytes
+                        lower0 = Vector256.BitwiseOr(lower0, lower1);
+                        upper0 = Vector256.BitwiseOr(upper0, upper1);
+
+                        // Store the combined nibbles into the output span.
+                        Unsafe.Add(ref output, i * 2) = lower0;
+                        Unsafe.Add(ref output, i * 2 + 1) = upper0;
+                    }
+                    processed += len256;
+                }
+            }
+
             // Calculate the length to process using SIMD operations.
-            var length = bytes.Length / sizeof(Vector128<byte>) * sizeof(Vector128<byte>);
+            int length = (bytes.Length - processed) / Vector128<byte>.Count;
             // Check if SIMD hardware acceleration is available and if there is data to process.
             // This will be branch eliminated the asm if not supported.
             if (Vector128.IsHardwareAccelerated && length > 0)
             {
                 // Cast the byte span to a span of Vector128<byte> for SIMD processing.
-                var input = MemoryMarshal.Cast<byte, Vector128<byte>>(bytes.Slice(0, length));
+                ReadOnlySpan<Vector128<byte>> input = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), processed)), length);
+                length *= Vector128<byte>.Count;
                 // Cast the nibble span to a reference to first element of Vector128<ushort> as input doubles.
-                ref var output = ref Unsafe.As<byte, Vector128<ushort>>(ref MemoryMarshal.GetReference(nibbles));
+                ref Vector128<ushort> output = ref Unsafe.As<byte, Vector128<ushort>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), processed * 2));
 
                 for (int i = 0; i < input.Length; i++)
                 {
@@ -81,10 +122,11 @@ namespace Nethermind.Trie
                     Unsafe.Add(ref output, i * 2) = lower0;
                     Unsafe.Add(ref output, i * 2 + 1) = upper0;
                 }
+                processed += length;
             }
 
             // Process any remaining bytes that were not handled by SIMD.
-            for (int i = length; i < bytes.Length; i++)
+            for (int i = processed; i < bytes.Length; i++)
             {
                 // We use Unsafe here as we have verified all the bounds above and also only go to length
                 // However the loop doesn't start a 0 and the nibbles span access is complex (rather than just i)
@@ -95,12 +137,8 @@ namespace Nethermind.Trie
                 Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2 + 1) = (byte)(value & 15);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowArgumentException()
-            {
-                throw new ArgumentException("Nibbles length must be twice the bytes length");
-            }
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowArgumentException() => throw new ArgumentException("Nibbles length must be twice the bytes length");
         }
 
         public static Nibble[] FromHexString(string hexString)
@@ -136,10 +174,7 @@ namespace Nethermind.Trie
             return bytes;
         }
 
-        public static byte ToByte(Nibble highNibble, Nibble lowNibble)
-        {
-            return (byte)(((byte)highNibble << 4) | (byte)lowNibble);
-        }
+        public static byte ToByte(Nibble highNibble, Nibble lowNibble) => (byte)(((byte)highNibble << 4) | (byte)lowNibble);
 
         public static byte[] ToBytes(ReadOnlySpan<byte> nibbles)
         {
@@ -152,6 +187,7 @@ namespace Nethermind.Trie
             return bytes;
         }
 
+        [SkipLocalsInit]
         public static byte[] CompactToHexEncode(byte[] compactPath)
         {
             if (compactPath.Length == 0)
@@ -164,7 +200,7 @@ namespace Nethermind.Trie
                 ? stackalloc byte[nibblesCount]
                 : array ??= ArrayPool<byte>.Shared.Rent(nibblesCount);
 
-            BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
+            BytesToNibbleBytes(compactPath, nibbles[..(2 * compactPath.Length)]);
             nibbles[^1] = 16;
 
             if (nibbles[0] < 2)
@@ -200,5 +236,35 @@ namespace Nethermind.Trie
         }
 
         public static byte[] EncodePath(ReadOnlySpan<byte> input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
+
+        public static byte[] ToCompactHexEncoding(TreePath nibbles)
+        {
+            int oddity = nibbles.Length % 2;
+            byte[] bytes = new byte[nibbles.Length / 2 + 1];
+            for (int i = 0; i < bytes.Length - 1; i++)
+            {
+                bytes[i + 1] = ToByte((byte)nibbles[2 * i + oddity], (byte)nibbles[2 * i + 1 + oddity]);
+            }
+
+            if (oddity == 1)
+            {
+                bytes[0] = ToByte(1, (byte)nibbles[0]);
+            }
+
+            return bytes;
+        }
+
+        public static byte[] EncodePath(TreePath input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
+
+        public static byte[] ToBytes(TreePath nibbles)
+        {
+            byte[] bytes = new byte[nibbles.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = ToByte((byte)nibbles[2 * i], (byte)nibbles[2 * i + 1]);
+            }
+
+            return bytes;
+        }
     }
 }

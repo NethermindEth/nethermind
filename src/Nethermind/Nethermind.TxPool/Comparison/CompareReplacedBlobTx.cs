@@ -23,6 +23,12 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
         if (oldTx is null) return TxComparisonResult.KeepOld;
         if (newTx is null) return TxComparisonResult.TakeNew;
 
+        // always allow to replace blob tx by the one with network wrapper in higher version
+        if (newTx.NetworkWrapper is ShardBlobNetworkWrapper newWrapper
+            && oldTx.NetworkWrapper is ShardBlobNetworkWrapper oldWrapper
+            && newWrapper.Version > oldWrapper.Version)
+            return TxComparisonResult.TakeNew;
+
         // do not allow to replace blob tx by the one with lower number of blobs
         if (oldTx.BlobVersionedHashes is null || newTx.BlobVersionedHashes is null) return TxComparisonResult.KeepOld;
         if (oldTx.BlobVersionedHashes.Length > newTx.BlobVersionedHashes.Length) return TxComparisonResult.KeepOld;

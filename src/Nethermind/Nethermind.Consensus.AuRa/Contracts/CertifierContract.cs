@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -23,10 +23,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
             IReadOnlyTxProcessorSource readOnlyTransactionProcessorSource)
-            : base(abiEncoder, registerContract, ServiceTransactionContractRegistryName)
-        {
-            Constant = GetConstant(readOnlyTransactionProcessorSource);
-        }
+            : base(abiEncoder, registerContract, ServiceTransactionContractRegistryName) => Constant = GetConstant(readOnlyTransactionProcessorSource);
 
         public bool Certified(BlockHeader parentHeader, Address sender) =>
             Constant.Call<bool>(new CallInfo(parentHeader, nameof(Certified), Address.Zero, sender) { MissingContractResult = MissingCertifiedResult });

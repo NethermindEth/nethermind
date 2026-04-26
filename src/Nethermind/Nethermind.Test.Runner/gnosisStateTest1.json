@@ -1,0 +1,106 @@
+{
+  "tests/prague/eip2537_bls_12_381_precompiles/test_bls12_g1add.py::test_call_types[fork_Prague-state_test-inf_plus_inf-call_opcode_CALLCODE-]": {
+    "env": {
+      "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
+      "currentGasLimit": "0x016345785d8a0000",
+      "currentNumber": "0x01",
+      "currentTimestamp": "0x03e8",
+      "currentRandom": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "currentDifficulty": "0x00",
+      "currentBaseFee": "0x07",
+      "currentExcessBlobGas": "0x00"
+    },
+    "pre": {
+      "0x0000000000000000000000000000000000001000": {
+        "nonce": "0x01",
+        "balance": "0x00",
+        "code": "0x366000600037600060003660006000600b610177f26000553d6001553d600060003e3d600020600255",
+        "storage": {}
+      },
+      "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+        "nonce": "0x00",
+        "balance": "0x0de0b6b3a7640000",
+        "code": "0x",
+        "storage": {}
+      }
+    },
+    "transaction": {
+      "nonce": "0x00",
+      "gasPrice": "0x0a",
+      "gasLimit": [
+        "0x9897f7"
+      ],
+      "to": "0x0000000000000000000000000000000000001000",
+      "value": [
+        "0x00"
+      ],
+      "data": [
+        "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      "sender": "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+      "secretKey": "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8"
+    },
+    "post": {
+      "Prague": [
+        {
+          "hash": "0x0b7967c469ab07eea95550b66bb841f2c06f91a2ffd41dd05b1950d31bf24396",
+          "logs": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+          "txbytes": "0xf90163800a839897f794000000000000000000000000000000000000100080b901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000081eca00c2d1523a7d4a4b68c23cd164d3605664f80bafd806b6f0fa21cb67082c1f958a069a93b96a40b88d50ad7a76c987dbedc5ff1828a5b97dc687a45df1c8c176655",
+          "indexes": {
+            "data": 0,
+            "gas": 0,
+            "value": 0
+          },
+          "state": {
+            "0x0000000000000000000000000000000000001000": {
+              "nonce": "0x01",
+              "balance": "0x00",
+              "code": "0x366000600037600060003660006000600b610177f26000553d6001553d600060003e3d600020600255",
+              "storage": {
+                "0x00": "0x01",
+                "0x01": "0x80",
+                "0x02": "0x012893657d8eb2efad4de0a91bcd0e39ad9837745dec3ea923737ea803fc8e3d"
+              }
+            },
+            "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+              "nonce": "0x01",
+              "balance": "0x0de0b6b3a7566c92",
+              "code": "0x",
+              "storage": {}
+            },
+            "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba": {
+              "nonce": "0x00",
+              "balance": "0x0412a1",
+              "code": "0x",
+              "storage": {}
+            }
+          }
+        }
+      ]
+    },
+    "config": {
+      "blobSchedule": {
+        "Cancun": {
+          "target": "0x03",
+          "max": "0x06",
+          "baseFeeUpdateFraction": "0x32f0ed"
+        },
+        "Prague": {
+          "target": "0x06",
+          "max": "0x09",
+          "baseFeeUpdateFraction": "0x4c6964"
+        }
+      }
+    },
+    "_info": {
+      "hash": "0x1b910bff1da133a0e97c2d6235386d00b3500eccecaaad17ab7c6e3557685b21",
+      "comment": "`execution-spec-tests` generated test",
+      "filling-transition-tool": "Nethermind EVM version: 1.0.0.0",
+      "description": "Test function documentation:\nTest the BLS12_G1ADD precompile using different call types.",
+      "url": "https://github.com/ethereum/execution-spec-tests/blob/e18a80fcfe08ea55e08356573472a5bfea3b022f/tests/prague/eip2537_bls_12_381_precompiles/test_bls12_g1add.py#L206",
+      "fixture_format": "state_test",
+      "reference-spec": "https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2537.md",
+      "reference-spec-version": "cd0f016ad0c4c68b8b1f5c502ef61ab9353b6e5e"
+    }
+  }
+}

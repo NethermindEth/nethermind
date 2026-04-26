@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -12,26 +11,17 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-778
 /// </summary>
-public class NodeRecordSigner : INodeRecordSigner
+public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : INodeRecordSigner
 {
-    private readonly IEcdsa _ecdsa;
+    private readonly IEcdsa _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
 
-    private readonly PrivateKey _privateKey;
-
-    public NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey)
-    {
-        _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
-        _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
-    }
+    private readonly PrivateKey _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
 
     /// <summary>
     /// Signs the node record with own private key.
     /// </summary>
     /// <param name="nodeRecord"></param>
-    public void Sign(NodeRecord nodeRecord)
-    {
-        nodeRecord.Signature = _ecdsa.Sign(_privateKey, nodeRecord.ContentHash);
-    }
+    public void Sign(NodeRecord nodeRecord) => nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
 
     /// <summary>
     /// Deserializes a <see cref="NodeRecord"/> from an <see cref="RlpStream"/>.
@@ -40,55 +30,68 @@ public class NodeRecordSigner : INodeRecordSigner
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
     public NodeRecord Deserialize(RlpStream rlpStream)
     {
-        int startPosition = rlpStream.Position;
-        int recordRlpLength = rlpStream.ReadSequenceLength();
+        Rlp.ValueDecoderContext ctx = new(rlpStream.Data.AsSpan().Slice(rlpStream.Position));
+        NodeRecord result = Deserialize(ref ctx);
+        rlpStream.Position += ctx.Position;
+        return result;
+    }
+
+    /// <summary>
+    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="Rlp.ValueDecoderContext"/>.
+    /// </summary>
+    /// <param name="ctx">A value decoder context to read the serialized data from.</param>
+    /// <returns>A deserialized <see cref="NodeRecord"/></returns>
+    public NodeRecord Deserialize(ref Rlp.ValueDecoderContext ctx)
+    {
+        int startPosition = ctx.Position;
+        int recordRlpLength = ctx.ReadSequenceLength();
         if (recordRlpLength > 300)
-            throw new NetworkingException("RLP recieved for ENR is bigger than 300 bytes", NetworkExceptionType.Discovery);
+            throw new NetworkingException("RLP received for ENR is bigger than 300 bytes", NetworkExceptionType.Discovery);
         NodeRecord nodeRecord = new();
 
-        ReadOnlySpan<byte> sigBytes = rlpStream.DecodeByteArraySpan();
+        ReadOnlySpan<byte> sigBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
         Signature signature = new(sigBytes, 0);
 
         bool canVerify = true;
-        long enrSequence = rlpStream.DecodeLong();
-        while (rlpStream.Position < startPosition + recordRlpLength)
+        long enrSequence = ctx.DecodeLong();
+        while (ctx.Position < startPosition + recordRlpLength)
         {
-            ReadOnlySpan<byte> key = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> key = ctx.DecodeByteArraySpan();
             switch (key.Length)
             {
                 case 2 when key.SequenceEqual(EnrContentKey.IdU8):
-                    rlpStream.SkipItem();
+                    ctx.SkipItem();
                     nodeRecord.SetEntry(IdEntry.Instance);
                     break;
                 case 2 when key.SequenceEqual(EnrContentKey.IpU8):
-                    ReadOnlySpan<byte> ipBytes = rlpStream.DecodeByteArraySpan();
+                    ReadOnlySpan<byte> ipBytes = ctx.DecodeByteArraySpan();
                     IPAddress address = new(ipBytes);
                     nodeRecord.SetEntry(new IpEntry(address));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.EthU8):
-                    _ = rlpStream.ReadSequenceLength();
-                    _ = rlpStream.ReadSequenceLength();
-                    byte[] forkHash = rlpStream.DecodeByteArray();
-                    long nextBlock = rlpStream.DecodeLong();
+                    _ = ctx.ReadSequenceLength();
+                    _ = ctx.ReadSequenceLength();
+                    byte[] forkHash = ctx.DecodeByteArray();
+                    long nextBlock = ctx.DecodeLong();
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
-                    int tcpPort = rlpStream.DecodeInt();
+                    int tcpPort = ctx.DecodeInt();
                     nodeRecord.SetEntry(new TcpEntry(tcpPort));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.UdpU8):
-                    int udpPort = rlpStream.DecodeInt();
+                    int udpPort = ctx.DecodeInt();
                     nodeRecord.SetEntry(new UdpEntry(udpPort));
                     break;
-                case 9 when key.SequenceEqual(EnrContentKey.Secp256K1U8):
-                    ReadOnlySpan<byte> keyBytes = rlpStream.DecodeByteArraySpan();
+                case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):
+                    ReadOnlySpan<byte> keyBytes = ctx.DecodeByteArraySpan();
                     CompressedPublicKey reportedKey = new(keyBytes);
-                    nodeRecord.SetEntry(new Secp256K1Entry(reportedKey));
+                    nodeRecord.SetEntry(new SecP256k1Entry(reportedKey));
                     break;
                 default:
                     // snap
                     canVerify = false;
-                    rlpStream.SkipItem();
+                    ctx.SkipItem();
                     nodeRecord.Snap = true;
                     break;
             }
@@ -96,16 +99,16 @@ public class NodeRecordSigner : INodeRecordSigner
 
         if (!canVerify)
         {
-            rlpStream.Position = startPosition;
-            rlpStream.ReadSequenceLength();
-            rlpStream.SkipItem(); // signature
-            int noSigContentLength = rlpStream.Length - rlpStream.Position;
+            ctx.Position = startPosition;
+            ctx.ReadSequenceLength();
+            ctx.SkipItem(); // signature
+            int noSigContentLength = ctx.Length - ctx.Position;
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
             byte[] originalContent = new byte[noSigSequenceLength];
             RlpStream originalContentStream = new(originalContent);
             originalContentStream.StartSequence(noSigContentLength);
-            originalContentStream.Write(rlpStream.Read(noSigContentLength));
-            rlpStream.Position = startPosition;
+            originalContentStream.Write(ctx.Read(noSigContentLength));
+            ctx.Position = startPosition;
             nodeRecord.OriginalContentRlp = originalContentStream.Data.ToArray()!;
         }
 
@@ -130,10 +133,10 @@ public class NodeRecordSigner : INodeRecordSigner
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
 
-        Hash256 contentHash;
+        ValueHash256 contentHash;
         if (nodeRecord.OriginalContentRlp is not null)
         {
-            contentHash = Keccak.Compute(nodeRecord.OriginalContentRlp);
+            contentHash = ValueKeccak.Compute(nodeRecord.OriginalContentRlp);
         }
         else
         {
@@ -141,13 +144,13 @@ public class NodeRecordSigner : INodeRecordSigner
         }
 
         CompressedPublicKey publicKeyA =
-            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, contentHash)!;
+            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, in contentHash)!;
         Signature sigB = new(nodeRecord.Signature!.Bytes, 1);
         CompressedPublicKey publicKeyB =
-            _ecdsa.RecoverCompressedPublicKey(sigB, contentHash)!;
+            _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash)!;
 
         CompressedPublicKey? reportedKey =
-            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
+            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
 
         return publicKeyA.Equals(reportedKey) || publicKeyB.Equals(reportedKey);
     }

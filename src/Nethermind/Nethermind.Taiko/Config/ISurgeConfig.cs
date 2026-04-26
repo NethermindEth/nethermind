@@ -1,0 +1,61 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Config;
+
+namespace Nethermind.Taiko.Config;
+
+public interface ISurgeConfig : IConfig
+{
+    [ConfigItem(Description = "The URL of the L1 execution node JSON-RPC API.", DefaultValue = "null")]
+    string? L1EthApiEndpoint { get; set; }
+
+    [ConfigItem(Description = "Number of L2 blocks per batch.", DefaultValue = "1800")]
+    ulong BlocksPerBatch { get; set; }
+
+    [ConfigItem(Description = "Target blob count per batch.", DefaultValue = "3")]
+    ulong TargetBlobCount { get; set; }
+
+    [ConfigItem(Description = "Target gas per L2 block.", DefaultValue = "40000")]
+    ulong L2BlockGasTarget { get; set; }
+
+    [ConfigItem(Description = "L1 gas for batch proposal.", DefaultValue = "75000")]
+    ulong FixedProposalGas { get; set; }
+
+    [ConfigItem(Description = "L1 gas for batch proposal with full inbox buffer.", DefaultValue = "50000")]
+    ulong FixedProposalGasWithFullInboxBuffer { get; set; }
+
+    [ConfigItem(Description = "L1 gas for proof verification.", DefaultValue = "30000")]
+    ulong FixedProvingGas { get; set; }
+
+    [ConfigItem(Description = "Number of blocks to consider for computing the L1 average base fee.", DefaultValue = "200")]
+    int FeeHistoryBlockCount { get; set; }
+
+    [ConfigItem(Description = "Number of recent L2 blocks to consider for computing the moving average of gas usage.", DefaultValue = "20")]
+    int L2GasUsageWindowSize { get; set; }
+
+    [ConfigItem(Description = "Estimated offchain proving cost per batch in wei (~$5.5 @ $3000/ETH).", DefaultValue = "1833333333333333")]
+    ulong EstimatedOffchainProvingCost { get; set; }
+
+    [ConfigItem(Description = "The address of the TaikoInbox contract.", DefaultValue = "null")]
+    string? TaikoInboxAddress { get; set; }
+
+    [ConfigItem(Description = "Percentage of the average gas usage to be used for gas price calculation.", DefaultValue = "80")]
+    int AverageGasUsagePercentage { get; set; }
+
+    [ConfigItem(Description = "Percentage of the base fee that is shared with the L2 batch submitter.", DefaultValue = "75")]
+    int SharingPercentage { get; set; }
+
+    [ConfigItem(Description = "Percentage of the base fee that is used for boosting.", DefaultValue = "5")]
+    int BoostBaseFeePercentage { get; set; }
+
+    [ConfigItem(Description = "Maximum time in seconds to use cached gas price estimates before forcing a refresh.", DefaultValue = "12")]
+    int GasPriceRefreshTimeoutSeconds { get; set; }
+
+    [ConfigItem(Description = "Filter transactions exceeding the max allowed ratio of gas limit to the actual gas used (e.g. 1, 2 etc.). Set to 0 to disable.", DefaultValue = "0")]
+    int MaxGasLimitRatio { get; set; }
+
+    [ConfigItem(Description = "Enable TDX attestation support.", DefaultValue = "false")]
+    bool TdxEnabled { get; set; }
+
+}

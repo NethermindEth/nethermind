@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 #nullable enable
@@ -42,7 +41,7 @@ namespace Nethermind.Serialization.Json
                 reader.Read();
             }
 
-            return value?.ToArray() ?? Array.Empty<UInt256>();
+            return value?.ToArray() ?? [];
         }
 
         [SkipLocalsInit]
@@ -60,7 +59,7 @@ namespace Nethermind.Serialization.Json
             writer.WriteStartArray();
             Span<byte> bytes = stackalloc byte[32];
 
-            foreach (var value in values)
+            foreach (UInt256 value in values)
             {
                 value.ToBigEndian(bytes);
                 ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);

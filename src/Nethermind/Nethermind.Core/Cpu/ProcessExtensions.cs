@@ -29,9 +29,9 @@ public static class ProcessExtensions
         }
         else
         {
-            var children = new HashSet<int>();
+            HashSet<int> children = new();
             GetAllChildIdsUnix(process.Id, children, timeout);
-            foreach (var childId in children)
+            foreach (int childId in children)
             {
                 KillProcessUnix(childId, timeout);
             }
@@ -44,24 +44,23 @@ public static class ProcessExtensions
 
     private static void GetAllChildIdsUnix(int parentId, HashSet<int> children, TimeSpan timeout)
     {
-        var (exitCode, stdout) = RunProcessAndReadOutput("pgrep", $"-P {parentId}", timeout);
+        (int exitCode, string? stdout) = RunProcessAndReadOutput("pgrep", $"-P {parentId}", timeout);
 
         if (exitCode == 0 && !string.IsNullOrEmpty(stdout))
         {
-            using (var reader = new StringReader(stdout))
-            {
-                while (true)
-                {
-                    var text = reader.ReadLine();
-                    if (text is null)
-                        return;
+            using StringReader reader = new(stdout);
 
-                    if (int.TryParse(text, out int id) && !children.Contains(id))
-                    {
-                        children.Add(id);
-                        // Recursively get the children
-                        GetAllChildIdsUnix(id, children, timeout);
-                    }
+            while (true)
+            {
+                string? text = reader.ReadLine();
+                if (text is null)
+                    return;
+
+                if (int.TryParse(text, out int id) && !children.Contains(id))
+                {
+                    children.Add(id);
+                    // Recursively get the children
+                    GetAllChildIdsUnix(id, children, timeout);
                 }
             }
         }
@@ -69,7 +68,7 @@ public static class ProcessExtensions
 
     private static (int exitCode, string output) RunProcessAndReadOutput(string fileName, string arguments, TimeSpan timeout)
     {
-        var startInfo = new ProcessStartInfo
+        ProcessStartInfo startInfo = new()
         {
             FileName = fileName,
             Arguments = arguments,
@@ -77,26 +76,25 @@ public static class ProcessExtensions
             UseShellExecute = false
         };
 
-        using (Process? process = Process.Start(startInfo))
+        using Process? process = Process.Start(startInfo);
+
+        if (process is null) return (0, "");
+
+        if (process.WaitForExit((int)timeout.TotalMilliseconds))
         {
-            if (process is null) return (0, "");
-
-            if (process.WaitForExit((int)timeout.TotalMilliseconds))
-            {
-                return (process.ExitCode, process.StandardOutput.ReadToEnd());
-            }
-            else
-            {
-                process.Kill();
-            }
-
-            return (process.ExitCode, "");
+            return (process.ExitCode, process.StandardOutput.ReadToEnd());
         }
+        else
+        {
+            process.Kill();
+        }
+
+        return (process.ExitCode, "");
     }
 
     private static int RunProcessAndIgnoreOutput(string fileName, string arguments, TimeSpan timeout)
     {
-        var startInfo = new ProcessStartInfo
+        ProcessStartInfo startInfo = new()
         {
             FileName = fileName,
             Arguments = arguments,
@@ -106,14 +104,13 @@ public static class ProcessExtensions
             CreateNoWindow = true
         };
 
-        using (var process = Process.Start(startInfo))
-        {
-            if (process is null) return 0;
+        using Process? process = Process.Start(startInfo);
 
-            if (!process.WaitForExit((int)timeout.TotalMilliseconds))
-                process.Kill();
+        if (process is null) return 0;
 
-            return process.ExitCode;
-        }
+        if (!process.WaitForExit((int)timeout.TotalMilliseconds))
+            process.Kill();
+
+        return process.ExitCode;
     }
 }

@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "DocGen": {
-      "commandName": "Project",
-      "commandLineArgs": "--dbsize --config --jsonrpc --metrics"
-    }
-  }
-}

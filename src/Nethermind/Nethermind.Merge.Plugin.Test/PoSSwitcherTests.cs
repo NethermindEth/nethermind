@@ -37,9 +37,10 @@ namespace Nethermind.Merge.Plugin.Test
         {
             UInt256 expectedTtd = 10;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+
+            ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
-            ChainSpec chainSpec = loader.LoadFromFile(path);
+            ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
             ChainSpecBasedSpecProvider specProvider = new(chainSpec);
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
@@ -56,7 +57,7 @@ namespace Nethermind.Merge.Plugin.Test
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
+            _ = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             BlockHeader? block3 = blockTree.FindHeader(3, BlockTreeLookupOptions.All);
             BlockHeader? block4 = blockTree.FindHeader(4, BlockTreeLookupOptions.All);
@@ -78,7 +79,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block genesisBlock = Build.A.Block.WithNumber(0).WithDifficulty((UInt256)genesisDifficulty)
                 .WithTotalDifficulty(genesisDifficulty).TestObject;
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
+            _ = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             Assert.That(genesisBlock.IsTerminalBlock(specProvider), Is.EqualTo(expectedResult));
         }
@@ -221,26 +222,20 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public void No_final_difficulty_if_conditions_are_not_met()
-        {
+        public void No_final_difficulty_if_conditions_are_not_met() =>
             AssertFinalTotalDifficulty(10005, 10000, 10000, null);
-        }
 
         [TestCase(0, 1)]
         [TestCase(0, 0)]
         [TestCase(5000, 6000)]
-        public void Can_set_final_total_difficulty_for_post_merge_networks(long ttd, long genesisDifficulty)
-        {
+        public void Can_set_final_total_difficulty_for_post_merge_networks(long ttd, long genesisDifficulty) =>
             AssertFinalTotalDifficulty(ttd, genesisDifficulty, null, genesisDifficulty);
-        }
 
         [TestCase(0, 1)]
         [TestCase(0, 0)]
         [TestCase(5000, 6000)]
-        public void Can_set_final_total_difficulty_based_on_sync_pivot(long ttd, long pivotTotalDifficulty)
-        {
+        public void Can_set_final_total_difficulty_based_on_sync_pivot(long ttd, long pivotTotalDifficulty) =>
             AssertFinalTotalDifficulty(ttd, 0, pivotTotalDifficulty, pivotTotalDifficulty);
-        }
 
         private void AssertFinalTotalDifficulty(long ttd, long genesisDifficulty, long? pivotTotalDifficulty, long? expectedFinalTotalDifficulty)
         {
@@ -251,7 +246,7 @@ namespace Nethermind.Merge.Plugin.Test
             SyncConfig syncConfig = new();
             if (pivotTotalDifficulty is not null)
                 syncConfig = new SyncConfig() { PivotTotalDifficulty = $"{(UInt256)pivotTotalDifficulty}" };
-            PoSSwitcher poSSwitcher = new PoSSwitcher(new MergeConfig(), syncConfig, new MemDb(), blockTree, specProvider, new ChainSpec() { Genesis = genesisBlock }, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree, specProvider, new ChainSpec() { Genesis = genesisBlock }, LimboLogs.Instance);
             if (expectedFinalTotalDifficulty is not null)
                 poSSwitcher.FinalTotalDifficulty.Should().Be((UInt256)expectedFinalTotalDifficulty);
             else

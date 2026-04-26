@@ -9,12 +9,12 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class RipemdTests
     {
-        public const string RipemdOfEmptyString = "9c1185a5c5e9fc54612808977ee8f548b2258d31";
+        public const string RipemdOfEmptyString = "0000000000000000000000009c1185a5c5e9fc54612808977ee8f548b2258d31";
 
         [Test]
         public void Empty_byte_array()
         {
-            string result = Ripemd.ComputeString(new byte[] { });
+            string result = Ripemd.ComputeString([]);
             Assert.That(result, Is.EqualTo(RipemdOfEmptyString));
         }
     }

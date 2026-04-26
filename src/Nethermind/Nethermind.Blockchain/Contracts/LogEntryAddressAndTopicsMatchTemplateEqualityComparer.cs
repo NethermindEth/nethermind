@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -23,18 +22,16 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns></returns>
         public bool Equals(LogEntry logEntry, LogEntry searchedEntryTemplate)
         {
-            Hash256[] matchEntryTopics = searchedEntryTemplate?.Topics ?? Array.Empty<Hash256>();
+            Hash256[] matchEntryTopics = searchedEntryTemplate?.Topics ?? [];
             return ReferenceEquals(logEntry, searchedEntryTemplate) || (
                 logEntry is not null
-                && logEntry.LoggersAddress == searchedEntryTemplate?.LoggersAddress
+                && logEntry.Address == searchedEntryTemplate?.Address
                 && logEntry.Topics.Length >= matchEntryTopics.Length
                 && logEntry.Topics.Take(matchEntryTopics.Length).SequenceEqual(matchEntryTopics)
                 );
         }
 
-        public int GetHashCode(LogEntry obj)
-        {
-            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
-        }
+        public int GetHashCode(LogEntry obj) =>
+            obj.Topics.Aggregate(obj.Address.GetHashCode(), static (i, keccak) => i ^ keccak.GetHashCode());
     }
 }

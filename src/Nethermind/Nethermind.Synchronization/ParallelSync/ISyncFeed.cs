@@ -30,6 +30,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         /// Return true if not finished. May not run even if return true if MultiSyncModeSelector said no, probably
         /// because it's waiting for other sync or something.
-        bool IsFinished { get; }
+        bool IsFinished => false;
+
+        string FeedName { get; }
     }
 }

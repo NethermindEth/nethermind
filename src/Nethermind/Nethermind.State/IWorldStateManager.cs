@@ -2,22 +2,56 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using Nethermind.Core;
+using Nethermind.Evm.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
 public interface IWorldStateManager
 {
-    IWorldState GlobalWorldState { get; }
+    IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    IReadOnlyTrieStore TrieStore { get; }
+    ISnapServer SnapServer { get; }
+    IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
-    /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState(IWorldState? forWarmup = null);
+    IWorldStateScopeProvider CreateResettableWorldState();
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
+    IOverridableWorldScope CreateOverridableWorldScope();
+
+    /// <summary>
+    /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations (e.g. witness generation).
+    /// For trie mode, returns the existing read-only trie store.
+    /// For flat mode, returns an adapter over the flat DB's trie node data.
+    /// </summary>
+    IReadOnlyTrieStore CreateReadOnlyTrieStore();
+
+    /// <summary>
+    /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
+    /// Return false if error is found.
+    /// </summary>
+    /// <param name="stateAtBlock"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Persist and clear cache. Used by some tests.
+    /// </summary>
+    void FlushCache(CancellationToken cancellationToken);
+}
+
+public interface IOverridableWorldScope : IDisposable
+{
+    IWorldStateScopeProvider WorldState { get; }
+    IStateReader GlobalStateReader { get; }
+    void ResetOverrides();
 }

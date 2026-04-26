@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Ethash
 
         internal EthashSealer(IEthash? ethash, ISigner? signer, ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<EthashSealer>() ?? throw new ArgumentNullException(nameof(logManager));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
@@ -35,20 +35,11 @@ namespace Nethermind.Consensus.Ethash
                 }
 
                 return t.Result;
-            }, cancellationToken);
-
-            if (block is null)
-            {
-                throw new SealEngineException($"{nameof(SealBlock)} failed");
-            }
-
+            }, cancellationToken) ?? throw new SealEngineException($"{nameof(SealBlock)} failed");
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash)
-        {
-            return true;
-        }
+        public bool CanSeal(long blockNumber, Hash256 parentHash) => true;
 
         public Address Address => _signer.Address;
 
@@ -79,9 +70,9 @@ namespace Nethermind.Consensus.Ethash
 
         private Block Mine(Block block, ulong? startNonce)
         {
-            (Hash256 MixHash, ulong Nonce) result = _ethash.Mine(block.Header, startNonce);
-            block.Header.Nonce = result.Nonce;
-            block.Header.MixHash = result.MixHash;
+            (Hash256 MixHash, ulong Nonce) = _ethash.Mine(block.Header, startNonce);
+            block.Header.Nonce = Nonce;
+            block.Header.MixHash = MixHash;
             return block;
         }
     }

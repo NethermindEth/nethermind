@@ -7,95 +7,136 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Proofs
-{
-    [TestFixture(true)]
-    [TestFixture(false)]
-    public class TxTrieTests
-    {
-        private readonly IReleaseSpec _releaseSpec;
+namespace Nethermind.Blockchain.Test.Proofs;
 
-        public TxTrieTests(bool useEip2718)
+[TestFixture(true)]
+[TestFixture(false)]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+public class TxTrieTests(bool useEip2718)
+{
+    private readonly IReleaseSpec _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_calculate_root()
+    {
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        Hash256 rootHash = TxTrie.CalculateRoot(block.Transactions);
+
+        if (_releaseSpec == Berlin.Instance)
         {
-            _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
+            Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
+        }
+        else
+        {
+            Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_collect_proof_trie_case_1()
+    {
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        using TrackingCappedArrayPool pool = new();
+        TxTrie txTrie = new(block.Transactions, true, pool);
+        byte[][] proof = txTrie.BuildProof(0);
+
+        txTrie.UpdateRootHash();
+        VerifyProof(proof, txTrie.RootHash);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_collect_proof_with_trie_case_2()
+    {
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
+        using TrackingCappedArrayPool pool = new();
+        TxTrie txTrie = new(block.Transactions, true, pool);
+        byte[][] proof = txTrie.BuildProof(0);
+        Assert.That(proof.Length, Is.EqualTo(2));
+
+        txTrie.UpdateRootHash();
+        VerifyProof(proof, txTrie.RootHash);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_collect_proof_with_trie_case_3_modified()
+    {
+        Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
+        using TrackingCappedArrayPool pool = new();
+        TxTrie txTrie = new(block.Transactions, true, pool);
+
+        txTrie.UpdateRootHash();
+        for (int i = 0; i < 1000; i++)
+        {
+            byte[][] proof = txTrie.BuildProof(i);
+            VerifyProof(proof, txTrie.RootHash);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Encoded_and_decoded_transaction_paths_have_same_root()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(useEip2718 ? TxType.EIP1559 : TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(useEip2718 ? TxType.AccessList : TxType.Legacy).Signed().TestObject,
+        ];
+
+        byte[][] encodedTransactions = transactions
+            .Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .ToArray();
+
+        Hash256 decodedRoot = TxTrie.CalculateRoot(transactions);
+        Hash256 encodedRoot = TxTrie.CalculateRoot(encodedTransactions);
+
+        Assert.That(encodedRoot, Is.EqualTo(decodedRoot));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Parallel_and_non_parallel_root_hashing_produce_same_root()
+    {
+        const int txCount = 100;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((UInt256)(i + 1)).Signed().TestObject;
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_calculate_root()
-        {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            Hash256 rootHash = TxTrie.CalculateRoot(block.Transactions);
+        using TrackingCappedArrayPool pool = new();
+        TxTrie txTrie = new(transactions, canBuildProof: false, pool);
+        Hash256 parallelRoot = txTrie.RootHash;
 
-            if (_releaseSpec == Berlin.Instance)
+        txTrie.UpdateRootHash(canBeParallel: false);
+        Hash256 nonParallelRoot = txTrie.RootHash;
+
+        Assert.That(nonParallelRoot, Is.EqualTo(parallelRoot));
+    }
+
+    private static void VerifyProof(byte[][] proof, Hash256 txRoot)
+    {
+        for (int i = proof.Length; i > 0; i--)
+        {
+            Hash256 proofHash = Keccak.Compute(proof[i - 1]);
+            if (i > 1)
             {
-                Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
+                if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                {
+                    throw new InvalidDataException();
+                }
             }
             else
             {
-                Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
-            }
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_collect_proof_trie_case_1()
-        {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
-            byte[][] proof = txTrie.BuildProof(0);
-
-            txTrie.UpdateRootHash();
-            VerifyProof(proof, txTrie.RootHash);
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_collect_proof_with_trie_case_2()
-        {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
-            byte[][] proof = txTrie.BuildProof(0);
-            Assert.That(proof.Length, Is.EqualTo(2));
-
-            txTrie.UpdateRootHash();
-            VerifyProof(proof, txTrie.RootHash);
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_collect_proof_with_trie_case_3_modified()
-        {
-            Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
-
-            txTrie.UpdateRootHash();
-            for (int i = 0; i < 1000; i++)
-            {
-                byte[][] proof = txTrie.BuildProof(i);
-                VerifyProof(proof, txTrie.RootHash);
-            }
-        }
-
-        private static void VerifyProof(byte[][] proof, Hash256 txRoot)
-        {
-            for (int i = proof.Length; i > 0; i--)
-            {
-                Hash256 proofHash = Keccak.Compute(proof[i - 1]);
-                if (i > 1)
+                if (proofHash != txRoot)
                 {
-                    if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
-                    {
-                        throw new InvalidDataException();
-                    }
-                }
-                else
-                {
-                    if (proofHash != txRoot)
-                    {
-                        throw new InvalidDataException();
-                    }
+                    throw new InvalidDataException();
                 }
             }
         }

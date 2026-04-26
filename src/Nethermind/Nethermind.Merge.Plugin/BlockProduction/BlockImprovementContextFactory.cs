@@ -5,24 +5,20 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
+using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public class BlockImprovementContextFactory : IBlockImprovementContextFactory
+public class BlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout)
+    : IBlockImprovementContextFactory
 {
-    private readonly IBlockProducer _blockProducer;
-    private readonly TimeSpan _timeout;
-
-    public BlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout)
-    {
-        _blockProducer = blockProducer;
-        _timeout = timeout;
-    }
-
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime) =>
-        new BlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, startDateTime);
+        DateTimeOffset startDateTime,
+        UInt256 currentBlockFees,
+        SharedCancellationTokenSource cts) =>
+        new BlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
 }

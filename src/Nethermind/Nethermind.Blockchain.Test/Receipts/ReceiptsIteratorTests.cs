@@ -8,16 +8,16 @@ using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
+[Parallelizable(ParallelScope.All)]
 public class ReceiptsIteratorTests
 {
-    readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    private readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()
@@ -26,12 +26,12 @@ public class ReceiptsIteratorTests
             .Block
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
-        TxReceipt[] receipts = new[]
-        {
+        TxReceipt[] receipts =
+        [
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
-            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject,
-        };
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject
+        ];
 
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
@@ -85,11 +85,11 @@ public class ReceiptsIteratorTests
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
         TxReceipt[] receipts =
-        {
+        [
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
-            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject,
-        };
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject
+        ];
 
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
@@ -105,14 +105,14 @@ public class ReceiptsIteratorTests
     {
         using NettyRlpStream stream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
         Span<byte> span = stream.AsSpan();
-        TestMemDb blockDb = new TestMemDb();
-        ReceiptsRecovery recovery = new ReceiptsRecovery(
-            new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId, LimboLogs.Instance),
+        TestMemDb blockDb = new();
+        ReceiptsRecovery recovery = new(
+            new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             MainnetSpecProvider.Instance,
             false
         );
 
-        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
+        ReceiptsIterator iterator = new(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
         return iterator;
     }
 }

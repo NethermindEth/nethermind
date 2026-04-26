@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -12,7 +11,7 @@ namespace Nethermind.Merge.Plugin.Data
     /// <summary>
     /// Result of engine_forkChoiceUpdate call.
     ///
-    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#response-1"/>
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/paris.md#response-1"/>
     /// </summary>
     public class ForkchoiceUpdatedV1Result
     {

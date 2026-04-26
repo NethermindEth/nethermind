@@ -11,28 +11,25 @@ namespace Nethermind.Consensus.Transactions
 {
     public class CompositeTxSource : ITxSource
     {
-        private readonly IList<ITxSource> _transactionSources;
+        private readonly List<ITxSource> _transactionSources;
+
+        public bool SupportsBlobs { get; }
 
         public CompositeTxSource(params ITxSource[] transactionSources)
         {
             _transactionSources = transactionSources?.ToList() ?? throw new ArgumentNullException(nameof(transactionSources));
+            SupportsBlobs = _transactionSources.Any(s => s.SupportsBlobs);
         }
 
-        public void Then(ITxSource txSource)
-        {
-            _transactionSources.Add(txSource);
-        }
+        public void Then(ITxSource txSource) => _transactionSources.Add(txSource);
 
-        public void First(ITxSource txSource)
-        {
-            _transactionSources.Insert(0, txSource);
-        }
+        public void First(ITxSource txSource) => _transactionSources.Insert(0, txSource);
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             for (int i = 0; i < _transactionSources.Count; i++)
             {
-                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit, payloadAttributes);
+                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit, payloadAttributes, filterSource);
                 foreach (Transaction tx in transactions)
                 {
                     yield return tx;

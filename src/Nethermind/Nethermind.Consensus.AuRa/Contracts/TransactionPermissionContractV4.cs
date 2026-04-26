@@ -1,35 +1,26 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
     /// <summary>Version four of the contract. Created to adjust EIP1559 changes.</summary>
-    public sealed class TransactionPermissionContractV4 : TransactionPermissionContract
+    public sealed class TransactionPermissionContractV4(
+        IAbiEncoder abiEncoder,
+        Address contractAddress,
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+        ISpecProvider specProvider) : TransactionPermissionContract(abiEncoder, contractAddress, readOnlyTxProcessorSource)
     {
-        private readonly ISpecProvider _specProvider;
+        private readonly ISpecProvider _specProvider = specProvider;
         private static readonly UInt256 Four = 4;
 
-        public TransactionPermissionContractV4(
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-            : base(abiEncoder, contractAddress, readOnlyTxProcessorSource)
-        {
-            _specProvider = specProvider;
-        }
-
-
-        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader)
-        {
+        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) =>
             // _sender Transaction sender address.
             // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
             // _value Transaction amount in wei.
@@ -38,11 +29,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
             // _gasLimit
             // _data Transaction data.
 
-            return new object[]
+            new object[]
             {
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, tx.GasLimit, tx.Data.AsArray() ?? Array.Empty<byte>()
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, tx.GasLimit, tx.Data.AsArray() ?? []
             };
-        }
 
         public override UInt256 Version => Four;
     }

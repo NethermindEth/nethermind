@@ -3,23 +3,18 @@
 
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
-using static Nethermind.Core.Eip2930.AccessList;
 
 namespace Nethermind.Evm.Test.Tracing
 {
@@ -34,11 +29,9 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.Commit(Berlin.Instance);
-
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(tuples => tuples.Address);
+            IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(static tuples => tuples.Address);
             IEnumerable<Address> expected = new[] {
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
@@ -60,7 +53,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.AccessList!.Should().BeEquivalentTo(
                 new[]
                 {
-                    (SenderRecipientAndMiner.Default.Sender, new UInt256[] { }),
+                    (SenderRecipientAndMiner.Default.Sender, System.Array.Empty<UInt256>()),
                     (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
                 });
         }
@@ -71,7 +64,7 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressA, TestItem.AddressB },
-                    new Address[] { });
+                    System.Array.Empty<Address>());
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressB },
                     new[] { TestItem.AddressA });
@@ -82,39 +75,38 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [TestCaseSource(nameof(OptimizedAddressCases))]
-        public void ReportAccess_AddressIsSetToOptmizedWithNoStorageCells_OnlyAddressesNotOptimizedIsInTheAccesslist(IEnumerable<Address> optimized, IEnumerable<Address> expected)
+        public void ReportAccess_AddressIsSetToOptimizedWithNoStorageCells_OnlyAddressesNotOptimizedIsInTheAccessList(IEnumerable<Address> optimized, IEnumerable<Address> expected)
         {
-            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
-            JournalSet<StorageCell> accessedStorageCells = [];
+            JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB };
             AccessTxTracer sut = new(optimized.ToArray());
 
-            sut.ReportAccess(accessedAddresses, accessedStorageCells);
+            sut.ReportAccess(accessedAddresses, []);
 
-            Assert.That(sut.AccessList.Select(a => a.Address).ToArray(), Is.EquivalentTo(expected));
+            Assert.That(sut.AccessList.Select(static a => a.Address).ToArray(), Is.EquivalentTo(expected));
         }
 
         [Test]
-        public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AddressAAndBIsInTheAccesslist()
+        public void ReportAccess_AddressAIsSetToOptimizedAndHasStorageCell_AddressAAndBIsInTheAccessList()
         {
-            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
-            JournalSet<StorageCell> accessedStorageCells = [new StorageCell(TestItem.AddressA, 0)];
+            JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB };
+            JournalSet<StorageCell> accessedStorageCells = new(StorageCell.EqualityComparer) { new StorageCell(TestItem.AddressA, 0) };
             AccessTxTracer sut = new(TestItem.AddressA);
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(x => x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(sut.AccessList.Select(static x => x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
         }
 
         [Test]
-        public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AccesslistHasCorrectStorageCell()
+        public void ReportAccess_AddressAIsSetToOptimizedAndHasStorageCell_AccessListHasCorrectStorageCell()
         {
-            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
-            JournalSet<StorageCell> accessedStorageCells = [new StorageCell(TestItem.AddressA, 1)];
+            JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB };
+            JournalSet<StorageCell> accessedStorageCells = new(StorageCell.EqualityComparer) { new StorageCell(TestItem.AddressA, 1) };
             AccessTxTracer sut = new(TestItem.AddressA);
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
+            Assert.That(sut.AccessList.Select(static x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
         }
 
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
@@ -123,7 +115,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
             AccessTxTracer tracer = new();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
             return (tracer, block, transaction);
         }
     }

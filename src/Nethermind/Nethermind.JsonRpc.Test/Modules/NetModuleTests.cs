@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -42,13 +43,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task NetVersionSuccessTest()
         {
             Enode enode = new(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            var blockTree = Substitute.For<IBlockTree>();
-            blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
-            blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
-            var syncConfig = Substitute.For<ISyncConfig>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.NetworkId.Returns(TestBlockchainIds.NetworkId);
+            blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
+            ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             syncConfig.PivotHash.Returns(Keccak.MaxValue.ToString());
             ISyncServer syncServer = new SyncServer(
-                Substitute.For<IReadOnlyKeyValueStore>(),
+                Substitute.For<IWorldStateManager>(),
                 Substitute.For<IReadOnlyKeyValueStore>(),
                 blockTree,
                 Substitute.For<IReceiptFinder>(),
@@ -58,6 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncModeSelector>(),
                 syncConfig,
                 Substitute.For<IGossipPolicy>(),
+                Substitute.For<IHistoryPruner>(),
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<ILogManager>());
             NetBridge netBridge = new(enode, syncServer);

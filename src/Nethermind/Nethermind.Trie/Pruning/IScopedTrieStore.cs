@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
@@ -13,15 +12,21 @@ namespace Nethermind.Trie.Pruning;
 /// </summary>
 public interface IScopedTrieStore : ITrieNodeResolver
 {
-    // TODO: Commit and FinishBlockCommit is unnecessary. Geth just compile the changes and return it in a batch,
-    // which get committed in a single call.
-    void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
+    // Begins a commit to update the trie store. The `ICommitter` provide `CommitNode` to add node into.
+    ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
+}
 
-    void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
+public interface ICommitter : IDisposable
+{
+    /// <summary>
+    /// Commit a trienode to the triestore at path. Returns potentially another trienode that should be merged
+    /// with the patricia trie.
+    /// </summary>
+    /// <param name="path"></param>
+    /// <param name="node"></param>
+    /// <returns></returns>
+    TrieNode CommitNode(ref TreePath path, TrieNode node);
 
-    // Only used by snap provider, so ValueHash instead of Hash
-    bool IsPersisted(in TreePath path, in ValueHash256 keccak);
-
-    // Used for trie node recovery
-    void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp);
+    bool TryRequestConcurrentQuota() => false;
+    void ReturnConcurrencyQuota() { }
 }

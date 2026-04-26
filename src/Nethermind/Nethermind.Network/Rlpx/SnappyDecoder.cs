@@ -11,15 +11,8 @@ using Snappier;
 
 namespace Nethermind.Network.Rlpx;
 
-public class SnappyDecoder : MessageToMessageDecoder<Packet>
+public class SnappyDecoder(ILogger logger) : MessageToMessageDecoder<Packet>
 {
-    private readonly ILogger _logger;
-
-    public SnappyDecoder(ILogger logger)
-    {
-        _logger = logger;
-    }
-
     protected override void Decode(IChannelHandlerContext context, Packet message, List<object> output)
     {
         if (Snappy.GetUncompressedLength(message.Data) > SnappyParameters.MaxSnappyLength)
@@ -29,11 +22,11 @@ public class SnappyDecoder : MessageToMessageDecoder<Packet>
 
         if (message.Data.Length > SnappyParameters.MaxSnappyLength / 4)
         {
-            if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {message.Data.Length}");
+            if (logger.IsWarn) logger.Warn($"Big Snappy message of length {message.Data.Length}");
         }
         else
         {
-            if (_logger.IsTrace) _logger.Trace($"Decompressing with Snappy a message of length {message.Data.Length}");
+            if (logger.IsTrace) logger.Trace($"Decompressing with Snappy a message of length {message.Data.Length}");
         }
 
         try
@@ -42,7 +35,7 @@ public class SnappyDecoder : MessageToMessageDecoder<Packet>
         }
         catch
         {
-            _logger.Error($"{message.Data.ToHexString()}");
+            logger.Error($"{message.Data.ToHexString()}");
             throw;
         }
 

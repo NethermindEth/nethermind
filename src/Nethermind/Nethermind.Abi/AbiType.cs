@@ -5,6 +5,8 @@ using System;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using Nethermind.Blockchain.Contracts.Json;
+using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 
 namespace Nethermind.Abi
 {
@@ -49,6 +51,18 @@ namespace Nethermind.Abi
         protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by {GetType().Name}";
 
         public abstract Type CSharpType { get; }
+
+        protected void ThrowIfNotMultipleOf8(int length)
+        {
+            if (length % 8 != 0)
+            {
+                Throw();
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            static void Throw() =>
+                throw new ArgumentOutOfRangeException(nameof(length), $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
+        }
     }
 }
 
@@ -75,17 +89,37 @@ namespace Nethermind.Blockchain.Contracts.Json
 
             static AbiType ParseAbiType(string type)
             {
-                bool isArray = false;
-                if (type.EndsWith("[]"))
-                {
-                    isArray = true;
-                    type = type[..^2];
-                }
-
-                if (type == "tuple")
+                if (type == "tuple" || type.StartsWith("tuple["))
                 {
                     return new AbiTuple();
                 }
+
+                // Check for array suffix: [N] for fixed-size or [] for dynamic
+                int lastBracket = type.LastIndexOf('[');
+                if (lastBracket >= 0 && type.EndsWith(']'))
+                {
+                    string bracketContent = type[(lastBracket + 1)..^1];
+                    string elementTypeStr = type[..lastBracket];
+
+                    switch (bracketContent.Length)
+                    {
+                        case > 0 when int.TryParse(bracketContent, out int length):
+                            {
+                                // Fixed-size array: type[N]
+                                AbiType elementType = ParseAbiType(elementTypeStr);
+                                return new AbiFixedLengthArray(elementType, length);
+                            }
+                        case 0:
+                            {
+                                // Dynamic array: type[]
+                                AbiType elementType = ParseAbiType(elementTypeStr);
+                                return new AbiArray(elementType);
+                            }
+                        default:
+                            throw new ArgumentException($"Invalid array syntax in ABI type '{type}'.", nameof(type));
+                    }
+                }
+
                 if (type.StartsWith('(') && type.EndsWith(')'))
                 {
                     string[] types = type[1..^1].Split(',');
@@ -97,10 +131,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                     return ParseTuple(types);
                 }
 
-                AbiType value = GetType(type);
-
-                return isArray ? new AbiArray(value) : value;
-
+                return GetType(type);
             }
 
             static AbiType ParseTuple(string[] types)
@@ -134,49 +165,44 @@ namespace Nethermind.Blockchain.Contracts.Json
                     return (-1, -1);
                 }
 
-                int length = int.Parse(chars.Slice(0, xPos));
-                int precision = int.Parse(chars.Slice(xPos + 1));
+                int length = int.Parse(chars[..xPos]);
+                int precision = int.Parse(chars[(xPos + 1)..]);
 
                 return (length, precision);
             }
 
-            static AbiType GetType(string? type)
+            static AbiType GetType(string? type) => type switch
             {
-                return type switch
-                {
-                    "address" => AbiType.Address,
-                    "function" => AbiType.Function,
-                    "bool" => AbiType.Bool,
-                    "int8" => AbiType.Int8,
-                    "int16" => AbiType.Int16,
-                    "int32" => AbiType.Int32,
-                    "int64" => AbiType.Int64,
-                    "int96" => AbiType.Int96,
-                    "int256" => AbiType.Int256,
-                    { } when type.StartsWith("int") => new AbiInt(int.Parse(type.AsSpan(3))),
-                    "uint8" => AbiType.UInt8,
-                    "uint16" => AbiType.UInt16,
-                    "uint32" => AbiType.UInt32,
-                    "uint64" => AbiType.UInt64,
-                    "uint96" => AbiType.UInt96,
-                    "uint256" => AbiType.UInt256,
-                    { } when type.StartsWith("uint") => new AbiUInt(int.Parse(type.AsSpan(4))),
-                    "string" => AbiType.String,
-                    "bytes" => AbiType.DynamicBytes,
-                    "bytes32" => AbiType.Bytes32,
-                    { } when type.StartsWith("bytes") => new AbiBytes(int.Parse(type.AsSpan(5))),
-                    "fixed128x18" => AbiType.Fixed,
-                    "ufixed128x18" => AbiType.UFixed,
-                    { } when type.StartsWith("fixed") => ParseFixed(type),
-                    { } when type.StartsWith("ufixed") => ParseUFixed(type),
-                    _ => throw new NotSupportedException($"ABI type {type} is not supported.")
-                };
-            }
+                "address" => AbiType.Address,
+                "function" => AbiType.Function,
+                "bool" => AbiType.Bool,
+                "int8" => AbiType.Int8,
+                "int16" => AbiType.Int16,
+                "int32" => AbiType.Int32,
+                "int64" => AbiType.Int64,
+                "int96" => AbiType.Int96,
+                "int256" => AbiType.Int256,
+                { } when type.StartsWith("int") => new AbiInt(int.Parse(type.AsSpan(3))),
+                "uint8" => AbiType.UInt8,
+                "uint16" => AbiType.UInt16,
+                "uint32" => AbiType.UInt32,
+                "uint64" => AbiType.UInt64,
+                "uint96" => AbiType.UInt96,
+                "uint256" => AbiType.UInt256,
+                { } when type.StartsWith("uint") => new AbiUInt(int.Parse(type.AsSpan(4))),
+                "string" => AbiType.String,
+                "bytes" => AbiType.DynamicBytes,
+                "bytes32" => AbiType.Bytes32,
+                { } when type.StartsWith("bytes") => new AbiBytes(int.Parse(type.AsSpan(5))),
+                "fixed128x18" => AbiType.Fixed,
+                "ufixed128x18" => AbiType.UFixed,
+                { } when type.StartsWith("fixed") => ParseFixed(type),
+                { } when type.StartsWith("ufixed") => ParseUFixed(type),
+                _ => throw new NotSupportedException($"ABI type {type} is not supported.")
+            };
         }
 
-        public override void Write(Utf8JsonWriter writer, AbiType value, JsonSerializerOptions options)
-        {
+        public override void Write(Utf8JsonWriter writer, AbiType value, JsonSerializerOptions options) =>
             writer.WriteStringValue(value.Name);
-        }
     }
 }

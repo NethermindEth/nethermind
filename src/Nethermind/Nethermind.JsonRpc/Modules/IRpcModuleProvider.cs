@@ -20,7 +20,8 @@ namespace Nethermind.JsonRpc.Modules
         IReadOnlyCollection<string> All { get; }
         IJsonSerializer Serializer { get; }
 
-        ModuleResolution Check(string methodName, JsonRpcContext context);
+        ModuleResolution Check(string methodName, JsonRpcContext context, out string? module);
+        ModuleResolution Check(string methodName, JsonRpcContext context) => Check(methodName, context, out _);
 
         ResolvedMethodInfo? Resolve(string methodName);
 
@@ -28,6 +29,6 @@ namespace Nethermind.JsonRpc.Modules
 
         void Return(string methodName, IRpcModule rpcModule);
 
-        IRpcModulePool? GetPool(string moduleType);
+        IRpcModulePool? GetPoolForMethod(string methodName);
     }
 }

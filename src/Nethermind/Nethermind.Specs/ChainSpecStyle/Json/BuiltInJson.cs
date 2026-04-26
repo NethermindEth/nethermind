@@ -4,11 +4,10 @@
 using System.Collections.Generic;
 
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class BuiltInJson
+    public class BuiltInJson
     {
         public string Name { get; set; }
         public Dictionary<string, JsonElement> Pricing { get; set; }

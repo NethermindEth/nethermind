@@ -13,6 +13,8 @@ using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using System.Threading;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -23,25 +25,40 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        private readonly HashSet<string> _modules = new(StringComparer.InvariantCultureIgnoreCase);
-        private readonly HashSet<string> _enabledModules = new(StringComparer.InvariantCultureIgnoreCase);
+        private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
 
-        private FrozenDictionary<string, ResolvedMethodInfo> _methods = FrozenDictionary<string, ResolvedMethodInfo>.Empty;
-        private FrozenDictionary<string, Pool> _pools = FrozenDictionary<string, Pool>.Empty;
+        private Dictionary<string, ResolvedMethodInfo> _methods = new();
+        private Dictionary<string, Pool> _pools = new();
+        private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
+        private FrozenDictionary<string, Pool>? _frozenPools = null;
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
-        private readonly object _updateRegistrationsLock = new();
+        private readonly Lock _updateRegistrationsLock = new();
+        private readonly MethodInfo _registerMethod;
 
-        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, IJsonSerializer serializer, ILogManager logManager)
+            : this(fileSystem, jsonRpcConfig, serializer, [], logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            Serializer = new EthereumJsonSerializer();
+        }
+
+        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, IJsonSerializer serializer, IReadOnlyList<RpcModuleInfo> rpcModules, ILogManager logManager)
+        {
+            _logger = logManager?.GetClassLogger<RpcModuleProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            Serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
             {
                 if (_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
                 _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
+            }
+
+            _registerMethod = GetType().GetMethods().First(m => m.Name == nameof(Register));
+            foreach (RpcModuleInfo rpcModuleInfo in rpcModules)
+            {
+                RegisterNonGeneric(rpcModuleInfo.ModuleType, rpcModuleInfo.Pool);
+                if (jsonRpcConfig.PreloadRpcModules) rpcModuleInfo.Pool.Preload();
             }
         }
 
@@ -51,41 +68,49 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<string> All => _modules;
 
+        private void RegisterNonGeneric(Type moduleType, IRpcModulePool pool)
+        {
+            // Hey its either this of changing like, 5 class.
+            MethodInfo generic = _registerMethod.MakeGenericMethod(moduleType);
+            generic.Invoke(this, [pool]);
+        }
+
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
-            RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
+            Type moduleClass = typeof(T);
+            RpcModuleAttribute attribute = moduleClass.GetCustomAttribute<RpcModuleAttribute>();
             if (attribute is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot register {moduleClass.Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
                 return;
             }
 
+            if (_logger.IsTrace) _logger.Trace($"Registering module {moduleClass.Name} as part of {attribute.ModuleType} module");
             string moduleType = attribute.ModuleType;
             lock (_updateRegistrationsLock)
             {
-                // FrozenDictionary can't be directly updated (which makes it fast for reading) so we combine the two sets of
-                // data as an Enumerable create an new FrozenDictionary from it and then update the reference
-                _pools = GetPools<T>(moduleType, pool).ToFrozenDictionary(StringComparer.Ordinal);
-                _methods = _methods.Concat(GetMethods<T>(moduleType)).ToFrozenDictionary(StringComparer.Ordinal);
+                KeyValuePair<string, ResolvedMethodInfo>[] methods = GetMethods<T>(moduleType).ToArray();
+                (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolRecord = GetPool(pool);
+
+                methods
+                    .ForEach((method) =>
+                    {
+                        _pools[method.Key] = poolRecord;
+                        _methods[method.Key] = method.Value;
+                    });
+                _frozenPools = null;
+                _frozenMethods = null;
 
                 _modules.Add(moduleType);
 
-                if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.InvariantCultureIgnoreCase))
+                if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.OrdinalIgnoreCase))
                 {
                     _enabledModules.Add(moduleType);
                 }
             }
         }
 
-        private IEnumerable<KeyValuePair<string, Pool>> GetPools<T>(string moduleType, IRpcModulePool<T> pool) where T : IRpcModule
-        {
-            foreach (KeyValuePair<string, Pool> item in _pools)
-            {
-                yield return item;
-            }
-
-            yield return new(moduleType, (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool));
-        }
+        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule => (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
 
         private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
         {
@@ -99,43 +124,69 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context)
+        private void EnsureFrozenCollection()
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            _frozenPools ??= _pools.ToFrozenDictionary(StringComparer.Ordinal);
+            _frozenMethods ??= _methods.ToFrozenDictionary(StringComparer.Ordinal);
+        }
+
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
+        {
+            EnsureFrozenCollection();
+            module = null;
+
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            {
                 return ModuleResolution.Unknown;
+            }
+
+            module = result.ModuleType;
 
             if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
+            {
                 return ModuleResolution.EndpointDisabled;
+            }
 
             if (context.Url is not null)
-                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
+            {
+                return context.Url.EnabledModules.Contains(result.ModuleType)
+                    ? ModuleResolution.Enabled
+                    : ModuleResolution.Disabled;
+            }
 
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
         public ResolvedMethodInfo? Resolve(string methodName)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
+            EnsureFrozenCollection();
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
             return result;
         }
 
         public Task<IRpcModule> Rent(string methodName, bool canBeShared)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
+            EnsureFrozenCollection();
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
-            return _pools[result.ModuleType].RentModule(canBeShared);
+            return _frozenPools[methodName].RentModule(canBeShared);
         }
 
         public void Return(string methodName, IRpcModule rpcModule)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            EnsureFrozenCollection();
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            _pools[result.ModuleType].ReturnModule(rpcModule);
+            _frozenPools[methodName].ReturnModule(rpcModule);
         }
 
-        public IRpcModulePool? GetPool(string moduleType) => _pools.TryGetValue(moduleType, out var poolInfo) ? poolInfo.ModulePool : null;
+        public IRpcModulePool? GetPoolForMethod(string methodName)
+        {
+            EnsureFrozenCollection();
+            return _frozenPools.TryGetValue(methodName, out (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolInfo) ? poolInfo.ModulePool : null;
+        }
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {
@@ -174,14 +225,10 @@ namespace Nethermind.JsonRpc.Modules
                         ThrowNotJsonRpc();
                     }
 
-                    return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke(Span<object>.Empty));
+                    return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke([]));
 
-                    [DoesNotReturn]
-                    [StackTraceHidden]
-                    static void ThrowNotJsonRpc()
-                    {
-                        throw new InvalidOperationException("This parameter is not an IJsonRpcParam");
-                    }
+                    [DoesNotReturn, StackTraceHidden]
+                    static void ThrowNotJsonRpc() => throw new InvalidOperationException("This parameter is not an IJsonRpcParam");
                 }
 
                 internal ExpectedParameter(ParameterInfo info, ConstructorInvoker? constructor, ParameterDetails introspection)
@@ -202,10 +249,7 @@ namespace Nethermind.JsonRpc.Modules
                 IsOptional = 0b10,
             }
 
-            public ResolvedMethodInfo()
-            {
-                ExpectedParameters = Array.Empty<ExpectedParameter>();
-            }
+            public ResolvedMethodInfo() => ExpectedParameters = [];
 
             public ResolvedMethodInfo(
                 string moduleType,
@@ -218,14 +262,14 @@ namespace Nethermind.JsonRpc.Modules
 
                 ParameterInfo[] parameters = methodInfo.GetParameters();
                 ExpectedParameter[] expectedParameters = new ExpectedParameter[parameters.Length];
-                for (var i = 0; i < parameters.Length; i++)
+                for (int i = 0; i < parameters.Length; i++)
                 {
                     ParameterInfo parameter = parameters[i];
                     ConstructorInvoker? constructor = null;
                     ParameterDetails details = ParameterDetails.None;
                     if (parameter.ParameterType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
-                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, Array.Empty<Type>()));
+                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, []));
                     }
 
                     if (IsNullableParameter(parameter))
@@ -253,10 +297,7 @@ namespace Nethermind.JsonRpc.Modules
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
 
-            public override string ToString()
-            {
-                return MethodInfo.Name;
-            }
+            public override string ToString() => MethodInfo.Name;
 
             private static bool IsNullableParameter(ParameterInfo parameterInfo)
             {
@@ -276,4 +317,6 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
     }
+
+    public record RpcModuleInfo(Type ModuleType, IRpcModulePool Pool);
 }

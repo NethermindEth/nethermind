@@ -16,22 +16,23 @@ public static class Program
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
 
         // Sort the tests by size in descending order
-        var sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
+        List<KeyValuePair<string, long>> sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
 
-        var groupedTestNames = new SortedList<long, List<string>>();
+        SortedList<long, List<string>> groupedTestNames = new SortedList<long, List<string>>();
 
         foreach (var test in sortedTests)
         {
             long size = 0;
-            List<string> testsList = null;
+            List<string>? testsList = null;
 
             if (groupedTestNames.Count == MaxJobsCount)
             {
-                testsList = new List<string>(groupedTestNames.First().Value);
-                size = groupedTestNames.First().Key;
+                var smallestGroup = groupedTestNames.First();
+                testsList = new List<string>(smallestGroup.Value);
+                size = smallestGroup.Key;
                 testsList.Add(test.Key);
                 size += test.Value;
-                groupedTestNames.Remove(groupedTestNames.First().Key);
+                groupedTestNames.Remove(smallestGroup.Key);
             }
             else
             {

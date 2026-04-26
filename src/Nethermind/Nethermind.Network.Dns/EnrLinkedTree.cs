@@ -11,14 +11,11 @@ public class EnrLinkedTree : EnrTreeNode
 {
     public string Link { get; set; } = string.Empty;
 
-    public override string ToString()
-    {
-        return $"enrtree://{Link}";
-    }
+    public override string ToString() => $"enrtree://{Link}";
 
     public override string[] Links => new[] { Link };
 
-    public override string[] Refs => Array.Empty<string>();
+    public override string[] Refs => [];
 
-    public override string[] Records => Array.Empty<string>();
+    public override string[] Records => [];
 }

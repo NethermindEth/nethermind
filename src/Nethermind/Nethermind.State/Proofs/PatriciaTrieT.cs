@@ -17,20 +17,23 @@ namespace Nethermind.State.Trie;
 /// <typeparam name="T">The type of the elements in the collection used to build the trie.</typeparam>
 public abstract class PatriciaTrie<T> : PatriciaTree
 {
+    protected const int MinItemsForParallelRootHash = 64;
     /// <param name="list">The collection to build the trie of.</param>
     /// <param name="canBuildProof">
     /// <c>true</c> to maintain an in-memory database for proof computation;
     /// otherwise, <c>false</c>.
     /// </param>
-    public PatriciaTrie(T[]? list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
-        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance, bufferPool: bufferPool)
+    protected PatriciaTrie(ReadOnlySpan<T> list, bool canBuildProof, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
+        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;
 
-        if (list?.Length > 0)
+        if (list.Length > 0)
         {
+            // ReSharper disable once VirtualMemberCallInConstructor
             Initialize(list);
-            UpdateRootHash();
+            // Parallel root hashing adds scheduling overhead for small tries.
+            UpdateRootHash(canBeParallel);
         }
     }
 
@@ -45,14 +48,14 @@ public abstract class PatriciaTrie<T> : PatriciaTree
         if (!CanBuildProof)
             throw new NotSupportedException("Building proofs not supported");
 
-        var proofCollector = new ProofCollector(Rlp.Encode(index).Bytes);
+        ProofCollector proofCollector = new(Rlp.Encode(index).Bytes);
 
-        Accept(proofCollector, RootHash, new() { ExpectAccounts = false });
+        Accept(proofCollector, RootHash, new());
 
         return proofCollector.BuildResult();
     }
 
-    protected abstract void Initialize(T[] list);
+    protected abstract void Initialize(ReadOnlySpan<T> list);
 
     protected virtual bool CanBuildProof { get; }
 }

@@ -1,19 +1,27 @@
 # SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-noble AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.202-noble@sha256:adc02be8b87957d07208a4a3e51775935b33bad3317de8c45b1e67357b4c073b AS build
 
 ARG BUILD_CONFIG=release
-ARG BUILD_TIMESTAMP
-ARG CI
+ARG CI=true
 ARG COMMIT_HASH
+ARG SOURCE_DATE_EPOCH
 ARG TARGETARCH
 
+WORKDIR /nethermind
+
 COPY src/Nethermind src/Nethermind
+COPY Directory.*.props Directory.Build.targets ./
+COPY global.json .
+COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+  cd src/Nethermind/Nethermind.Runner && \
+  dotnet restore --locked-mode && \
+  dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
+  dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
+    -p:SourceRevisionId=$COMMIT_HASH
 
 # Creating these directories here is needed to ensure the correct permissions
 RUN cd /publish && \
@@ -21,10 +29,12 @@ RUN cd /publish && \
   mkdir logs && \
   mkdir nethermind_db
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.6-noble-chiseled@sha256:5472257bbea16e7749bc6a402caa02880fabf744c088af7e73045324c560296e
 
 WORKDIR /nethermind
 
+# Chiseled image has no shell — large pages cannot be auto-detected.
+# To enable: docker run -e DOTNET_GCLargePages=1 -e DOTNET_GCRegionRange=0x800000000 ...
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db

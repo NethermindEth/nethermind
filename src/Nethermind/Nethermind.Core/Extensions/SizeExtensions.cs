@@ -1,68 +1,42 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Core.Extensions
+using System;
+
+namespace Nethermind.Core.Extensions;
+
+public static class SizeExtensions
 {
-    public static class SizeExtensions
+    extension(long @this)
     {
-        public static long GB(this long @this)
-        {
-            return @this * 1_000_000_000L;
-        }
+        public long GB => @this * 1_000_000_000L;
+        public long MB => @this * 1_000_000L;
+        public long KB => @this * 1_000L;
+        public long GiB => @this * 1024L * 1024L * 1024L;
+        public long MiB => @this * 1024L * 1024L;
+        public long KiB => @this * 1024L;
 
-        public static long MB(this long @this)
+        public string SizeToString(bool useSi = false, bool addSpace = false, int precision = 1)
         {
-            return @this * 1_000_000L;
+            string[] suf = useSi ? ["B", "KB", "MB", "GB", "TB"] : ["B", "KiB", "MiB", "GiB", "TiB"];
+            if (@this == 0)
+            {
+                return "0" + suf[0];
+            }
+            long bytes = Math.Abs(@this);
+            int place = Math.Min(suf.Length - 1, Convert.ToInt32(Math.Floor(Math.Log(bytes, useSi ? 1000 : 1024))));
+            double num = Math.Round(bytes / Math.Pow(useSi ? 1000 : 1024, place), precision);
+            return string.Concat(Math.Sign(@this) * num, addSpace ? " " : "", suf[place]);
         }
+    }
 
-        public static long KB(this long @this)
-        {
-            return @this * 1_000L;
-        }
-
-        public static long GiB(this long @this)
-        {
-            return @this * 1024L * 1024L * 1024L;
-        }
-
-        public static long MiB(this long @this)
-        {
-            return @this * 1024L * 1024L;
-        }
-
-        public static long KiB(this long @this)
-        {
-            return @this * 1024L;
-        }
-
-        public static long GB(this int @this)
-        {
-            return ((long)@this).GB();
-        }
-
-        public static long MB(this int @this)
-        {
-            return ((long)@this).MB();
-        }
-
-        public static long KB(this int @this)
-        {
-            return ((long)@this).KB();
-        }
-
-        public static long GiB(this int @this)
-        {
-            return ((long)@this).GiB();
-        }
-
-        public static long MiB(this int @this)
-        {
-            return ((long)@this).MiB();
-        }
-
-        public static long KiB(this int @this)
-        {
-            return ((long)@this).KiB();
-        }
+    extension(int @this)
+    {
+        public long GB => ((long)@this).GB;
+        public long MB => ((long)@this).MB;
+        public long KB => ((long)@this).KB;
+        public long GiB => ((long)@this).GiB;
+        public long MiB => ((long)@this).MiB;
+        public long KiB => ((long)@this).KiB;
     }
 }

@@ -12,73 +12,13 @@ namespace Nethermind.Optimism;
 
 [Decoder(RlpDecoderKey.Storage)]
 public class OptimismCompactReceiptStorageDecoder :
-    IRlpStreamDecoder<OptimismTxReceipt>, IRlpValueDecoder<OptimismTxReceipt>, IRlpObjectDecoder<OptimismTxReceipt>, IReceiptRefDecoder,
-    IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
+    IRlpStreamEncoder<OptimismTxReceipt>, IRlpValueDecoder<OptimismTxReceipt>, IRlpObjectDecoder<OptimismTxReceipt>, IReceiptRefDecoder,
+    IRlpStreamEncoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
 {
-    public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-        {
-            rlpStream.ReadByte();
-            return null!;
-        }
-
-        OptimismTxReceipt txReceipt = new();
-        int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
-
-        byte[] firstItem = rlpStream.DecodeByteArray();
-        if (firstItem.Length == 1)
-        {
-            txReceipt.StatusCode = firstItem[0];
-        }
-        else
-        {
-            txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-        }
-
-        txReceipt.Sender = rlpStream.DecodeAddress();
-        txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
-
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int logEntriesCheck = sequenceLength + rlpStream.Position;
-        using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
-
-        while (rlpStream.Position < logEntriesCheck)
-        {
-            logEntries.Add(CompactLogEntryDecoder.Decode(rlpStream, RlpBehaviors.AllowExtraBytes)!);
-        }
-
-        txReceipt.Logs = [.. logEntries];
-
-        if (lastCheck > rlpStream.Position)
-        {
-            int remainingItems = rlpStream.PeekNumberOfItemsRemaining(lastCheck);
-            if (remainingItems > 0)
-            {
-                txReceipt.DepositNonce = rlpStream.DecodeUlong();
-            }
-
-            if (remainingItems > 1)
-            {
-                txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
-            }
-        }
-
-        bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-        if (!allowExtraBytes)
-        {
-            rlpStream.Check(lastCheck);
-        }
-
-        txReceipt.Bloom = new Bloom(txReceipt.Logs);
-
-        return txReceipt;
-    }
-
     public OptimismTxReceipt Decode(ref ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
             return null!;
@@ -98,13 +38,13 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         txReceipt.Sender = decoderContext.DecodeAddress();
-        txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+        txReceipt.GasUsedTotal = decoderContext.DecodePositiveLong();
 
         int sequenceLength = decoderContext.ReadSequenceLength();
         int logEntriesCheck = sequenceLength + decoderContext.Position;
 
         // Don't know the size exactly, I'll just assume its just an address and add some margin
-        using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
+        using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
         while (decoderContext.Position < logEntriesCheck)
         {
             logEntries.Add(CompactLogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes)!);
@@ -137,13 +77,12 @@ public class OptimismCompactReceiptStorageDecoder :
         return txReceipt;
     }
 
-    public void DecodeStructRef(scoped ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors,
-        out TxReceiptStructRef item)
+    public void DecodeStructRef(scoped ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)
     {
         // Note: This method runs at 2.5 million times/sec on my machine
         item = new TxReceiptStructRef();
 
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
             return;
@@ -163,11 +102,10 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         decoderContext.DecodeAddressStructRef(out item.Sender);
-        item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+        item.GasUsedTotal = decoderContext.DecodePositiveLong();
 
-        (int PrefixLength, int ContentLength) peekPrefixAndContentLength =
-            decoderContext.PeekPrefixAndContentLength();
-        int logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
+        (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
+        int logsBytes = contentLength + prefixLength;
         item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
 
         if (lastCheck > decoderContext.Position)
@@ -189,15 +127,9 @@ public class OptimismCompactReceiptStorageDecoder :
     }
 
     public void DecodeLogEntryStructRef(scoped ref ValueDecoderContext decoderContext, RlpBehaviors none,
-        out LogEntryStructRef current)
-    {
-        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
-    }
+        out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-    public Hash256[] DecodeTopics(ValueDecoderContext valueDecoderContext)
-    {
-        return CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
-    }
+    public Hash256[] DecodeTopics(ValueDecoderContext valueDecoderContext) => CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
 
     // Refstruct decode does not generate bloom
     public bool CanDecodeBloom => false;
@@ -237,7 +169,7 @@ public class OptimismCompactReceiptStorageDecoder :
 
         rlpStream.StartSequence(logsLength);
 
-        LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
+        LogEntry[] logs = item.Logs ?? [];
         for (int i = 0; i < logs.Length; i++)
         {
             CompactLogEntryDecoder.Encode(rlpStream, logs[i]);
@@ -294,7 +226,7 @@ public class OptimismCompactReceiptStorageDecoder :
     private static int GetLogsLength(OptimismTxReceipt item)
     {
         int logsLength = 0;
-        LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
+        LogEntry[] logs = item.Logs ?? [];
         for (int i = 0; i < logs.Length; i++)
         {
             logsLength += CompactLogEntryDecoder.Instance.GetLength(logs[i]);
@@ -305,32 +237,15 @@ public class OptimismCompactReceiptStorageDecoder :
 
     public int GetLength(OptimismTxReceipt item, RlpBehaviors rlpBehaviors)
     {
-        (int Total, int Logs) length = GetContentLength(item, rlpBehaviors);
-        return LengthOfSequence(length.Total);
+        (int Total, _) = GetContentLength(item, rlpBehaviors);
+        return LengthOfSequence(Total);
     }
 
-    TxReceipt IRlpStreamDecoder<TxReceipt>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        return Decode(rlpStream, rlpBehaviors); ;
-    }
+    public void Encode(RlpStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Encode(stream, (OptimismTxReceipt)item, rlpBehaviors);
 
-    public void Encode(RlpStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Encode(stream, (OptimismTxReceipt)item, rlpBehaviors);
-    }
+    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors) => GetLength((OptimismTxReceipt)item, rlpBehaviors);
 
-    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
-    {
-        return GetLength((OptimismTxReceipt)item, rlpBehaviors);
-    }
+    TxReceipt IRlpValueDecoder<TxReceipt>.Decode(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors) => Decode(ref decoderContext, rlpBehaviors);
 
-    TxReceipt IRlpValueDecoder<TxReceipt>.Decode(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
-    {
-        return Decode(ref decoderContext, rlpBehaviors);
-    }
-
-    public Rlp Encode(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Encode((OptimismTxReceipt?)item, rlpBehaviors);
-    }
+    public Rlp Encode(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Encode((OptimismTxReceipt?)item, rlpBehaviors);
 }

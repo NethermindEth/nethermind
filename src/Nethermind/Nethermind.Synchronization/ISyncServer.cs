@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -20,12 +19,14 @@ namespace Nethermind.Synchronization
         void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[] GetReceipts(Hash256 blockHashes);
         Block? Find(Hash256 hash);
+        BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(long number);
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
-        IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
+        IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
+        long LowestBlock { get; }
     }
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using System.Text;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -12,15 +12,17 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class HelloMessageSerializer : IZeroMessageSerializer<HelloMessage>
     {
+        private static readonly RlpLimit ClientIdRlpLimit = RlpLimit.For<HelloMessage>(1_024, nameof(HelloMessage.ClientId));
+
         public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
         {
-            (int totalLength, int innerLength) length = GetLength(msg);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(length.totalLength), force: true);
+            (int totalLength, int innerLength) = GetLength(msg);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), force: true);
             NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(length.totalLength);
+            stream.StartSequence(totalLength);
             stream.Encode(msg.P2PVersion);
             stream.Encode(msg.ClientId);
-            stream.StartSequence(length.innerLength);
+            stream.StartSequence(innerLength);
             foreach (Capability? capability in msg.Capabilities)
             {
                 string protocolCode = capability.ProtocolCode.ToLowerInvariant();
@@ -53,25 +55,32 @@ namespace Nethermind.Network.P2P.Messages
             return (contentLength, innerContentLength);
         }
 
-        public HelloMessage Deserialize(IByteBuffer msgBytes)
+        public HelloMessage Deserialize(IByteBuffer msgBytes) =>
+            msgBytes.DeserializeRlp(Deserialize);
+
+        private static HelloMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            NettyRlpStream rlpStream = new(msgBytes);
-            rlpStream.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
             HelloMessage helloMessage = new();
-            helloMessage.P2PVersion = rlpStream.DecodeByte();
-            helloMessage.ClientId = string.Intern(rlpStream.DecodeString());
-            helloMessage.Capabilities = rlpStream.DecodeArrayPoolList(ctx =>
+            helloMessage.P2PVersion = ctx.DecodeByte();
+            helloMessage.ClientId = ctx.DecodeString(ClientIdRlpLimit);
+
+            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
             {
-                ctx.ReadSequenceLength();
-                string protocolCode = string.Intern(ctx.DecodeString());
-                int version = ctx.DecodeByte();
+                c.ReadSequenceLength();
+                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan();
+                if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
+                {
+                    protocolCode = Encoding.UTF8.GetString(protocolSpan);
+                }
+                int version = c.DecodeByte();
                 return new Capability(protocolCode, version);
-            });
+            }, limit: RlpLimit.L64);
 
-            helloMessage.ListenPort = rlpStream.DecodeInt();
+            helloMessage.ListenPort = ctx.DecodeInt();
 
-            ReadOnlySpan<byte> publicKeyBytes = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> publicKeyBytes = ctx.DecodeByteArraySpan(RlpLimit.L64);
             if (publicKeyBytes.Length != PublicKey.LengthInBytes &&
                 publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
             {

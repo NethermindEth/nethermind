@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -9,7 +8,7 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NSubstitute;
@@ -37,22 +36,22 @@ namespace Nethermind.AuRa.Test.Transactions
             {
                 MinGasPrice = UInt256.One
             };
-            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(blocksConfig, Substitute.For<ISpecProvider>());
+            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(blocksConfig);
             IDictionaryContractDataStore<TxPriorityContract.Destination> dictionaryContractDataStore = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
             dictionaryContractDataStore.TryGetValue(
                     Arg.Any<BlockHeader>(),
-                    Arg.Is<TxPriorityContract.Destination>(d => d.Target == TestItem.AddressA),
+                    Arg.Is<TxPriorityContract.Destination>(static d => d.Target == TestItem.AddressA),
                     out Arg.Any<TxPriorityContract.Destination>())
-                .Returns(x =>
+                .Returns(static x =>
                 {
-                    x[2] = new TxPriorityContract.Destination(TestItem.AddressA, Array.Empty<byte>(), 5);
+                    x[2] = new TxPriorityContract.Destination(TestItem.AddressA, [], 5);
                     return true;
                 });
 
             MinGasPriceContractTxFilter txFilter = new(minGasPriceFilter, dictionaryContractDataStore);
             Transaction tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
 
-            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject);
+            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create());
         }
     }
 }

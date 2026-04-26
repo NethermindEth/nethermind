@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
@@ -12,10 +13,8 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture]
     public class PendingSyncItemsTests
     {
-        private IPendingSyncItems Init()
-        {
-            return new PendingSyncItems();
-        }
+        private IPendingSyncItems Init(bool isSnapSync = false) =>
+            new PendingSyncItems(isSnapSync);
 
         [Test]
         public void At_start_count_is_zero()
@@ -64,7 +63,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_peek_root()
         {
             IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new(Keccak.Zero, null, null, NodeDataType.State);
+            StateSyncItem stateSyncItem = new(Keccak.Zero, null, TreePath.Empty, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.PeekState().Should().Be(stateSyncItem);
         }
@@ -73,7 +72,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_recalculate_and_clear_with_root_only()
         {
             IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new(Keccak.Zero, null, null, NodeDataType.State);
+            StateSyncItem stateSyncItem = new(Keccak.Zero, null, TreePath.Empty, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.RecalculatePriorities();
             items.Clear();
@@ -96,6 +95,41 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch[0].Level.Should().Be(64);
             batch[1].Level.Should().Be(32);
             batch[2].Level.Should().Be(0);
+        }
+
+        [Test]
+        public void Limit_batch_at_start()
+        {
+            IPendingSyncItems items = Init();
+
+            PushState(items, 0, 0);
+            PushState(items, 32, 0);
+            PushState(items, 64, 0);
+
+            items.MaxStateLevel = 0;
+
+            List<StateSyncItem> batch = items.TakeBatch(256);
+            batch.Count.Should().Be(1);
+
+            items.MaxStateLevel = 64;
+
+            batch = items.TakeBatch(256);
+            batch.Count.Should().Be(2);
+        }
+
+        [Test]
+        public void DoNot_Limit_batch_at_start_if_snap_sync()
+        {
+            IPendingSyncItems items = Init(isSnapSync: true);
+
+            PushState(items, 0, 0);
+            PushState(items, 32, 0);
+            PushState(items, 64, 0);
+
+            items.MaxStateLevel = 0;
+
+            List<StateSyncItem> batch = items.TakeBatch(256);
+            batch.Count.Should().Be(3);
         }
 
         [Test]
@@ -153,24 +187,18 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch[2].Rightness.Should().Be(15);
         }
 
-        private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0)
-        {
-            return PushItem(items, NodeDataType.Code, 0, 0, progress);
-        }
+        private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0) =>
+            PushItem(items, NodeDataType.Code, 0, 0, progress);
 
-        private static StateSyncItem PushStorage(IPendingSyncItems items, int level, uint rightness, int progress = 0)
-        {
-            return PushItem(items, NodeDataType.Storage, level, rightness, progress);
-        }
+        private static StateSyncItem PushStorage(IPendingSyncItems items, int level, uint rightness, int progress = 0) =>
+            PushItem(items, NodeDataType.Storage, level, rightness, progress);
 
-        private static StateSyncItem PushState(IPendingSyncItems items, int level, uint rightness, int progress = 0)
-        {
-            return PushItem(items, NodeDataType.State, level, rightness, progress);
-        }
+        private static StateSyncItem PushState(IPendingSyncItems items, int level, uint rightness, int progress = 0) =>
+            PushItem(items, NodeDataType.State, level, rightness, progress);
 
         private static StateSyncItem PushItem(IPendingSyncItems items, NodeDataType nodeDataType, int level, uint rightness, int progress = 0)
         {
-            StateSyncItem stateSyncItem1 = new(Keccak.Zero, null, null, nodeDataType, level, rightness);
+            StateSyncItem stateSyncItem1 = new(Keccak.Zero, null, TreePath.Empty, nodeDataType, level, rightness);
             items.PushToSelectedStream(stateSyncItem1, progress);
             return stateSyncItem1;
         }

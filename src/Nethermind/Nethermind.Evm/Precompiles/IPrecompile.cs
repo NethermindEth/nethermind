@@ -10,14 +10,14 @@ namespace Nethermind.Evm.Precompiles
     public interface IPrecompile
     {
         static virtual Address Address => Address.Zero;
-
+        static virtual string Name => string.Empty;
+        bool SupportsCaching => true;
         long BaseGasCost(IReleaseSpec releaseSpec);
+        long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
-        long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
-
-        (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
-
-        protected static (ReadOnlyMemory<byte>, bool) Failure { get; } = (Array.Empty<byte>(), false);
+        // N.B. returns a byte array so that inputData cannot be returned
+        // this can lead to the wrong value being returned due to the cache modifying inputData
+        Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
     }
 
 

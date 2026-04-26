@@ -4,30 +4,29 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
 using System.Linq;
-using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Config;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.JsonRpc.Modules;
-
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
 
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 [TestFixture(true)]
 [TestFixture(false)]
 public class JsonRpcProcessorTests(bool returnErrors)
 {
     private readonly JsonRpcErrorResponse _errorResponse = new();
 
-    private JsonRpcProcessor Initialize(JsonRpcConfig? config = null)
+    private JsonRpcProcessor Initialize(JsonRpcConfig? config = null, RpcRecorderState recorderState = RpcRecorderState.All)
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => returnErrors ? new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
@@ -36,11 +35,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
 
-        /* we enable recorder always to have an easy smoke test for recording
-         * and this is fine because recorder is non-critical component
-         */
+        // we enable recorder always to have an easy smoke test for recording and this is fine because recorder is a non-critical component
         config ??= new JsonRpcConfig();
-        config.RpcRecorderState = RpcRecorderState.All;
+        config.RpcRecorderState = recorderState;
 
         return new JsonRpcProcessor(service, config, fileSystem, LimboLogs.Instance);
     }
@@ -179,9 +176,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchedResponses.Should().NotBeNull();
-        var resultList = await result[0].BatchedResponses!.ToListAsync();
+        List<JsonRpcResult.Entry> resultList = await result[0].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
-        Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
     }
 
@@ -231,7 +228,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[1].BatchedResponses.Should().NotBeNull();
         List<JsonRpcResult.Entry> resultList = await result[1].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
-        Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
     }
 
@@ -266,14 +263,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append("[");
+        request.Append('[');
         for (int i = 0; i < maxBatchSize + 1; i++)
         {
-            if (i != 0) request.Append(",");
+            if (i != 0) request.Append(',');
             request.Append(
                 "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
-        request.Append("]");
+        request.Append(']');
 
         IList<JsonRpcResult> result = await ProcessAsync(request.ToString());
         result.Should().HaveCount(1);
@@ -286,16 +283,16 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append("[");
+        request.Append('[');
         for (int i = 0; i < maxBatchSize + 1; i++)
         {
-            if (i != 0) request.Append(",");
+            if (i != 0) request.Append(',');
             request.Append(
                 "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
-        request.Append("]");
+        request.Append(']');
 
-        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, Array.Empty<string>());
+        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         JsonRpcContext context = new(RpcEndpoint.Http, url: url);
         IList<JsonRpcResult> result = await ProcessAsync(request.ToString(), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
         result.Should().HaveCount(1);
@@ -355,7 +352,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchedResponses.Should().NotBeNull();
-        Assert.IsTrue((await result[0].BatchedResponses!.ToListAsync()).All(r => r.Response != _errorResponse));
+        Assert.That((await result[0].BatchedResponses!.ToListAsync()).All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
     }
 
@@ -379,7 +376,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[0].BatchedResponses.Should().NotBeNull();
         IList<JsonRpcResult.Entry> resultList = (await result[0].BatchedResponses!.ToListAsync());
         resultList.Should().HaveCount(3);
-        Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
     }
 
@@ -406,10 +403,127 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    public void Cannot_accept_null_file_system()
+    public async Task Should_stop_processing_when_shutdown_requested()
     {
-        Assert.Throws<ArgumentNullException>(() => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
-            Substitute.For<IJsonRpcConfig>(),
-            null!, LimboLogs.Instance));
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
+            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(new CancellationToken(canceled: true));
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig(),
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance,
+            processExitSource);
+
+        string request = "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}";
+        List<JsonRpcResult> results = await processor.ProcessAsync(request, new JsonRpcContext(RpcEndpoint.Http)).ToListAsync();
+
+        results.Should().HaveCount(1);
+        results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
+        ((JsonRpcErrorResponse)results[0].Response!).Error!.Code.Should().Be(ErrorCodes.ResourceUnavailable);
+        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        results.DisposeItems();
+    }
+
+    [Test]
+    public async Task Should_complete_pipe_reader_when_shutdown_requested()
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
+            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(new CancellationToken(canceled: true));
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig(),
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance,
+            processExitSource);
+
+        Pipe pipe = new();
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"));
+
+        List<JsonRpcResult> results = await processor.ProcessAsync(pipe.Reader, new JsonRpcContext(RpcEndpoint.Http)).ToListAsync();
+
+        results.Should().HaveCount(1);
+        results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
+
+        // Verify PipeReader was completed by the processor (reading again should throw)
+        await FluentActions.Invoking(async () => await pipe.Reader.ReadAsync())
+            .Should().ThrowAsync<InvalidOperationException>();
+
+        results.DisposeItems();
+    }
+
+    [Test]
+    public void Cannot_accept_null_file_system() => Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
+                                                             Substitute.For<IJsonRpcConfig>(),
+                                                             null!, LimboLogs.Instance));
+
+    [Test]
+    public async Task Can_process_multiple_large_requests_arriving_in_chunks()
+    {
+        Pipe pipe = new();
+        JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
+        JsonRpcContext context = new(RpcEndpoint.Ws);
+
+        // Create 5 large JSON-RPC requests (~10KB each)
+        List<string> requests = Enumerable.Range(0, 5)
+            .Select(i => CreateLargeRequest(i, targetSize: 10_000))
+            .ToList();
+
+        string allRequestsJson = string.Join("\n", requests);
+        byte[] bytes = Encoding.UTF8.GetBytes(allRequestsJson);
+
+        // Start processing task (reads from pipe.Reader)
+        ValueTask<List<JsonRpcResult>> processTask = processor
+            .ProcessAsync(pipe.Reader, context)
+            .ToListAsync();
+
+        // Write data in 1KB chunks with small delays to simulate network
+        const int chunkSize = 1024;
+        for (int i = 0; i < bytes.Length; i += chunkSize)
+        {
+            int size = Math.Min(chunkSize, bytes.Length - i);
+            await pipe.Writer.WriteAsync(new ReadOnlyMemory<byte>(bytes, i, size));
+            await Task.Yield();
+        }
+        await pipe.Writer.CompleteAsync();
+
+        // Verify all 5 requests processed
+        List<JsonRpcResult> results = await processTask;
+        results.Should().HaveCount(5);
+        for (int i = 0; i < 5; i++)
+        {
+            results[i].Response.Should().NotBeNull();
+        }
+        results.DisposeItems();
+    }
+
+    private static string CreateLargeRequest(int id, int targetSize)
+    {
+        StringBuilder sb = new();
+        sb.Append($"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"test_method\",\"params\":[");
+
+        int currentSize = sb.Length + 2; // account for closing ]}
+        bool first = true;
+        int paramIndex = 0;
+        while (currentSize < targetSize)
+        {
+            string param = $"\"param_{paramIndex++}_padding\"";
+            if (!first) sb.Append(',');
+            sb.Append(param);
+            currentSize += param.Length + (first ? 0 : 1);
+            first = false;
+        }
+
+        sb.Append("]}");
+        return sb.ToString();
     }
 }

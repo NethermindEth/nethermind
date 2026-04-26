@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
-using Nethermind.Core.Test.Collections;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core;
 
@@ -13,37 +13,30 @@ namespace Nethermind.Core;
 /// Encapsulate pattern of auto adjusting the request size depending on latency and response size.
 /// Used for bodies and receipts where the response size affect memory usage also.
 /// </summary>
-public class LatencyAndMessageSizeBasedRequestSizer
-{
-    private readonly TimeSpan _upperLatencyWatermark;
-    private readonly TimeSpan _lowerLatencyWatermark;
-    private readonly long _maxResponseSize;
-    private readonly AdaptiveRequestSizer _requestSizer;
-
-    public LatencyAndMessageSizeBasedRequestSizer(
-        int minRequestLimit,
-        int maxRequestLimit,
-        TimeSpan lowerLatencyWatermark,
-        TimeSpan upperLatencyWatermark,
-        long maxResponseSize,
-        int? initialRequestSize,
-        double adjustmentFactor = 1.5
+public class LatencyAndMessageSizeBasedRequestSizer(
+    int minRequestLimit,
+    int maxRequestLimit,
+    TimeSpan lowerLatencyWatermark,
+    TimeSpan upperLatencyWatermark,
+    long maxResponseSize,
+    int? initialRequestSize,
+    double adjustmentFactor = 1.5
     )
-    {
-        _upperLatencyWatermark = upperLatencyWatermark;
-        _lowerLatencyWatermark = lowerLatencyWatermark;
-        _maxResponseSize = maxResponseSize;
-
-        _requestSizer = new AdaptiveRequestSizer(
+{
+    private readonly TimeSpan _upperLatencyWatermark = upperLatencyWatermark;
+    private readonly TimeSpan _lowerLatencyWatermark = lowerLatencyWatermark;
+    private readonly long _maxResponseSize = maxResponseSize;
+    private readonly AdaptiveRequestSizer _requestSizer = new(
             minRequestLimit,
             maxRequestLimit,
             initialRequestSize: initialRequestSize,
             adjustmentFactor: adjustmentFactor);
-    }
+    public int RequestSize => _requestSizer.RequestSize;
 
     /// <summary>
     /// Adjust the request size depending on the latency and response size. Accept a list as request which will be capped.
-    /// If the response size is too large, reduce request size.
+    /// If the response size (byte) is too large, reduce request size.
+    /// If the response size (count) less than request size, reduce request size.
     /// If the latency is above watermark, reduce request size.
     /// If the latency is below watermark and response size is not too large, increase request size.
     /// </summary>
@@ -51,32 +44,39 @@ public class LatencyAndMessageSizeBasedRequestSizer
     /// <param name="func"></param>
     /// <typeparam name="TResponse">response type</typeparam>
     /// <typeparam name="TRequest">request type</typeparam>
+    /// <typeparam name="TResponseItem">response item type</typeparam>
     /// <returns></returns>
-    public async Task<TResponse> Run<TResponse, TRequest>(IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func)
+    public Task<TResponse> Run<TResponse, TRequest, TResponseItem>(IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem> => _requestSizer.Run(async (adjustedRequestSize) =>
     {
-        return await _requestSizer.Run(async (adjustedRequestSize) =>
+        long startTime = Stopwatch.GetTimestamp();
+        long affectiveRequestSize = Math.Min(adjustedRequestSize, request.Count);
+        IReadOnlyList<TRequest> cappedRequest = affectiveRequestSize == request.Count
+            ? request
+            : request.Slice(0, (int)affectiveRequestSize);
+        (TResponse result, long messageSize) = await func(cappedRequest);
+        TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
+        if (messageSize > _maxResponseSize)
         {
-            long startTime = Stopwatch.GetTimestamp();
-            (TResponse result, long messageSize) = await func(request.Clamp(adjustedRequestSize));
-            TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
-            if (messageSize > _maxResponseSize)
-            {
-                return (result, AdaptiveRequestSizer.Direction.Decrease);
-            }
+            return (result, AdaptiveRequestSizer.Direction.Decrease);
+        }
 
-            if (duration > _upperLatencyWatermark)
-            {
-                return (result, AdaptiveRequestSizer.Direction.Decrease);
-            }
+        if (duration > _upperLatencyWatermark)
+        {
+            return (result, AdaptiveRequestSizer.Direction.Decrease);
+        }
 
-            if (
-                request.Count >= adjustedRequestSize // If the original request size is low, increasing wont do anything
-                && duration < _lowerLatencyWatermark)
-            {
-                return (result, AdaptiveRequestSizer.Direction.Increase);
-            }
+        if (result.Count < affectiveRequestSize)
+        {
+            return (result, AdaptiveRequestSizer.Direction.Decrease);
+        }
 
-            return (result, AdaptiveRequestSizer.Direction.Stay);
-        });
-    }
+        if (
+            request.Count >= adjustedRequestSize // If the original request size is low, increasing wont do anything
+            && duration < _lowerLatencyWatermark)
+        {
+            return (result, AdaptiveRequestSizer.Direction.Increase);
+        }
+
+        return (result, AdaptiveRequestSizer.Direction.Stay);
+    });
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Repositories
 {
@@ -11,5 +12,6 @@ namespace Nethermind.State.Repositories
         void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null);
         BatchWrite StartBatch();
         ChainLevelInfo? LoadLevel(long number);
+        IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers);
     }
 }

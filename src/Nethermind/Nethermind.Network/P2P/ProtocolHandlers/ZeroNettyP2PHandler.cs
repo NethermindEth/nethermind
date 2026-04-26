@@ -15,23 +15,14 @@ using Snappier;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers;
 
-public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
+public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : SimpleChannelInboundHandler<ZeroPacket>
 {
-    private readonly ISession _session;
-    private readonly ILogger _logger;
+    private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
+    private readonly ILogger _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
 
     public bool SnappyEnabled { get; private set; }
 
-    public ZeroNettyP2PHandler(ISession session, ILogManager logManager)
-    {
-        _session = session ?? throw new ArgumentNullException(nameof(session));
-        _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
-
-    public void Init(IPacketSender packetSender, IChannelHandlerContext context)
-    {
-        _session.Init(5, context, packetSender);
-    }
+    public void Init(IPacketSender packetSender, IChannelHandlerContext context) => _session.Init(5, context, packetSender);
 
     public override void ChannelRegistered(IChannelHandlerContext context)
     {
@@ -42,32 +33,38 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
     protected override void ChannelRead0(IChannelHandlerContext ctx, ZeroPacket input)
     {
         IByteBuffer content = input.Content;
+        int readableBytes = content.ReadableBytes;
+        if (readableBytes > SnappyParameters.MaxSnappyLength)
+        {
+            _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
+            return;
+        }
         if (SnappyEnabled)
         {
             int uncompressedLength = Snappy.GetUncompressedLength(
-                content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, content.ReadableBytes));
+                content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, readableBytes));
 
             if (uncompressedLength > SnappyParameters.MaxSnappyLength)
             {
-                throw new Exception("Max message size exceeeded"); // TODO: disconnect here
+                _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
+                return;
             }
 
-            if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
+            if (readableBytes > SnappyParameters.MaxSnappyLength / 4)
             {
-                if (_logger.IsTrace) _logger.Trace($"Big Snappy message of length {content.ReadableBytes}");
+                if (_logger.IsTrace) _logger.Trace($"Big Snappy message of length {readableBytes}");
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {content.ReadableBytes}");
+                if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {readableBytes}");
             }
-
 
             IByteBuffer output = ctx.Allocator.Buffer(uncompressedLength);
 
             try
             {
                 int length = Snappy.Decompress(
-                    content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, content.ReadableBytes),
+                    content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, readableBytes),
                     output.Array.AsSpan(output.ArrayOffset + output.WriterIndex));
                 output.SetWriterIndex(output.WriterIndex + length);
             }
@@ -80,12 +77,12 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
             }
             catch (Exception)
             {
-                content.SkipBytes(content.ReadableBytes);
+                content.SkipBytes(readableBytes);
                 output.SafeRelease();
                 throw;
             }
 
-            content.SkipBytes(content.ReadableBytes);
+            content.SkipBytes(readableBytes);
             ZeroPacket outputPacket = new(output);
             try
             {
@@ -106,14 +103,13 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
         //In case of SocketException we log it as debug to avoid noise
-        string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
         if (exception is SocketException)
         {
-            if (_logger.IsTrace) _logger.Trace($"Error in communication with {clientId} (SocketException): {exception}");
+            if (_logger.IsTrace) _logger.Trace($"Error in communication with {GetClientId(_session)} (SocketException): {exception}");
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
+            if (_logger.IsDebug) _logger.Debug($"Error in communication with {GetClientId(_session)}: {exception}");
         }
 
         if (exception is IInternalNethermindException)
@@ -122,8 +118,12 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
         }
         else if (_session?.Node?.IsStatic != true)
         {
-            _session.InitiateDisconnect(DisconnectReason.Exception,
-                $"Error in communication with {clientId} ({exception.GetType().Name}): {exception.Message}");
+            DisconnectReason reason =
+                exception is SocketException socketException &&
+                socketException.SocketErrorCode == SocketError.ConnectionReset
+                    ? DisconnectReason.ConnectionReset
+                    : DisconnectReason.Exception;
+            _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
         }
         else
         {
@@ -131,8 +131,8 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
         }
     }
 
-    public void EnableSnappy()
-    {
-        SnappyEnabled = true;
-    }
+    private static string GetClientId(ISession? session) =>
+        session?.Node?.ToString(Node.Format.Console) ?? $"unknown {session?.RemoteHost}";
+
+    public void EnableSnappy() => SnappyEnabled = true;
 }

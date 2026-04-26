@@ -1,57 +1,35 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Configuration;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FastSyncFeed : ActivatedSyncFeed<BlocksRequest>
+    public class FastSyncFeed(IForwardSyncController forwardSyncController, ISyncConfig syncConfig)
+        : ActivatedSyncFeed<BlocksRequest>
     {
-        private readonly ISyncConfig _syncConfig;
-        private readonly BlocksRequest _blocksRequest;
-
-        public FastSyncFeed(ISyncConfig syncConfig)
-        {
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _blocksRequest = new BlocksRequest(BuildOptions(), MultiSyncModeSelector.FastSyncLag);
-        }
-
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastSync;
 
-        private DownloaderOptions BuildOptions()
-        {
-            DownloaderOptions options = DownloaderOptions.MoveToMain;
-            if (_syncConfig.DownloadReceiptsInFastSync)
-            {
-                options |= DownloaderOptions.WithReceipts;
-            }
+        private DownloaderOptions BuildOptions() => DownloaderOptions.Insert | DownloaderOptions.WithReceipts;
 
-            if (_syncConfig.DownloadBodiesInFastSync)
-            {
-                options |= DownloaderOptions.WithBodies;
-            }
+        public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => forwardSyncController.PrepareRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead, token);
 
-            return options;
-        }
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null) => forwardSyncController.HandleResponse(response, peer);
 
-        public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => Task.FromResult(_blocksRequest);
-
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null)
-        {
-            FallAsleep();
-            return SyncResponseHandlingResult.OK;
-        }
-
-        public override bool IsMultiFeed => false;
+        public override bool IsMultiFeed => true;
 
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
         public override bool IsFinished => false; // Check MultiSyncModeSelector
+        public override string FeedName => nameof(FastSyncFeed);
+
+        public override void FallAsleep()
+        {
+            base.FallAsleep();
+            forwardSyncController.PruneDownloadBuffer();
+        }
     }
 }

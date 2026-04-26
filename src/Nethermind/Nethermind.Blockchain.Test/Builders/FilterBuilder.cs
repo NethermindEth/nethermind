@@ -11,15 +11,13 @@ namespace Nethermind.Blockchain.Test.Builders
 {
     public class FilterBuilder
     {
-        private static int _id;
+        private int _id;
         private BlockParameter _fromBlock = new(BlockParameterType.Latest);
         private BlockParameter _toBlock = new(BlockParameterType.Latest);
         private AddressFilter _address = AddressFilter.AnyAddress;
         private SequenceTopicsFilter _topicsFilter = new();
 
-        private FilterBuilder()
-        {
-        }
+        private FilterBuilder(int id) => _id = id;
 
         public static FilterBuilder New()
         {
@@ -29,9 +27,9 @@ namespace Nethermind.Blockchain.Test.Builders
 
         public static FilterBuilder New(ref int currentFilterIndex)
         {
-            _id = currentFilterIndex;
+            int id = currentFilterIndex;
             currentFilterIndex++;
-            return new FilterBuilder();
+            return new FilterBuilder(id);
         }
 
         public FilterBuilder WithId(int id)
@@ -125,7 +123,7 @@ namespace Nethermind.Blockchain.Test.Builders
 
         public FilterBuilder WithAddresses(params Address[] addresses)
         {
-            _address = new AddressFilter(addresses.Select(a => new AddressAsKey(a)).ToHashSet());
+            _address = new AddressFilter(addresses.Select(static a => new AddressAsKey(a)).ToHashSet());
 
             return this;
         }

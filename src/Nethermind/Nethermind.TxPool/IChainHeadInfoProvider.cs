@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool
@@ -12,15 +13,20 @@ namespace Nethermind.TxPool
     {
         IChainHeadSpecProvider SpecProvider { get; }
 
-        IAccountStateProvider AccountStateProvider { get; }
+        IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
-        public long HeadNumber { get; }
+        long HeadNumber { get; }
 
-        public long? BlockGasLimit { get; }
+        long? BlockGasLimit { get; }
 
-        public UInt256 CurrentBaseFee { get; }
+        UInt256 CurrentBaseFee { get; }
 
-        public UInt256 CurrentPricePerBlobGas { get; }
+        public UInt256 CurrentFeePerBlobGas { get; }
+
+        ProofVersion CurrentProofVersion { get; }
+
+        bool IsSyncing { get; }
+        bool IsProcessingBlock { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }

@@ -8,36 +8,36 @@ namespace Nethermind.Benchmarks.Core
 {
     public class FromHexBenchmarks
     {
-        private string hex = "0123456789abcdef";
+        private byte[] _hex;
+        private byte[] _bytes;
 
-        [Params(true, false)]
-        public bool With0xPrefix;
-
-        [Params(true, false)]
-        public bool OddNumber;
+        [Params(32, 64, 128, 256, 512, 1024)]
+        public int ByteLength;
 
         [GlobalSetup]
         public void Setup()
         {
-            //Test Performance of odd number
-            if (OddNumber)
-                hex = "5" + hex;
+            _hex = new byte[ByteLength * 2];
+            _bytes = new byte[ByteLength];
 
-            //Test performance of hex
-            if (With0xPrefix)
-                hex = "0x" + hex;
+            for (int i = 0; i < _bytes.Length; i++)
+            {
+                _bytes[i] = (byte)i;
+            }
+
+            Bytes.OutputBytesToByteHex(_bytes, _hex, extraNibble: false);
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Bytes.FromHexString(hex);
-        }
+        public bool Scalar() => HexConverter.TryDecodeFromUtf8_Scalar(_hex, _bytes, isOdd: false);
 
         [Benchmark]
-        public byte[] Improved()
-        {
-            return Bytes.FromHexString(hex);
-        }
+        public bool Vector128() => HexConverter.TryDecodeFromUtf8_Vector128(_hex, _bytes);
+
+        [Benchmark]
+        public bool Vector256() => HexConverter.TryDecodeFromUtf8_Vector256(_hex, _bytes);
+
+        [Benchmark]
+        public bool Vector512() => HexConverter.TryDecodeFromUtf8_Vector512(_hex, _bytes);
     }
 }

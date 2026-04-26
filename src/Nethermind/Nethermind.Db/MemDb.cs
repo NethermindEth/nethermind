@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+#if ZK_EVM
 using Nethermind.Core.Collections;
+#endif
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -18,12 +21,26 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-        private readonly SpanConcurrentDictionary<byte, byte[]?> _db;
+#if ZK_EVM
+        private readonly Dictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
+        private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+#else
+        private readonly ConcurrentDictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
+        private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+#endif
 
         public MemDb(string name)
-            : this(0, 0)
+            : this(0, 0) => Name = name;
+
+        public static MemDb CopyFrom(IDb anotherDb)
         {
-            Name = name;
+            MemDb newDb = new();
+            foreach (KeyValuePair<byte[], byte[]> kv in anotherDb.GetAll())
+            {
+                newDb[kv.Key] = kv.Value;
+            }
+
+            return newDb;
         }
 
         public MemDb() : this(0, 0)
@@ -34,21 +51,15 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
+            _spanDb = _db.GetAlternateLookup<ReadOnlySpan<byte>>();
         }
 
-        public string Name { get; }
+        public string Name { get; } = nameof(MemDb);
 
         public virtual byte[]? this[ReadOnlySpan<byte> key]
         {
-            get
-            {
-                return Get(key);
-            }
-            set
-            {
-                Set(key, value);
-            }
+            get => Get(key);
+            set => Set(key, value);
         }
 
         public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
@@ -61,66 +72,36 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount += keys.Length;
-                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.TryGetValue(k, out var value) ? value : null)).ToArray();
+                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.GetValueOrDefault(k))).ToArray();
             }
         }
 
-        public virtual void Remove(ReadOnlySpan<byte> key)
-        {
-            _db.TryRemove(key, out _);
-        }
+        public virtual void Remove(ReadOnlySpan<byte> key) => _spanDb.TryRemove(key, out _);
 
-        public bool KeyExists(ReadOnlySpan<byte> key)
-        {
-            return _db.ContainsKey(key);
-        }
+        public bool KeyExists(ReadOnlySpan<byte> key) => _spanDb.ContainsKey(key);
 
-        public IDb Innermost => this;
+        public virtual void Flush(bool onlyWal = false) { }
 
-        public virtual void Flush()
-        {
-        }
+        public void Clear() => _db.Clear();
 
-        public void Clear()
-        {
-            _db.Clear();
-        }
+        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _db;
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Key) : Keys;
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Keys;
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Value) : Values;
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
-
-        public virtual IWriteBatch StartWriteBatch()
-        {
-            return this.LikeABatch();
-        }
+        public virtual IWriteBatch StartWriteBatch() => this.LikeABatch();
 
         public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
 
         public int Count => _db.Count;
 
-        public long GetSize() => 0;
-        public long GetCacheSize(bool includeCacheSize) => 0;
-        public long GetIndexSize() => 0;
-        public long GetMemtableSize() => 0;
-
-        public void Dispose()
-        {
-        }
+        public void Dispose() { }
 
         public bool PreferWriteByArray => true;
 
-        public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
-        {
-            return Get(key).AsSpan();
-        }
-
-        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
-        {
-        }
+        public unsafe void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         public virtual byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
@@ -130,8 +111,11 @@ namespace Nethermind.Db
             }
 
             ReadsCount++;
-            return _db.TryGetValue(key, out byte[] value) ? value : null;
+            return _spanDb.TryGetValue(key, out byte[] value) ? value : null;
         }
+
+        public unsafe Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            => Get(key).AsSpan();
 
         public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
@@ -143,10 +127,14 @@ namespace Nethermind.Db
             WritesCount++;
             if (value is null)
             {
-                _db.TryRemove(key, out _);
+                Remove(key);
                 return;
             }
-            _db[key] = value;
+            _spanDb[key] = value;
         }
+
+        public virtual IDbMeta.DbMetric GatherMetric() => new() { Size = Count };
+
+        private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }
 }

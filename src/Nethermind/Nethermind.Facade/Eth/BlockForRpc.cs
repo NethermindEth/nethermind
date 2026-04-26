@@ -1,36 +1,31 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Facade.Eth;
 
 public class BlockForRpc
 {
-    private readonly BlockDecoder _blockDecoder = new();
-    private readonly bool _isAuRaBlock;
+    private static readonly BlockDecoder _blockDecoder = new();
 
-    protected BlockForRpc()
-    {
-
-    }
+    public BlockForRpc() { }
 
     [SkipLocalsInit]
-    public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
+    public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
     {
-        _isAuRaBlock = block.Header.AuRaSignature is not null;
-        Author = block.Author ?? block.Beneficiary;
+        bool isAuRaBlock = block.Header.AuRaSignature is not null;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;
@@ -38,7 +33,7 @@ public class BlockForRpc
         Hash = block.Hash;
         LogsBloom = block.Bloom;
         Miner = block.Beneficiary;
-        if (!_isAuRaBlock)
+        if (!isAuRaBlock)
         {
             MixHash = block.MixHash;
             Nonce = new byte[8];
@@ -46,13 +41,14 @@ public class BlockForRpc
         }
         else
         {
+            Author = block.Author;
             Step = block.Header.AuRaStep;
             Signature = block.Header.AuRaSignature;
         }
 
         if (specProvider is not null)
         {
-            var spec = specProvider.GetSpec(block.Header);
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
             if (spec.IsEip1559Enabled)
             {
                 BaseFeePerGas = block.Header.BaseFeePerGas;
@@ -68,6 +64,17 @@ public class BlockForRpc
             {
                 ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
+
+            if (spec.IsEip7843Enabled)
+            {
+                SlotNumber = block.SlotNumber;
+            }
+
+            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
+            if (specProvider.MergeBlockNumber is null)
+            {
+                TotalDifficulty = block.TotalDifficulty;
+            }
         }
 
         Number = block.Number;
@@ -77,57 +84,63 @@ public class BlockForRpc
         Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
-        TotalDifficulty = block.TotalDifficulty ?? 0;
-        Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t, block.BaseFeePerGas)).ToArray() : block.Transactions.Select(t => t.Hash).OfType<object>().ToArray();
+
+        if (!skipTxs)
+        {
+            Transactions = includeFullTransactionData
+                    ? GetTransactionsForRpc(block, specProvider.ChainId)
+                    : GetTransactionHashes(block.Transactions);
+        }
         TransactionsRoot = block.TxRoot;
-        Uncles = block.Uncles.Select(o => o.Hash);
+        Uncles = GetUnclesHashes(block.Uncles);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
+        RequestsHash = block.Header.RequestsHash;
+        BlockAccessListHash = block.Header.BlockAccessListHash;
+        BlockAccessList = block.BlockAccessList;
     }
 
-    public Address Author { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
     public long GasLimit { get; set; }
     public long GasUsed { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public Hash256 Hash { get; set; }
+    public Hash256? Hash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
-    public Address Miner { get; set; }
-    public Hash256 MixHash { get; set; }
 
-    public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash is not null;
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public Address? Miner { get; set; }
+    public Hash256? MixHash { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[] Nonce { get; set; }
-
-    public bool ShouldSerializeNonce() => !_isAuRaBlock;
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public byte[]? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Number { get; set; }
     public Hash256 ParentHash { get; set; }
     public Hash256 ReceiptsRoot { get; set; }
     public Hash256 Sha3Uncles { get; set; }
-    public byte[] Signature { get; set; }
-    public bool ShouldSerializeSignature() => _isAuRaBlock;
+    public byte[]? Signature { get; set; }
     public long Size { get; set; }
     public Hash256 StateRoot { get; set; }
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
-    public bool ShouldSerializeStep() => _isAuRaBlock;
-    public UInt256 TotalDifficulty { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? TotalDifficulty { get; set; }
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }
-    public IEnumerable<object> Transactions { get; set; }
+    public object[] Transactions { get; set; }
     public Hash256 TransactionsRoot { get; set; }
-    public IEnumerable<Hash256> Uncles { get; set; }
+    public Hash256[] Uncles { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IEnumerable<Withdrawal>? Withdrawals { get; set; }
+    public Withdrawal[]? Withdrawals { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? WithdrawalsRoot { get; set; }
@@ -140,4 +153,61 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? RequestsHash { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? BlockAccessListHash { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BlockAccessList? BlockAccessList { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ulong? SlotNumber { get; set; }
+
+    private static object[] GetTransactionHashes(Transaction[] transactions)
+    {
+        if (transactions.Length == 0) return Array.Empty<Hash256>();
+
+        Hash256[] hashes = new Hash256[transactions.Length];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            hashes[i] = transactions[i].Hash;
+        }
+        return hashes;
+    }
+
+    private static object[] GetTransactionsForRpc(Block block, ulong chainId)
+    {
+        Transaction[] transactions = block.Transactions;
+        if (transactions.Length == 0) return Array.Empty<TransactionForRpc>();
+
+        TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            TransactionForRpcContext extraData = new(
+                chainId: chainId,
+                blockHash: block.Hash,
+                blockNumber: block.Number,
+                txIndex: i,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                receipt: null);
+            txs[i] = TransactionForRpc.FromTransaction(transactions[i], extraData);
+        }
+        return txs;
+    }
+
+    private static Hash256[] GetUnclesHashes(BlockHeader[] headers)
+    {
+        if (headers.Length == 0) return Array.Empty<Hash256>();
+
+        Hash256[] hashes = new Hash256[headers.Length];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            hashes[i] = headers[i].Hash;
+        }
+        return hashes;
+    }
 }

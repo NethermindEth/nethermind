@@ -4,9 +4,6 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.State.Proofs;
-using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -15,13 +12,6 @@ namespace Nethermind.Blockchain.Receipts
         public static TxReceipt ForTransaction(this TxReceipt[] receipts, Hash256 txHash)
             => receipts.FirstOrDefault(r => r.TxHash == txHash);
 
-        public static void SetSkipStateAndStatusInRlp(this TxReceipt[] receipts, bool value)
-        {
-            for (int i = 0; i < receipts.Length; i++)
-            {
-                receipts[i].SkipStateAndStatusInRlp = value;
-            }
-        }
 
         public static int GetBlockLogFirstIndex(this TxReceipt[] receipts, int receiptIndex)
         {

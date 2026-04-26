@@ -12,22 +12,23 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class NullSignerTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Test()
         {
             NullSigner signer = NullSigner.Instance;
             signer.Address.Should().Be(Address.Zero);
-            signer.CanSign.Should().BeTrue();
+            signer.CanSign.Should().BeFalse();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task Test_signing()
         {
             NullSigner signer = NullSigner.Instance;
             await signer.Sign((Transaction)null!);
-            signer.Sign((Hash256)null!).Bytes.Should().HaveCount(64);
+            signer.Sign((Hash256)null!).Bytes.Length.Should().Be(64);
         }
     }
 }

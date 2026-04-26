@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -27,9 +29,9 @@ public class Eip2935Tests : VirtualMachineTestsBase
     }
 
 
-    [TestCase(MainnetSpecProvider.CancunBlockTimestamp, false)]
-    [TestCase(MainnetSpecProvider.PragueBlockTimestamp, true)]
-    public void CorrectBlockhashBeingUsed(ulong timestamp, bool eipEnabled)
+    [TestCase(MainnetSpecProvider.CancunBlockTimestamp)]
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp)]
+    public void CorrectBlockhashBeingUsed(ulong timestamp)
     {
         const long blockNumber = 256;
         byte[] bytecode =
@@ -46,9 +48,9 @@ public class Eip2935Tests : VirtualMachineTestsBase
 
         (Block block, Transaction transaction) = PrepareTx(new ForkActivation(BlockNumber, timestamp), 100000, bytecode);
         CallOutputTracer callOutputTracer = new();
-        _processor.Execute(transaction, block.Header, callOutputTracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(new ForkActivation(BlockNumber, timestamp))), callOutputTracer);
 
-        long expected = eipEnabled ? blockNumber + Eip2935Constants.RingBufferSize : blockNumber;
+        long expected = blockNumber;
         callOutputTracer.ReturnValue!.Should().BeEquivalentTo(Keccak.Compute(expected.ToString()).BytesToArray());
     }
 }

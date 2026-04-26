@@ -5,14 +5,14 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test;
 
-[TestFixture]
 [Parallelizable(ParallelScope.Self)]
 public class VirtualMachineTests : VirtualMachineTestsBase
 {
@@ -43,7 +43,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
         Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
         Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(1), nameof(entry.Storage));
+        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
         Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
         Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
     }
@@ -61,7 +61,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
 
-        Assert.True(trace.Entries.Any(e => e.Error is not null));
+        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
     }
 
     [Test]
@@ -74,7 +74,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.True(trace.Entries.Any(e => e.Error is not null));
+        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
     }
 
     [Test]
@@ -88,7 +88,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.True(trace.Entries.Any(e => e.Error is not null));
+        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
     }
 
     [Test]
@@ -103,7 +103,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.True(trace.Entries.Any(e => e.Error is not null));
+        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
     }
 
     [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
@@ -136,7 +136,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
         Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
         Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(1), nameof(entry.Storage));
+        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
         Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
         Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
     }
@@ -386,7 +386,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Or_0_0()
     {
-        TestAllTracerWithOutput receipt = Execute(
+        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.ByzantiumBlockNumber, null),
             (byte)Instruction.PUSH1,
             0,
             (byte)Instruction.PUSH1,
@@ -439,7 +439,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .MCOPY(6, 0, 6)
             .STOP()
             .Done;
-        GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(GethTraceOptions.Default), code, MainnetSpecProvider.CancunActivation).BuildResult();
+        GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default), code, MainnetSpecProvider.CancunActivation).BuildResult();
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 0), "gas");
     }
@@ -454,13 +454,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .STOP()
             .Done;
         GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+            new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default with { EnableMemory = true }),
             bytecode,
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var copied = traces.Entries.Last().Memory[0];
-        var origin = traces.Entries.Last().Memory[1];
+        string copied = traces.Entries.Last().Memory[0];
+        string origin = traces.Entries.Last().Memory[1];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 1), "gas");
         Assert.That(origin, Is.EqualTo(copied));
@@ -478,12 +478,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .STOP()
             .Done;
         GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+            new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default with { EnableMemory = true }),
             bytecode,
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var result = traces.Entries.Last().Memory[0];
+        string result = traces.Entries.Last().Memory[0];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
         Assert.That(result, Is.EqualTo("0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
@@ -499,13 +499,26 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .STOP()
             .Done;
         GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+            new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default with { EnableMemory = true }),
             bytecode,
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
         Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void MCopy_zero_length_does_not_validate_offsets()
+    {
+        byte[] bytecode = Prepare.EvmCode
+            .MCOPY(UInt256.MaxValue, UInt256.MaxValue, UInt256.Zero)
+            .STOP()
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.CancunActivation, bytecode);
+
+        Assert.That(receipt.Error, Is.Null);
     }
 
     [Test]
@@ -519,12 +532,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .STOP()
             .Done;
         GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+            new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default with { EnableMemory = true }),
             bytecode,
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var result = traces.Entries.Last().Memory[0];
+        string result = traces.Entries.Last().Memory[0];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
         Assert.That(result, Is.EqualTo("0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
@@ -554,7 +567,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         byte[] code = Bytes.FromHexString("0x6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd");
         TestAllTracerWithOutput receipt = Execute(blockNumber: MainnetSpecProvider.ByzantiumBlockNumber, 100_000, code);
 
-        Assert.That(receipt.Error, Is.EqualTo("Reverted revert message"));
+        // Raw revert bytes without an Error(string) selector — GetErrorMessage returns null,
+        // so Error falls back to the Revert sentinel.
+        Assert.That(receipt.Error, Is.EqualTo(Nethermind.Evm.TransactionSubstate.Revert));
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
     }
 }

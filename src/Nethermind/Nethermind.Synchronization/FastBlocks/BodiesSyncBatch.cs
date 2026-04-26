@@ -9,6 +9,7 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         public BlockInfo?[] Infos { get; } = infos;
         public OwnedBlockBodies? Response { get; set; }
+        public override long? MinNumber => Infos[0].BlockNumber;
 
         public override void Dispose()
         {

@@ -7,26 +7,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Nethermind.Api;
 using Nethermind.Logging;
 
 namespace Nethermind.HealthChecks
 {
-    public class NodeHealthCheck : IHealthCheck
+    public class NodeHealthCheck(
+        INodeHealthService nodeHealthService,
+        ILogManager logManager) : IHealthCheck
     {
-        private readonly INethermindApi _api;
-        private readonly INodeHealthService _nodeHealthService;
-        private readonly ILogger _logger;
-
-        public NodeHealthCheck(
-            INodeHealthService nodeHealthService,
-            INethermindApi api,
-            ILogManager logManager)
-        {
-            _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
-            _api = api;
-            _logger = logManager.GetClassLogger();
-        }
+        private readonly INodeHealthService _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
+        private readonly ILogger _logger = logManager.GetClassLogger<NodeHealthCheck>();
 
         public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
@@ -34,7 +24,7 @@ namespace Nethermind.HealthChecks
             {
                 CheckHealthResult healthResult = _nodeHealthService.CheckHealth();
                 if (_logger.IsTrace) _logger.Trace($"Checked health result. Healthy: {healthResult.Healthy}");
-                string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));
+                string description = FormatMessages(healthResult.Messages.Select(static x => x.LongMessage));
                 if (healthResult.Healthy)
                     return Task.FromResult(HealthCheckResult.Healthy(description, CreateData(healthResult)));
 
@@ -46,20 +36,17 @@ namespace Nethermind.HealthChecks
             }
         }
 
-        private static IReadOnlyDictionary<string, object> CreateData(CheckHealthResult healthResult)
-        {
-            return new Dictionary<string, object>
+        private static IReadOnlyDictionary<string, object> CreateData(CheckHealthResult healthResult) => new Dictionary<string, object>
             {
                 { nameof(healthResult.IsSyncing), healthResult.IsSyncing },
                 { nameof(healthResult.Errors), healthResult.Errors }
             };
-        }
 
         private static string FormatMessages(IEnumerable<string> messages)
         {
-            if (messages.Any(x => !string.IsNullOrWhiteSpace(x)))
+            if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
             {
-                var joined = string.Join(". ", messages.Where(x => !string.IsNullOrWhiteSpace(x)));
+                string joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
                 if (!string.IsNullOrWhiteSpace(joined))
                 {
                     return joined + ".";

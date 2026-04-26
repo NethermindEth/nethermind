@@ -2,25 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Utils;
 
-// TODO: Move responsibility to IWorldStateManager? Could be, but if IWorldStateManager store more than 128 blocks
-// of state, that would be out of spec for snap and it would fail hive test.
+// TODO: Move responsibility to IWorldStateManager? Could be, but if IWorldStateManager stores more blocks
+// of state than configured, that would require updating the snap serving configuration (ISyncConfig.SnapServingMaxDepth).
 public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 {
-    private IBlockTree _blockTree;
+    private readonly IBlockTree _blockTree;
     private readonly int _lastN = 0;
 
     private Hash256? _lastQueuedStateRoot = null;
-    private Queue<Hash256> _stateRootQueue = new Queue<Hash256>();
+    private Queue<Hash256> _stateRootQueue = new();
     private NonBlocking.ConcurrentDictionary<Hash256AsKey, int> _availableStateRoots = new();
 
     public LastNStateRootTracker(IBlockTree blockTree, int lastN)
@@ -32,10 +31,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         if (_blockTree.Head is not null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
     }
 
-    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        ResetAvailableStateRoots(e.Block.Header, false);
-    }
+    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e) => ResetAvailableStateRoots(e.Block.Header, false);
 
     private void ResetAvailableStateRoots(BlockHeader? newHead, bool resetQueue)
     {
@@ -49,14 +45,14 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
             // Queue is intact.
             _availableStateRoots.AddOrUpdate(
                 newHead.StateRoot,
-                (_) => 1,
-                (_, oldValue) => oldValue + 1);
+                static (_) => 1,
+                static (_, oldValue) => oldValue + 1);
             while (_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256 oldStateRoot))
             {
                 int newNum = _availableStateRoots.AddOrUpdate(
                     oldStateRoot,
-                    (_) => 0,
-                    (_, oldValue) => oldValue - 1);
+                    static (_) => 0,
+                    static (_, oldValue) => oldValue - 1);
                 if (newNum == 0) _availableStateRoots.Remove(oldStateRoot, out _);
             }
             _stateRootQueue.Enqueue(newHead.StateRoot);
@@ -73,24 +69,19 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         {
             newStateRootSet.AddOrUpdate(
                 parent.StateRoot,
-                (_) => 1,
-                (_, oldValue) => oldValue + 1);
+                static (_) => 1,
+                static (_, oldValue) => oldValue + 1);
             stateRoots.Add(parent.StateRoot);
             parent = _blockTree.FindParentHeader(parent, BlockTreeLookupOptions.All);
         }
 
         _availableStateRoots = newStateRootSet;
-        _stateRootQueue = new Queue<Hash256>(stateRoots.Reverse());
+        stateRoots.Reverse();
+        _stateRootQueue = new Queue<Hash256>(stateRoots);
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 
-    public bool HasStateRoot(Hash256 stateRoot)
-    {
-        return _availableStateRoots.TryGetValue(stateRoot, out int num) && num > 0;
-    }
+    public bool HasStateRoot(Hash256 stateRoot) => _availableStateRoots.TryGetValue(stateRoot, out int num) && num > 0;
 
-    public void Dispose()
-    {
-        _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
-    }
+    public void Dispose() => _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
 }

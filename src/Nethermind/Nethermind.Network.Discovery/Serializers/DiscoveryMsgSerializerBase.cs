@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
@@ -11,23 +13,18 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public abstract class DiscoveryMsgSerializerBase
+public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
+    IPrivateKeyGenerator nodeKey,
+    INodeIdResolver nodeIdResolver)
 {
-    private readonly PrivateKey _privateKey;
-    protected readonly IEcdsa _ecdsa;
+    protected static readonly RlpLimit IpAddressRlpLimit = RlpLimit.For<IPEndPoint>(16, nameof(IPEndPoint.Address));
+    protected static readonly RlpLimit NodeIdRlpLimit = RlpLimit.L64;
+    private readonly PrivateKey _privateKey = nodeKey.Generate();
+    protected readonly IEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
 
-    private readonly INodeIdResolver _nodeIdResolver;
+    private readonly INodeIdResolver _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
 
     protected const int MdcSigOffset = 32 + 64 + 1;
-
-    protected DiscoveryMsgSerializerBase(IEcdsa ecdsa,
-        IPrivateKeyGenerator nodeKey,
-        INodeIdResolver nodeIdResolver)
-    {
-        _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-        _privateKey = nodeKey.Generate();
-        _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
-    }
 
     protected void Serialize(byte type, Span<byte> data, IByteBuffer byteBuffer)
     {
@@ -43,12 +40,12 @@ public abstract class DiscoveryMsgSerializerBase
         byteBuffer.WriteBytes(data.ToArray(), 0, data.Length);
 
         byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        Hash256 toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        ValueHash256 toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
         byteBuffer.SetReaderIndex(startReadIndex);
 
-        Signature signature = _ecdsa.Sign(_privateKey, toSign);
+        Signature signature = _ecdsa.Sign(_privateKey, in toSign);
         byteBuffer.SetWriterIndex(startWriteIndex + 32);
-        byteBuffer.WriteBytes(signature.Bytes, 0, 64);
+        byteBuffer.WriteBytes(signature.Bytes);
         byteBuffer.WriteByte(signature.RecoveryId);
 
         byteBuffer.SetReaderIndex(startReadIndex + 32);
@@ -71,12 +68,12 @@ public abstract class DiscoveryMsgSerializerBase
 
         byteBuffer.SetWriterIndex(startWriteIndex + length);
         byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        Hash256 toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        ValueHash256 toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
         byteBuffer.SetReaderIndex(startReadIndex);
 
-        Signature signature = _ecdsa.Sign(_privateKey, toSign);
+        Signature signature = _ecdsa.Sign(_privateKey, in toSign);
         byteBuffer.SetWriterIndex(startWriteIndex + 32);
-        byteBuffer.WriteBytes(signature.Bytes, 0, 64);
+        byteBuffer.WriteBytes(signature.Bytes);
         byteBuffer.WriteByte(signature.RecoveryId);
 
         byteBuffer.SetWriterIndex(startWriteIndex + length);
@@ -161,16 +158,14 @@ public abstract class DiscoveryMsgSerializerBase
 
     protected static IPEndPoint GetAddress(ReadOnlySpan<byte> ip, int port)
     {
-        IPAddress ipAddress;
-        try
+        if ((uint)(port - 1) >= ushort.MaxValue)
         {
-            ipAddress = new IPAddress(ip);
-        }
-        catch (Exception)
-        {
-            ipAddress = IPAddress.Any;
+            ThrowInvalidPort(port);
         }
 
-        return new IPEndPoint(ipAddress, port);
+        return new IPEndPoint(new IPAddress(ip), port);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInvalidPort(int port) => throw new NetworkingException($"Invalid discovery port {port}.", NetworkExceptionType.Validation);
     }
 }

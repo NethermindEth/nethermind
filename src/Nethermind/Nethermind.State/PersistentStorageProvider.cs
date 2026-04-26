@@ -1,447 +1,585 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
+using System.Runtime.Intrinsics;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
-using Nethermind.Trie.Pruning;
 
-namespace Nethermind.State
+namespace Nethermind.State;
+
+/// <summary>
+/// Manages persistent storage allowing for snapshotting and restoring
+/// Persists data to ITrieStore
+/// </summary>
+internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager)
+    : PartialStorageProviderBase(logManager)
 {
-    using Nethermind.Core.Cpu;
+    private IWorldStateScopeProvider.IScope _currentScope;
+    private readonly StateProvider _stateProvider = stateProvider;
+    private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
+    private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
+
     /// <summary>
-    /// Manages persistent storage allowing for snapshotting and restoring
-    /// Persists data to ITrieStore
+    /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
-    internal sealed class PersistentStorageProvider : PartialStorageProviderBase
+    private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
+    private readonly HashSet<StorageCell> _committedThisRound = [];
+
+    /// <summary>
+    /// Reset the storage state
+    /// </summary>
+    public override void Reset(bool resetBlockChanges = true)
     {
-        private readonly ITrieStore _trieStore;
-        private readonly StateProvider _stateProvider;
-        private readonly ILogManager? _logManager;
-        internal readonly IStorageTreeFactory _storageTreeFactory;
-        private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
-        private readonly HashSet<AddressAsKey> _toUpdateRoots = new();
-
-        /// <summary>
-        /// EIP-1283
-        /// </summary>
-        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
-
-        private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-        private readonly Dictionary<AddressAsKey, Dictionary<UInt256, byte[]>> _blockCache = new(4_096);
-        private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
-        private readonly Func<StorageCell, byte[]> _loadFromTree;
-
-        /// <summary>
-        /// Manages persistent storage allowing for snapshotting and restoring
-        /// Persists data to ITrieStore
-        /// </summary>
-        public PersistentStorageProvider(ITrieStore? trieStore,
-            StateProvider? stateProvider,
-            ILogManager? logManager,
-            IStorageTreeFactory? storageTreeFactory = null,
-            ConcurrentDictionary<StorageCell, byte[]>? preBlockCache = null) : base(logManager)
+        base.Reset();
+        _originalValues.Clear();
+        _committedThisRound.Clear();
+        if (resetBlockChanges)
         {
-            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
-            _preBlockCache = preBlockCache;
-            _loadFromTree = storageCell =>
-            {
-                StorageTree tree = GetOrCreateStorage(storageCell.Address);
-                Db.Metrics.IncrementStorageTreeReads();
-                return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
-            };
-        }
-
-        public Hash256 StateRoot { get; set; } = null!;
-
-        /// <summary>
-        /// Reset the storage state
-        /// </summary>
-        public override void Reset(bool resizeCollections = true)
-        {
-            base.Reset();
-            _blockCache.Clear();
-            _storages.Reset(resizeCollections);
-            _originalValues.Clear();
-            _committedThisRound.Clear();
+            _storages.ResetAndClear();
             _toUpdateRoots.Clear();
         }
+    }
 
-        /// <summary>
-        /// Get the current value at the specified location
-        /// </summary>
-        /// <param name="storageCell">Storage location</param>
-        /// <returns>Value at location</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
 
-        /// <summary>
-        /// Return the original persistent storage value from the storage cell
-        /// </summary>
-        /// <param name="storageCell"></param>
-        /// <returns></returns>
-        public byte[] GetOriginal(in StorageCell storageCell)
+    /// <summary>
+    /// Get the current value at the specified location
+    /// </summary>
+    /// <param name="storageCell">Storage location</param>
+    /// <returns>Value at location</returns>
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
+        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+
+    /// <summary>
+    /// Return the original persistent storage value from the storage cell
+    /// </summary>
+    /// <param name="storageCell"></param>
+    /// <returns></returns>
+    public byte[] GetOriginal(in StorageCell storageCell)
+    {
+        if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
-            if (!_originalValues.TryGetValue(storageCell, out var value))
-            {
-                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
-            }
-
-            if (_transactionChangesSnapshots.TryPeek(out int snapshot))
-            {
-                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
-                {
-                    if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
-                    {
-                        return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
-                    }
-                }
-            }
-
-            return value;
+            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
 
-
-        /// <summary>
-        /// Called by Commit
-        /// Used for persistent storage specific logic
-        /// </summary>
-        /// <param name="tracer">Storage tracer</param>
-        protected override void CommitCore(IStorageTracer tracer)
+        if (_transactionChangesSnapshots.TryPeek(out int snapshot))
         {
-            if (_logger.IsTrace) _logger.Trace("Committing storage changes");
-
-            if (_changes[_currentPosition] is null)
+            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
-                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
-            }
-
-            if (_changes[_currentPosition + 1] is not null)
-            {
-                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
-            }
-
-            HashSet<Address> toUpdateRoots = new();
-
-            bool isTracing = tracer.IsTracingStorage;
-            Dictionary<StorageCell, ChangeTrace>? trace = null;
-            if (isTracing)
-            {
-                trace = new Dictionary<StorageCell, ChangeTrace>();
-            }
-
-            for (int i = 0; i <= _currentPosition; i++)
-            {
-                Change change = _changes[_currentPosition - i];
-                if (!isTracing && change!.ChangeType == ChangeType.JustCache)
+                if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                 {
-                    continue;
+                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
                 }
+            }
+        }
 
-                if (_committedThisRound.Contains(change!.StorageCell))
-                {
-                    if (isTracing && change.ChangeType == ChangeType.JustCache)
-                    {
-                        trace![change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
-                    }
+        return value;
+    }
 
-                    continue;
-                }
+    public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
+    public bool IsStorageEmpty(Address address) => GetOrCreateStorage(address).IsEmpty;
+
+    private HashSet<AddressAsKey>? _tempToUpdateRoots;
+    /// <summary>
+    /// Called by Commit
+    /// Used for persistent storage specific logic
+    /// </summary>
+    /// <param name="tracer">Storage tracer</param>
+    protected override void CommitCore(IStorageTracer tracer)
+    {
+        if (_logger.IsTrace) _logger.Trace("Committing storage changes");
+
+        int currentPosition = _changes.Count - 1;
+        if (currentPosition < 0)
+        {
+            return;
+        }
+        if (_changes[currentPosition].IsNull)
+        {
+            throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
+        }
+
+        HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
+
+        bool isTracing = tracer.IsTracingStorage;
+        Dictionary<StorageCell, StorageChangeTrace>? trace = null;
+        if (isTracing)
+        {
+            trace = [];
+        }
+
+        for (int i = 0; i <= currentPosition; i++)
+        {
+            Change change = _changes[currentPosition - i];
+            if (!isTracing && change!.ChangeType == ChangeType.JustCache)
+            {
+                continue;
+            }
+
+            if (_committedThisRound.Contains(change!.StorageCell))
+            {
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    tracer!.ReportStorageRead(change.StorageCell);
+                    trace![change.StorageCell] = new StorageChangeTrace(change.Value, trace[change.StorageCell].After);
                 }
 
-                _committedThisRound.Add(change.StorageCell);
-
-                if (change.ChangeType == ChangeType.Destroy)
-                {
-                    continue;
-                }
-
-                int forAssertion = _intraBlockCache[change.StorageCell].Pop();
-                if (forAssertion != _currentPosition - i)
-                {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
-                }
-
-                switch (change.ChangeType)
-                {
-                    case ChangeType.Destroy:
-                        break;
-                    case ChangeType.JustCache:
-                        break;
-                    case ChangeType.Update:
-                        if (_logger.IsTrace)
-                        {
-                            _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
-                        }
-
-                        SaveToTree(toUpdateRoots, change);
-
-                        if (isTracing)
-                        {
-                            trace![change.StorageCell] = new ChangeTrace(change.Value);
-                        }
-
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+                continue;
             }
 
-            foreach (Address address in toUpdateRoots)
+            if (isTracing && change.ChangeType == ChangeType.JustCache)
             {
-                // since the accounts could be empty accounts that are removing (EIP-158)
-                if (_stateProvider.AccountExists(address))
+                tracer!.ReportStorageRead(change.StorageCell);
+            }
+
+            _committedThisRound.Add(change.StorageCell);
+            int forAssertion = _intraBlockCache[change.StorageCell].Pop();
+            if (forAssertion != currentPosition - i)
+            {
+                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+            }
+
+            if (change.ChangeType == ChangeType.Update)
+            {
+                if (_logger.IsTrace)
                 {
-                    _toUpdateRoots.Add(address);
+                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+                }
+
+                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
+                    initialValue.AsSpan().SequenceEqual(change.Value))
+                {
+                    // no need to update the tree if the value is the same
                 }
                 else
                 {
-                    _toUpdateRoots.Remove(address);
-                    _storages.Remove(address);
+                    toUpdateRoots.Add(change.StorageCell.Address);
+
+                    GetOrCreateStorage(change.StorageCell.Address)
+                        .SaveChange(change.StorageCell, change.Value);
                 }
-            }
 
-            base.CommitCore(tracer);
-            _originalValues.Reset();
-            _committedThisRound.Reset();
-
-            if (isTracing)
-            {
-                ReportChanges(tracer!, trace!);
+                if (isTracing)
+                {
+                    trace![change.StorageCell] = new StorageChangeTrace(change.Value);
+                }
             }
         }
 
-        protected override void CommitStorageRoots()
+        foreach (AddressAsKey address in toUpdateRoots)
         {
-            if (_toUpdateRoots.Count == 0)
+            // since the accounts could be empty accounts that are removing (EIP-158)
+            if (_stateProvider.AccountExists(address))
             {
-                return;
-            }
-
-            // Is overhead of parallel foreach worth it?
-            if (_toUpdateRoots.Count <= 4)
-            {
-                UpdateRootHashesSingleThread();
+                _toUpdateRoots[address] = true;
+                // Add storage tree, will accessed later, which may be in parallel
+                // As we can't add a new storage tries in parallel to the _storages Dict do it here
+                GetOrCreateStorage(address).EnsureStorageTree();
             }
             else
             {
-                UpdateRootHashesMultiThread();
-            }
-
-            void UpdateRootHashesSingleThread()
-            {
-                foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
+                _toUpdateRoots.Remove(address);
+                if (_storages.TryGetValue(address, out PerContractState? storage))
                 {
-                    if (!_toUpdateRoots.Contains(kvp.Key))
-                    {
-                        // Wasn't updated don't recalculate
-                        continue;
-                    }
-
-                    StorageTree storageTree = kvp.Value;
-                    storageTree.UpdateRootHash(canBeParallel: true);
-                    _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
+                    // BlockChange need to be kept to keep selfdestruct marker (via DefaultableDictionary) working.
+                    storage.RemoveStorageTree();
                 }
             }
+        }
+        toUpdateRoots.Clear();
 
-            void UpdateRootHashesMultiThread()
+        base.CommitCore(tracer);
+        _originalValues.Clear();
+        _committedThisRound.Clear();
+
+        if (isTracing)
+        {
+            ReportChanges(tracer!, trace!);
+        }
+    }
+
+    internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    {
+        if (_toUpdateRoots.Count == 0)
+            return;
+
+        UpdateRootHashes(writeBatch);
+
+        _toUpdateRoots.Clear();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch);
+
+    private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    {
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+        {
+            if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
             {
-                // We can recalculate the roots in parallel as they are all independent tries
-                Parallel.ForEach(_storages, RuntimeInformation.ParallelOptionsLogicalCores, kvp =>
-                {
-                    if (!_toUpdateRoots.Contains(kvp.Key))
-                    {
-                        // Wasn't updated don't recalculate
-                        return;
-                    }
-                    StorageTree storageTree = kvp.Value;
-                    storageTree.UpdateRootHash(canBeParallel: false);
-                });
+                // Wasn't updated don't recalculate
+                continue;
+            }
 
-                // Update the storage roots in the main thread non in parallel
-                foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
-                {
-                    if (!_toUpdateRoots.Contains(kvp.Key))
-                    {
-                        continue;
-                    }
+            PerContractState contractState = kvp.Value;
 
-                    // Update the storage root for the Account
-                    _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.RootHash);
-                }
+            (int writes, int skipped) = contractState.ProcessStorageChanges(
+                writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
 
+            ReportMetrics(writes, skipped);
+        }
+    }
+
+    private static void ReportMetrics(int writes, int skipped)
+    {
+        if (skipped > 0)
+            Db.Metrics.IncrementStorageSkippedWrites(skipped);
+
+        if (writes > 0)
+            Db.Metrics.IncrementStorageTreeWrites(writes);
+    }
+
+    public void ClearStorageMap() => _storages.Clear();
+
+    private PerContractState GetOrCreateStorage(Address address)
+    {
+        ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+        if (!exists) value = PerContractState.Rent(address, this);
+        return value;
+    }
+
+    public void WarmUp(in StorageCell storageCell, bool isEmpty)
+    {
+        if (!isEmpty)
+            LoadFromTree(in storageCell);
+    }
+
+    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) => GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+
+    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+    {
+        StackList<int> stack = SetupRegistry(cell);
+        _originalValues[cell] = value;
+        stack.Push(_changes.Count);
+        _changes.Add(new Change(in cell, value, ChangeType.JustCache));
+    }
+
+    private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
+    {
+        foreach ((StorageCell address, StorageChangeTrace change) in trace)
+        {
+            byte[] before = change.Before;
+            byte[] after = change.After;
+
+            if (!Bytes.AreEqual(before, after))
+            {
+                tracer.ReportStorageChange(address, before, after);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clear all storage at specified address
+    /// </summary>
+    /// <param name="address">Contract address</param>
+    public override void ClearStorage(Address address)
+    {
+        base.ClearStorage(address);
+
+        _toUpdateRoots.TryAdd(address, true);
+
+        PerContractState state = GetOrCreateStorage(address);
+        state.Clear();
+    }
+
+    private sealed class DefaultableDictionary()
+    {
+        private bool _missingAreDefault;
+        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
+        public bool HasClear => _missingAreDefault;
+        public int Capacity => _dictionary.Capacity;
+
+        public void Reset()
+        {
+            _missingAreDefault = false;
+            _dictionary.Clear();
+        }
+        public void ClearAndSetMissingAsDefault()
+        {
+            _missingAreDefault = true;
+            _dictionary.Clear();
+        }
+
+        public ref StorageChangeTrace GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
+        {
+            ref StorageChangeTrace value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
+            if (!exists && _missingAreDefault)
+            {
+                // Where we know the rest of the tree is empty
+                // we can say the value was found but is default
+                // rather than having to check the database
+                value = StorageChangeTrace.ZeroBytes;
+                exists = true;
+            }
+            return ref value;
+        }
+
+        public ref StorageChangeTrace GetValueRefOrNullRef(UInt256 storageCellIndex)
+            => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
+
+        public StorageChangeTrace this[UInt256 key]
+        {
+            set => _dictionary[key] = value;
+        }
+
+        public Dictionary<UInt256, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
+
+        private sealed class Comparer : IEqualityComparer<UInt256>
+        {
+            public static Comparer Instance { get; } = new();
+
+            private Comparer() { }
+
+            public bool Equals(UInt256 x, UInt256 y)
+                => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
+
+            public int GetHashCode([DisallowNull] UInt256 obj)
+                => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
+        }
+
+        public void UnmarkClear() => _missingAreDefault = false;
+    }
+
+    private sealed class PerContractState : IReturnable
+    {
+        private IWorldStateScopeProvider.IStorageTree? _backend;
+
+        private readonly DefaultableDictionary BlockChange = new();
+        private bool _wasWritten = false;
+        private PersistentStorageProvider _provider;
+        private Address _address;
+
+        private PerContractState(Address address, PersistentStorageProvider provider) => Initialize(address, provider);
+
+        private void Initialize(Address address, PersistentStorageProvider provider)
+        {
+            _address = address;
+            _provider = provider;
+        }
+
+        public int EstimatedChanges => BlockChange.EstimatedSize;
+
+        public Hash256 StorageRoot
+        {
+            get
+            {
+                EnsureStorageTree();
+                return _backend.RootHash;
             }
         }
 
-        private void SaveToTree(HashSet<Address> toUpdateRoots, Change change)
+        public bool IsEmpty
         {
-            if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
-                initialValue.AsSpan().SequenceEqual(change.Value))
+            get
             {
-                // no need to update the tree if the value is the same
-                return;
+                // _backend.RootHash is not reflected until after commit, but this need to be reflected before commit
+                // for SelfDestruct, since the deletion is not part of changelog, it need to be handled here.
+                if (BlockChange.HasClear) return true;
+
+                EnsureStorageTree();
+                return _backend.RootHash == Keccak.EmptyTreeHash;
             }
+        }
 
-            StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-            Db.Metrics.StorageTreeWrites++;
-            toUpdateRoots.Add(change.StorageCell.Address);
-            tree.Set(change.StorageCell.Index, change.Value);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void EnsureStorageTree()
+        {
+            if (_backend is not null) return;
+            CreateStorageTree();
+        }
 
-            ref Dictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void CreateStorageTree()
+        {
+            _backend = _provider._currentScope.CreateStorageTree(_address);
+
+            bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
+            if (isEmpty && !_wasWritten)
+            {
+                // Slight optimization that skips the tree
+                BlockChange.ClearAndSetMissingAsDefault();
+            }
+        }
+
+        public void Clear()
+        {
+            EnsureStorageTree();
+            BlockChange.ClearAndSetMissingAsDefault();
+        }
+
+        public void Return()
+        {
+            _address = null;
+            _provider = null;
+            _backend = null;
+            _wasWritten = false;
+            Pool.Return(this);
+        }
+
+        public void SaveChange(StorageCell storageCell, byte[] value)
+        {
+            _wasWritten = true;
+            ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
-                dict = new Dictionary<UInt256, byte[]>();
-            }
-
-            dict[change.StorageCell.Index] = change.Value;
-        }
-
-        /// <summary>
-        /// Commit persistent storage trees
-        /// </summary>
-        /// <param name="blockNumber">Current block number</param>
-        public void CommitTrees(long blockNumber)
-        {
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
-            {
-                if (!_toUpdateRoots.Contains(storage.Key))
-                {
-                    continue;
-                }
-                storage.Value.Commit(blockNumber);
-            }
-
-            _toUpdateRoots.Clear();
-            // only needed here as there is no control over cached storage size otherwise
-            _storages.Reset();
-            _preBlockCache?.Clear();
-        }
-
-        private StorageTree GetOrCreateStorage(Address address)
-        {
-            ref StorageTree? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
-            if (!exists)
-            {
-                value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
-            }
-
-            return value;
-        }
-
-        public void WarmUp(in StorageCell storageCell, bool isEmpty)
-        {
-            if (isEmpty)
-            {
-                _preBlockCache[storageCell] = Array.Empty<byte>();
+                valueChanges = new StorageChangeTrace(value);
             }
             else
             {
-                LoadFromTree(in storageCell);
+                valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
         }
 
-        private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref Dictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+            ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
-                dict = new Dictionary<UInt256, byte[]>();
-            }
+                byte[] value = LoadFromTreeStorage(storageCell);
 
-            ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(dict, storageCell.Index, out exists);
-            if (!exists)
-            {
-                long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
-
-                value = _preBlockCache is not null
-                    ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
-                    : _loadFromTree(storageCell);
-
-                if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
-                {
-                    // Read from Concurrent Cache
-                    Db.Metrics.IncrementStorageTreeCache();
-                }
+                valueChange = new(value, value);
             }
             else
             {
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
-            return value;
+            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
+            return valueChange.After;
         }
 
-        private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+        private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
-            StackList<int> stack = SetupRegistry(cell);
-            IncrementChangePosition();
-            stack.Push(_currentPosition);
-            _originalValues[cell] = value;
-            _changes[_currentPosition] = new Change(ChangeType.JustCache, cell, value);
+            Db.Metrics.IncrementStorageTreeReads();
+
+            EnsureStorageTree();
+            return !storageCell.IsHash
+                ? _backend.Get(storageCell.Index)
+                : _backend.Get(storageCell.Hash);
         }
 
-        private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
+        public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
-            foreach ((StorageCell address, ChangeTrace change) in trace)
+            EnsureStorageTree();
+            using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
+
+            int writes = 0;
+            int skipped = 0;
+
+            if (BlockChange.HasClear)
             {
-                byte[] before = change.Before;
-                byte[] after = change.After;
+                storageWriteBatch.Clear();
+                BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
+            }
 
-                if (!Bytes.AreEqual(before, after))
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            {
+                byte[] after = kvp.Value.After;
+                if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                 {
-                    tracer.ReportStorageChange(address, before, after);
+                    BlockChange[kvp.Key] = new(after, after);
+                    storageWriteBatch.Set(kvp.Key, after);
+
+                    writes++;
+                }
+                else
+                {
+                    skipped++;
                 }
             }
+
+            return (writes, skipped);
         }
 
-        private Hash256 RecalculateRootHash(Address address)
+        public void RemoveStorageTree() => _backend = null;
+
+        internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)
+            => Pool.Rent(address, persistentStorageProvider);
+
+        private static class Pool
         {
-            StorageTree storageTree = GetOrCreateStorage(address);
-            storageTree.UpdateRootHash();
-            return storageTree.RootHash;
-        }
+            private static readonly ConcurrentQueue<PerContractState> _pool = [];
+            private static int _poolCount;
 
-        /// <summary>
-        /// Clear all storage at specified address
-        /// </summary>
-        /// <param name="address">Contract address</param>
-        public override void ClearStorage(Address address)
+            public static PerContractState Rent(Address address, PersistentStorageProvider provider)
+            {
+                if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out PerContractState item))
+                {
+                    Interlocked.Decrement(ref _poolCount);
+                    item.Initialize(address, provider);
+                    return item;
+                }
+
+                return new PerContractState(address, provider);
+            }
+
+            public static void Return(PerContractState item)
+            {
+                const int MaxItemSize = 512;
+                const int MaxPooledCount = 2048;
+
+                if (item.BlockChange.Capacity > MaxItemSize)
+                    return;
+
+                // shared pool fallback
+                if (Interlocked.Increment(ref _poolCount) > MaxPooledCount)
+                {
+                    Interlocked.Decrement(ref _poolCount);
+                    return;
+                }
+
+                item.BlockChange.Reset();
+                _pool.Enqueue(item);
+            }
+        }
+    }
+
+    private readonly struct StorageChangeTrace
+    {
+        public static readonly StorageChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+        public static ref readonly StorageChangeTrace ZeroBytes => ref _zeroBytes;
+
+        public StorageChangeTrace(byte[]? before, byte[]? after)
         {
-            base.ClearStorage(address);
-
-            // Bit heavy-handed, but we need to clear all the cache for that address
-            _blockCache.Remove(address);
-
-            // here it is important to make sure that we will not reuse the same tree when the contract is revived
-            // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
-            // touched in this block, hence were not zeroed above
-            // TODO: how does it work with pruning?
-            _toUpdateRoots.Remove(address);
-            _storages[address] = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
+            After = after ?? StorageTree.ZeroBytes;
+            Before = before ?? StorageTree.ZeroBytes;
         }
 
-        private class StorageTreeFactory : IStorageTreeFactory
+        public StorageChangeTrace(byte[]? after)
         {
-            public StorageTree Create(Address address, IScopedTrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
-                => new(trieStore, storageRoot, logManager);
+            After = after ?? StorageTree.ZeroBytes;
+            Before = StorageTree.ZeroBytes;
+            IsInitialValue = true;
         }
+
+        public readonly byte[] Before;
+        public readonly byte[] After;
+        public readonly bool IsInitialValue;
     }
 }

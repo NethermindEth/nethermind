@@ -13,79 +13,69 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
-namespace Nethermind.JsonRpc.WebSockets
+namespace Nethermind.JsonRpc.WebSockets;
+
+public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
+    IJsonRpcService jsonRpcService,
+    IJsonRpcLocalStats jsonRpcLocalStats,
+    ILogManager logManager,
+    IJsonSerializer jsonSerializer,
+    IJsonRpcUrlCollection jsonRpcUrlCollection,
+    IRpcAuthentication rpcAuthentication,
+    long? maxBatchResponseBodySize,
+    int processingConcurrency) : IWebSocketsModule
 {
-    public class JsonRpcWebSocketsModule : IWebSocketsModule
+    private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
+
+    private readonly JsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+    private readonly IJsonRpcService _jsonRpcService = jsonRpcService;
+    private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
+    private readonly ILogManager _logManager = logManager;
+    private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
+    private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
+    private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
+    private readonly long? _maxBatchResponseBodySize = maxBatchResponseBodySize;
+    private readonly int _processingConcurrency = processingConcurrency;
+
+    public string Name { get; } = "json-rpc";
+
+    public async ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext context)
     {
-        private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
+        int port = context.Connection.LocalPort;
 
-        private readonly JsonRpcProcessor _jsonRpcProcessor;
-        private readonly IJsonRpcService _jsonRpcService;
-        private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
-        private readonly ILogManager _logManager;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
-        private readonly IRpcAuthentication _rpcAuthentication;
-        private readonly long? _maxBatchResponseBodySize;
-
-        public string Name { get; } = "json-rpc";
-
-        public JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
-            IJsonRpcService jsonRpcService,
-            IJsonRpcLocalStats jsonRpcLocalStats,
-            ILogManager logManager,
-            IJsonSerializer jsonSerializer,
-            IJsonRpcUrlCollection jsonRpcUrlCollection,
-            IRpcAuthentication rpcAuthentication,
-            long? maxBatchResponseBodySize)
+        if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
         {
-            _jsonRpcProcessor = jsonRpcProcessor;
-            _jsonRpcService = jsonRpcService;
-            _jsonRpcLocalStats = jsonRpcLocalStats;
-            _logManager = logManager;
-            _jsonSerializer = jsonSerializer;
-            _jsonRpcUrlCollection = jsonRpcUrlCollection;
-            _rpcAuthentication = rpcAuthentication;
-            _maxBatchResponseBodySize = maxBatchResponseBodySize;
+            throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
         }
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext context)
+        if (jsonRpcUrl.IsAuthenticated && !await _rpcAuthentication.Authenticate(context.Request.Headers.Authorization))
         {
-            int port = context.Connection.LocalPort;
-
-            if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
-            {
-                throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
-            }
-
-            if (jsonRpcUrl.IsAuthenticated && !_rpcAuthentication.Authenticate(context.Request.Headers.Authorization))
-            {
-                throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
-            }
-
-            JsonRpcSocketsClient<WebSocketMessageStream>? socketsClient = new(
-                clientName,
-                new WebSocketMessageStream(webSocket, _logManager),
-                RpcEndpoint.Ws,
-                _jsonRpcProcessor,
-                _jsonRpcLocalStats,
-                _jsonSerializer,
-                jsonRpcUrl,
-                _maxBatchResponseBodySize);
-
-            _clients.TryAdd(socketsClient.Id, socketsClient);
-
-            return socketsClient;
+            throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
         }
 
-        public void RemoveClient(string id)
-        {
-            if (_clients.TryRemove(id, out ISocketsClient? client))
-            {
-                client.TryDispose();
-            }
-        }
+        JsonRpcSocketsClient<WebSocketMessageStream>? socketsClient = new(
+            clientName,
+            new WebSocketMessageStream(webSocket, _logManager),
+            RpcEndpoint.Ws,
+            _jsonRpcProcessor,
+            _jsonRpcLocalStats,
+            _jsonSerializer,
+            jsonRpcUrl,
+            _maxBatchResponseBodySize,
+            _processingConcurrency);
 
-        public Task SendAsync(SocketsMessage message) => Task.CompletedTask;
+        _clients.TryAdd(socketsClient.Id, socketsClient);
+
+        return socketsClient;
     }
+
+    public void RemoveClient(string id)
+    {
+        if (_clients.TryRemove(id, out ISocketsClient? client))
+        {
+            client.TryDispose();
+        }
+    }
+
+    public Task SendAsync(SocketsMessage message) => Task.CompletedTask;
 }

@@ -14,14 +14,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncDownloader : ISyncDownloader<BodiesSyncBatch>
+    public class BodiesSyncDownloader(ILogManager logManager) : ISyncDownloader<BodiesSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public BodiesSyncDownloader(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<BodiesSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
         {
@@ -30,7 +25,7 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.MarkSent();
 
             using ArrayPoolList<Hash256> hashes = new(batch.Infos.Length);
-            hashes.AddRange(batch.Infos.Where(i => i is not null).Select(i => i!.BlockHash));
+            hashes.AddRange(batch.Infos.Where(static i => i is not null).Select(static i => i!.BlockHash));
             if (hashes.Count == 0)
             {
                 if (Logger.IsDebug) Logger.Debug($"{batch} - attempted send a request with no hash.");

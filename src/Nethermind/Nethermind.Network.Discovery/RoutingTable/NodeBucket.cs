@@ -8,26 +8,18 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.Discovery.RoutingTable;
 
 [DebuggerDisplay("{BondedItemsCount} bonded item(s)")]
-public class NodeBucket
+public class NodeBucket(int distance, int bucketSize, float dropFullBucketProbability = 0.0f)
 {
-    private readonly object _nodeBucketLock = new();
-    private readonly LinkedList<NodeBucketItem> _items;
-    private readonly float _dropFullBucketProbability;
-
-    public NodeBucket(int distance, int bucketSize, float dropFullBucketProbability = 0.0f)
-    {
-        _items = new LinkedList<NodeBucketItem>();
-        Distance = distance;
-        BucketSize = bucketSize;
-        _dropFullBucketProbability = dropFullBucketProbability;
-    }
+    private readonly Lock _nodeBucketLock = new();
+    private readonly LinkedList<NodeBucketItem> _items = new();
+    private readonly float _dropFullBucketProbability = dropFullBucketProbability;
 
     /// <summary>
     /// Distance from Master Node
     /// </summary>
-    public int Distance { get; }
+    public int Distance { get; } = distance;
 
-    public int BucketSize { get; }
+    public int BucketSize { get; } = bucketSize;
 
     public bool AnyBondedItems()
     {
@@ -44,9 +36,9 @@ public class NodeBucket
 
     public struct BondedItemsEnumerator : IEnumerator<NodeBucketItem>, IEnumerable<NodeBucketItem>
     {
-        private NodeBucket _nodeBucket;
+        private readonly NodeBucket _nodeBucket;
         private LinkedListNode<NodeBucketItem>? _currentNode;
-        private DateTime _referenceTime;
+        private readonly DateTime _referenceTime;
 
         public BondedItemsEnumerator(NodeBucket nodeBucket)
         {
@@ -61,7 +53,7 @@ public class NodeBucket
 
         public NodeBucketItem Current { get; private set; }
 
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
@@ -84,15 +76,15 @@ public class NodeBucket
 
         void IEnumerator.Reset() => throw new NotSupportedException();
 
-        public void Dispose()
+        public readonly void Dispose()
         {
         }
-        public BondedItemsEnumerator GetEnumerator() => this;
+        public readonly BondedItemsEnumerator GetEnumerator() => this;
 
-        IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator()
+        readonly IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator()
             => GetEnumerator();
 
-        IEnumerator IEnumerable.GetEnumerator()
+        readonly IEnumerator IEnumerable.GetEnumerator()
             => GetEnumerator();
     }
 
@@ -180,8 +172,5 @@ public class NodeBucket
         }
     }
 
-    private NodeBucketItem GetEvictionCandidate()
-    {
-        return _items.Last();
-    }
+    private NodeBucketItem GetEvictionCandidate() => _items.Last();
 }

@@ -11,27 +11,21 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
+    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : SyncFeed<SnapSyncBatch?>, IDisposable
     {
-        private readonly object _syncLock = new();
+        private readonly Lock _syncLock = new();
 
         private const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
 
         private const SnapSyncBatch EmptyBatch = null;
 
-        private readonly ISnapProvider _snapProvider;
+        private readonly ISnapProvider _snapProvider = snapProvider;
 
-        private readonly ILogger _logger;
+        private readonly ILogger _logger = logManager.GetClassLogger<SnapSyncFeed>();
         private bool _disposed = false;
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;
-
-        public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager)
-        {
-            _snapProvider = snapProvider;
-            _logger = logManager.GetClassLogger();
-        }
 
         public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
@@ -145,7 +139,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 lock (_syncLock)
                 {
-                    foreach (var item in _resultLog)
+                    foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
                     {
                         if (item.result == AddRangeResult.OK)
                         {
@@ -195,10 +189,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void Dispose()
-        {
-            _disposed = true;
-        }
+        public void Dispose() => _disposed = true;
 
         public override void SyncModeSelectorOnChanged(SyncMode current)
         {
@@ -222,5 +213,6 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();
+        public override string FeedName => nameof(SnapSyncFeed);
     }
 }

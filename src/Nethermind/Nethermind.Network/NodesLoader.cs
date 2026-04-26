@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Rlpx;
@@ -16,38 +19,32 @@ namespace Nethermind.Network
     /// <summary>
     /// This class should be split into multiple sources
     /// </summary>
-    public class NodesLoader : INodeSource
+    public class NodesLoader(
+        INetworkConfig networkConfig,
+        INodeStatsManager stats,
+        [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
+        IRlpxHost rlpxHost,
+        ILogManager logManager) : INodeSource
     {
-        private readonly INetworkConfig _networkConfig;
-        private readonly INodeStatsManager _stats;
-        private readonly INetworkStorage _peerStorage;
-        private readonly IRlpxHost _rlpxHost;
-        private readonly ILogger _logger;
+        private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+        private readonly INodeStatsManager _stats = stats ?? throw new ArgumentNullException(nameof(stats));
+        private readonly INetworkStorage _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+        private readonly IRlpxHost _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
+        private readonly ILogger _logger = logManager?.GetClassLogger<NodesLoader>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public NodesLoader(
-            INetworkConfig networkConfig,
-            INodeStatsManager stats,
-            INetworkStorage peerStorage,
-            IRlpxHost rlpxHost,
-            ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _stats = stats ?? throw new ArgumentNullException(nameof(stats));
-            _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-        }
-
-        public List<Node> LoadInitialList()
+        public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
             List<Node> allPeers = new();
             LoadPeersFromDb(allPeers);
 
-            LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
+            if (!_networkConfig.OnlyStaticPeers)
             {
-                n.IsBootnode = true;
-                if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
-            });
+                LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
+                {
+                    n.IsBootnode = true;
+                    if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
+                });
+            }
 
             LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
             {
@@ -55,9 +52,11 @@ namespace Nethermind.Network
                 if (_logger.IsInfo) _logger.Info($"Static node  : {n}");
             });
 
-            return allPeers
+            IEnumerable<Node> combined = allPeers
                 .Where(p => p.Id != _rlpxHost.LocalNodeId)
-                .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic).ToList();
+                .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic);
+
+            return combined.ToAsyncEnumerable();
         }
 
         private void LoadPeersFromDb(List<Node> peers)
@@ -107,13 +106,17 @@ namespace Nethermind.Network
         {
             foreach (NetworkNode networkNode in networkNodes)
             {
+                if (!networkNode.IsEnode)
+                {
+                    continue;
+                }
+
                 Node node = new(networkNode);
                 nodeUpdate.Invoke(node);
                 peers.Add(node);
             }
         }
 
-        public event EventHandler<NodeEventArgs>? NodeAdded { add { } remove { } }
 
         public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
     }

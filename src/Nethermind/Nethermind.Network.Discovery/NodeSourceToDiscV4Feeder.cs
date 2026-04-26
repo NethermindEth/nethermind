@@ -1,32 +1,27 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
+using Nethermind.Stats.Model;
+
 namespace Nethermind.Network.Discovery;
 
-public class NodeSourceToDiscV4Feeder : IDisposable
+public class NodeSourceToDiscV4Feeder([KeyFilter(NodeSourceToDiscV4Feeder.SourceKey)] INodeSource nodeSource, IDiscoveryApp discoveryApp, IProcessExitSource exitSource, int maxNodes = 50)
 {
-    private readonly INodeSource _nodeSource;
-    private readonly IDiscoveryApp _discoveryApp;
-    private readonly int _maxNodes;
-    private int _addedNodes = 0;
+    public const string SourceKey = "Enr";
 
-    public NodeSourceToDiscV4Feeder(INodeSource nodeSource, IDiscoveryApp discoveryApp, int maxNodes)
-    {
-        nodeSource.NodeAdded += AddToDiscoveryApp;
-        _nodeSource = nodeSource;
-        _discoveryApp = discoveryApp;
-        _maxNodes = maxNodes;
-    }
+    private readonly INodeSource _nodeSource = nodeSource;
+    private readonly IDiscoveryApp _discoveryApp = discoveryApp;
+    private readonly IProcessExitSource _exitSource = exitSource;
+    private readonly int _maxNodes = maxNodes;
 
-    private void AddToDiscoveryApp(object? sender, NodeEventArgs e)
+    public async Task Run()
     {
-        if (_addedNodes >= _maxNodes) return;
-        _addedNodes++;
-        _discoveryApp.AddNodeToDiscovery(e.Node);
-    }
-
-    public void Dispose()
-    {
-        _nodeSource.NodeAdded -= AddToDiscoveryApp;
+        CancellationToken token = _exitSource.Token;
+        await foreach (Node node in _nodeSource.DiscoverNodes(token).Take(_maxNodes).WithCancellation(token))
+        {
+            _discoveryApp.AddNodeToDiscovery(node);
+        }
     }
 }

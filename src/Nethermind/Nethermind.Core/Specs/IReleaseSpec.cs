@@ -1,6 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -13,9 +16,8 @@ namespace Nethermind.Core.Specs
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
-        //EIP-3860: Limit and meter initcode
-        long MaxInitCodeSize => 2 * MaxCodeSize;
         long MinGasLimit { get; }
+        long MinHistoryRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
@@ -197,12 +199,10 @@ namespace Nethermind.Core.Specs
         bool IsEip2930Enabled { get; }
 
         /// <summary>
-        /// Should EIP158 be ignored for this account.
+        /// Account for which EIP-158 state clearing should be ignored.
         /// </summary>
-        /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
-        /// <param name="address"></param>
-        /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address);
+        /// <remarks>This is needed for SystemUser account compatibility with Parity on AuRa chains.</remarks>
+        Address? Eip158IgnoredAccount => null;
 
         /// <summary>
         /// BaseFee opcode
@@ -266,13 +266,49 @@ namespace Nethermind.Core.Specs
         /// Parent Beacon Block precompile
         /// </summary>
         bool IsEip4788Enabled { get; }
-        Address Eip4788ContractAddress { get; }
+        Address? Eip4788ContractAddress { get; }
+
+
+        /// <summary>
+        /// EIP-6110: Supply validator deposits on chain
+        /// </summary>
+        bool IsEip6110Enabled { get; }
+        [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
+        Address? DepositContractAddress { get; }
+
+        /// <summary>
+        /// Execution layer triggerable exits
+        /// </summary>
+        bool IsEip7002Enabled { get; }
+        [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
+        Address? Eip7002ContractAddress { get; }
+
+
+        /// <summary>
+        /// EIP-7251: triggered consolidations
+        /// </summary>
+        bool IsEip7251Enabled { get; }
+        [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
+        Address? Eip7251ContractAddress { get; }
+
 
         /// <summary>
         /// Save historical block hashes in state
         /// </summary>
         bool IsEip2935Enabled { get; }
-        Address Eip2935ContractAddress { get; }
+
+        /// <summary>
+        /// Fetch blockHashes from the state for BLOCKHASH opCode
+        /// </summary>
+        bool IsEip7709Enabled { get; }
+        [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
+        Address? Eip2935ContractAddress { get; }
+
+        /// <summary>
+        /// EIP-2935 ring buffer size for historical block hash storage.
+        /// Defaults to 8,191 blocks for Ethereum mainnet.
+        /// </summary>
+        public long Eip2935RingBufferSize { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
@@ -280,86 +316,159 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
+        /// </summary>
+        bool IsEip8024Enabled { get; }
+
+        /// <summary>
+        /// Transactions that allows code delegation for EOA
+        /// </summary>
+        bool IsEip7702Enabled { get; }
+
+        /// <summary>
+        /// Set upper bounds for MODEXP
+        /// </summary>
+        bool IsEip7823Enabled { get; }
+
+        /// <summary>
+        /// Blob base fee bounded by execution cost
+        /// </summary>
+        bool IsEip7918Enabled { get; }
+
+        /// <summary>
+        /// Blob base fee collection for Gnosis
+        /// </summary>
+        bool IsEip4844FeeCollectorEnabled { get; }
+
+        /// <summary>
+        /// SecP256r1 precompile
+        /// </summary>
+        bool IsRip7212Enabled { get; }
+        bool IsEip7951Enabled { get; }
+
+        /// OP Granite
+        bool IsOpGraniteEnabled { get; }
+
+        /// OP Holocene
+        bool IsOpHoloceneEnabled { get; }
+
+        /// OP Jovian
+        bool IsOpJovianEnabled { get; }
+
+        // OP Isthmus
+        bool IsOpIsthmusEnabled { get; }
+
+        /// <summary>
+        ///  Increase call data cost
+        /// </summary>
+        bool IsEip7623Enabled { get; }
+
+        /// <summary>
+        ///  Transaction gas limit cap
+        /// </summary>
+        bool IsEip7825Enabled { get; }
+
+        /// <summary>
+        ///  Increase ModExp Gas Cost
+        /// </summary>
+        bool IsEip7883Enabled { get; }
+
+        /// <summary>
+        ///  RLP Execution Block Size Limit
+        /// </summary>
+        bool IsEip7934Enabled { get; }
+        int Eip7934MaxRlpBlockSize { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
-        bool ValidateChainId => true;
+        public bool ValidateChainId { get; }
+
+        /// <summary>
+        /// EIP-7780: Add blob schedule to EL config files
+        /// </summary>
+        public ulong TargetBlobCount { get; }
+        public ulong MaxBlobCount { get; }
+        public ulong MaxBlobsPerTx { get; }
+        public UInt256 BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related
-        public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
+        public bool IsEip7594Enabled { get; }
 
-        // VM
-        public bool LimitCodeSize => IsEip170Enabled;
+        /// <summary>
+        /// This property holds an array that, at runtime, is actually an array of function pointers
+        /// with the signature:
+        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
+        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
+        /// but it cannot be explicitly typed as such due to cross-project layering constraints.
+        /// </summary>
+        /// <remarks>
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
+        /// even though it internally represents a typed array of function pointers.
+        /// </remarks>
+        public Array? EvmInstructionsNoTrace { get; set; }
 
-        public bool UseHotAndColdStorage => IsEip2929Enabled;
+        /// <summary>
+        /// This property holds an array that, at runtime, is actually an array of function pointers
+        /// with the signature:
+        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
+        /// The array is lazily populated with JIT-optimized instructions for an EVM,
+        /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
+        /// layering constraints.
+        /// </summary>
+        /// <remarks>
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
+        /// even though it internally represents a typed array of function pointers.
+        /// </remarks>
+        public Array? EvmInstructionsTraced { get; set; }
 
-        public bool UseTxAccessLists => IsEip2930Enabled;
+        /// <summary>
+        /// Gets a cached set of all precompiled contract addresses for this release specification.
+        /// Chain-specific implementations can override this to include their own precompiled contracts.
+        /// </summary>
+        FrozenSet<AddressAsKey> Precompiles { get; }
 
-        public bool AddCoinbaseToTxAccessList => IsEip3651Enabled;
+        /// <summary>
+        /// EIP-7939 - CLZ - Count leading zeros instruction
+        /// </summary>
+        public bool IsEip7939Enabled { get; }
 
-        public bool ModExpEnabled => IsEip198Enabled;
+        /// <summary>
+        /// EIP-7928: Block-Level Access Lists
+        /// </summary>
+        public bool IsEip7928Enabled { get; }
+        bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
-        public bool Bn128Enabled => IsEip196Enabled && IsEip197Enabled;
+        /// <summary>
+        /// EIP-8037: Cost Per State Byte / State Size Limit.
+        /// Two-dimensional gas metering for state growth control.
+        /// </summary>
+        public bool IsEip8037Enabled { get; }
 
-        public bool BlakeEnabled => IsEip152Enabled;
+        /// <summary>
+        /// EIP-7708: ETH transfers and burns emit a log
+        /// </summary>
+        public bool IsEip7708Enabled { get; }
 
-        public bool Bls381Enabled => IsEip2537Enabled;
+        /// <summary>
+        /// EIP-7843: SLOTNUM opcode
+        /// </summary>
+        public bool IsEip7843Enabled { get; }
 
-        public bool ChargeForTopLevelCreate => IsEip2Enabled;
+        /// <summary>
+        /// EIP-7954: Increase Maximum Contract Size
+        /// </summary>
+        public bool IsEip7954Enabled { get; }
 
-        public bool FailOnOutOfGasCodeDeposit => IsEip2Enabled;
-
-        public bool UseShanghaiDDosProtection => IsEip150Enabled;
-
-        public bool UseExpDDosProtection => IsEip160Enabled;
-
-        public bool UseLargeStateDDosProtection => IsEip1884Enabled;
-
-        public bool ReturnDataOpcodesEnabled => IsEip211Enabled;
-
-        public bool ChainIdOpcodeEnabled => IsEip1344Enabled;
-
-        public bool Create2OpcodeEnabled => IsEip1014Enabled;
-
-        public bool DelegateCallEnabled => IsEip7Enabled;
-
-        public bool StaticCallEnabled => IsEip214Enabled;
-
-        public bool ShiftOpcodesEnabled => IsEip145Enabled;
-
-        public bool RevertOpcodeEnabled => IsEip140Enabled;
-
-        public bool ExtCodeHashOpcodeEnabled => IsEip1052Enabled;
-
-        public bool SelfBalanceOpcodeEnabled => IsEip1884Enabled;
-
-        public bool UseConstantinopleNetGasMetering => IsEip1283Enabled;
-
-        public bool UseIstanbulNetGasMetering => IsEip2200Enabled;
-
-        public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
-
-        public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
-
-        public bool Use63Over64Rule => UseShanghaiDDosProtection;
-
-        public bool BaseFeeEnabled => IsEip3198Enabled;
-
-        // EVM Related
-        public bool IncludePush0Instruction => IsEip3855Enabled;
-
-        public bool TransientStorageEnabled => IsEip1153Enabled;
-
-        public bool WithdrawalsEnabled => IsEip4895Enabled;
-        public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
-
-        public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => IsEip2935Enabled;
-        public bool MCopyIncluded => IsEip5656Enabled;
-        public bool BlobBaseFeeEnabled => IsEip4844Enabled;
+        /// <summary>
+        /// Precomputed gas cost and refund constants derived from this spec.
+        /// Values are cached per spec instance (singletons per fork) to avoid
+        /// repeated interface dispatch on the EVM opcode hot path.
+        /// </summary>
+        SpecGasCosts GasCosts { get; }
     }
 }

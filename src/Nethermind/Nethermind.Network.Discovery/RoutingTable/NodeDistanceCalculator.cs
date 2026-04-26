@@ -1,51 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.Network.Discovery.RoutingTable;
 
-public class NodeDistanceCalculator : INodeDistanceCalculator
+public class NodeDistanceCalculator(IDiscoveryConfig discoveryConfig) : INodeDistanceCalculator
 {
-    private readonly int _maxDistance;
-    private readonly int _bitsPerHoop;
+    private readonly int _maxDistance = discoveryConfig.BucketsCount;
 
-    public NodeDistanceCalculator(IDiscoveryConfig discoveryConfig)
+    public int CalculateDistance(Hash256 sourceId, Hash256 destinationId)
     {
-        _maxDistance = discoveryConfig.BucketsCount;
-        _bitsPerHoop = discoveryConfig.BitsPerHop;
-    }
-
-    public int CalculateDistance(ReadOnlySpan<byte> sourceId, ReadOnlySpan<byte> destinationId)
-    {
-        int lowerLength = Math.Min(sourceId.Length, destinationId.Length);
-        int distance = _maxDistance;
-
-        for (int i = 0; i < lowerLength; i++)
-        {
-            byte b = (byte)(destinationId[i] ^ sourceId[i]);
-            if (b == 0)
-            {
-                distance -= _bitsPerHoop;
-            }
-            else
-            {
-                int count = 0;
-                for (int j = _bitsPerHoop - 1; j >= 0; j--)
-                {
-                    //why not b[j] == 0
-                    if ((b & (1 << j)) == 0)
-                    {
-                        count++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                distance -= count;
-                break;
-            }
-        }
-
-        return distance;
+        Vector256<byte> a = Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in sourceId.ValueHash256));
+        Vector256<byte> b = Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in destinationId.ValueHash256));
+        Vector256<byte> xor = Vector256.Xor(a, b);
+        int leadingZeros = xor.CountLeadingZeroBits();
+        return Math.Max(0, _maxDistance - leadingZeros);
     }
 }

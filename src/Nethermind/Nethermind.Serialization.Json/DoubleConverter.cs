@@ -16,19 +16,13 @@ namespace Nethermind.Serialization.Json
         public override double Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
-            JsonSerializerOptions options)
-        {
-            return reader.GetDouble();
-        }
+            JsonSerializerOptions options) => reader.GetDouble();
 
         [SkipLocalsInit]
         public override void Write(
             Utf8JsonWriter writer,
             double value,
-            JsonSerializerOptions options)
-        {
-            writer.WriteRawValue(value.ToString("0.0#########", CultureInfo.InvariantCulture), skipInputValidation: true);
-        }
+            JsonSerializerOptions options) => writer.WriteRawValue(value.ToString("0.##########", CultureInfo.InvariantCulture), skipInputValidation: true);
     }
 
     public class DoubleArrayConverter : JsonConverter<double[]>
@@ -48,7 +42,7 @@ namespace Nethermind.Serialization.Json
             {
                 throw new JsonException();
             }
-            using ArrayPoolList<double> values = new ArrayPoolList<double>(16);
+            using ArrayPoolListRef<double> values = new(16);
             while (reader.Read() && reader.TokenType == JsonTokenType.Number)
             {
                 values.Add(reader.GetDouble());
@@ -58,7 +52,7 @@ namespace Nethermind.Serialization.Json
                 throw new JsonException();
             }
 
-            if (values.Count == 0) return Array.Empty<double>();
+            if (values.Count == 0) return [];
 
             double[] result = new double[values.Count];
             values.CopyTo(result, 0);

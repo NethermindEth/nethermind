@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Net;
+using System.Text.RegularExpressions;
+using FastEnumUtility;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 
@@ -53,6 +56,9 @@ namespace Nethermind.Stats.Model
         /// </summary>
         public bool IsStatic { get; set; }
 
+        public bool IsTrusted { get; set; }
+
+
         public string ClientId
         {
             get => _clientId;
@@ -70,6 +76,7 @@ namespace Nethermind.Stats.Model
 
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
+        public string Enr { get; set; }
 
         public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
@@ -89,11 +96,11 @@ namespace Nethermind.Stats.Model
             SetIPEndPoint(address);
         }
 
-        private static string[] _ports = CreateCommonPortStrings();
+        private static readonly string[] _ports = CreateCommonPortStrings();
 
         private static string[] CreateCommonPortStrings()
         {
-            var ports = new string[100];
+            string[] ports = new string[100];
             for (int i = 0; ports.Length < 100; i++)
             {
                 ports[i] = (i + 30300).ToString().PadLeft(5, ' ');
@@ -122,10 +129,9 @@ namespace Nethermind.Stats.Model
             }
         }
 
-        private static IPEndPoint GetIPEndPoint(string host, int port)
-        {
-            return new IPEndPoint(IPAddress.Parse(host), port);
-        }
+        public bool? ValidatedProtocol { get; set; }
+
+        private static IPEndPoint GetIPEndPoint(string host, int port) => new(IPAddress.Parse(host), port);
 
         public override bool Equals(object obj)
         {
@@ -148,19 +154,16 @@ namespace Nethermind.Stats.Model
 
         public string ToString(string format) => ToString(format, null);
 
-        public string ToString(string format, IFormatProvider formatProvider)
+        public string ToString(string format, IFormatProvider formatProvider) => format switch
         {
-            return format switch
-            {
-                Format.Short => $"{Host}:{Port}",
-                Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
-                Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
-                Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
-                Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",
-                Format.WithPublicKey => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
-                _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
-            };
-        }
+            Format.Short => $"{Host}:{Port}",
+            Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
+            Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
+            Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
+            Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",
+            Format.WithPublicKey => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
+            _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
+        };
 
         public bool Equals(Node other)
         {
@@ -187,48 +190,66 @@ namespace Nethermind.Stats.Model
             return !(a == b);
         }
 
+        // Dynamically generates regex pattern from NodeClientType enum values (excluding Unknown).
+        // Pattern structure: (ClientName|OtherClient|...)
+        // Ordered by likelihood first, with longer names before potential substrings to prevent conflicts.
+        private static readonly Regex _clientTypeRegex = new(
+            string.Join("|",
+                // Most common clients (ordered by likelihood)
+                new[]
+                {
+                    nameof(NodeClientType.Geth),
+                    nameof(NodeClientType.Nethermind),
+                    nameof(NodeClientType.Reth),
+                    nameof(NodeClientType.Besu),
+                    nameof(NodeClientType.Erigon),
+                    nameof(NodeClientType.Nimbus),
+                    nameof(NodeClientType.Ethrex),
+                    nameof(NodeClientType.EthereumJS),
+                    nameof(NodeClientType.OpenEthereum),
+                    nameof(NodeClientType.Parity),
+                }
+                .Concat(
+                    // Less common clients (ordered by length to prevent substring conflicts)
+                    FastEnum.GetNames<NodeClientType>()
+                        .Except(new[]
+                        {
+                            nameof(NodeClientType.Unknown),
+                            nameof(NodeClientType.Geth),
+                            nameof(NodeClientType.Nethermind),
+                            nameof(NodeClientType.Reth),
+                            nameof(NodeClientType.Besu),
+                            nameof(NodeClientType.Erigon),
+                            nameof(NodeClientType.Nimbus),
+                            nameof(NodeClientType.Ethrex),
+                            nameof(NodeClientType.EthereumJS),
+                            nameof(NodeClientType.OpenEthereum),
+                            nameof(NodeClientType.Parity),
+                        })
+                        .OrderByDescending(name => name.Length))),
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         public static NodeClientType RecognizeClientType(string clientId)
         {
             if (clientId is null)
             {
                 return NodeClientType.Unknown;
             }
-            else if (clientId.Contains(nameof(NodeClientType.Besu), StringComparison.OrdinalIgnoreCase))
+
+            // Use EnumerateMatches to avoid allocations - it returns ValueMatch structs
+            foreach (ValueMatch match in _clientTypeRegex.EnumerateMatches(clientId))
             {
-                return NodeClientType.Besu;
+                // Get the matched text as a span to avoid allocations
+                ReadOnlySpan<char> matchedText = clientId.AsSpan(match.Index, match.Length);
+
+                // Try to parse the matched client name
+                if (FastEnum.TryParse(matchedText, ignoreCase: true, out NodeClientType clientType))
+                {
+                    return clientType;
+                }
             }
-            else if (clientId.Contains(nameof(NodeClientType.Geth), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Geth;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Nethermind), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Nethermind;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Erigon), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Erigon;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Reth), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Reth;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Parity), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Parity;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.OpenEthereum), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.OpenEthereum;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Trinity), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Trinity;
-            }
-            else
-            {
-                return NodeClientType.Unknown;
-            }
+
+            return NodeClientType.Unknown;
         }
 
         public static class Format

@@ -8,10 +8,13 @@ namespace Nethermind.Evm
 {
     public static class ExecutionTypeExtensions
     {
-        // did not want to use flags here specifically
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsAnyCreate(this ExecutionType executionType) =>
             executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsAnyCall(this ExecutionType executionType) =>
+            executionType is ExecutionType.CALL or ExecutionType.STATICCALL or ExecutionType.DELEGATECALL or ExecutionType.CALLCODE;
 
         public static Instruction ToInstruction(this ExecutionType executionType) =>
             executionType switch
@@ -28,15 +31,15 @@ namespace Nethermind.Evm
     }
 
     // ReSharper disable InconsistentNaming IdentifierTypo
-    public enum ExecutionType
+    public enum ExecutionType : byte
     {
         TRANSACTION,
         CALL,
         STATICCALL,
-        CALLCODE,
         DELEGATECALL,
+        CALLCODE,
         CREATE,
-        CREATE2
+        CREATE2,
     }
     // ReSharper restore IdentifierTypo InconsistentNaming
 }

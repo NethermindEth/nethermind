@@ -16,14 +16,15 @@ public interface IProcessExitSource
 
 public class ProcessExitSource : IProcessExitSource
 {
-    private CancellationTokenSource _cancellationTokenSource = new();
-    public int ExitCode { get; set; } = ExitCodes.Ok;
-
+    private static readonly CancellationToken _cancelledToken = new(canceled: true);
+    private CancellationTokenSource _cancellationTokenSource;
     private readonly TaskCompletionSource _exitResult = new();
 
-    public Task ExitTask => _exitResult.Task;
-
-    public CancellationToken Token => _cancellationTokenSource!.Token;
+    public ProcessExitSource(CancellationToken cancellationToken)
+    {
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _cancellationTokenSource.Token.Register(() => Exit(ExitCodes.SigInt));
+    }
 
     public void Exit(int exitCode)
     {
@@ -33,4 +34,10 @@ public class ProcessExitSource : IProcessExitSource
             _exitResult.SetResult();
         }
     }
+
+    public int ExitCode { get; set; } = ExitCodes.Ok;
+
+    public Task ExitTask => _exitResult.Task;
+
+    public CancellationToken Token => _cancellationTokenSource?.Token ?? _cancelledToken;
 }

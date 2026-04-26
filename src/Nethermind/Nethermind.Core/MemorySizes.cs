@@ -13,13 +13,11 @@ namespace Nethermind.Core
         public const int Alignment = 8;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static long Align(long unalignedSize)
-        {
-            return unalignedSize + (-unalignedSize & AlignmentMask);
-        }
+        public static long Align(long unalignedSize) => unalignedSize + (-unalignedSize & AlignmentMask);
 
         public const int RefSize = 8;
 
+        public const int ObjectHeaderMethodTable = 16;
         public const int SmallObjectOverhead = 24;
 
         public const int SmallObjectFreeDataSize = 8;

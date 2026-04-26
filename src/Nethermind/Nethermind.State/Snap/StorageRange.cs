@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,7 +15,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public ValueHash256 RootHash { get; set; }
+        public Hash256 RootHash { get; set; }
 
         /// <summary>
         /// Accounts of the storage tries to serve
@@ -33,26 +32,17 @@ namespace Nethermind.State.Snap
         /// </summary>
         public ValueHash256? LimitHash { get; set; }
 
-        public StorageRange Copy()
+        public StorageRange Copy() => new()
         {
-            return new StorageRange()
-            {
-                BlockNumber = BlockNumber,
-                RootHash = RootHash,
-                Accounts = Accounts.ToPooledList(Accounts.Count),
-                StartingHash = StartingHash,
-                LimitHash = LimitHash,
-            };
-        }
+            BlockNumber = BlockNumber,
+            RootHash = RootHash,
+            Accounts = Accounts.ToPooledList(Accounts.Count),
+            StartingHash = StartingHash,
+            LimitHash = LimitHash,
+        };
 
-        public override string ToString()
-        {
-            return $"StorageRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
-        }
+        public override string ToString() => $"StorageRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
 
-        public void Dispose()
-        {
-            Accounts?.Dispose();
-        }
+        public void Dispose() => Accounts?.Dispose();
     }
 }

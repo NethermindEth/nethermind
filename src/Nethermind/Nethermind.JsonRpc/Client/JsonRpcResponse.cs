@@ -2,31 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Serialization.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Client
 {
     public class JsonRpcResponse<T>
     {
-        [JsonPropertyOrder(1)]
+        [JsonConverter(typeof(IdConverter))]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+        [JsonPropertyName("id")]
+        public object Id { get; set; }
+
         [JsonPropertyName("jsonrpc")]
         public string JsonRpc { get; set; }
 
-        [JsonPropertyName("result")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        [JsonPropertyOrder(2)]
+        [JsonPropertyName("result")]
         public T Result { get; set; }
 
-        [JsonPropertyName("error")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        [JsonPropertyOrder(3)]
+        [JsonPropertyName("error")]
         public Error Error { get; set; }
-
-        [JsonConverter(typeof(IdConverter))]
-        [JsonPropertyName("id")]
-        [JsonPropertyOrder(0)]
-        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public object Id { get; set; }
     }
 }

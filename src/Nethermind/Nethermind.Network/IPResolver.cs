@@ -4,109 +4,120 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.IP;
 
-namespace Nethermind.Network
-{
-    public class IPResolver : IIPResolver
-    {
-        private readonly ILogger _logger;
-        private readonly INetworkConfig _networkConfig;
-        private readonly ILogManager _logManager;
+namespace Nethermind.Network;
 
-        public IPResolver(INetworkConfig networkConfig, ILogManager logManager)
+public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : IIPResolver
+{
+    private readonly ILogger _logger = logManager?.GetClassLogger<IPResolver>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+    private readonly ILogManager _logManager = logManager;
+
+    public async Task Initialize(CancellationToken cancellationToken = default)
+    {
+        try
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-            _logManager = logManager;
+            LocalIp = await InitializeLocalIp();
+        }
+        catch (Exception)
+        {
+            LocalIp = IPAddress.Loopback;
         }
 
-        public async Task Initialize()
+        const int maxAttempts = 5;
+        const int delaySeconds = 2;
+
+        for (int i = 0; i < maxAttempts; i++)
         {
-            try
+            if (i > 0)
             {
-                LocalIp = await InitializeLocalIp();
-            }
-            catch (Exception)
-            {
-                LocalIp = IPAddress.Loopback;
+                if (_logger.IsWarn) _logger.Warn($"External IP resolution failed (attempt {i}/{maxAttempts}). Retrying in {delaySeconds}s...");
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
             }
 
             try
             {
                 ExternalIp = await InitializeExternalIp();
+                if (!Equals(ExternalIp, IPAddress.Any) && !Equals(ExternalIp, IPAddress.None))
+                {
+                    return;
+                }
             }
             catch (Exception)
             {
-                ExternalIp = IPAddress.None;
+                // Will retry or set to None after loop
             }
         }
 
-        public IPAddress LocalIp { get; private set; }
+        ExternalIp = IPAddress.None;
+        if (_logger.IsWarn) _logger.Warn("External IP could not be resolved after all retries. Peers will not be able to connect.");
+    }
 
-        public IPAddress ExternalIp { get; private set; }
+    public IPAddress LocalIp { get; private set; }
 
-        private async Task<IPAddress> InitializeExternalIp()
+    public IPAddress ExternalIp { get; private set; }
+
+    private async Task<IPAddress> InitializeExternalIp()
+    {
+        IEnumerable<IIPSource> GetIPSources()
         {
-            IEnumerable<IIPSource> GetIPSources()
-            {
-                yield return new EnvironmentVariableIPSource();
-                yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
-                yield return new WebIPSource("http://ipv4.icanhazip.com", _logManager);
-                yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", _logManager);
-                yield return new WebIPSource("http://checkip.amazonaws.com", _logManager);
-                yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
-                yield return new WebIPSource("http://api.ipify.org", _logManager);
-            }
+            yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
+            yield return new WebIPSource("http://ipv4.icanhazip.com", _logManager);
+            yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", _logManager);
+            yield return new WebIPSource("http://checkip.amazonaws.com", _logManager);
+            yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
+            yield return new WebIPSource("http://api.ipify.org", _logManager);
+        }
 
-            try
+        try
+        {
+            foreach (IIPSource s in GetIPSources())
             {
-                foreach (IIPSource s in GetIPSources())
+                (bool success, IPAddress ip) = await s.TryGetIP();
+                if (success)
                 {
-                    (bool success, IPAddress ip) = await s.TryGetIP();
-                    if (success)
-                    {
-                        ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
-                        return ip;
-                    }
+                    ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
+                    return ip;
                 }
             }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error("Error while getting external ip", e);
-            }
-
-            return IPAddress.Any;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Error while getting external ip", e);
         }
 
-        private async Task<IPAddress> InitializeLocalIp()
-        {
-            IEnumerable<IIPSource> GetIPSources()
-            {
-                yield return new NetworkConfigLocalIPSource(_networkConfig, _logManager);
-            }
+        return IPAddress.Any;
+    }
 
-            try
+    private async Task<IPAddress> InitializeLocalIp()
+    {
+        IEnumerable<IIPSource> GetIPSources()
+        {
+            yield return new NetworkConfigLocalIPSource(_networkConfig, _logManager);
+        }
+
+        try
+        {
+            foreach (IIPSource s in GetIPSources())
             {
-                foreach (var s in GetIPSources())
+                (bool success, IPAddress ip) = await s.TryGetIP();
+                if (success)
                 {
-                    (bool success, IPAddress ip) = await s.TryGetIP();
-                    if (success)
-                    {
-                        return ip;
-                    }
+                    return ip;
                 }
             }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error("Error while getting local ip", e);
-            }
-
-            return IPAddress.Any;
         }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Error while getting local ip", e);
+        }
+
+        return IPAddress.Any;
     }
 }

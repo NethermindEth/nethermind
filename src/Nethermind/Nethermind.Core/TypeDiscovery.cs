@@ -13,13 +13,13 @@ namespace Nethermind.Core;
 public static class TypeDiscovery
 {
     private static readonly HashSet<Assembly> _assembliesWithNethermindTypes = new();
-    private static readonly object _lock = new();
+    private static readonly Lock _lock = new();
     private static int _allLoaded;
     private static Type? _pluginType;
 
     public static void Initialize(Type? pluginType = null)
     {
-        // Early return if initialised
+        // Early return if initialized
         if (Volatile.Read(ref _allLoaded) == 1) return;
 
         if (pluginType is not null)
@@ -34,7 +34,7 @@ public static class TypeDiscovery
     {
         lock (_lock)
         {
-            // Early return if initialised while waiting for lock
+            // Early return if initialized while waiting for lock
             if (Volatile.Read(ref _allLoaded) == 1) return;
 
             List<Assembly> loadedAssemblies = new(capacity: 48);
@@ -73,12 +73,12 @@ public static class TypeDiscovery
             LoadOnce(loadedAssemblies, considered);
 
             foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv =>
-                         kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
+                kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
             {
                 _assembliesWithNethermindTypes.Add(kv.Value);
             }
 
-            // Mark initialised before releasing lock
+            // Mark initialized before releasing lock
             Volatile.Write(ref _allLoaded, 1);
         }
     }
@@ -119,12 +119,9 @@ public static class TypeDiscovery
             missingRefs.AddRange(newRefs);
         }
 
-        static bool Filter(Dictionary<string, Assembly> considered, AssemblyName an)
-        {
-            return an.Name is not null
+        static bool Filter(Dictionary<string, Assembly> considered, AssemblyName an) => an.Name is not null
                     && !considered.ContainsKey(an.Name)
                     && an.Name.StartsWith("Nethermind");
-        }
     }
 
     public static IEnumerable<Type> FindNethermindBasedTypes(Type baseType)
@@ -144,14 +141,14 @@ public static class TypeDiscovery
     private static IEnumerable<Type> FindNethermindBasedTypes(Assembly assembly, Type baseType) =>
         GetExportedTypes(assembly).Where(t => baseType.IsAssignableFrom(t) && baseType != t);
 
-    private static IEnumerable<Type> GetExportedTypes(Assembly? a)
-        => a is null || a.IsDynamic ? Array.Empty<Type>() : a.GetExportedTypes();
+    private static Type[] GetExportedTypes(Assembly? a)
+        => a is null || a.IsDynamic ? [] : a.GetExportedTypes();
 
     public static IEnumerable<Type> FindNethermindBasedTypes(string typeName)
     {
         Initialize();
 
-        Func<Assembly, IEnumerable<Type>> assembliesSelector = a => GetExportedTypes(a)
+        IEnumerable<Type> assembliesSelector(Assembly a) => GetExportedTypes(a)
             .Where(t => t.Name == typeName);
 
         return _assembliesWithNethermindTypes.SelectMany(assembliesSelector);

@@ -3,8 +3,6 @@
 
 using System.Threading.Tasks;
 
-using Nethermind.JsonRpc.Modules;
-
 namespace Nethermind.JsonRpc;
 
 public interface IJsonRpcService

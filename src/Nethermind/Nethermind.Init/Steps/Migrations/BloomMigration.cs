@@ -8,11 +8,9 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -22,45 +20,31 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Init.Steps.Migrations
 {
-    public class BloomMigration : IDatabaseMigration
+    public class BloomMigration(
+        IBlockTree blockTree,
+        IBloomStorage bloomStorage,
+        ISyncModeSelector syncModeSelector,
+        IChainLevelInfoRepository chainLevelInfoRepository,
+        IBloomConfig bloomConfig,
+        ILogManager logManager) : IDatabaseMigration
     {
-        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>());
+        private static readonly BlockHeader EmptyHeader = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []);
 
-        private readonly IApiWithNetwork _api;
-        private readonly ILogger _logger;
+        private readonly ILogger _logger = logManager.GetClassLogger<BloomMigration>();
         private Stopwatch? _stopwatch;
-        private readonly MeasuredProgress _progress = new MeasuredProgress();
+        private readonly ProgressLogger _progressLogger = new("Bloom migration ", logManager);
         private long _migrateCount;
         private Average[]? _averages;
-        private readonly StringBuilder _builder = new StringBuilder();
-        private readonly IBloomConfig _bloomConfig;
-
-        public BloomMigration(IApiWithNetwork api)
-        {
-            _api = api;
-            _logger = api.LogManager.GetClassLogger<BloomMigration>();
-            _bloomConfig = api.Config<IBloomConfig>();
-        }
+        private readonly StringBuilder _builder = new();
+        private readonly IBloomConfig _bloomConfig = bloomConfig;
 
         public async Task Run(CancellationToken cancellationToken)
         {
-            if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
-            if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
-            if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
-
-            IBloomStorage? storage = _api.BloomStorage;
-            if (storage.NeedsMigration)
+            if (bloomStorage.NeedsMigration)
             {
                 if (_bloomConfig.Migration)
                 {
-                    if (!CanMigrate(_api.SyncModeSelector.Current))
-                    {
-                        await Wait.ForEventCondition<SyncModeChangedEventArgs>(
-                            cancellationToken,
-                            (d) => _api.SyncModeSelector.Changed += d,
-                            (d) => _api.SyncModeSelector.Changed -= d,
-                            (arg) => CanMigrate(arg.Current));
-                    }
+                    await syncModeSelector.WaitUntilMode(CanMigrate, cancellationToken);
 
                     _stopwatch = Stopwatch.StartNew();
                     try
@@ -86,18 +70,10 @@ namespace Nethermind.Init.Steps.Migrations
 
         private static bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
-        private long MinBlockNumber
-        {
-            get
-            {
-                if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
-                if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
-                return _api.BloomStorage.MinBlockNumber == long.MaxValue
-                    ? _api.BlockTree.BestKnownNumber
-                    : _api.BloomStorage.MinBlockNumber - 1;
-            }
-        }
+        private long MinBlockNumber =>
+            bloomStorage.MinBlockNumber == long.MaxValue
+                ? blockTree.BestKnownNumber
+                : bloomStorage.MinBlockNumber - 1;
 
         private void RunBloomMigration(CancellationToken token)
         {
@@ -107,24 +83,18 @@ namespace Nethermind.Init.Steps.Migrations
                 return EmptyHeader;
             }
 
-            if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.ChainLevelInfoRepository is null) throw new StepDependencyException(nameof(_api.ChainLevelInfoRepository));
-
-            IBlockTree blockTree = _api.BlockTree;
-            IBloomStorage storage = _api.BloomStorage;
+            IBloomStorage storage = bloomStorage;
             long to = MinBlockNumber;
             long synced = storage.MigratedBlockNumber + 1;
             long from = synced;
             _migrateCount = to + 1;
-            _averages = _api.BloomStorage.Averages.ToArray();
-            IChainLevelInfoRepository? chainLevelInfoRepository = _api.ChainLevelInfoRepository;
+            _averages = bloomStorage.Averages.ToArray();
 
-            _progress.Update(synced);
+            _progressLogger.Update(synced);
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
-            using (Timer timer = new Timer(1000) { Enabled = true })
+            using (Timer timer = new(1000) { Enabled = true })
             {
                 timer.Elapsed += (_, _) =>
                 {
@@ -137,7 +107,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
                 finally
                 {
-                    _progress.MarkEnd();
+                    _progressLogger.MarkEnd();
                     _stopwatch?.Stop();
                 }
 
@@ -187,7 +157,7 @@ namespace Nethermind.Init.Steps.Migrations
                             yield return GetMissingBlockHeader(i);
                         }
 
-                        _progress.Update(++synced);
+                        _progressLogger.Update(++synced);
                     }
                 }
             }
@@ -200,8 +170,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private string GetLogMessage(string status, string? suffix = null)
         {
-            string message = $"BloomDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_migrateCount.ToString().Length)} / {_migrateCount} blocks migrated. | current {_progress.CurrentPerSecond:F2} Blk/s | total {_progress.TotalPerSecond:F2} Blk/s. {GeAveragesMessage()} {suffix}";
-            _progress.SetMeasuringPoint();
+            string message = $"BloomDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progressLogger.CurrentValue.ToString().PadLeft(_migrateCount.ToString().Length)} / {_migrateCount} blocks migrated. | current {_progressLogger.CurrentPerSecond:F2} Blk/s | total {_progressLogger.TotalPerSecond:F2} Blk/s. {GeAveragesMessage()} {suffix}";
+            _progressLogger.SetMeasuringPoint();
             return message;
         }
 

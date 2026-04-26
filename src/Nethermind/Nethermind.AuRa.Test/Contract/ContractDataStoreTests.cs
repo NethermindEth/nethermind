@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -13,7 +12,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;
@@ -22,7 +20,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
 
-public class ContractDataStoreTests
+public abstract class ContractDataStoreTests
 {
     [Test]
     public void returns_data_from_getAll_on_init()
@@ -91,7 +89,7 @@ public class ContractDataStoreTests
     }
 
     [Test]
-    public async Task returns_data_from_receipts_on_non_consecutive_with_not_incremental_changes()
+    public void returns_data_from_receipts_on_non_consecutive_with_not_incremental_changes()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
         testCase.DataContract.IncrementalChanges.Returns(false);
@@ -99,7 +97,7 @@ public class ContractDataStoreTests
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
         Address[] expected = { TestItem.AddressB };
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
             {
                 x[2] = expected;
@@ -109,9 +107,10 @@ public class ContractDataStoreTests
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
         testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
-        await Task.Delay(10); // delay for refresh from contract as its async
-
-        testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
+        Assert.That(
+            () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
+            Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
+        );
     }
 
     [Test]
@@ -127,7 +126,7 @@ public class ContractDataStoreTests
     }
 
     [Test]
-    public async Task returns_data_from_receipts_on_consecutive_with_not_incremental_changes()
+    public void returns_data_from_receipts_on_consecutive_with_not_incremental_changes()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
         testCase.DataContract.IncrementalChanges.Returns(false);
@@ -135,7 +134,7 @@ public class ContractDataStoreTests
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
         Address[] expected = { TestItem.AddressB };
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
             {
                 x[2] = expected;
@@ -145,19 +144,20 @@ public class ContractDataStoreTests
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
         testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
-        await Task.Delay(10); // delay for refresh from contract as its async
-
-        testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
+        Assert.That(
+            () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
+            Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
+        );
     }
 
     [Test]
-    public async Task returns_data_from_receipts_on_consecutive_with_incremental_changes()
+    public void returns_data_from_receipts_on_consecutive_with_incremental_changes()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
         BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
             {
                 x[2] = new[] { TestItem.AddressB };
@@ -167,23 +167,21 @@ public class ContractDataStoreTests
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
         testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
-        await Task.Delay(50); // delay for refresh from contract as its async
-
         Assert.That(
             () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).ToList(),
-            Is.EquivalentTo(new ArrayList() { TestItem.AddressA, TestItem.AddressB }).After(1000, 100)
+            Is.EquivalentTo(new ArrayList() { TestItem.AddressA, TestItem.AddressB }).After(200, 20)
             );
     }
 
     [Test]
-    public async Task returns_unmodified_data_from_empty_receipts_on_consecutive_with_incremental_changes()
+    public void returns_unmodified_data_from_empty_receipts_on_consecutive_with_incremental_changes()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
         BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA, TestItem.AddressC });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
-            .Returns(x =>
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
+            .Returns(static x =>
             {
                 x[2] = Array.Empty<Address>();
                 return false;
@@ -192,13 +190,14 @@ public class ContractDataStoreTests
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
         testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
-        await Task.Delay(10); // delay for refresh from contract as its async
-
-        testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(TestItem.AddressA, TestItem.AddressC);
+        Assert.That(
+            () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
+            Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressC }).After(200, 20)
+        );
     }
 
     [Test]
-    public async Task returns_data_from_receipts_on_consecutive_with_incremental_changes_with_identity()
+    public void returns_data_from_receipts_on_consecutive_with_incremental_changes_with_identity()
     {
         TestCase<TxPriorityContract.Destination> testCase = BuildTestCase(
             TxPriorityContract.DistinctDestinationMethodComparer.Instance,
@@ -212,7 +211,7 @@ public class ContractDataStoreTests
             });
 
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, []
                 , out Arg.Any<IEnumerable<TxPriorityContract.Destination>>())
             .Returns(x =>
             {
@@ -227,11 +226,9 @@ public class ContractDataStoreTests
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
         testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
-        await Task.Delay(10); // delay for refresh from contract as its async
-
         Assert.That(
             () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Count(),
-            Is.EqualTo(3).After(1000, 100)
+            Is.EqualTo(3).After(200, 20)
         );
 
         testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(new[]
@@ -249,7 +246,7 @@ public class ContractDataStoreTests
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptFinder receiptsFinder = Substitute.For<IReceiptFinder>();
-        receiptsFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
+        receiptsFinder.Get(Arg.Any<Block>()).Returns([]);
 
         return new TestCase<T>()
         {

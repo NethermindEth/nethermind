@@ -4,15 +4,19 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using TaskExtensions = Nethermind.Core.Extensions.TaskExtensions;
 
 namespace Nethermind.Network.P2P;
 
-public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null) where T66Msg : IEth66Message
+public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null, CancellationToken cancellationToken = default) where T66Msg : IEth66Message
 {
     // The limit is largely to prevent unexpected OOM.
     // But the side effect is that if the peer did not respond with the message, eventually it will throw
@@ -23,27 +27,28 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
     // request. This is to prevent getting stuck on concurrent request limit and prevent potential memory leak.
     // The timeout is higher than Timeouts.Eth because it could be than the peer is delayed by only a few second.
     // If that is the case, and this throw due to unrecognized request id, the peer will get disconnected, which
-    // we don't want to do too much as that decrease number of peer.
-    private static readonly TimeSpan DefaultOldRequestThreshold = TimeSpan.FromSeconds(30);
+    // we don't want to do too much as that decrease number of peers.
+    private static readonly TimeSpan DefaultOldRequestThreshold = Timeouts.Cleanup;
 
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
 
-    private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new();
+    private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new(concurrencyLevel: 1, capacity: MaxConcurrentRequest);
+    private readonly CancellationToken _cancellationToken = cancellationToken;
     private Task _cleanOldRequestTask = Task.CompletedTask;
     private int _requestCount = 0;
 
     public void Send(Request<T66Msg, TData> request)
     {
-        if (_requestCount >= MaxConcurrentRequest)
+        if (Volatile.Read(ref _requestCount) >= MaxConcurrentRequest)
         {
             request.Message.TryDispose();
-            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
+            ThrowTooManyOutstandingRequests();
         }
 
 
         if (_requests.TryAdd(request.Message.RequestId, request))
         {
-            _requestCount++;
+            Interlocked.Increment(ref _requestCount);
             request.StartMeasuringTime();
             send(request.Message);
 
@@ -56,13 +61,17 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             request.Message.TryDispose();
         }
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowTooManyOutstandingRequests() => throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
     }
 
     private async Task CleanOldRequests()
     {
         while (true)
         {
-            await Task.Delay(_oldRequestThreshold);
+            if (!await TaskExtensions.DelaySafe(_oldRequestThreshold, _cancellationToken))
+                break;
 
             foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
             {
@@ -70,14 +79,15 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
                 {
                     if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
                     {
-                        _requestCount--;
+                        Interlocked.Decrement(ref _requestCount);
+                        request.Message.TryDispose();
                         // Unblock waiting thread.
-                        request.CompletionSource.SetException(new TimeoutException("No response received"));
+                        request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                     }
                 }
             }
 
-            if (_requestCount == 0) break;
+            if (Volatile.Read(ref _requestCount) == 0) break;
         }
     }
 
@@ -85,12 +95,13 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
     {
         if (_requests.TryRemove(id, out Request<T66Msg, TData>? request))
         {
-            _requestCount--;
+            Interlocked.Decrement(ref _requestCount);
             request.ResponseSize = size;
-            request.CompletionSource.SetResult(data);
+            request.CompletionSource.TrySetResult(data);
         }
         else
         {
+            data?.TryDispose();
             throw new SubprotocolException($"Received a response to {nameof(T66Msg)} that has not been requested");
         }
     }

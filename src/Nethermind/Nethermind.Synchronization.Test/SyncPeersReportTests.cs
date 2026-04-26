@@ -65,18 +65,20 @@ namespace Nethermind.Synchronization.Test
             report.WriteFullReport();
         }
 
-        [Test]
-        public void Can_write_report_update()
+        [TestCase(false, TestName = "Can_write_report_update")]
+        [TestCase(true, TestName = "Can_write_report_update_with_allocations")]
+        public void Can_write_report_update(bool withAllocations)
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
             (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
             PeerInfo syncPeer2 = BuildPeer(true);
 
+            if (withAllocations)
+                syncPeer.TryAllocate(AllocationContexts.All);
+
             PeerInfo[] peers = { syncPeer, syncPeer2 };
-
             syncPeerPool.PeerCount.Returns(peers.Length);
-
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
@@ -118,32 +120,12 @@ namespace Nethermind.Synchronization.Test
             IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
-            StubSyncPeer syncPeer = new StubSyncPeer(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
+            StubSyncPeer syncPeer = new(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
 
             syncPeer.HeadNumber = head;
 
             PeerInfo peer = new(syncPeer);
             return (peer, syncPeer);
-        }
-
-        [Test]
-        public void Can_write_report_update_with_allocations()
-        {
-            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
-            PeerInfo syncPeer2 = BuildPeer(true);
-
-            PeerInfo[] peers = { syncPeer, syncPeer2 };
-            syncPeerPool.PeerCount.Returns(peers.Length);
-            syncPeerPool.AllPeers.Returns(peers);
-
-            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteAllocatedReport();
-            report.WriteFullReport();
-
-            syncPeerSyncPeer.IsInitialized = true;
-            report.WriteAllocatedReport();
-            report.WriteFullReport();
         }
 
         [Test]
@@ -163,10 +145,10 @@ namespace Nethermind.Synchronization.Test
 
             string expectedResult =
                 "== Header ==" + Environment.NewLine +
-                "===[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]" + Environment.NewLine +
+                "===[Active ][Sleep  ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]" + Environment.NewLine +
                 "--------------------------------------------------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
-                "   [HBRNS ][      ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]" + Environment.NewLine +
-                "   [      ][HBRNS ][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
+                "   [HBRNS  ][       ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]" + Environment.NewLine +
+                "   [       ][HBRNS  ][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             string reportStr = report.MakeReportForPeers(peers, "== Header ==");
@@ -194,24 +176,16 @@ namespace Nethermind.Synchronization.Test
             public override string ProtocolCode { get; } = default!;
             public override int MessageIdSpaceSize { get; } = default;
             protected override TimeSpan InitTimeout { get; } = default;
-            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = delegate { };
-            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = delegate { };
-            public override void Init()
-            {
+            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = static delegate { };
+            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = static delegate { };
+            public override void Init() =>
                 throw new NotImplementedException();
-            }
-            public override void HandleMessage(ZeroPacket message)
-            {
+            public override void HandleMessage(ZeroPacket message) =>
                 throw new NotImplementedException();
-            }
-            public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
-            {
+            public override void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
                 throw new NotImplementedException();
-            }
-            protected override void OnDisposed()
-            {
+            protected override void OnDisposed() =>
                 throw new NotImplementedException();
-            }
         }
     }
 }

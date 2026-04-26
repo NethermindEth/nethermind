@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
@@ -12,22 +13,16 @@ public class NullDiscoveryApp : IDiscoveryApp
     {
     }
 
-    public void Start()
+    public void InitializeChannel(IChannel channel)
     {
     }
 
-    public Task StopAsync()
-    {
-        return Task.CompletedTask;
-    }
+    public Task StartAsync() => Task.CompletedTask;
+
+    public Task StopAsync() => Task.CompletedTask;
 
     public void AddNodeToDiscovery(Node node)
     {
-    }
-
-    public List<Node> LoadInitialList()
-    {
-        return new List<Node>();
     }
 
     public event EventHandler<NodeEventArgs>? NodeAdded
@@ -35,6 +30,8 @@ public class NullDiscoveryApp : IDiscoveryApp
         add { }
         remove { }
     }
+
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken) => AsyncEnumerable.Empty<Node>();
 
     public event EventHandler<NodeEventArgs>? NodeRemoved
     {

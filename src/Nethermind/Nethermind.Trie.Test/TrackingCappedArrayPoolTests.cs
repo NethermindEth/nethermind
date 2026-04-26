@@ -8,6 +8,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class TrackingCappedArrayPoolTests
 {
     [Test]
@@ -16,7 +17,7 @@ public class TrackingCappedArrayPoolTests
         ArrayPool<byte>? arrayPool = Substitute.For<ArrayPool<byte>>();
         arrayPool
             .Rent(Arg.Any<int>())
-            .Returns<byte[]>(info => new byte[(int)info[0]]);
+            .Returns<byte[]>(static info => new byte[(int)info[0]]);
         TrackingCappedArrayPool? pool = new(0, arrayPool);
 
         pool.Rent(1);

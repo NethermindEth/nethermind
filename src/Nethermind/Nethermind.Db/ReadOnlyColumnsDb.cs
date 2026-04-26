@@ -7,27 +7,19 @@ using System.Linq;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyColumnsDb<T> : IReadOnlyColumnDb<T>, IDisposable
+    public class ReadOnlyColumnsDb<T>(IColumnsDb<T> baseColumnDb, bool createInMemWriteStore) : IReadOnlyColumnDb<T>, IDisposable
     {
-        private readonly IDictionary<T, IReadOnlyDb> _readOnlyColumns;
+        private readonly IDictionary<T, IReadOnlyDb> _readOnlyColumns = baseColumnDb.ColumnKeys
+                .Select(key => (key, db: baseColumnDb.GetColumnDb(key).CreateReadOnly(createInMemWriteStore)))
+                .ToDictionary(it => it.key, it => it.db);
+        private readonly IColumnsDb<T> _baseColumnDb = baseColumnDb;
 
-        public ReadOnlyColumnsDb(IColumnsDb<T> baseColumnDb, bool createInMemWriteStore)
-        {
-            _readOnlyColumns = baseColumnDb.ColumnKeys
-                .Select(key => (key, baseColumnDb.GetColumnDb(key).CreateReadOnly(createInMemWriteStore)))
-                .ToDictionary(it => it.Item1, it => it.Item2);
-        }
-
-        public IDb GetColumnDb(T key)
-        {
-            return _readOnlyColumns[key!];
-        }
+        public IDb GetColumnDb(T key) => _readOnlyColumns[key!];
 
         public IEnumerable<T> ColumnKeys => _readOnlyColumns.Keys;
-        public IColumnsWriteBatch<T> StartWriteBatch()
-        {
-            return new InMemoryColumnWriteBatch<T>(this);
-        }
+        public IColumnsWriteBatch<T> StartWriteBatch() => new InMemoryColumnWriteBatch<T>(this);
+
+        public IColumnDbSnapshot<T> CreateSnapshot() => _baseColumnDb.CreateSnapshot();
 
         public void ClearTempChanges()
         {
@@ -44,5 +36,7 @@ namespace Nethermind.Db
                 readOnlyColumn.Value.Dispose();
             }
         }
+
+        public void Flush(bool onlyWal = false) { }
     }
 }

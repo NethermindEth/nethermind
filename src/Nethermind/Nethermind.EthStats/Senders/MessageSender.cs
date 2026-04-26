@@ -5,21 +5,14 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Websocket.Client;
 
 namespace Nethermind.EthStats.Senders
 {
-    public class MessageSender : IMessageSender
+    public class MessageSender(string instanceId, ILogManager logManager) : IMessageSender
     {
-        private readonly string _instanceId;
-        private readonly ILogger _logger;
-
-        public MessageSender(string instanceId, ILogManager logManager)
-        {
-            _instanceId = instanceId;
-            _logger = logManager.GetClassLogger();
-        }
+        private readonly string _instanceId = instanceId;
+        private readonly ILogger _logger = logManager.GetClassLogger<MessageSender>();
 
         public Task SendAsync<T>(IWebsocketClient? client, T message, string? type = null) where T : IMessage
         {
@@ -29,7 +22,7 @@ namespace Nethermind.EthStats.Senders
             }
 
             (EmitMessage? emitMessage, string? messageType) = CreateMessage(message, type);
-            string payload = JsonSerializer.Serialize(emitMessage, EthereumJsonSerializer.JsonOptions);
+            string payload = JsonSerializer.Serialize(emitMessage, JsonSerializerOptions.Web);
             if (_logger.IsTrace) _logger.Trace($"Sending ETH stats message '{messageType}': {payload}");
 
             client.Send(payload);

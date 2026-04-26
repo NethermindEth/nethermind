@@ -7,10 +7,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -18,10 +20,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Clique;
@@ -41,7 +43,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
     private readonly System.Timers.Timer _timer = new();
     private DateTime _lastProducedBlock;
 
-    private CliqueBlockProducer _blockProducer;
+    private readonly CliqueBlockProducer _blockProducer;
 
     public CliqueBlockProducerRunner(
         IBlockTree blockTree,
@@ -52,14 +54,14 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         ICliqueConfig config,
         ILogManager logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<CliqueBlockProducerRunner>() ?? throw new ArgumentNullException(nameof(logManager));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
         _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         _blockProducer = blockProducer;
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
+        _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager, _config.MinimumOutOfTurnDelay);
 
         _timer.AutoReset = false;
         _timer.Elapsed += TimerOnElapsed;
@@ -67,19 +69,13 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         _timer.Start();
     }
 
-    private readonly BlockingCollection<Block> _signalsQueue =
-        new(new ConcurrentQueue<Block>());
+    private readonly Channel<Block> _signalsQueue = Channel.CreateUnbounded<Block>();
 
     private Block? _scheduledBlock;
 
     public void CastVote(Address signer, bool vote)
     {
-        bool success = _blockProducer.Proposals.TryAdd(signer, vote);
-        if (!success)
-        {
-            throw new InvalidOperationException($"A vote for {signer} has already been cast.");
-        }
-
+        _blockProducer.Proposals.AddOrUpdate(signer, vote, (key, existingValue) => vote);
         if (_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
     }
 
@@ -94,10 +90,9 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
     }
 
-    public void ProduceOnTopOf(Hash256 hash)
-    {
-        _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
-    }
+    public void ProduceOnTopOf(Hash256 hash) => _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
+
+    public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
 
     private void TimerOnElapsed(object sender, ElapsedEventArgs e)
     {
@@ -114,7 +109,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
             {
                 if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.UnixTime.Seconds)
                 {
-                    _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
+                    _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
                 }
 
                 _timer.Enabled = true;
@@ -189,6 +184,10 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
                 ConsumeSignal().Wait();
                 if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
             }
+            catch (TaskCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Clique block producer stopped.");
+            }
             catch (OperationCanceledException)
             {
                 if (_logger.IsDebug) _logger.Debug("Clique block producer stopped.");
@@ -213,19 +212,16 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         return tcs.Task;
     }
 
-    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        _signalsQueue.Add(e.Block);
-    }
+    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e) => _signalsQueue.Writer.TryWrite(e.Block);
 
     private async Task ConsumeSignal()
     {
         _lastProducedBlock = DateTime.UtcNow;
-        foreach (Block signal in _signalsQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
+        await foreach (Block signal in _signalsQueue.Reader.ReadAllAsync(_cancellationTokenSource.Token))
         {
             // TODO: Maybe use IBlockProducer specific to clique?
             Block parentBlock = signal;
-            while (_signalsQueue.TryTake(out Block? nextSignal))
+            while (_signalsQueue.Reader.TryRead(out Block? nextSignal))
             {
                 if (parentBlock.Number <= nextSignal.Number)
                 {
@@ -258,6 +254,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
         _cancellationTokenSource?.Cancel();
         await (_producerTask ?? Task.CompletedTask);
+        _signalsQueue.Writer.TryComplete();
     }
 
     bool IBlockProducerRunner.IsProducingBlocks(ulong? maxProducingInterval)
@@ -272,11 +269,12 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     public event EventHandler<BlockEventArgs>? BlockProduced;
 
-
     public void Dispose()
     {
         _cancellationTokenSource?.Dispose();
         _timer?.Dispose();
+        _signalsQueue.Writer.TryComplete();
+        BlockProduced = null;
     }
 }
 
@@ -309,7 +307,7 @@ public class CliqueBlockProducer : IBlockProducer
         ILogManager logManager
     )
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<CliqueBlockProducer>() ?? throw new ArgumentNullException(nameof(logManager));
         _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
         _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -320,15 +318,14 @@ public class CliqueBlockProducer : IBlockProducer
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<CliqueBlockProducer>();
     }
 
     public ConcurrentDictionary<Address, bool> Proposals => _proposals;
 
     public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
-        PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
+        PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
     {
-        token ??= default;
         Block? block = PrepareBlock(parentHeader);
         if (block is null)
         {
@@ -341,7 +338,8 @@ public class CliqueBlockProducer : IBlockProducer
         Block? processedBlock = _processor.Process(
             block,
             ProcessingOptions.ProducingBlock,
-            NullBlockTracer.Instance);
+            NullBlockTracer.Instance,
+            token);
         if (processedBlock is null)
         {
             if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
@@ -353,7 +351,7 @@ public class CliqueBlockProducer : IBlockProducer
 
         try
         {
-            Block? sealedBlock = await _sealer.SealBlock(processedBlock, token.Value);
+            Block? sealedBlock = await _sealer.SealBlock(processedBlock, token);
             if (sealedBlock is not null)
             {
                 if (_logger.IsInfo)
@@ -420,7 +418,7 @@ public class CliqueBlockProducer : IBlockProducer
             parentHeader.Number + 1,
             _gasLimitCalculator.GetGasLimit(parentHeader),
             timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
-            Array.Empty<byte>());
+            []);
 
         // If the block isn't a checkpoint, cast a random vote (good enough for now)
         long number = header.Number;
@@ -453,7 +451,7 @@ public class CliqueBlockProducer : IBlockProducer
         // Ensure the timestamp has the correct delay
         header.Timestamp = Math.Max(parentHeader.Timestamp + _config.BlockPeriod, _timestamper.UnixTime.Seconds);
 
-        var spec = _specProvider.GetSpec(header);
+        IReleaseSpec spec = _specProvider.GetSpec(header);
 
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
         // Set the correct difficulty
@@ -486,14 +484,12 @@ public class CliqueBlockProducer : IBlockProducer
         header.MixHash = Keccak.Zero;
         header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
-        _stateProvider.StateRoot = parentHeader.StateRoot!;
-
-        IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit);
+        IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit, null, filterSource: true);
         Block block = new BlockToProduce(
             header,
             selectedTxs,
             Array.Empty<BlockHeader>(),
-            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
+            spec.WithdrawalsEnabled ? [] : null
         );
         header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;

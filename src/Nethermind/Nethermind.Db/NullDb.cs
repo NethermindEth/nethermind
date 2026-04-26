@@ -17,44 +17,30 @@ namespace Nethermind.Db
 
         private static NullDb? _instance;
 
-        public static NullDb Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new NullDb());
+        public static NullDb Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new NullDb());
 
         public string Name { get; } = "NullDb";
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return null;
-        }
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-        {
-            throw new NotSupportedException();
-        }
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException();
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(static k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray();
 
-        public void Remove(ReadOnlySpan<byte> key)
-        {
-            throw new NotSupportedException();
-        }
+        public void Remove(ReadOnlySpan<byte> key) => throw new NotSupportedException();
 
-        public bool KeyExists(ReadOnlySpan<byte> key)
-        {
-            return false;
-        }
+        public bool KeyExists(ReadOnlySpan<byte> key) => false;
 
-        public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear() { }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => Enumerable.Empty<KeyValuePair<byte[], byte[]>>();
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => [];
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Enumerable.Empty<byte[]>();
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Enumerable.Empty<byte[]>();
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => [];
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => [];
 
-        public IWriteBatch StartWriteBatch()
-        {
-            throw new NotSupportedException();
-        }
+        public IWriteBatch StartWriteBatch() => throw new NotSupportedException();
 
         public void Dispose()
         {

@@ -1,9 +1,7 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -15,10 +13,6 @@ namespace Nethermind.TxPool;
 /// </summary>
 public class LightTransaction : Transaction
 {
-    private static readonly Dictionary<int, byte[][]> _blobVersionedHashesCache =
-        Enumerable.Range(1, Eip4844Constants.GetMaxBlobsPerBlock()).ToDictionary(i => i, i => new byte[i][]);
-
-
     public LightTransaction(Transaction fullTx)
     {
         Type = TxType.Blob;
@@ -30,10 +24,11 @@ public class LightTransaction : Transaction
         GasPrice = fullTx.GasPrice; // means MaxPriorityFeePerGas
         DecodedMaxFeePerGas = fullTx.DecodedMaxFeePerGas;
         MaxFeePerBlobGas = fullTx.MaxFeePerBlobGas;
-        BlobVersionedHashes = _blobVersionedHashesCache[fullTx.BlobVersionedHashes!.Length];
+        BlobVersionedHashes = fullTx.BlobVersionedHashes;
         GasBottleneck = fullTx.GasBottleneck;
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
+        ProofVersion = fullTx.GetProofVersion();
         _size = fullTx.GetLength();
     }
 
@@ -49,7 +44,8 @@ public class LightTransaction : Transaction
         UInt256 maxFeePerBlobGas,
         byte[][] blobVersionHashes,
         ulong poolIndex,
-        int size)
+        int size,
+        ProofVersion proofVersion)
     {
         Type = TxType.Blob;
         Hash = hash;
@@ -63,6 +59,11 @@ public class LightTransaction : Transaction
         BlobVersionedHashes = blobVersionHashes;
         Timestamp = timestamp;
         PoolIndex = poolIndex;
+        ProofVersion = proofVersion;
         _size = size;
     }
+
+    public ProofVersion? ProofVersion { get; set; }
+
+    public override ProofVersion? GetProofVersion() => ProofVersion;
 }

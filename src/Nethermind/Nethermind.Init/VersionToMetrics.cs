@@ -14,14 +14,14 @@ public static class VersionToMetrics
     {
         try
         {
-            var index = version.IndexOfAny(anyOf);
+            int index = version.IndexOfAny(anyOf);
 
             if (index != -1)
                 version = version[..index];
 
-            var versions = version
+            int[] versions = version
                 .Split('.')
-                .Select(v => int.Parse(v))
+                .Select(static v => int.Parse(v))
                 .ToArray();
 
             return versions.Length == 3

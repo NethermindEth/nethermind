@@ -1,39 +1,26 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Buffers;
 
-namespace Nethermind.Trie
+namespace Nethermind.Trie;
+
+public static class TrieNodeFactory
 {
-    internal static class TrieNodeFactory
+    public static TrieNode CreateBranch() => new(new BranchData());
+
+    public static TrieNode CreateLeaf(ReadOnlySpan<byte> path, CappedArray<byte> value)
     {
-        public static TrieNode CreateBranch()
-        {
-            TrieNode node = new(NodeType.Branch);
-            return node;
-        }
-
-        public static TrieNode CreateLeaf(byte[] path, in CappedArray<byte> value)
-        {
-            TrieNode node = new(NodeType.Leaf);
-            node.Key = path;
-            node.Value = value;
-            return node;
-        }
-
-        public static TrieNode CreateExtension(byte[] path)
-        {
-            TrieNode node = new(NodeType.Extension);
-            node.Key = path;
-            return node;
-        }
-
-        public static TrieNode CreateExtension(byte[] path, TrieNode child)
-        {
-            TrieNode node = new(NodeType.Extension);
-            node.SetChild(0, child);
-            node.Key = path;
-            return node;
-        }
+        byte[] pathArray = HexPrefix.GetArray(path);
+        return new(new LeafData(pathArray, value));
     }
+
+    public static TrieNode CreateExtension(ReadOnlySpan<byte> path, TrieNode child)
+    {
+        byte[] pathArray = HexPrefix.GetArray(path);
+        return new(new ExtensionData(pathArray, child));
+    }
+
+    public static TrieNode CreateExtension(byte[] pathArray, TrieNode child) => new(new ExtensionData(pathArray, child));
 }

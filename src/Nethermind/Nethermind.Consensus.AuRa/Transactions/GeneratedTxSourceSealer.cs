@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -15,33 +14,27 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class GeneratedTxSource : ITxSource
+    public class GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager) : ITxSource
     {
-        private readonly ITxSource _innerSource;
-        private readonly ITxSealer _txSealer;
-        private readonly IStateReader _stateReader;
-        private readonly ILogger _logger;
+        private readonly ITxSource _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
+        private readonly ITxSealer _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
+        private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        private readonly ILogger _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
 
-        public GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
-        {
-            _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
-            _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        public bool SupportsBlobs => _innerSource.SupportsBlobs;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             _nonces.Clear();
 
             try
             {
-                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes).Select(tx =>
+                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource).Select(tx =>
                 {
                     if (tx is GeneratedTransaction)
                     {
-                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, _nonces);
+                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
                         _txSealer.Seal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
                         Metrics.SealedTransactions++;
                         if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.ToShortString()}");
@@ -56,11 +49,11 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
 
-        private UInt256 CalculateNonce(Address address, Hash256 stateRoot, IDictionary<Address, UInt256> nonces)
+        private UInt256 CalculateNonce(Address address, BlockHeader baseBlock, IDictionary<Address, UInt256> nonces)
         {
-            if (!nonces.TryGetValue(address, out var nonce))
+            if (!nonces.TryGetValue(address, out UInt256 nonce))
             {
-                nonce = _stateReader.GetNonce(stateRoot, address);
+                nonce = _stateReader.GetNonce(baseBlock, address);
             }
 
             nonces[address] = nonce + 1;

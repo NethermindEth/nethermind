@@ -24,7 +24,7 @@ public class NodeTable : INodeTable
         INetworkConfig? networkConfig,
         ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<NodeTable>() ?? throw new ArgumentNullException(nameof(logManager));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _nodeDistanceCalculator = nodeDistanceCalculator ?? throw new ArgumentNullException(nameof(nodeDistanceCalculator));
@@ -45,7 +45,7 @@ public class NodeTable : INodeTable
         CheckInitialization();
 
         if (_logger.IsTrace) _logger.Trace($"Adding node to NodeTable: {node}");
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash, node.IdHash);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         return bucket.AddNode(node);
     }
@@ -54,7 +54,7 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, nodeToAdd.IdHash.Bytes);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash, nodeToAdd.IdHash);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         bucket.ReplaceNode(nodeToRemove, nodeToAdd);
     }
@@ -71,37 +71,25 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash, node.IdHash);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         bucket.RefreshNode(node);
     }
 
-    public ClosestNodesEnumerator GetClosestNodes()
-    {
-        return new ClosestNodesEnumerator(Buckets, _discoveryConfig.BucketSize);
-    }
+    public ClosestNodesEnumerator GetClosestNodes() => new(Buckets, _discoveryConfig.BucketSize);
 
-    public struct ClosestNodesEnumerator : IEnumerator<Node>, IEnumerable<Node>
+    public struct ClosestNodesEnumerator(NodeBucket[] buckets, int bucketSize) : IEnumerator<Node>, IEnumerable<Node>
     {
-        private readonly NodeBucket[] _buckets;
-        private readonly int _bucketSize;
+        private readonly NodeBucket[] _buckets = buckets;
+        private readonly int _bucketSize = bucketSize;
         private BondedItemsEnumerator _itemEnumerator;
         private bool _enumeratorSet;
-        private int _bucketIndex;
-        private int _count;
+        private int _bucketIndex = -1;
+        private int _count = 0;
 
-        public ClosestNodesEnumerator(NodeBucket[] buckets, int bucketSize)
-        {
-            _buckets = buckets;
-            _bucketSize = bucketSize;
-            Current = null!;
-            _bucketIndex = -1;
-            _count = 0;
-        }
+        public Node Current { get; private set; } = null!;
 
-        public Node Current { get; private set; }
-
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
@@ -131,19 +119,16 @@ public class NodeTable : INodeTable
 
         void IEnumerator.Reset() => throw new NotSupportedException();
 
-        public void Dispose() => _itemEnumerator.Dispose();
+        public readonly void Dispose() => _itemEnumerator.Dispose();
 
-        public ClosestNodesEnumerator GetEnumerator() => this;
+        public readonly ClosestNodesEnumerator GetEnumerator() => this;
 
-        IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
+        readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
 
-        IEnumerator IEnumerable.GetEnumerator() => this;
+        readonly IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
-    public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId)
-    {
-        return GetClosestNodes(nodeId, _discoveryConfig.BucketSize);
-    }
+    public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId) => GetClosestNodes(nodeId, _discoveryConfig.BucketSize);
 
     public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId, int bucketSize)
     {
@@ -160,18 +145,20 @@ public class NodeTable : INodeTable
         {
             _sortedNodes = new ArrayPoolList<Node>(capacity: bucketSize);
             Hash256 idHash = Keccak.Compute(targetNodeId);
-            foreach (var bucket in buckets)
+            foreach (NodeBucket bucket in buckets)
             {
-                foreach (var item in bucket.BondedItems)
+                foreach (NodeBucketItem item in bucket.BondedItems)
                 {
-                    if (item.Node is not null && item.Node.IdHash != idHash)
+                    Node? node = item.Node;
+                    if (node is not null && node.IdHash != idHash)
                     {
-                        _sortedNodes.Add(item.Node);
+                        _sortedNodes.Add(node);
                     }
                 }
             }
 
-            _sortedNodes.Sort((a, b) => calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId)));
+            _sortedNodes.Sort(new NodeDistanceComparer(calculator, idHash));
+
             if (_sortedNodes.Count > bucketSize)
             {
                 _sortedNodes.ReduceCount(bucketSize);
@@ -182,9 +169,9 @@ public class NodeTable : INodeTable
 
         public readonly int Count => _sortedNodes.Count;
 
-        public Node Current => _sortedNodes[_currentIndex];
+        public readonly Node Current => _sortedNodes[_currentIndex];
 
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
@@ -197,15 +184,36 @@ public class NodeTable : INodeTable
         }
 
         void IEnumerator.Reset() => throw new NotSupportedException();
-        public void Dispose()
+        public readonly void Dispose() => _sortedNodes.Dispose();
+
+        public readonly ClosestNodesFromNodeEnumerator GetEnumerator() => this;
+        readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
+
+        readonly IEnumerator IEnumerable.GetEnumerator() => this;
+
+        private readonly struct NodeDistanceComparer(INodeDistanceCalculator calculator, Hash256 idHash) : IComparer<Node>
         {
-            _sortedNodes.Dispose();
+            public int Compare(Node? a, Node? b)
+            {
+                const int Closer = int.MinValue;
+                const int Further = int.MaxValue;
+
+                if (Nullable.Equals(a!.ValidatedProtocol, b!.ValidatedProtocol))
+                {
+                    return calculator.CalculateDistance(a.Id.Hash, idHash).CompareTo(calculator.CalculateDistance(b.Id.Hash, idHash));
+                }
+                else if (a.ValidatedProtocol.HasValue)
+                {
+                    // Prefer nodes validated on same protocol, network and fork
+                    return a.ValidatedProtocol == true ? Closer : Further;
+                }
+                else
+                {
+                    // b must have value; swap high and low from a
+                    return b.ValidatedProtocol == true ? Further : Closer;
+                }
+            }
         }
-
-        public ClosestNodesFromNodeEnumerator GetEnumerator() => this;
-        IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
-
-        IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
     public void Initialize(PublicKey masterNodeKey)

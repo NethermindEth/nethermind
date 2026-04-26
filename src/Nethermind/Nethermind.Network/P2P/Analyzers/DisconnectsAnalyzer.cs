@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Analyzers
     /// <summary>
     /// This class is created to help diagnose network disconnections.
     /// </summary>
-    public class DisconnectsAnalyzer : IDisconnectsAnalyzer
+    public class DisconnectsAnalyzer : IDisconnectsAnalyzer, IDisposable
     {
         private readonly Timer _timer;
         private readonly ILogger _logger;
@@ -28,22 +28,16 @@ namespace Nethermind.Network.P2P.Analyzers
 
         private int _disconnectCount = 0;
 
-        private readonly struct DisconnectCategory
+        private readonly struct DisconnectCategory(DisconnectReason reason, DisconnectType type)
         {
-            public DisconnectCategory(DisconnectReason reason, DisconnectType type)
-            {
-                Reason = reason;
-                Type = type;
-            }
+            public DisconnectReason Reason { get; } = reason;
 
-            public DisconnectReason Reason { get; }
-
-            public DisconnectType Type { get; }
+            public DisconnectType Type { get; } = type;
         }
 
         public DisconnectsAnalyzer(ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<DisconnectsAnalyzer>() ?? throw new ArgumentNullException(nameof(logManager));
             _disconnects = _disconnectsA;
 
             _timer = new Timer(10000);
@@ -85,12 +79,18 @@ namespace Nethermind.Network.P2P.Analyzers
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string? details)
         {
             Interlocked.Increment(ref _disconnectCount);
-            _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), _ => 1, (_, i) => i + 1);
+            _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), static _ => 1, static (_, i) => i + 1);
 
             if (type == DisconnectType.Local && details is not null)
             {
                 _logger.Warn(details);
             }
+        }
+
+        public void Dispose()
+        {
+            _timer.Elapsed -= TimerOnElapsed;
+            _timer.Dispose();
         }
     }
 }

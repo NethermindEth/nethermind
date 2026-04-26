@@ -3,12 +3,12 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -23,7 +23,7 @@ public class CompositeBlockTracerTests
         GethLikeBlockMemoryTracer gethLikeBlockTracer = new(GethTraceOptions.Default with { TxHash = txHash });
         ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All);
 
-        CompositeBlockTracer compositeBlockTracer = new CompositeBlockTracer();
+        CompositeBlockTracer compositeBlockTracer = new();
         compositeBlockTracer.AddRange(gethLikeBlockTracer, parityLikeBlockTracer);
 
         compositeBlockTracer.IsTracingRewards.Should().Be(true);
@@ -37,14 +37,14 @@ public class CompositeBlockTracerTests
         Transaction tx2 = Build.A.Transaction.TestObject;
         Transaction tx3 = Build.A.Transaction.TestObject;
 
-        block = block.WithReplacedBody(new BlockBody(new[] { tx1, tx2, tx3 }, new BlockHeader[0]));
+        block = block.WithReplacedBody(new BlockBody(new[] { tx1, tx2, tx3 }, []));
 
         GethLikeBlockMemoryTracer gethLikeBlockTracer = new(GethTraceOptions.Default);
         ParityLikeBlockTracer parityLikeBlockTracer = new(ParityTraceTypes.All);
         NullBlockTracer nullBlockTracer = NullBlockTracer.Instance;
         AlwaysCancelBlockTracer alwaysCancelBlockTracer = AlwaysCancelBlockTracer.Instance;
 
-        CompositeBlockTracer blockTracer = new CompositeBlockTracer();
+        CompositeBlockTracer blockTracer = new();
         blockTracer.AddRange(gethLikeBlockTracer, parityLikeBlockTracer, nullBlockTracer, alwaysCancelBlockTracer);
 
         blockTracer.StartNewBlockTrace(block);

@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Globalization;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json
 {
     using System.Buffers;
-    using System.Buffers.Binary;
     using System.Buffers.Text;
     using System.Runtime.CompilerServices;
     using System.Text.Json;
@@ -47,16 +44,13 @@ namespace Nethermind.Serialization.Json
                 }
             }
 
-            throw new InvalidOperationException();
+            throw new JsonException($"Cannot convert {reader.TokenType} to {nameof(Boolean)}");
         }
 
         [SkipLocalsInit]
         public override void Write(
             Utf8JsonWriter writer,
             bool value,
-            JsonSerializerOptions options)
-        {
-            writer.WriteBooleanValue(value);
-        }
+            JsonSerializerOptions options) => writer.WriteBooleanValue(value);
     }
 }

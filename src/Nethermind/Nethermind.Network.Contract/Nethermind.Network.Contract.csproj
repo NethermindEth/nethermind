@@ -3,4 +3,7 @@
   <PropertyGroup>
     <Nullable>annotations</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
+  </ItemGroup>
 </Project>

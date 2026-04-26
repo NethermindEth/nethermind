@@ -11,19 +11,8 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
-    public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
+    public class JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null) : IEquatable<JsonRpcUrl>, ICloneable
     {
-        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null)
-        {
-            Scheme = scheme;
-            Host = host;
-            Port = port;
-            RpcEndpoint = rpcEndpoint;
-            EnabledModules = new HashSet<string>(enabledModules, StringComparer.InvariantCultureIgnoreCase);
-            IsAuthenticated = isAuthenticated;
-            MaxRequestBodySize = maxRequestBodySize;
-        }
-
         public static JsonRpcUrl Parse(string packedUrlValue)
         {
             ArgumentNullException.ThrowIfNull(packedUrlValue);
@@ -58,7 +47,7 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase);
+            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase);
 
             // Check if authentication disabled for this url
             if (parts.Length == 4)
@@ -76,16 +65,15 @@ namespace Nethermind.JsonRpc
             return result;
         }
 
-        public long? MaxRequestBodySize { get; }
-        public bool IsAuthenticated { get; }
-        public string Scheme { get; set; }
-        public string Host { get; set; }
-        public int Port { get; set; }
-        public RpcEndpoint RpcEndpoint { get; set; }
-        public IReadOnlyCollection<string> EnabledModules { get; set; }
+        public long? MaxRequestBodySize { get; } = maxRequestBodySize;
+        public bool IsAuthenticated { get; } = isAuthenticated;
+        public string Scheme { get; set; } = scheme;
+        public string Host { get; set; } = host;
+        public int Port { get; set; } = port;
+        public RpcEndpoint RpcEndpoint { get; set; } = rpcEndpoint;
+        public IReadOnlySet<string> EnabledModules { get; set; } = new HashSet<string>(enabledModules, StringComparer.OrdinalIgnoreCase);
 
-        public bool IsModuleEnabled(string moduleName) =>
-            EnabledModules.Any(m => StringComparer.InvariantCultureIgnoreCase.Equals(m, moduleName));
+        public bool IsModuleEnabled(string moduleName) => EnabledModules.Contains(moduleName);
 
         public bool Equals(JsonRpcUrl other)
         {
@@ -100,8 +88,8 @@ namespace Nethermind.JsonRpc
                    Port == other.Port &&
                    RpcEndpoint == other.RpcEndpoint &&
                    IsAuthenticated == other.IsAuthenticated &&
-                   EnabledModules.OrderBy(t => t).SequenceEqual(other.EnabledModules.OrderBy(t => t),
-                       StringComparer.InvariantCultureIgnoreCase);
+                   EnabledModules.OrderBy(static t => t).SequenceEqual(other.EnabledModules.OrderBy(static t => t),
+                       StringComparer.OrdinalIgnoreCase);
         }
 
         public override bool Equals(object other)

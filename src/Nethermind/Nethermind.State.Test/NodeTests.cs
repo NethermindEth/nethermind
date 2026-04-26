@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -14,20 +15,7 @@ namespace Nethermind.Store.Test
     [TestFixture, Parallelizable(ParallelScope.Children)]
     public class NodeTest
     {
-        [OneTimeSetUp]
-        public void Setup()
-        {
-            TrieNode.AllowBranchValues = true;
-        }
-
-        [OneTimeTearDown]
-        public void TearDown()
-        {
-            TrieNode.AllowBranchValues = false;
-        }
-
-        [Test]
-        public void Two_children_store_encode()
+        private (ITrieNodeResolver tree, TrieNode decoded) CreateBranchAndDecode()
         {
             TrieNode node = new(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
@@ -35,6 +23,13 @@ namespace Nethermind.Store.Test
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree, TreePath.Empty);
+            return (tree, decoded);
+        }
+
+        [Test]
+        public void Two_children_store_encode()
+        {
+            (ITrieNodeResolver tree, TrieNode decoded) = CreateBranchAndDecode();
             TreePath emptyPath = TreePath.Empty;
             decoded.RlpEncode(tree, ref emptyPath);
         }
@@ -42,12 +37,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Two_children_store_resolve_encode()
         {
-            TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            ITrieNodeResolver tree = BuildATreeFromNode(node);
-            TrieNode decoded = new(NodeType.Unknown, node.Keccak);
-            decoded.ResolveNode(tree, TreePath.Empty);
+            (ITrieNodeResolver tree, TrieNode decoded) = CreateBranchAndDecode();
             TreePath emptyPath = TreePath.Empty;
             decoded.RlpEncode(tree, ref emptyPath);
         }
@@ -55,40 +45,25 @@ namespace Nethermind.Store.Test
         [Test]
         public void Two_children_store_resolve_get1_encode()
         {
-            TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            ITrieNodeResolver tree = BuildATreeFromNode(node);
-            TrieNode decoded = new(NodeType.Unknown, node.Keccak);
-            decoded.ResolveNode(tree, TreePath.Empty);
+            (ITrieNodeResolver tree, TrieNode decoded) = CreateBranchAndDecode();
             TreePath emptyPath = TreePath.Empty;
-            TrieNode child0 = decoded.GetChild(tree, ref emptyPath, 0);
+            _ = decoded.GetChild(tree, ref emptyPath, 0);
             decoded.RlpEncode(tree, ref emptyPath);
         }
 
         [Test]
         public void Two_children_store_resolve_getnull_encode()
         {
-            TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            ITrieNodeResolver tree = BuildATreeFromNode(node);
-            TrieNode decoded = new(NodeType.Unknown, node.Keccak);
-            decoded.ResolveNode(tree, TreePath.Empty);
+            (ITrieNodeResolver tree, TrieNode decoded) = CreateBranchAndDecode();
             TreePath emptyPath = TreePath.Empty;
-            TrieNode child = decoded.GetChild(tree, ref emptyPath, 3);
+            _ = decoded.GetChild(tree, ref emptyPath, 3);
             decoded.RlpEncode(tree, ref emptyPath);
         }
 
         [Test]
         public void Two_children_store_resolve_update_encode()
         {
-            TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            ITrieNodeResolver tree = BuildATreeFromNode(node);
-            TrieNode decoded = new(NodeType.Unknown, node.Keccak);
-            decoded.ResolveNode(tree, TreePath.Empty);
+            (ITrieNodeResolver tree, TrieNode decoded) = CreateBranchAndDecode();
             decoded = decoded.Clone();
             decoded.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
             TreePath emptyPath = TreePath.Empty;
@@ -98,12 +73,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Two_children_store_resolve_update_null_encode()
         {
-            TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            ITrieNodeResolver tree = BuildATreeFromNode(node);
-            TrieNode decoded = new(NodeType.Unknown, node.Keccak);
-            decoded.ResolveNode(tree, TreePath.Empty);
+            (ITrieNodeResolver tree, TrieNode decoded) = CreateBranchAndDecode();
             decoded = decoded.Clone();
             decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
             decoded.SetChild(5, new TrieNode(NodeType.Leaf, TestItem.KeccakD));
@@ -114,12 +84,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Two_children_store_resolve_delete_and_add_encode()
         {
-            TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            ITrieNodeResolver tree = BuildATreeFromNode(node);
-            TrieNode decoded = new(NodeType.Unknown, node.Keccak);
-            decoded.ResolveNode(tree, TreePath.Empty);
+            (ITrieNodeResolver tree, TrieNode decoded) = CreateBranchAndDecode();
             decoded = decoded.Clone();
             decoded.SetChild(0, null);
             decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
@@ -141,16 +106,15 @@ namespace Nethermind.Store.Test
 
         private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
-            TrieNode.AllowBranchValues = true;
             TreePath emptyPath = TreePath.Empty;
             CappedArray<byte> rlp = node.RlpEncode(null, ref emptyPath);
-            node.ResolveKey(null, ref emptyPath, true);
+            node.ResolveKey(null, ref emptyPath);
 
             MemDb memDb = new();
             memDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, node.Keccak)] = rlp.ToArray();
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return new TrieStore(memDb, NullLogManager.Instance).GetTrieStore(null);
+            return TestTrieStoreFactory.Build(memDb, NullLogManager.Instance).GetTrieStore(null);
         }
     }
 }

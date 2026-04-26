@@ -3,40 +3,30 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
     BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0);
-
-    bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
 
-public class ChainLevelHelper : IChainLevelHelper
+public class ChainLevelHelper(
+    IBlockTree blockTree,
+    IBeaconPivot beaconPivot,
+    ISyncConfig syncConfig,
+    ILogManager logManager) : IChainLevelHelper
 {
-    private readonly IBlockTree _blockTree;
-    private readonly ISyncConfig _syncConfig;
-    private readonly ILogger _logger;
-    private readonly IBeaconPivot _beaconPivot;
-
-    public ChainLevelHelper(
-        IBlockTree blockTree,
-        IBeaconPivot beaconPivot,
-        ISyncConfig syncConfig,
-        ILogManager logManager)
-    {
-        _blockTree = blockTree;
-        _beaconPivot = beaconPivot;
-        _syncConfig = syncConfig;
-        _logger = logManager.GetClassLogger();
-    }
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISyncConfig _syncConfig = syncConfig;
+    private readonly ILogger _logger = logManager.GetClassLogger<ChainLevelHelper>();
+    private readonly IBeaconPivot _beaconPivot = beaconPivot;
 
     private void OnMissingBeaconHeader(long blockNumber)
     {
@@ -53,7 +43,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
     public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
     {
-        long? startingPoint = GetStartingPoint();
+        (long? startingPoint, Hash256? startingPointBlockHash) = GetStartingPoint();
         if (startingPoint is null)
         {
             if (_logger.IsTrace)
@@ -70,7 +60,10 @@ public class ChainLevelHelper : IChainLevelHelper
         while (i < effectiveMax)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
-            BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
+
+            BlockInfo? beaconMainChainBlock = startingPointBlockHash is not null ? level?.FindBlockInfo(startingPointBlockHash) : level?.BeaconMainChainBlock;
+            startingPointBlockHash = null;
+
             if (level is null || beaconMainChainBlock is null)
             {
                 OnMissingBeaconHeader(startingPoint.Value);
@@ -96,6 +89,13 @@ public class ChainLevelHelper : IChainLevelHelper
                 {
                     _logger.Trace($"ChainLevelHelper {bi.BlockHash}, {bi.BlockNumber} {bi.TotalDifficulty} {bi.Metadata}");
                 }
+            }
+
+            if (headers.Count > 0 && headers[^1].Hash != newHeader.ParentHash)
+            {
+                if (_logger.IsDebug) _logger.Debug($"ChainLevelHelper - header {startingPoint} is not canonical descendent of header before it. Hash: {newHeader.Hash}, Expected parent: {newHeader.ParentHash}, Actual parent: {headers[^1].Hash}. Could be a concurrent reorg.");
+
+                break;
             }
 
             if (beaconMainChainBlock.IsBeaconInfo)
@@ -138,34 +138,10 @@ public class ChainLevelHelper : IChainLevelHelper
         }
         else
         {
-            headers.RemoveRange(toTake, headers.Count - toTake);
+            CollectionsMarshal.SetCount(headers, toTake);
         }
 
         return headers.ToArray();
-    }
-
-    public bool TrySetNextBlocks(int maxCount, BlockDownloadContext context)
-    {
-        if (context.Blocks.Length == 0) return false;
-
-        BlockInfo? beaconMainChainBlockInfo = GetBeaconMainChainBlockInfo(context.Blocks[0].Number);
-        if (beaconMainChainBlockInfo?.IsBeaconHeader == true && beaconMainChainBlockInfo.IsBeaconBody == false) return false;
-
-        int offset = 0;
-        while (offset != context.NonEmptyBlockHashes.Count)
-        {
-            IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, maxCount);
-            for (int i = 0; i < hashesToRequest.Count; i++)
-            {
-                Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
-                if (block is null) return false;
-                BlockBody blockBody = new(block.Transactions, block.Uncles, block?.Withdrawals);
-                context.SetBody(i + offset, blockBody);
-            }
-
-            offset += hashesToRequest.Count;
-        }
-        return true;
     }
 
     /// <summary>
@@ -173,7 +149,7 @@ public class ChainLevelHelper : IChainLevelHelper
     /// block that was processed where we should continue processing.
     /// </summary>
     /// <returns></returns>
-    private long? GetStartingPoint()
+    private (long?, Hash256?) GetStartingPoint()
     {
         long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
         bool shouldContinue;
@@ -184,14 +160,14 @@ public class ChainLevelHelper : IChainLevelHelper
         if (beaconMainChainBlock is null)
         {
             OnMissingBeaconHeader(startingPoint);
-            return null;
+            return default;
         }
 
         if (!beaconMainChainBlock.IsBeaconInfo)
         {
-            return startingPoint;
+            return (startingPoint, beaconMainChainBlock.BlockHash);
         }
-
+        BlockInfo? parentBlockInfo = null;
         Hash256 currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
@@ -200,14 +176,14 @@ public class ChainLevelHelper : IChainLevelHelper
             if (header is null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Header for number {startingPoint} was not found");
-                return null;
+                return default;
             }
 
-            BlockInfo? parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
+            parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
             if (parentBlockInfo is null)
             {
                 OnMissingBeaconHeader(header.Number);
-                return null;
+                return default;
             }
 
             shouldContinue = parentBlockInfo.IsBeaconInfo;
@@ -226,7 +202,7 @@ public class ChainLevelHelper : IChainLevelHelper
             }
         } while (shouldContinue);
 
-        return startingPoint;
+        return (startingPoint, parentBlockInfo.BlockHash);
     }
 
     private BlockInfo? GetBeaconMainChainBlockInfo(long startingPoint)

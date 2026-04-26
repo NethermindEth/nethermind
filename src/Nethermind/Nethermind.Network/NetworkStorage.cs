@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,21 +15,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public class NetworkStorage : INetworkStorage
+    public class NetworkStorage(IFullDb? fullDb, ILogManager? logManager) : INetworkStorage
     {
-        private readonly object _lock = new();
-        private readonly IFullDb _fullDb;
-        private readonly ILogger _logger;
+        private readonly Lock _lock = new();
+        private readonly IFullDb _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
+        private readonly ILogger _logger = logManager?.GetClassLogger<NetworkStorage>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
         private long _updateCounter;
         private long _removeCounter;
         private NetworkNode[]? _nodes;
-
-        public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
-        {
-            _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         public int PersistedNodesCount => GetPersistedNodes().Length;
 
@@ -55,7 +49,7 @@ namespace Nethermind.Network
                     LoadFromDb();
                 }
 
-                return _nodesDict.Count == 0 ? Array.Empty<NetworkNode>() : CopyDictToArray();
+                return _nodesDict.Count == 0 ? [] : CopyDictToArray();
             }
         }
 
@@ -162,10 +156,7 @@ namespace Nethermind.Network
             }
         }
 
-        public bool AnyPendingChange()
-        {
-            return _updateCounter > 0 || _removeCounter > 0;
-        }
+        public bool AnyPendingChange() => _updateCounter > 0 || _removeCounter > 0;
 
         private static NetworkNode GetNode(byte[] networkNodeRaw)
         {

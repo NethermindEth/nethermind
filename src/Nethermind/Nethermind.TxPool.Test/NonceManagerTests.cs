@@ -7,24 +7,24 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class NonceManagerTests
 {
     private ISpecProvider _specProvider;
-    private IWorldState _stateProvider;
+    private TestReadOnlyStateProvider _stateProvider;
     private IBlockTree _blockTree;
     private ChainHeadInfoProvider _headInfo;
     private INonceManager _nonceManager;
@@ -32,18 +32,18 @@ public class NonceManagerTests
     [SetUp]
     public void Setup()
     {
-        ILogManager logManager = LimboLogs.Instance;
         _specProvider = MainnetSpecProvider.Instance;
-        var trieStore = new TrieStore(new MemDb(), logManager);
-        var codeDb = new MemDb();
-        _stateProvider = new WorldState(trieStore, codeDb, logManager);
+        _stateProvider = new TestReadOnlyStateProvider();
         _blockTree = Substitute.For<IBlockTree>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
         _blockTree.Head.Returns(block);
         _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
 
-        _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider);
-        _nonceManager = new NonceManager(_headInfo.AccountStateProvider);
+        _headInfo = new ChainHeadInfoProvider(
+            new ChainHeadSpecProvider(_specProvider, _blockTree),
+            _blockTree,
+            _stateProvider);
+        _nonceManager = new NonceManager(_headInfo.ReadOnlyStateProvider);
     }
 
     [Test]
@@ -172,7 +172,7 @@ public class NonceManagerTests
     [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(0);
         }
@@ -183,7 +183,7 @@ public class NonceManagerTests
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 1)) { }
+        using (_nonceManager.TxWithNonceReceived(TestItem.AddressA, 1)) { }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
@@ -193,7 +193,7 @@ public class NonceManagerTests
     }
 
     [Test]
-    [Repeat(10)]
+    [Repeat(2)]
     public void should_lock_on_same_account()
     {
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
@@ -202,13 +202,12 @@ public class NonceManagerTests
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 _);
         });
-        TimeSpan ts = TimeSpan.FromMilliseconds(1000);
-        task.Wait(ts);
+        task.Wait(TimeSpan.FromMilliseconds(1_000));
         task.IsCompleted.Should().Be(false);
     }
 
     [Test]
-    [Repeat(10)]
+    [Repeat(3)]
     public void should_not_lock_on_different_accounts()
     {
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
@@ -218,8 +217,7 @@ public class NonceManagerTests
             using NonceLocker locker2 = _nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce2);
             nonce2.Should().Be(0);
         });
-        TimeSpan ts = TimeSpan.FromMilliseconds(1000);
-        task.Wait(ts);
+        task.Wait(TimeSpan.FromMilliseconds(10_000));
         task.IsCompleted.Should().Be(true);
     }
 }

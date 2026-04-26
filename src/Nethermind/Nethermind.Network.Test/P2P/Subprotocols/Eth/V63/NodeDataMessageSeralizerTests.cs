@@ -12,9 +12,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [Parallelizable(ParallelScope.All)]
     public class NodeDataMessageSerializerTests
     {
-        private static void Test(IOwnedReadOnlyList<byte[]> data)
+        private static void Test(IOwnedReadOnlyList<byte[]>? data)
         {
-            using NodeDataMessage message = new(data);
+            using NodeDataMessage message = new(data is not null ? new ByteArrayListAdapter(data) : null);
 
             NodeDataMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, message);
@@ -23,27 +23,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
+            using ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
 
         [Test]
         public void Zero_roundtrip()
         {
-            ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
+            using ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
 
         [Test]
-        public void Roundtrip_with_null_top_level()
-        {
-            Test(null);
-        }
+        public void Roundtrip_with_null_top_level() => Test(null);
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), Array.Empty<byte>(), TestItem.KeccakC.BytesToArray() };
+            using ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), Array.Empty<byte>(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
     }

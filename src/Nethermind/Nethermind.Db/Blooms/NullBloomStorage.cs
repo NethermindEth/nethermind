@@ -20,7 +20,9 @@ namespace Nethermind.Db.Blooms
         public long MaxBlockNumber { get; } = 0;
         public long MigratedBlockNumber { get; } = -1;
 
-        public void Store(long blockNumber, Core.Bloom bloom) { }
+        public void Store(IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms) { }
+        public void Store(long blockNumber, Bloom bloom) { }
+
         public void Migrate(IEnumerable<BlockHeader> blockHeaders) { }
 
         public IBloomEnumeration GetBlooms(long fromBlock, long toBlock) => new NullBloomEnumerator();
@@ -42,10 +44,7 @@ namespace Nethermind.Db.Blooms
 
             public (long FromBlock, long ToBlock) CurrentIndices { get; } = (0, 0);
 
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return GetEnumerator();
-            }
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }
 
         public void Dispose() { }

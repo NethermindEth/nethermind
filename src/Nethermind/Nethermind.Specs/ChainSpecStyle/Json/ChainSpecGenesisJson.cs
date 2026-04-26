@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class ChainSpecGenesisJson
+    public class ChainSpecGenesisJson
     {
         public string Name { get; set; }
         public string DataDir { get; set; }
@@ -27,5 +27,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong BlobGasUsed { get; set; }
         public ulong ExcessBlobGas { get; set; }
         public Hash256 ParentBeaconBlockRoot { get; set; }
+
+        public ulong? SlotNumber { get; set; }
     }
 }

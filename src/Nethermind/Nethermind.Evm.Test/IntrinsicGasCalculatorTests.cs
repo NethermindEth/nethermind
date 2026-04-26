@@ -1,20 +1,32 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
+using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
+
+    [Flags]
+    public enum GasOptions
+    {
+        None = 0,
+        AfterRepricing = 1,
+        FloorCostEnabled = 2,
+    }
+
     [TestFixture]
     public class IntrinsicGasCalculatorTests
     {
@@ -32,18 +44,19 @@ namespace Nethermind.Evm.Test
             yield return (new List<object> { Address.Zero, (UInt256)1, Address.Zero, (UInt256)1 }, 8600);
         }
 
-        public static IEnumerable<(byte[] Data, int OldCost, int NewCost)> DataTestCaseSource()
+        public static IEnumerable<(byte[] Data, int OldCost, int NewCost, int FloorCost)> DataTestCaseSource()
         {
-            yield return (new byte[] { 0 }, 4, 4);
-            yield return (new byte[] { 1 }, 68, 16);
-            yield return (new byte[] { 0, 0, 1 }, 76, 24);
-            yield return (new byte[] { 1, 1, 0 }, 140, 36);
-            yield return (new byte[] { 0, 0, 1, 1 }, 144, 40);
+            yield return ([0], 4, 4, 21010);
+            yield return ([1], 68, 16, 21040);
+            yield return ([0, 0, 1], 76, 24, 21060);
+            yield return ([1, 1, 0], 140, 36, 21090);
+            yield return ([0, 0, 1, 1], 144, 40, 21100);
         }
         [TestCaseSource(nameof(TestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
-            IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance).Should().Be(testCase.Cost);
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance);
+            gas.Should().Be(new EthereumIntrinsicGas(Standard: testCase.Cost, FloorGas: 0));
         }
 
         [TestCaseSource(nameof(AccessTestCaseSource))]
@@ -73,7 +86,8 @@ namespace Nethermind.Evm.Test
                 }
                 else
                 {
-                    IntrinsicGasCalculator.Calculate(tx, spec).Should().Be(21000 + testCase.Cost, spec.Name);
+                    EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
+                    gas.Should().Be(new EthereumIntrinsicGas(Standard: 21000 + testCase.Cost, FloorGas: 0), spec.Name);
                 }
             }
 
@@ -90,30 +104,180 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCaseSource(nameof(DataTestCaseSource))]
-        public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, int OldCost, int NewCost) testCase)
+        public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, int OldCost, int NewCost, int FloorCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithData(testCase.Data).TestObject;
 
-            void Test(IReleaseSpec spec, bool isAfterRepricing)
+
+            void Test(IReleaseSpec spec, GasOptions options)
             {
-                IntrinsicGasCalculator.Calculate(tx, spec).Should()
+                EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
+
+                bool isAfterRepricing = options.HasFlag(GasOptions.AfterRepricing);
+                bool floorCostEnabled = options.HasFlag(GasOptions.FloorCostEnabled);
+
+                gas.Standard.Should()
                     .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
                         testCase.Data.ToHexString());
+                gas.FloorGas.Should().Be(floorCostEnabled ? testCase.FloorCost : 0);
+
+                gas.Should().Be(new EthereumIntrinsicGas(
+                        Standard: 21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
+                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0),
+                    spec.Name, testCase.Data.ToHexString());
             }
 
-            Test(Homestead.Instance, false);
-            Test(Frontier.Instance, false);
-            Test(SpuriousDragon.Instance, false);
-            Test(TangerineWhistle.Instance, false);
-            Test(Byzantium.Instance, false);
-            Test(Constantinople.Instance, false);
-            Test(ConstantinopleFix.Instance, false);
-            Test(Istanbul.Instance, true);
-            Test(MuirGlacier.Instance, true);
-            Test(Berlin.Instance, true);
-            Test(GrayGlacier.Instance, true);
-            Test(Shanghai.Instance, true);
-            Test(Cancun.Instance, true);
+            Test(Homestead.Instance, GasOptions.None);
+            Test(Frontier.Instance, GasOptions.None);
+            Test(SpuriousDragon.Instance, GasOptions.None);
+            Test(TangerineWhistle.Instance, GasOptions.None);
+            Test(Byzantium.Instance, GasOptions.None);
+            Test(Constantinople.Instance, GasOptions.None);
+            Test(ConstantinopleFix.Instance, GasOptions.None);
+            Test(Istanbul.Instance, GasOptions.AfterRepricing);
+            Test(MuirGlacier.Instance, GasOptions.AfterRepricing);
+            Test(Berlin.Instance, GasOptions.AfterRepricing);
+            Test(GrayGlacier.Instance, GasOptions.AfterRepricing);
+            Test(Shanghai.Instance, GasOptions.AfterRepricing);
+            Test(Cancun.Instance, GasOptions.AfterRepricing);
+            Test(Prague.Instance, GasOptions.AfterRepricing | GasOptions.FloorCostEnabled);
+        }
+
+        public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> AuthorizationListTestCaseSource()
+        {
+            yield return (
+                [], 0);
+            yield return (
+                [new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextByte(),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)))
+                ],
+                GasCostOf.NewAccount);
+            yield return (
+               [new AuthorizationTuple(
+                   TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextByte(),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10))),
+                   new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextByte(),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)))
+               ],
+               GasCostOf.NewAccount * 2);
+            yield return (
+               [new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextByte(),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10))),
+                   new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextByte(),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10))),
+                   new AuthorizationTuple(
+                    TestContext.CurrentContext.Random.NextULong(),
+                    new Address(TestContext.CurrentContext.Random.NextBytes(20)),
+                    TestContext.CurrentContext.Random.NextULong(),
+                    TestContext.CurrentContext.Random.NextByte(),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)))
+               ],
+               GasCostOf.NewAccount * 3);
+        }
+        [TestCaseSource(nameof(AuthorizationListTestCaseSource))]
+        public void Calculate_TxHasAuthorizationList_ReturnsExpectedCostOfTx((AuthorizationTuple[] AuthorizationList, long ExpectedCost) testCase)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(testCase.AuthorizationList)
+                .TestObject;
+
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
+            gas.Standard.Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
+        }
+
+        [Test]
+        public void Calculate_TxHasAuthorizationListBeforePrague_ThrowsInvalidDataException()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(
+                new AuthorizationTuple(
+                    0,
+                    TestItem.AddressF,
+                    0,
+                    TestContext.CurrentContext.Random.NextByte(),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)),
+                    new UInt256(TestContext.CurrentContext.Random.NextBytes(10)))
+                )
+                .TestObject;
+
+            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
+        }
+
+        [Test]
+        public void Eip8037_policy_intrinsic_gas_splits_authorization_cost()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+                .TestObject;
+            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+
+            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular));
+            Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_intrinsic_gas_includes_state_gas_for_create()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithCode(Array.Empty<byte>())
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long expectedRegular = GasCostOf.Transaction + GasCostOf.CreateRegular;
+            long expectedState = GasCostOf.CreateState;
+            Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
+            Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_intrinsic_gas_includes_state_gas_for_setcode()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long expectedRegular = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular;
+            long expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+            Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
+        }
+
+        [Test]
+        public void Eip8037_nongeneric_minimal_gas_is_at_least_regular_plus_state()
+        {
+            // A create tx with no calldata: floor gas is low, Standard = regular + state
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithCode(Array.Empty<byte>())
+                .TestObject;
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+
+            long regularPlusState = GasCostOf.Transaction + GasCostOf.CreateRegular + GasCostOf.CreateState;
+            Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
         }
     }
 }

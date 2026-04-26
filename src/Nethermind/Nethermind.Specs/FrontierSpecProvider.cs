@@ -28,6 +28,7 @@ namespace Nethermind.Specs
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => Frontier.Instance;
 
         public long? DaoBlockNumber { get; } = null;
+        public ulong? BeaconChainGenesisTimestamp => null;
 
         public ulong NetworkId => Core.BlockchainIds.Mainnet;
         public ulong ChainId => NetworkId;

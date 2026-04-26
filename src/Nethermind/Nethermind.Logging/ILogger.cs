@@ -7,22 +7,20 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Logging;
 
 /// <summary>
-/// Struct to wrap InterfaceLogger in that that when created sets values in struct for
+/// Struct to wrap InterfaceLogger in that when created sets values in struct for
 /// IsTrace, IsDebug, IsInfo, IsWarn, IsError so the guards are a fast check inline against
 /// the struct rather than being an interface call each time.
 /// </summary>
-#if DEBUG
-public struct ILogger
-#else
-public readonly struct ILogger
+#if !DEBUG
+readonly
 #endif
+public struct ILogger : IEquatable<ILogger>
 {
     private readonly InterfaceLogger _logger;
-#if DEBUG
-    private LogLevel _value;
-#else
-    private readonly LogLevel _value;
+#if !DEBUG
+    readonly
 #endif
+    private LogLevel _value;
 
     public ILogger(InterfaceLogger logger)
     {
@@ -52,36 +50,33 @@ public readonly struct ILogger
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Debug(string text)
     {
-        if (IsDebug)
-            _logger.Debug(text);
+        if (IsDebug) _logger.Debug(text);
     }
+
+    public bool Equals(ILogger other) => _logger == other._logger;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Error(string text, Exception ex = null)
     {
-        if (IsError)
-            _logger.Error(text, ex);
+        if (IsError) _logger.Error(text, ex);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Info(string text)
     {
-        if (IsInfo)
-            _logger.Info(text);
+        if (IsInfo) _logger.Info(text);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Trace(string text)
     {
-        if (IsTrace)
-            _logger.Trace(text);
+        if (IsTrace) _logger.Trace(text);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Warn(string text)
     {
-        if (IsWarn)
-            _logger.Warn(text);
+        if (IsWarn) _logger.Warn(text);
     }
 
     [Flags]

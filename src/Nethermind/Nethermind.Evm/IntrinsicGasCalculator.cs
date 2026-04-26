@@ -2,82 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
-using System.Runtime.Intrinsics;
-using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
-using Nethermind.Core.Extensions;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
 
+/// <summary>
+/// Non-generic intrinsic gas result for backward compatibility.
+/// </summary>
+public readonly record struct EthereumIntrinsicGas(long Standard, long FloorGas)
+{
+    public long MinimalGas { get; } = Math.Max(Standard, FloorGas);
+    public static explicit operator long(EthereumIntrinsicGas gas) => gas.MinimalGas;
+    public static implicit operator EthereumIntrinsicGas(IntrinsicGas<EthereumGasPolicy> gas) =>
+        new(gas.Standard.Value + gas.Standard.StateReservoir, gas.FloorGas.Value);
+}
+
 public static class IntrinsicGasCalculator
 {
-    public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long result = GasCostOf.Transaction;
-        result += DataCost(transaction, releaseSpec);
-        result += CreateCost(transaction, releaseSpec);
-        result += AccessListCost(transaction, releaseSpec);
-        return result;
-    }
+    /// <summary>
+    /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum.
+    /// </summary>
+    private static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
+        TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec);
 
-    private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long createCost = 0;
-        if (transaction.IsContractCreation && releaseSpec.IsEip2Enabled)
-        {
-            createCost += GasCostOf.TxCreate;
-        }
+    /// <summary>
+    /// Non-generic backward-compatible Calculate method.
+    /// </summary>
+    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec) =>
+        Calculate<EthereumGasPolicy>(transaction, releaseSpec);
 
-        return createCost;
-    }
-
-    private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long txDataNonZeroGasCost =
-            releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
-        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-
-        int totalZeros = data.CountZeros();
-
-        var baseDataCost = (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
-            ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
-            : 0);
-
-        return baseDataCost +
-            totalZeros * GasCostOf.TxDataZero +
-            (data.Length - totalZeros) * txDataNonZeroGasCost;
-    }
-
-    private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        AccessList? accessList = transaction.AccessList;
-        long accessListCost = 0;
-        if (accessList is not null)
-        {
-            if (!releaseSpec.UseTxAccessLists)
-            {
-                throw new InvalidDataException(
-                    $"Transaction with an access list received within the context of {releaseSpec.Name}. Eip-2930 is not enabled.");
-            }
-
-            if (accessList.IsEmpty) return accessListCost;
-
-            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) entry in accessList)
-            {
-                accessListCost += GasCostOf.AccessAccountListEntry;
-                foreach (UInt256 _ in entry.storageKeys)
-                {
-                    accessListCost += GasCostOf.AccessStorageListEntry;
-                }
-            }
-        }
-
-        return accessListCost;
-    }
+    public static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec) =>
+        IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec);
 }

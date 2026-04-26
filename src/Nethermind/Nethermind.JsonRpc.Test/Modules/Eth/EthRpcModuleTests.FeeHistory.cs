@@ -10,7 +10,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -26,10 +25,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
-    [TestCase(1, "latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
-    [TestCase(1, "pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
-    [TestCase(2, "0x01", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\",\"0x342770c0\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0,0.0],\"blobGasUsedRatio\":[0.0,0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"],[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
-    [TestCase(2, "earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(1, "latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0],\"blobGasUsedRatio\":[0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(1, "pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0],\"blobGasUsedRatio\":[0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(2, "0x01", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\",\"0x342770c0\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\",\"0x0\"],\"gasUsedRatio\":[0,0],\"blobGasUsedRatio\":[0,0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"],[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(2, "earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0],\"blobGasUsedRatio\":[0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
     public async Task Eth_feeHistory(long blockCount, string blockParameter, string expected)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
@@ -89,15 +88,15 @@ public partial class EthRpcModuleTests
                 new ulong?[] { 1,
                     2,
                     0,
-                    Eip4844Constants.TargetBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock * 4 },
+                    Cancun.Instance.GasCosts.TargetBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock * 4 },
                 new ulong?[] { 0,
                     Eip4844Constants.GasPerBlob * 2,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock })
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock,
+                    Cancun.Instance.GasCosts.MaxBlobGasPerBlock })
             {
                 TestName = "Different values",
                 ExpectedResult = (
@@ -108,7 +107,7 @@ public partial class EthRpcModuleTests
 
             yield return new TestCaseData(new ulong?[] { 49152, 1 }, new ulong?[] { 0, 49152 })
             {
-                TestName = "Blocks with arbitary values",
+                TestName = "Blocks with arbitrary values",
                 ExpectedResult = (new UInt256?[] { 1, 1, 1 }, new double?[] { 0.0, 0.0625 })
             };
         }

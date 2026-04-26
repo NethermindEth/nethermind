@@ -3,22 +3,19 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Specs;
+using Nethermind.Db.LogIndex;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -58,17 +55,17 @@ public class BoundedModulePoolTests
             Substitute.For<IGasPriceOracle>(),
             Substitute.For<IEthSyncingInfo>(),
             Substitute.For<IFeeHistoryOracle>(),
-            new BlocksConfig().SecondsPerSlot),
+            Substitute.For<IProtocolsManager>(),
+            new BlocksConfig(),
+            Substitute.For<IForkInfo>(),
+            Substitute.For<ILogIndexConfig>()),
              1, 1000);
 
         return Task.CompletedTask;
     }
 
     [Test]
-    public async Task Ensure_concurrency()
-    {
-        await _modulePool.GetModule(false);
-    }
+    public async Task Ensure_concurrency() => await _modulePool.GetModule(false);
 
     [Test]
     public async Task Ensure_limited_exclusive()

@@ -2,49 +2,42 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing
 {
+    /// <summary>
+    /// Works much like a <see cref="ITransactionProcessor"/> but at a block level.
+    /// Also, like <see cref="ITransactionProcessor"/>, does not prepare the world state. The world state is assumed
+    /// to be prepared ahead of time.
+    /// </summary>
     public interface IBlockProcessor
     {
         /// <summary>
-        /// Processes a group of blocks starting with a state defined by the <paramref name="newBranchStateRoot"/>.
+        /// Raised after all transactions in a block have been executed,
+        /// before blooms, receipts root, and state root are computed.
+        /// Subscribers can use this to cancel background work (e.g. prewarmer)
+        /// so the thread pool is free for the parallel post-tx computations.
         /// </summary>
-        /// <param name="newBranchStateRoot">Initial state for the processed branch.</param>
-        /// <param name="suggestedBlocks">List of blocks to be processed.</param>
-        /// <param name="processingOptions">Options to use for processor and transaction processor.</param>
-        /// <param name="blockTracer">Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/></param>
-        /// <returns>List of processed blocks.</returns>
-        Block[] Process(
-            Hash256 newBranchStateRoot,
-            List<Block> suggestedBlocks,
-            ProcessingOptions processingOptions,
-            IBlockTracer blockTracer);
+        event Action? TransactionsExecuted;
 
-        /// <summary>
-        /// Fired when a branch is being processed.
-        /// </summary>
-        event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
-
-        /// <summary>
-        /// Fired after a block has been processed.
-        /// </summary>
-        event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-
-        /// <summary>
-        /// Fired after a transaction has been processed (even if inside the block).
-        /// </summary>
-        event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+            Block suggestedBlock,
+            ProcessingOptions options,
+            IBlockTracer blockTracer,
+            IReleaseSpec spec,
+            CancellationToken token = default);
 
         public interface IBlockTransactionsExecutor
         {
-            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
-            event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
+            void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
         }
     }
 }

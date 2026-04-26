@@ -5,7 +5,7 @@ using System;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -17,7 +17,7 @@ namespace Nethermind.Db.Test;
 public class ColumnsDbTests
 {
     string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
-    private ColumnsDb<TestColumns> _db = null!;
+    private ColumnsDb<ReceiptsColumns> _db = null!;
 
     [SetUp]
     public void Setup()
@@ -28,35 +28,29 @@ public class ColumnsDbTests
         }
 
         Directory.CreateDirectory(DbPath);
-        ColumnsDb<TestColumns> columnsDb = new(DbPath,
-            new("blocks", DbPath)
+        ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath,
+            new("Blocks", DbPath)
             {
-                BlockCacheSize = (ulong)1.KiB(),
-                CacheIndexAndFilterBlocks = false,
                 DeleteOnStart = true,
-                WriteBufferNumber = 4,
-                WriteBufferSize = (ulong)1.KiB()
             },
             new DbConfig(),
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
-            Enum.GetValues<TestColumns>()
+            Enum.GetValues<ReceiptsColumns>()
         );
 
         _db = columnsDb;
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _db.Dispose();
-    }
+    public void TearDown() => _db.Dispose();
 
     [Test]
     public void SmokeTest()
     {
-        IDb colA = _db.GetColumnDb(TestColumns.ColumnA);
-        IDb colB = _db.GetColumnDb(TestColumns.ColumnB);
-        IDb defaultCol = _db.GetColumnDb(TestColumns.Default);
+        IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        IDb colB = _db.GetColumnDb(ReceiptsColumns.Transactions);
+        IDb defaultCol = _db.GetColumnDb(ReceiptsColumns.Default);
 
         colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
@@ -71,19 +65,19 @@ public class ColumnsDbTests
     [Retry(10)]
     public void SmokeTestMemtableSize()
     {
-        IDb colA = _db.GetColumnDb(TestColumns.ColumnA);
-        IDb colB = _db.GetColumnDb(TestColumns.ColumnB);
+        IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        IDb colB = _db.GetColumnDb(ReceiptsColumns.Transactions);
 
         colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
 
-        Assert.That(() => _db.GatherMetric().MemtableSize, Is.EqualTo(22544).After(1000, 10));
+        Assert.That(() => _db.GatherMetric().MemtableSize, Is.EqualTo(2566224).Within(1).Percent.After(1000, 10));
     }
 
     [Test]
     public void SmokeTestDefaultColumn()
     {
-        IDb defaultCol = _db.GetColumnDb(TestColumns.Default);
+        IDb defaultCol = _db.GetColumnDb(ReceiptsColumns.Default);
 
         defaultCol.Get(TestItem.KeccakB).Should().BeNull();
         defaultCol.Set(TestItem.KeccakB, TestItem.KeccakC.BytesToArray());
@@ -95,25 +89,58 @@ public class ColumnsDbTests
     [Test]
     public void TestWriteBatch_WriteToAllColumn()
     {
-        var batch = _db.StartWriteBatch();
-        var colA = batch.GetColumnBatch(TestColumns.ColumnA);
-        var colB = batch.GetColumnBatch(TestColumns.ColumnB);
+        IColumnsWriteBatch<ReceiptsColumns> batch = _db.StartWriteBatch();
+        IWriteBatch colA = batch.GetColumnBatch(ReceiptsColumns.Blocks);
+        IWriteBatch colB = batch.GetColumnBatch(ReceiptsColumns.Transactions);
 
         colA.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA.Bytes, TestItem.KeccakB.BytesToArray());
 
         batch.Dispose();
 
-        _db.GetColumnDb(TestColumns.ColumnA).Get(TestItem.KeccakA).Should()
+        _db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA).Should()
             .BeEquivalentTo(TestItem.KeccakA.BytesToArray());
-        _db.GetColumnDb(TestColumns.ColumnB).Get(TestItem.KeccakA).Should()
+        _db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA).Should()
             .BeEquivalentTo(TestItem.KeccakB.BytesToArray());
     }
 
-    enum TestColumns
+    [Test]
+    public void SmokeTest_Snapshot()
     {
-        Default,
-        ColumnA,
-        ColumnB,
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
+
+        colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
+
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        colA.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
+        colA.Get(TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakB.BytesToArray());
+
+        snapshot.GetColumn(ReceiptsColumns.Blocks)
+            .Get(TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
+    }
+
+    [Test]
+    public void Snapshot_DoubleDispose_DoesNotThrow()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        snapshot.Dispose();
+
+        FluentActions.Invoking(() => snapshot.Dispose()).Should().NotThrow();
+    }
+
+    [Test]
+    public void Snapshot_GetColumn_AfterDispose_ThrowsObjectDisposedException()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        snapshot.Dispose();
+
+        FluentActions.Invoking(() => snapshot.GetColumn(ReceiptsColumns.Blocks))
+            .Should().Throw<ObjectDisposedException>();
     }
 }

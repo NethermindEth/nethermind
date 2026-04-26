@@ -24,36 +24,27 @@ namespace Nethermind.JsonRpc
             BatchedResponses = batchedResponses;
         }
 
-        private JsonRpcResult(Entry singleResult)
+        private JsonRpcResult(in Entry singleResult)
         {
             IsCollection = false;
             SingleResponse = singleResult;
         }
 
-        public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
+        public static JsonRpcResult Single(JsonRpcResponse response, in RpcReport report)
             => new(new Entry(response, report));
 
-        public static JsonRpcResult Single(Entry entry)
+        public static JsonRpcResult Single(in Entry entry)
             => new(entry);
 
         public static JsonRpcResult Collection(IJsonRpcBatchResult responses)
             => new(responses);
 
-        public readonly struct Entry : IDisposable
+        public readonly struct Entry(JsonRpcResponse response, RpcReport report) : IDisposable
         {
-            public JsonRpcResponse Response { get; }
-            public RpcReport Report { get; }
+            public JsonRpcResponse Response { get; } = response;
+            public RpcReport Report { get; } = report;
 
-            public Entry(JsonRpcResponse response, RpcReport report)
-            {
-                Response = response;
-                Report = report;
-            }
-
-            public void Dispose()
-            {
-                Response?.Dispose();
-            }
+            public void Dispose() => Response?.Dispose();
         }
 
         public void Dispose()

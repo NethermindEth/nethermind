@@ -11,15 +11,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="..\..\bench_precompiles\vectors\*\current\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <None Remove="modexp\current\file.json" />
-    <Content Include="modexp\current\file.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

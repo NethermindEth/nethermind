@@ -5,12 +5,14 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
-        private readonly TxDecoder _decoder = new();
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
+        private readonly TxDecoder _decoder = TxDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
@@ -19,18 +21,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             NettyRlpStream nettyRlpStream = new(byteBuffer);
 
             nettyRlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.Transactions.Count; i++)
+            foreach (Transaction tx in message.Transactions.AsSpan())
             {
-                nettyRlpStream.Encode(message.Transactions[i], RlpBehaviors.InMempoolForm);
+                nettyRlpStream.Encode(tx, RlpBehaviors.InMempoolForm);
             }
         }
 
-        public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            IOwnedReadOnlyList<Transaction> txs = DeserializeTxs(rlpStream);
-            return new TransactionsMessage(txs);
-        }
+        public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static TransactionsMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
+            new(DeserializeTxs(ref ctx));
 
         public int GetLength(TransactionsMessage message, out int contentLength)
         {
@@ -43,9 +44,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(RlpStream rlpStream)
-        {
-            return Rlp.DecodeArrayPool<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
-        }
+        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref Rlp.ValueDecoderContext ctx) => Rlp.DecodeArrayPool<Transaction>(ref ctx, RlpBehaviors.InMempoolForm, limit: RlpLimit);
     }
 }

@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.Stats
         [TestCase("zzz", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:303")]
         public void To_string_formats(string format, string expectedFormat)
         {
-            Node GetNode(string host) =>
+            static Node GetNode(string host) =>
                 new(TestItem.PublicKeyA, host, 303) { ClientId = "ClientId", EthDetails = "Details" };
 
             Node node = GetNode("127.0.0.1");

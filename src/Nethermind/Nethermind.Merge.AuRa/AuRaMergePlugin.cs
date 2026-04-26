@@ -1,19 +1,28 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
-using Nethermind.Config;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Merge.AuRa.Contracts;
+using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -21,48 +30,29 @@ namespace Nethermind.Merge.AuRa
     /// Plugin for AuRa -> PoS migration
     /// </summary>
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
+    public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : MergePlugin(chainSpec, mergeConfig)
     {
         private AuRaNethermindApi? _auraApi;
+        private readonly IMergeConfig _mergeConfig = mergeConfig;
+        private readonly ChainSpec _chainSpec = chainSpec;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
-        protected override bool MergeEnabled => ShouldRunSteps(_api);
+        protected override bool MergeEnabled => _mergeConfig.Enabled && _chainSpec.SealEngineType == SealEngineType.AuRa;
 
         public override async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
-            _mergeConfig = nethermindApi.Config<IMergeConfig>();
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
                 _auraApi = (AuRaNethermindApi)nethermindApi;
-                _auraApi.PoSSwitcher = _poSSwitcher;
 
                 // this runs before all init steps that use tx filters
                 TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
                     originalFilter is MinGasPriceContractTxFilter ? originalFilter
                     : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
             }
-        }
-
-        public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
-        {
-            _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
-                (AuRaNethermindApi)_api,
-                _api.WorldStateManager!,
-                _api.BlockTree!,
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.RewardCalculatorSource!,
-                _api.ReceiptStorage!,
-                _api.BlockPreprocessor!,
-                _api.TxPool!,
-                _api.TransactionComparerProvider!,
-                _api.Config<IBlocksConfig>(),
-                _api.LogManager);
-
-            return base.InitBlockProducer(consensusPlugin, txSource);
         }
 
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
@@ -73,10 +63,37 @@ namespace Nethermind.Merge.AuRa
                 _blocksConfig,
                 _api.LogManager);
 
-        public bool ShouldRunSteps(INethermindApi api)
-        {
-            _mergeConfig = api.Config<IMergeConfig>();
-            return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
-        }
+        protected override IBlockFinalizationManager InitializeMergeFinalizationManager() => new AuRaMergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(),
+                _auraApi!.FinalizationManager ??
+                throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
+                    "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
+                _poSSwitcher);
+
+        public override IModule Module => new AuRaMergeModule();
+    }
+
+    /// <summary>
+    /// Note: <see cref="AuRaMergeModule"/> is applied also when <see cref="AuRaModule"/> is applied.
+    /// Note: <see cref="AuRaMergePlugin"/> subclasses <see cref="MergePlugin"/>, but some component that is set
+    /// in <see cref="MergePlugin"/> is replaced later by standard AuRa components.
+    /// </summary>
+    public class AuRaMergeModule : Module
+    {
+        protected override void Load(ContainerBuilder builder) => builder
+                .AddModule(new BaseMergePluginModule())
+
+                // Aura (non merge) use `BlockProducerStarter` directly.
+                .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
+
+                .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
+                .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
+                .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
+                .AddScoped<IBlockProcessor, AuRaMergeBlockProcessor>()
+
+                .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+                .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
+                .AddDecorator<ISealValidator, MergeSealValidator>()
+                .AddDecorator<ISealer, MergeSealer>()
+                ;
     }
 }

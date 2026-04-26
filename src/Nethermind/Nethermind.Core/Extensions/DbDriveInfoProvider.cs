@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Extensions
 {
@@ -16,7 +16,8 @@ namespace Nethermind.Core.Extensions
             static IDriveInfo? FindDriveForDirectory(IDriveInfo[] drives, DirectoryInfo dir)
             {
                 string dPath = dir.LinkTarget ?? dir.FullName;
-                IEnumerable<IDriveInfo> candidateDrives = drives.Where(drive => dPath.StartsWith(drive.RootDirectory.FullName));
+                IEnumerable<IDriveInfo> candidateDrives =
+                    drives.Where(drive => dPath.StartsWith(drive.RootDirectory.FullName));
                 IDriveInfo? result = null;
                 foreach (IDriveInfo driveInfo in candidateDrives)
                 {
@@ -31,35 +32,53 @@ namespace Nethermind.Core.Extensions
             }
 
             DirectoryInfo topDir = new(dbPath);
-            if (topDir.Exists)
+            if (!topDir.Exists)
             {
-                HashSet<IDriveInfo> driveInfos = new();
-                //the following processing is to overcome specific behaviour on linux where creating DriveInfo for multiple paths on same logical drive
-                //gives instances with these paths (and not logical drive)
-                IDriveInfo[] allDrives = fileSystem.DriveInfo.GetDrives();
-                IDriveInfo? topLevelDrive = FindDriveForDirectory(allDrives, topDir);
-                if (topLevelDrive is not null)
-                {
-                    driveInfos.Add(topLevelDrive);
-                }
+                if (!CreateDirectorySilent(topDir))
+                    return [];
+            }
+            HashSet<IDriveInfo> driveInfos = new();
+            //the following processing is to overcome specific behaviour on linux where creating DriveInfo for multiple paths on same logical drive
+            //gives instances with these paths (and not logical drive)
+            // DriveInfo.GetDrives() crashes with a fatal AccessViolationException
+            // on macOS ARM64 in native GetAllMountPoints().
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                return [];
 
-                foreach (DirectoryInfo di in topDir.EnumerateDirectories())
-                {
-                    //only want to handle symlinks - otherwise will be on same drive as parent
-                    if (di.LinkTarget is not null)
-                    {
-                        IDriveInfo? matchedDrive = FindDriveForDirectory(allDrives, topDir);
-                        if (matchedDrive is not null)
-                        {
-                            driveInfos.Add(matchedDrive);
-                        }
-                    }
-                }
-
-                return driveInfos.ToArray();
+            IDriveInfo[] allDrives = fileSystem.DriveInfo.GetDrives();
+            IDriveInfo? topLevelDrive = FindDriveForDirectory(allDrives, topDir);
+            if (topLevelDrive is not null)
+            {
+                driveInfos.Add(topLevelDrive);
             }
 
-            return Array.Empty<IDriveInfo>();
+            foreach (DirectoryInfo di in topDir.EnumerateDirectories())
+            {
+                //only want to handle symlinks - otherwise will be on same drive as parent
+                if (di.LinkTarget is not null)
+                {
+                    IDriveInfo? matchedDrive = FindDriveForDirectory(allDrives, topDir);
+                    if (matchedDrive is not null)
+                    {
+                        driveInfos.Add(matchedDrive);
+                    }
+                }
+            }
+
+            return driveInfos.ToArray();
+        }
+
+        private static bool CreateDirectorySilent(DirectoryInfo directoryInfo)
+        {
+            try
+            {
+                directoryInfo.Create();
+            }
+            catch (IOException)
+            {
+                // ignored
+            }
+            return directoryInfo.Exists;
         }
     }
 }

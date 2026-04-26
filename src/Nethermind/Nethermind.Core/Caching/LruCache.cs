@@ -36,7 +36,7 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Caching
 
         public TValue Get(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -53,15 +53,12 @@ namespace Nethermind.Core.Caching
                 return value;
             }
 
-#pragma warning disable 8603
-            // fixed C# 9
-            return default;
-#pragma warning restore 8603
+            return default!;
         }
 
         public bool TryGet(TKey key, out TValue value)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -70,16 +67,13 @@ namespace Nethermind.Core.Caching
                 return true;
             }
 
-#pragma warning disable 8601
-            // fixed C# 9
-            value = default;
-#pragma warning restore 8601
+            value = default!;
             return false;
         }
 
         public bool Set(TKey key, TValue val)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (val is null)
             {
@@ -109,7 +103,7 @@ namespace Nethermind.Core.Caching
 
         public bool Delete(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             return DeleteNoLock(key);
         }
@@ -128,17 +122,17 @@ namespace Nethermind.Core.Caching
 
         public bool Contains(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             return _cacheMap.ContainsKey(key);
         }
 
         public KeyValuePair<TKey, TValue>[] ToArray()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             int i = 0;
-            var array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
+            KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
@@ -151,7 +145,7 @@ namespace Nethermind.Core.Caching
         public TValue[] GetValues()
         {
             int i = 0;
-            var array = new TValue[_cacheMap.Count];
+            TValue[] array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = kvp.Value.Value.Value;
@@ -160,13 +154,7 @@ namespace Nethermind.Core.Caching
             return array;
         }
 
-        public int Size
-        {
-            get
-            {
-                return _cacheMap.Count;
-            }
-        }
+        public int Count => _cacheMap.Count;
 
         private void Replace(TKey key, TValue value)
         {
@@ -183,11 +171,8 @@ namespace Nethermind.Core.Caching
             _cacheMap.Add(key, node);
 
             [DoesNotReturn]
-            static void ThrowInvalidOperationException()
-            {
-                throw new InvalidOperationException(
+            static void ThrowInvalidOperationException() => throw new InvalidOperationException(
                     $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
-            }
         }
 
         private struct LruCacheItem(TKey k, TValue v)

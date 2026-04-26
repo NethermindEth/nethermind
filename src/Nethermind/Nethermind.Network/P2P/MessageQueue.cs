@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols;
 
@@ -13,19 +14,21 @@ namespace Nethermind.Network.P2P
     {
         private bool _isClosed;
         private Request<TMsg, TData>? _currentRequest;
+        private readonly Lock _lock = new();
 
         private readonly Queue<Request<TMsg, TData>> _requestQueue = new();
 
         public void Send(Request<TMsg, TData> request)
         {
-            if (_isClosed)
+            lock (_lock)
             {
-                request.Message.TryDispose();
-                return;
-            }
+                if (_isClosed)
+                {
+                    request.Message.TryDispose();
+                    request.CompletionSource.TrySetCanceled();
+                    return;
+                }
 
-            lock (_requestQueue)
-            {
                 if (_currentRequest is null)
                 {
                     _currentRequest = request;
@@ -41,20 +44,19 @@ namespace Nethermind.Network.P2P
 
         public void Handle(TData data, long size)
         {
-            lock (_requestQueue)
+            lock (_lock)
             {
                 if (_currentRequest is null)
                 {
-                    if (data is IDisposable d)
-                    {
-                        d.Dispose();
-                    }
-
+                    data.TryDispose();
                     throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
                 }
 
                 _currentRequest.ResponseSize = size;
-                _currentRequest.CompletionSource.SetResult(data);
+                if (!_currentRequest.CompletionSource.TrySetResult(data))
+                {
+                    data.TryDispose();
+                }
                 if (_requestQueue.TryDequeue(out _currentRequest))
                 {
                     _currentRequest!.StartMeasuringTime();
@@ -65,7 +67,23 @@ namespace Nethermind.Network.P2P
 
         public void CompleteAdding()
         {
-            _isClosed = true;
+            lock (_lock)
+            {
+                _isClosed = true;
+
+                if (_currentRequest is not null)
+                {
+                    _currentRequest.Message.TryDispose();
+                    _currentRequest.CompletionSource.TrySetCanceled();
+                    _currentRequest = null;
+                }
+
+                while (_requestQueue.TryDequeue(out Request<TMsg, TData>? request))
+                {
+                    request.Message.TryDispose();
+                    request.CompletionSource.TrySetCanceled();
+                }
+            }
         }
     }
 }

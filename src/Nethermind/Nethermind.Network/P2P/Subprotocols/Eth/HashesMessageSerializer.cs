@@ -10,28 +10,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
-        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashes(nettyRlpStream);
-        }
+        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(static (ref Rlp.ValueDecoderContext ctx) => DeserializeHashes(ref ctx));
 
-        protected static Hash256[] DeserializeHashes(RlpStream rlpStream)
-        {
-            Hash256[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
-            return hashes;
-        }
+        protected static Hash256[] DeserializeHashes(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null) =>
+            ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
 
-        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashesArrayPool(nettyRlpStream);
-        }
+        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null) =>
+            byteBuffer.DeserializeRlp((ref Rlp.ValueDecoderContext ctx) => DeserializeHashesArrayPool(ref ctx, limit));
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream)
-        {
-            return rlpStream.DecodeArrayPoolList(itemContext => itemContext.DecodeKeccak());
-        }
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null) => ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {
@@ -40,9 +28,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.Hashes.Count; i++)
+            foreach (Hash256 hash in message.Hashes.AsSpan())
             {
-                rlpStream.Encode(message.Hashes[i]);
+                rlpStream.Encode(hash);
             }
         }
 

@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -18,281 +17,356 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Test.Mocks;
-using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Synchronization.Test.ParallelSync
+namespace Nethermind.Synchronization.Test.ParallelSync;
+
+[Parallelizable(ParallelScope.All)]
+public class SyncDispatcherTests
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
-    public class SyncDispatcherTests
+    private class TestSyncPeerPool(int peerCount = 1) : ISyncPeerPool
     {
-        private class TestSyncPeerPool : ISyncPeerPool
+        private readonly SemaphoreSlim _peerSemaphore = new(peerCount, peerCount);
+        private readonly Lock _lock = new();
+
+        public async Task<SyncPeerAllocation> Allocate(
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts contexts,
+            int timeoutMilliseconds = 0,
+            CancellationToken cancellationToken = default)
         {
-            private readonly SemaphoreSlim _peerSemaphore;
-
-            public TestSyncPeerPool(int peerCount = 1)
-            {
-                _peerSemaphore = new SemaphoreSlim(peerCount, peerCount);
-            }
-
-            public void Dispose()
-            {
-            }
-
-            public async Task<SyncPeerAllocation> Allocate(
-                IPeerAllocationStrategy peerAllocationStrategy,
-                AllocationContexts contexts,
-                int timeoutMilliseconds = 0,
-                CancellationToken cancellationToken = default)
-            {
-                await _peerSemaphore.WaitAsync();
-                ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-                syncPeer.ClientId.Returns("Nethermind");
-                syncPeer.TotalDifficulty.Returns(UInt256.One);
-                SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts);
-                allocation.AllocateBestPeer(
-                    Substitute.For<IEnumerable<PeerInfo>>(),
-                    Substitute.For<INodeStatsManager>(),
-                    Substitute.For<IBlockTree>());
-                return allocation;
-            }
-
-            public void Free(SyncPeerAllocation syncPeerAllocation)
-            {
-                _peerSemaphore.Release();
-            }
-
-            public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts contexts)
-            {
-            }
-
-            public void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details)
-            {
-            }
-
-            public void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts contexts)
-            {
-            }
-
-            public void WakeUpAll()
-            {
-                throw new NotImplementedException();
-            }
-
-            public IEnumerable<PeerInfo> AllPeers { get; } = Array.Empty<PeerInfo>();
-            public IEnumerable<PeerInfo> InitializedPeers { get; } = Array.Empty<PeerInfo>();
-            public int PeerCount { get; } = 0;
-            public int InitializedPeersCount { get; } = 0;
-            public int PeerMaxCount { get; } = 0;
-
-            public void AddPeer(ISyncPeer syncPeer)
-            {
-            }
-
-            public void RemovePeer(ISyncPeer syncPeer)
-            {
-            }
-
-            public void SetPeerPriority(PublicKey id)
-            {
-            }
-
-            public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 hash)
-            {
-            }
-
-            public void Start()
-            {
-            }
-
-            public Task StopAsync()
-            {
-                return Task.CompletedTask;
-            }
-
-            public PeerInfo? GetPeer(Node node)
-            {
-                return null;
-            }
-
-            public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = delegate { };
-            public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = delegate { };
+            await Task.Yield();
+            await _peerSemaphore.WaitAsync(cancellationToken);
+            ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
+            SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
+            return allocation;
         }
 
-        private class TestBatch
+        private class MockSyncPeer(string clientId, UInt256 totalDifficulty) : BaseSyncPeerMock
         {
-            public TestBatch(int start, int length)
-            {
-                Start = start;
-                Length = length;
-            }
-
-            public int Start { get; }
-            public int Length { get; }
-            public int[]? Result { get; set; }
+            public override string ClientId => clientId;
+            public override UInt256? TotalDifficulty => totalDifficulty;
         }
 
-        private class TestDownloader : ISyncDownloader<TestBatch>
+        public void Free(SyncPeerAllocation syncPeerAllocation) =>
+            _peerSemaphore.Release();
+
+        public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts contexts)
         {
-            private int _failureSwitch;
-            public async Task Dispatch(PeerInfo peerInfo, TestBatch request, CancellationToken cancellationToken)
-            {
-                if (++_failureSwitch % 2 == 0)
-                {
-                    throw new Exception();
-                }
-
-                await Task.CompletedTask;
-                int[] result = new int[request.Length];
-                for (int i = 0; i < request.Length; i++)
-                {
-                    result[i] = request.Start + i;
-                }
-
-                request.Result = result;
-            }
         }
 
-        private class TestSyncFeed : SyncFeed<TestBatch>
+        public void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details)
         {
-            public TestSyncFeed(bool isMultiFeed = true, int max = 64)
+        }
+
+        public void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts contexts)
+        {
+        }
+
+        public Task<int?> EstimateRequestLimit(RequestType bodies, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts blocks,
+            CancellationToken token) =>
+            Task.FromResult<int?>(null);
+
+        public void WakeUpAll() =>
+            throw new NotImplementedException();
+
+        public IEnumerable<PeerInfo> AllPeers { get; } = Array.Empty<PeerInfo>();
+        public IEnumerable<PeerInfo> InitializedPeers { get; } = Array.Empty<PeerInfo>();
+        public int PeerCount { get; } = 0;
+        public int InitializedPeersCount { get; } = 0;
+        public int PeerMaxCount { get; } = 0;
+
+        public void AddPeer(ISyncPeer syncPeer)
+        {
+        }
+
+        public void RemovePeer(ISyncPeer syncPeer)
+        {
+        }
+
+        public void SetPeerPriority(PublicKey id)
+        {
+        }
+
+        public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 hash)
+        {
+        }
+
+        public void Start()
+        {
+        }
+
+        public Task StopAsync() =>
+            Task.CompletedTask;
+
+        public PeerInfo? GetPeer(Node node) =>
+            null;
+
+        public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = static delegate { };
+
+        public ValueTask DisposeAsync()
+        {
+            _peerSemaphore.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private class TestBatch(int start, int length)
+    {
+        public int Start { get; } = start;
+        public int Length { get; } = length;
+        public int[]? Result { get; set; }
+    }
+
+    private class TestDownloader : ISyncDownloader<TestBatch>
+    {
+        private int _failureSwitch;
+        public async Task Dispatch(PeerInfo peerInfo, TestBatch request, CancellationToken cancellationToken)
+        {
+            if (++_failureSwitch % 2 == 0)
             {
-                IsMultiFeed = isMultiFeed;
-                Max = max;
+                throw new Exception();
             }
 
-            public int Max { get; }
-            public int HighestRequested { get; private set; }
-
-            public readonly HashSet<int> _results = new();
-            private readonly ConcurrentQueue<TestBatch> _returned = new();
-            private readonly ManualResetEvent _responseLock = new ManualResetEvent(true);
-
-            public void LockResponse()
+            await Task.CompletedTask;
+            int[] result = new int[request.Length];
+            for (int i = 0; i < request.Length; i++)
             {
-                _responseLock.Reset();
+                result[i] = request.Start + i;
             }
 
-            public void UnlockResponse()
-            {
-                _responseLock.Set();
-            }
+            request.Result = result;
+        }
+    }
 
-            public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
+    private class TestSyncFeed(bool isMultiFeed = true, int max = 64) : SyncFeed<TestBatch>
+    {
+        public int Max { get; } = max;
+        public int HighestRequested { get; private set; }
+
+        public readonly HashSet<int> _results = new();
+        private readonly ConcurrentQueue<TestBatch> _returned = new();
+        private readonly ManualResetEvent _responseLock = new(true);
+        private readonly TaskCompletionSource _handleResponseCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void LockResponse() =>
+            _responseLock.Reset();
+
+        public void UnlockResponse() =>
+            _responseLock.Set();
+
+        public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
+        {
+            _handleResponseCalled.TrySetResult();
+            _responseLock.WaitOne();
+            if (response.Result is null)
             {
-                _responseLock.WaitOne();
-                if (response.Result is null)
+                _returned.Enqueue(response);
+            }
+            else
+            {
+                for (int i = 0; i < response.Length; i++)
                 {
-                    _returned.Enqueue(response);
-                }
-                else
-                {
-                    for (int i = 0; i < response.Length; i++)
-                    {
-                        lock (_results)
-                        {
-                            _results.Add(response.Result[i]);
-                        }
-                    }
-                }
-
-                Interlocked.Decrement(ref _pendingRequests);
-                return SyncResponseHandlingResult.OK;
-            }
-
-            public override bool IsMultiFeed { get; }
-            public override AllocationContexts Contexts => AllocationContexts.All;
-            public override void SyncModeSelectorOnChanged(SyncMode current)
-            {
-            }
-
-            public override bool IsFinished => false;
-
-            private int _pendingRequests;
-
-            public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)
-            {
-                TestBatch testBatch;
-                if (_returned.TryDequeue(out TestBatch? returned))
-                {
-                    testBatch = returned;
-                }
-                else
-                {
-                    await Task.CompletedTask;
-
-                    int start;
-
-                    if (HighestRequested >= Max)
-                    {
-                        if (_pendingRequests == 0)
-                        {
-                            Finish();
-                        }
-
-                        return null!;
-                    }
-
                     lock (_results)
                     {
-                        start = HighestRequested;
-                        HighestRequested += 8;
+                        _results.Add(response.Result[i]);
+                    }
+                }
+            }
+
+            Interlocked.Decrement(ref _pendingRequests);
+            return SyncResponseHandlingResult.OK;
+        }
+
+        public Task WaitForHandleResponse() =>
+            _handleResponseCalled.Task;
+
+        public override bool IsMultiFeed { get; } = isMultiFeed;
+        public override AllocationContexts Contexts => AllocationContexts.All;
+        public override void SyncModeSelectorOnChanged(SyncMode current)
+        {
+        }
+
+        public override bool IsFinished => false;
+        public override string FeedName => nameof(TestSyncFeed);
+
+        private int _pendingRequests;
+
+        public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)
+        {
+            TestBatch testBatch;
+            if (_returned.TryDequeue(out TestBatch? returned))
+            {
+                testBatch = returned;
+            }
+            else
+            {
+                await Task.CompletedTask;
+
+                int start;
+
+                if (HighestRequested >= Max)
+                {
+                    if (_pendingRequests == 0)
+                    {
+                        Finish();
                     }
 
-                    testBatch = new TestBatch(start, 8);
+                    return null!;
                 }
 
-                Interlocked.Increment(ref _pendingRequests);
-                return testBatch;
-            }
-        }
+                lock (_results)
+                {
+                    start = HighestRequested;
+                    HighestRequested += 8;
+                }
 
-        [Test, Timeout(10000)]
-        public async Task Simple_test_sync()
+                testBatch = new TestBatch(start, 8);
+            }
+
+            Interlocked.Increment(ref _pendingRequests);
+            return testBatch;
+        }
+    }
+
+    [Test, MaxTime(10000)]
+    public async Task Simple_test_sync()
+    {
+        TestSyncFeed syncFeed = new();
+        TestDownloader downloader = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            downloader,
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+        Task executorTask = dispatcher.Start(CancellationToken.None);
+        syncFeed.Activate();
+        await executorTask;
+        for (int i = 0; i < syncFeed.Max; i++)
         {
-            TestSyncFeed syncFeed = new();
-            TestDownloader downloader = new TestDownloader();
-            SyncDispatcher<TestBatch> dispatcher = new(
-                0,
-                syncFeed,
-                downloader,
-                new TestSyncPeerPool(),
-                new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
-                LimboLogs.Instance);
-            Task executorTask = dispatcher.Start(CancellationToken.None);
-            syncFeed.Activate();
-            await executorTask;
-            for (int i = 0; i < syncFeed.Max; i++)
+            syncFeed._results.Contains(i).Should().BeTrue(i.ToString());
+        }
+    }
+
+    [Test]
+    public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
+    {
+        using CancellationTokenSource cts = new();
+        cts.CancelAfter(TimeSpan.FromSeconds(15));
+
+        TestSyncFeed syncFeed = new(isMultiFeed: true);
+        syncFeed.LockResponse();
+        TestDownloader downloader = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            downloader,
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+        Task executorTask = dispatcher.Start(cts.Token);
+
+        // Load some requests
+        syncFeed.Activate();
+        await syncFeed.WaitForHandleResponse();
+        syncFeed.Finish();
+
+        // Dispose
+        Task disposeTask = Task.Run(async () =>
+        {
+            await dispatcher.DisposeAsync();
+        });
+        await Task.Delay(200, cts.Token);
+
+        disposeTask.IsCompletedSuccessfully.Should().BeFalse();
+
+        syncFeed.UnlockResponse();
+        await disposeTask;
+        await executorTask;
+    }
+
+    [Test]
+    public async Task DisposeAsync_unsubscribes_StateChanged_handler()
+    {
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+
+        await dispatcher.DisposeAsync();
+
+        // After dispose, the dispatcher's internal semaphores and countdown events
+        // are disposed. If the StateChanged handler were still subscribed, Activate()
+        // would trigger UpdateState which accesses those disposed resources.
+        // No throw confirms the handler was actually removed, not just that the
+        // callback happens to be harmless.
+        Assert.DoesNotThrow(syncFeed.Activate);
+    }
+
+    [Test]
+    public async Task DisposeAsync_double_dispose_does_not_throw()
+    {
+        (_, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+
+        await dispatcher.DisposeAsync();
+        await dispatcher.DisposeAsync();
+    }
+
+    [Test]
+    public async Task DisposeAsync_then_StateChanged_does_not_modify_dispatcher()
+    {
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+
+        await dispatcher.DisposeAsync();
+
+        // Activate then Finish — if handler is still subscribed, this would
+        // modify internal state and potentially access disposed resources
+        syncFeed.Activate();
+        syncFeed.Finish();
+
+        // No exception means the handler was properly unsubscribed
+    }
+
+    private static (TestSyncFeed Feed, SyncDispatcher<TestBatch> Dispatcher) CreateFeedAndDispatcher()
+    {
+        TestSyncFeed syncFeed = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+        return (syncFeed, dispatcher);
+    }
+
+    [Retry(tryCount: 5)]
+    [TestCase(false, 1, 1, 8)]
+    [TestCase(true, 1, 1, 24)]
+    [TestCase(true, 2, 1, 32)]
+    [TestCase(true, 1, 2, 32)]
+    public async Task Test_release_before_processing_complete(bool isMultiSync, int processingThread, int peerCount, int expectedHighestRequest)
+    {
+        TestSyncFeed syncFeed = new(isMultiSync, 999999);
+        syncFeed.LockResponse();
+
+        TestDownloader downloader = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig()
             {
-                syncFeed._results.Contains(i).Should().BeTrue(i.ToString());
-            }
-        }
+                MaxProcessingThreads = processingThread,
+            },
+            syncFeed,
+            downloader,
+            new TestSyncPeerPool(peerCount),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
 
-        [Retry(tryCount: 5)]
-        [TestCase(false, 1, 1, 8)]
-        [TestCase(true, 1, 1, 24)]
-        [TestCase(true, 2, 1, 32)]
-        [TestCase(true, 1, 2, 32)]
-        public async Task Test_release_before_processing_complete(bool isMultiSync, int processingThread, int peerCount, int expectedHighestRequest)
-        {
-            TestSyncFeed syncFeed = new(isMultiSync, 999999);
-            syncFeed.LockResponse();
+        Task _ = dispatcher.Start(CancellationToken.None);
+        syncFeed.Activate();
 
-            TestDownloader downloader = new TestDownloader();
-            SyncDispatcher<TestBatch> dispatcher = new(
-                processingThread,
-                syncFeed,
-                downloader,
-                new TestSyncPeerPool(peerCount),
-                new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
-                LimboLogs.Instance);
+        await Task.Delay(100);
 
-            Task _ = dispatcher.Start(CancellationToken.None);
-            syncFeed.Activate();
-            await Task.Delay(100);
-
-            Assert.That(() => syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest).After(4000, 100));
-            syncFeed.UnlockResponse();
-        }
+        Assert.That(() => syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest).After(4000, 100));
+        syncFeed.UnlockResponse();
     }
 }

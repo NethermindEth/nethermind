@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             string rlp = "f90172820457f9016cf90169f901668001b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f85ff85d940000000000000000000000000000000000000011f842a0000000000000000000000000000000000000000000000000000000000000deada0000000000000000000000000000000000000000000000000000000000000beef830100ff";
             byte[] bytes = Bytes.FromHexString(rlp);
-            var serializer63 = new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
+            Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessageSerializer serializer63 = new(MainnetSpecProvider.Instance);
             ReceiptsMessageSerializer serializer = new(serializer63);
             ReceiptsMessage deserializedMessage = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(deserializedMessage);
@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             txReceipt.GasUsedTotal.Should().Be(1);
             txReceipt.Bloom.Should().Be(Bloom.Empty);
 
-            txReceipt.Logs[0].LoggersAddress.Should().BeEquivalentTo(new Address("0x0000000000000000000000000000000000000011"));
+            txReceipt.Logs[0].Address.Should().BeEquivalentTo(new Address("0x0000000000000000000000000000000000000011"));
             txReceipt.Logs[0].Topics[0].Should().BeEquivalentTo(new Hash256("0x000000000000000000000000000000000000000000000000000000000000dead"));
             txReceipt.Logs[0].Topics[1].Should().BeEquivalentTo(new Hash256("0x000000000000000000000000000000000000000000000000000000000000beef"));
             txReceipt.Logs[0].Data.Should().BeEquivalentTo(Bytes.FromHexString("0x0100ff"));

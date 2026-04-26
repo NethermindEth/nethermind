@@ -19,41 +19,28 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class NettyHandshakeHandler : SimpleChannelInboundHandler<IByteBuffer>
+    public class NettyHandshakeHandler(
+        IMessageSerializationService serializationService,
+        IHandshakeService handshakeService,
+        ISession session,
+        HandshakeRole role,
+        ILogManager logManager,
+        IEventExecutorGroup group,
+        TimeSpan sendLatency) : SimpleChannelInboundHandler<IByteBuffer>
     {
         private readonly EncryptionHandshake _handshake = new();
-        private readonly IMessageSerializationService _serializationService;
-        private readonly ILogManager _logManager;
-        private readonly IEventExecutorGroup _group;
-        private readonly ILogger _logger;
-        private readonly HandshakeRole _role;
+        private readonly IMessageSerializationService _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IEventExecutorGroup _group = group;
+        private readonly ILogger _logger = logManager.GetClassLogger<NettyHandshakeHandler>();
+        private readonly HandshakeRole _role = role;
 
-        private readonly IHandshakeService _service;
-        private readonly ISession _session;
+        private readonly IHandshakeService _service = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
+        private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
         private PublicKey RemoteId => _session.RemoteNodeId;
-        private readonly TaskCompletionSource<object> _initCompletionSource;
+        private readonly TaskCompletionSource<object> _initCompletionSource = new();
         private IChannel _channel;
-        private readonly TimeSpan _sendLatency;
-
-        public NettyHandshakeHandler(
-            IMessageSerializationService serializationService,
-            IHandshakeService handshakeService,
-            ISession session,
-            HandshakeRole role,
-            ILogManager logManager,
-            IEventExecutorGroup group,
-            TimeSpan sendLatency)
-        {
-            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger<NettyHandshakeHandler>();
-            _role = role;
-            _group = group;
-            _service = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
-            _session = session ?? throw new ArgumentNullException(nameof(session));
-            _initCompletionSource = new TaskCompletionSource<object>();
-            _sendLatency = sendLatency;
-        }
+        private readonly TimeSpan _sendLatency = sendLatency;
 
         public override void ChannelActive(IChannelHandlerContext context)
         {
@@ -71,17 +58,12 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _session.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
-                _session.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+                IPEndPoint ipEndPoint = context.Channel.RemoteAddress.ToIPEndpoint();
+                _session.RemoteHost = ipEndPoint.Address.ToString();
+                _session.RemotePort = ipEndPoint.Port;
             }
 
-            CheckHandshakeInitTimeout().ContinueWith(x =>
-            {
-                if (x.IsFaulted && _logger.IsError)
-                {
-                    _logger.Error("Error during handshake timeout logic", x.Exception);
-                }
-            });
+            _ = CheckHandshakeInitTimeout();
         }
 
         public override void ChannelInactive(IChannelHandlerContext context)
@@ -160,7 +142,7 @@ namespace Nethermind.Network.Rlpx
                 _service.Agree(_handshake, new Packet(ackData));
             }
 
-            _initCompletionSource?.SetResult(input);
+            _initCompletionSource?.TrySetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
@@ -170,15 +152,15 @@ namespace Nethermind.Network.Rlpx
             using (FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets))
             {
                 FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
-                context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
+                context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor, _logManager));
+                context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor));
             }
 
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ZeroFrameMerger(_logManager));
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-            context.Channel.Pipeline.AddLast(new ZeroPacketSplitter(_logManager));
+            context.Channel.Pipeline.AddLast(new ZeroPacketSplitter());
 
             PacketSender packetSender = new(_serializationService, _logManager, _sendLatency);
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
@@ -203,20 +185,29 @@ namespace Nethermind.Network.Rlpx
 
         private async Task CheckHandshakeInitTimeout()
         {
-            Task<object> receivedInitMsgTask = _initCompletionSource.Task;
-            CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
+            try
+            {
+                Task<object> receivedInitMsgTask = _initCompletionSource.Task;
+                using CancellationTokenSource delayCancellation = new();
+                Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
+                await delayCancellation.CancelAsync();
 
-            if (firstTask != receivedInitMsgTask)
-            {
-                Metrics.HandshakeTimeouts++;
-                if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
-                //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
-                await _channel.DisconnectAsync();
+                if (firstTask != receivedInitMsgTask)
+                {
+                    Metrics.HandshakeTimeouts++;
+                    if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
+                    //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
+                    _initCompletionSource.TrySetCanceled();
+                    await _channel.DisconnectAsync();
+                }
             }
-            else
+            catch (Exception ex)
             {
-                delayCancellation.Cancel();
+
+                if (_logger.IsError)
+                {
+                    _logger.Error("Error during handshake timeout logic", ex);
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -19,14 +20,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class VisitingTests
 {
-    [TestCaseSource(nameof(GetAccountOptions))]
-    public void Visitors_state(VisitingOptions options)
+    [TestCaseSource(nameof(GetOptions))]
+    public void Visitors_state(VisitingOptions options, INodeStorage.KeyScheme scheme)
     {
         MemDb memDb = new();
 
-        using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
+        using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
         PatriciaTree patriciaTree = new(trieStore, LimboLogs.Instance);
 
         Span<byte> raw = stackalloc byte[32];
@@ -39,19 +41,19 @@ public class VisitingTests
             patriciaTree.Set(raw, Rlp.Encode(new Account(10, (UInt256)(10_000_000 + i))));
         }
 
-        patriciaTree.Commit(0);
+        using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
 
-        var visitor = new AppendingVisitor();
+        AppendingVisitor visitor = new(false);
 
         patriciaTree.Accept(visitor, patriciaTree.RootHash, options);
 
-        var setNibbles = new HashSet<int>(Enumerable.Range(0, 64));
+        HashSet<int> setNibbles = new(Enumerable.Range(0, 64));
 
-        foreach (var path in visitor.LeafPaths)
+        foreach (byte[] path in visitor.LeafPaths)
         {
             path.Length.Should().Be(64);
 
-            var index = path.AsSpan().IndexOfAnyExcept((byte)0);
+            int index = path.AsSpan().IndexOfAnyExcept((byte)0);
 
             path.AsSpan(index + 1).IndexOfAnyExcept((byte)0).Should()
                 .Be(-1, "Shall not found other values than the one nibble set");
@@ -60,20 +62,22 @@ public class VisitingTests
         }
     }
 
-    [TestCaseSource(nameof(GetStorageOptions))]
-    public void Visitors_storage(VisitingOptions options)
+    [TestCaseSource(nameof(GetOptions))]
+    public void Visitors_storage(VisitingOptions options, INodeStorage.KeyScheme scheme)
     {
         MemDb memDb = new();
 
-        using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
+        using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
 
-        byte[] value = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+        byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
 
-        for (int outi = 0; outi < 64; outi++)
+        IBlockCommitter blockCommit = trieStore.BeginBlockCommit(0);
+
+        for (int outerIndex = 0; outerIndex < 64; outerIndex++)
         {
             ValueHash256 stateKey = default;
-            stateKey.BytesAsSpan[outi / 2] = (byte)(1 << (4 * (1 - outi % 2)));
+            stateKey.BytesAsSpan[outerIndex / 2] = (byte)(1 << (4 * (1 - outerIndex % 2)));
 
             StorageTree storage = new(trieStore.GetTrieStore(stateKey.ToCommitment()), LimboLogs.Instance);
             for (int i = 0; i < 64; i++)
@@ -82,7 +86,7 @@ public class VisitingTests
                 storageKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
                 storage.Set(storageKey, value);
             }
-            storage.Commit(0);
+            storage.Commit();
 
             stateRootHash = storage.RootHash;
         }
@@ -99,14 +103,18 @@ public class VisitingTests
                 new Account(10, (UInt256)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
         }
 
-        stateTree.Commit(0);
+        stateTree.Commit();
+        blockCommit.Dispose();
 
-        var visitor = new AppendingVisitor();
+        AppendingVisitor visitor = new(true);
 
         stateTree.Accept(visitor, stateTree.RootHash, options);
 
-        foreach (var path in visitor.LeafPaths)
+        int totalPath = 0;
+
+        foreach (byte[] path in visitor.LeafPaths)
         {
+            totalPath++;
             if (path.Length == 64)
             {
                 AssertPath(path);
@@ -115,56 +123,64 @@ public class VisitingTests
             {
                 path.Length.Should().Be(128);
 
-                var accountPart = path.Slice(0, 64);
-                var storagePart = path.Slice(64);
+                byte[] accountPart = path.Slice(0, 64);
+                byte[] storagePart = path.Slice(64);
 
                 AssertPath(accountPart);
                 AssertPath(storagePart);
             }
         }
 
+        totalPath.Should().Be(4160);
+
         return;
 
         static void AssertPath(ReadOnlySpan<byte> path)
         {
-            var index = path.IndexOfAnyExcept((byte)0);
-            path.Slice(index + 1).IndexOfAnyExcept((byte)0).Should()
+            int index = path.IndexOfAnyExcept((byte)0);
+            path[(index + 1)..].IndexOfAnyExcept((byte)0).Should()
                 .Be(-1, "Shall not found other values than the one nibble set");
             path[index].Should().Be(1, "The given set should be 1 as this is the only nibble");
         }
     }
 
-    public static IEnumerable<TestCaseData> GetAccountOptions() => GetOptions(false);
-    public static IEnumerable<TestCaseData> GetStorageOptions() => GetOptions(true);
-
-    private static IEnumerable<TestCaseData> GetOptions(bool expectAccounts)
+    private static IEnumerable<TestCaseData> GetOptions()
     {
         yield return new TestCaseData(new VisitingOptions
         {
-            ExpectAccounts = expectAccounts
-        }).SetName("Default");
+        }, INodeStorage.KeyScheme.HalfPath).SetName("Default");
+
+        yield return new TestCaseData(new VisitingOptions
+        {
+        }, INodeStorage.KeyScheme.Hash).SetName("Default Hash");
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
-            FullScanMemoryBudget = 1.MiB(),
-            ExpectAccounts = expectAccounts
-        }).SetName("Parallel");
+            FullScanMemoryBudget = 1.MiB,
+        }, INodeStorage.KeyScheme.HalfPath).SetName("Parallel");
+
+        yield return new TestCaseData(new VisitingOptions
+        {
+            MaxDegreeOfParallelism = Environment.ProcessorCount,
+            FullScanMemoryBudget = 1.MiB,
+        }, INodeStorage.KeyScheme.Hash).SetName("Parallel Hash");
     }
 
-    public class AppendingVisitor : ITreeVisitor<AppendingVisitor.PathGatheringContext>
+    public class AppendingVisitor(bool expectAccount) : ITreeVisitor<AppendingVisitor.PathGatheringContext>
     {
+        public bool ExpectAccounts => expectAccount;
         public IEnumerable<byte[]> LeafPaths => _paths;
 
         private readonly ConcurrentQueue<byte[]> _paths = new();
 
         public readonly struct PathGatheringContext(byte[]? nibbles) : INodeContext<PathGatheringContext>
         {
-            public readonly byte[] Nibbles => nibbles ?? Array.Empty<byte>();
+            public readonly byte[] Nibbles => nibbles ?? [];
 
             public readonly PathGatheringContext Add(ReadOnlySpan<byte> nibblePath)
             {
-                var @new = new byte[Nibbles.Length + nibblePath.Length];
+                byte[] @new = new byte[Nibbles.Length + nibblePath.Length];
                 Nibbles.CopyTo(@new, 0);
                 nibblePath.CopyTo(@new.AsSpan(Nibbles.Length));
 
@@ -173,48 +189,41 @@ public class VisitingTests
 
             public readonly PathGatheringContext Add(byte nibble)
             {
-                var @new = new byte[Nibbles.Length + 1];
+                byte[] @new = new byte[Nibbles.Length + 1];
                 Nibbles.CopyTo(@new, 0);
                 @new[Nibbles.Length] = nibble;
 
                 return new PathGatheringContext(@new);
             }
 
-            public PathGatheringContext AddStorage(in ValueHash256 storage)
-            {
-                return this;
-            }
+            public PathGatheringContext AddStorage(in ValueHash256 storage) => this;
         }
 
         public bool IsFullDbScan => true;
 
-        public bool ShouldVisit(in PathGatheringContext nodeContext, Hash256 nextNode) => true;
+        public bool ShouldVisit(in PathGatheringContext nodeContext, in ValueHash256 nextNode) => true;
 
-        public void VisitTree(in PathGatheringContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in PathGatheringContext nodeContext, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in PathGatheringContext nodeContext, Hash256 nodeHash,
-            TrieVisitContext trieVisitContext)
-        {
-            throw new System.Exception("Should not happen");
-        }
+        public void VisitMissingNode(in PathGatheringContext nodeContext, in ValueHash256 nodeHash) => throw new System.Exception("Should not happen");
 
-        public void VisitBranch(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in PathGatheringContext nodeContext, TrieNode node)
         {
         }
 
-        public void VisitExtension(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in PathGatheringContext nodeContext, TrieNode node)
         {
         }
 
-        public void VisitLeaf(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in PathGatheringContext nodeContext, TrieNode node)
         {
             PathGatheringContext context = nodeContext.Add(node.Key!);
             _paths.Enqueue(context.Nibbles);
         }
 
-        public void VisitCode(in PathGatheringContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitAccount(in PathGatheringContext nodeContext, TrieNode node, in AccountStruct account)
         {
         }
     }

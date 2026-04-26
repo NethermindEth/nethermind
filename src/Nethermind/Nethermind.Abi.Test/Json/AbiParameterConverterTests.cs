@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.IO;
 using System.Text;
 using System.Text.Json;
 
@@ -48,21 +46,23 @@ namespace Nethermind.Abi.Test.Json
                 yield return new TestCaseData(GetTestData("string", AbiType.String));
                 yield return new TestCaseData(GetTestData("int[]", new AbiArray(AbiType.Int256)));
                 yield return new TestCaseData(GetTestData("string[5]", new AbiFixedLengthArray(AbiType.String, 5)));
+                yield return new TestCaseData(GetTestData("uint64[3]", new AbiFixedLengthArray(new AbiUInt(64), 3)));
+                yield return new TestCaseData(GetTestData("uint64[3][]", new AbiArray(new AbiFixedLengthArray(new AbiUInt(64), 3))));
 
-                yield return new TestCaseData(GetTestData("tuple", new AbiTuple(Array.Empty<AbiType>())));
+                yield return new TestCaseData(GetTestData("tuple", new AbiTuple([])));
                 yield return new TestCaseData(GetTestData("tuple",
                     new AbiTuple(new AbiType[] { AbiType.Int256 }),
                     new { name = "property", type = "int" }));
 
                 yield return new TestCaseData(GetTestData("tuple", new AbiTuple<CustomAbiType>(),
                     new { name = "c", type = "int32" }));
-                yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentOutOfRangeException()));
                 yield return new TestCaseData(GetTestDataWithException("int3000", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("fixed80", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("fixed80x81", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("bytes33", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("fixed80x81", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("bytes33", new ArgumentOutOfRangeException()));
             }
         }
 
@@ -71,14 +71,14 @@ namespace Nethermind.Abi.Test.Json
         {
             AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<CustomAbiType>()));
 
-            var converter = new AbiParameterConverter();
+            AbiParameterConverter converter = new();
             var model = new { name = "theName", type, components };
             byte[] json = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(model));
-            Utf8JsonReader jsonReader = new Utf8JsonReader(json);
+            Utf8JsonReader jsonReader = new(json);
             try
             {
-                var result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
-                var expectation = new AbiParameter() { Name = "theName", Type = expectedType };
+                AbiParameter result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
+                AbiParameter expectation = new() { Name = "theName", Type = expectedType };
                 expectedException.Should().BeNull();
                 result.Should().BeEquivalentTo(expectation);
             }

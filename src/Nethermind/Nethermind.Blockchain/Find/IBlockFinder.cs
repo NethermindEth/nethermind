@@ -25,6 +25,8 @@ namespace Nethermind.Blockchain.Find
 
         Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
+        bool HasBlock(long blockNumber, Hash256 blockHash);
+
         /// Find a header. blockNumber is optional, but specifying it can improve performance.
         BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
@@ -139,6 +141,8 @@ namespace Nethermind.Blockchain.Find
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
+
+        public long GetLowestBlock();
 
         /// <summary>
         /// Highest state persisted

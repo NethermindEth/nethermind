@@ -7,18 +7,15 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class OneByOneTxSource : ITxSource
+    public class OneByOneTxSource(ITxSource txSource) : ITxSource
     {
-        private readonly ITxSource _txSource;
+        private readonly ITxSource _txSource = txSource;
 
-        public OneByOneTxSource(ITxSource txSource)
-        {
-            _txSource = txSource;
-        }
+        public bool SupportsBlobs => _txSource.SupportsBlobs;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
-            foreach (Transaction transaction in _txSource.GetTransactions(parent, gasLimit, payloadAttributes))
+            foreach (Transaction transaction in _txSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
                 break;

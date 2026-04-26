@@ -4,11 +4,9 @@
 using System;
 
 using Nethermind.Serialization.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc
 {
@@ -35,7 +33,6 @@ namespace Nethermind.JsonRpc
         public readonly string JsonRpc = "2.0";
 
         [JsonConverter(typeof(IdConverter))]
-        [JsonPropertyName("id")]
         [JsonPropertyOrder(2)]
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Id { get; set; }
@@ -52,7 +49,6 @@ namespace Nethermind.JsonRpc
 
     public class JsonRpcSuccessResponse : JsonRpcResponse
     {
-        [JsonPropertyName("result")]
         [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Result { get; set; }
@@ -73,7 +69,6 @@ namespace Nethermind.JsonRpc
 
     public class JsonRpcErrorResponse : JsonRpcResponse
     {
-        [JsonPropertyName("error")]
         [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Error? Error { get; set; }

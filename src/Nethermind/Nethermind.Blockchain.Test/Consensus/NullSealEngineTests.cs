@@ -11,16 +11,17 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class NullSealEngineTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Default_hints()
         {
             ISealValidator sealValidator = NullSealEngine.Instance;
             sealValidator.HintValidationRange(Guid.Empty, 0, 0);
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Test()
         {
             NullSealEngine engine = NullSealEngine.Instance;

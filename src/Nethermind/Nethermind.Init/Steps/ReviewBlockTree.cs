@@ -1,51 +1,64 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), (typeof(InitializeNetwork)))]
-    public class ReviewBlockTree : IStep
+    [RunnerStepDependencies(typeof(LoadGenesisBlock))]
+    public class ReviewBlockTree(
+        IWorldStateManager worldStateManager,
+        IInitConfig initConfig,
+        ISyncConfig syncConfig,
+        IBlockProcessingQueue blockProcessingQueue,
+        IBlockTree blockTree,
+        IBlockTreeHealer blockTreeHealer,
+        ILogManager logManager
+    ) : IStep
     {
-        private readonly IApiWithBlockchain _api;
-        private readonly ILogger _logger;
-
-        public ReviewBlockTree(INethermindApi api)
-        {
-            _api = api;
-            _logger = _api.LogManager.GetClassLogger();
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            HealCanonicalChainIfEnabled();
+            return initConfig.ProcessingEnabled
+                ? RunBlockTreeInitTasks(cancellationToken)
+                : Task.CompletedTask;
+        }
 
-            if (_api.Config<IInitConfig>().ProcessingEnabled)
+        private void HealCanonicalChainIfEnabled()
+        {
+            if (!initConfig.HealCanonicalChain) return;
+
+            Hash256? startHash = blockTree.Head?.Hash;
+            if (startHash is not null)
             {
-                return RunBlockTreeInitTasks(cancellationToken);
+                if (_logger.IsInfo) _logger.Info($"Healing canonical chain from head {startHash} (depth {initConfig.HealCanonicalChainDepth})...");
+                blockTreeHealer.HealCanonicalChain(startHash, initConfig.HealCanonicalChainDepth);
             }
             else
             {
-                return Task.CompletedTask;
+                if (_logger.IsWarn) _logger.Warn("HealCanonicalChain requested but no head block found — skipping.");
             }
         }
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
-            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
             if (!syncConfig.FastSync)
             {
-                DbBlocksLoader loader = new(_api.BlockTree, _logger);
-                await _api.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
+                using DbBlocksLoader loader = new(blockTree, _logger);
+                await blockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -59,8 +72,8 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.WorldStateManager!.GlobalStateReader, _logger!);
-                await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
+                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, _logger!);
+                await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -72,6 +85,17 @@ namespace Nethermind.Init.Steps
                     }
                 });
             }
+
+            blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
+            if (!blockProcessingQueue.IsEmpty) // Just in case the queue got empty before we subscribed
+            {
+                await _blocksProcessedTaskSource.Task.WaitAsync(cancellationToken);
+            }
+            blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
         }
+
+        private readonly TaskCompletionSource _blocksProcessedTaskSource = new();
+
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.SetResult();
     }
 }

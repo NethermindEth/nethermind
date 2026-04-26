@@ -42,21 +42,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _handlingEndTime = null;
         }
 
-        public void MarkSent()
-        {
-            _requestSentTime = _stopwatch.ElapsedMilliseconds;
+        public void MarkSent() => _requestSentTime = _stopwatch.ElapsedMilliseconds;
 
-        }
+        public void MarkValidation() => _validationStartTime = _stopwatch.ElapsedMilliseconds;
 
-        public void MarkValidation()
-        {
-            _validationStartTime = _stopwatch.ElapsedMilliseconds;
-        }
-
-        public void MarkWaiting()
-        {
-            _waitingStartTime = _stopwatch.ElapsedMilliseconds;
-        }
+        public void MarkWaiting() => _waitingStartTime = _stopwatch.ElapsedMilliseconds;
 
         public void MarkHandlingStart()
         {
@@ -64,10 +54,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _validationStartTime ??= _handlingStartTime;
         }
 
-        public void MarkHandlingEnd()
-        {
-            _handlingEndTime = _stopwatch.ElapsedMilliseconds;
-        }
+        public void MarkHandlingEnd() => _handlingEndTime = _stopwatch.ElapsedMilliseconds;
 
         public int Retries { get; private set; }
         public double? AgeInMs => _stopwatch.ElapsedMilliseconds;
@@ -81,7 +68,9 @@ namespace Nethermind.Synchronization.FastBlocks
             => (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_waitingStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public double? HandlingTime
             => (_handlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
-        public long? MinNumber { get; set; }
+
+        /// Minimum head number for peer to be allocated
+        public abstract long? MinNumber { get; }
         public virtual void Dispose() { }
     }
 }

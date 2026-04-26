@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.Transactions;
@@ -12,11 +11,12 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Consensus
 {
+    [Parallelizable(ParallelScope.All)]
     public class SinglePendingTxSelectorTests
     {
         private readonly BlockHeader _anyParent = Build.A.BlockHeader.TestObject;
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void To_string_does_not_throw()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             _ = selector.ToString();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void When_no_transactions_returns_empty_list()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             selector.GetTransactions(_anyParent, 1000000).Should().HaveCount(0);
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void When_many_transactions_returns_one_with_lowest_nonce_and_highest_timestamp()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             });
 
             SinglePendingTxSelector selector = new(txSource);
-            var result = selector.GetTransactions(_anyParent, 1000000).ToArray();
+            Transaction[] result = selector.GetTransactions(_anyParent, 1000000).ToArray();
             result.Should().HaveCount(1);
             result[0].Timestamp.Should().Be(8);
             result[0].Nonce.Should().Be(1);

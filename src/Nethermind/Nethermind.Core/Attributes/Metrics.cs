@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Metric;
 
 namespace Nethermind.Core.Attributes;
 
@@ -21,12 +22,47 @@ public sealed class GaugeMetricAttribute : Attribute { }
 /// Mark that the attribute is a dictionary whose key is used as a label of name LabelName.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
-public sealed class KeyIsLabelAttribute : Attribute
+public sealed class KeyIsLabelAttribute(params string[] labelNames) : Attribute
 {
-    public string[] LabelNames { get; }
+    public string[] LabelNames { get; } = labelNames;
+}
 
-    public KeyIsLabelAttribute(params string[] labelNames)
-    {
-        LabelNames = labelNames;
-    }
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class SummaryMetricAttribute : Attribute
+{
+    public string[] LabelNames { get; set; } = [];
+
+    // Summary objective in quantile-epsilon pair
+    public double[] ObjectiveQuantile { get; set; } = [];
+    public double[] ObjectiveEpsilon { get; set; } = [];
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class ExponentialPowerHistogramMetric : Attribute
+{
+    public string[] LabelNames { get; init; } = [];
+    public double Start { get; set; }
+    public double Factor { get; set; }
+    public int Count { get; set; }
+}
+
+/// <summary>
+/// Mark a metric as detailed
+/// </summary>
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class DetailedMetricAttribute : Attribute
+{
+}
+
+/// <summary>
+/// Mark a property that is used to enable detailed metrics (not a metric itself)
+/// </summary>
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class DetailedMetricOnFlagAttribute : Attribute
+{
+}
+
+public record StringLabel(string label) : IMetricLabels
+{
+    public string[] Labels => [label];
 }

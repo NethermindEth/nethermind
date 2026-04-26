@@ -7,18 +7,19 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade.Proxy.Models;
+using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -26,85 +27,40 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
-    private static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount)
+    public static SimulatePayload<TransactionForRpc> CreateSerializationPayload(TestRpcBlockchain chain)
     {
-        Transaction tx = new()
-        {
-            Value = amount,
-            Nonce = nonce,
-            GasLimit = 50_000,
-            SenderAddress = from.Address,
-            To = to,
-            GasPrice = 20.GWei()
-        };
-
-        ethereumEcdsa.Sign(from, tx);
-        tx.Hash = tx.CalculateHash();
-        return tx;
-    }
-
-    [Test]
-    public async Task Test_eth_simulate_serialisation()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txToFail = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 10_000_000);
         UInt256 nextNonceA = ++nonceA;
         Transaction tx = GetTransferTxData(nextNonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 4_000_000);
 
-        SimulatePayload<TransactionForRpc> payload = new()
+        return new()
         {
             BlockStateCalls =
             [
                 new()
                 {
-                    BlockOverrides = new BlockOverride { Number = 10 },
-                    Calls = [new TransactionForRpc(txToFail), new TransactionForRpc(tx)],
+                    BlockOverrides = new BlockOverride { Number = 10, BaseFeePerGas = 0 },
+                    Calls = [ToRpcForInput(txToFail), ToRpcForInput(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL) } }
+                        { TestItem.AddressA, new AccountOverride { Balance = 2100.Ether } }
                     }
                 }
             ],
             TraceTransfers = true,
             Validation = true
         };
-
-        //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
-
-        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<SimulateBlockResult> data = result.Data;
-        Assert.That(data.Count, Is.EqualTo(7));
-
-        SimulateBlockResult blockResult = data.Last();
-        blockResult.Calls.Select(c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
-
     }
 
-
-    /// <summary>
-    ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
-    ///     We test on blocks before current head and after it,
-    ///     Note that if we get blocks before head we set simulation start state to one of that first block
-    /// </summary>
-    [Test]
-    public async Task Test_eth_simulate_eth_moved()
+    public static SimulatePayload<TransactionForRpc> CreateEthMovedPayload(TestRpcBlockchain chain, UInt256 nonceA)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
-        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB1 = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB2 = GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB3 = GetTransferTxData(nonceA + 3, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB4 = GetTransferTxData(nonceA + 4, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
 
-        SimulatePayload<TransactionForRpc> payload = new()
+        return new()
         {
             BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
             {
@@ -118,7 +74,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { new TransactionForRpc(txAtoB1), new TransactionForRpc(txAtoB2) }
+                    Calls = [ToRpcForInput(txAtoB1), ToRpcForInput(txAtoB2)]
                 },
                 new()
                 {
@@ -130,50 +86,24 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { new TransactionForRpc(txAtoB3), new TransactionForRpc(txAtoB4) }
+                    Calls = [ToRpcForInput(txAtoB3), ToRpcForInput(txAtoB4)]
                 }
             },
             TraceTransfers = true
         };
-
-        //Test that transfer tx works on mainchain
-        UInt256 before = chain.State.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(true, txMainnetAtoB);
-        UInt256 after = chain.State.GetBalance(TestItem.AddressA);
-        Assert.Less(after, before);
-
-        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
-
-        //Force persistancy of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
-
-        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
-            executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<SimulateBlockResult> data = result.Data;
-
-        Assert.That(data.Count, Is.EqualTo(9));
-
-        SimulateBlockResult blockResult = data[0];
-        Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
-        blockResult = data.Last();
-        Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
     }
 
-    /// <summary>
-    ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
-    /// </summary>
-    [Test]
-    public async Task Test_eth_simulate_transactions_forced_fail()
+    // Helper to convert Transaction to RPC format suitable for input (clears GasPrice for EIP-1559+ to avoid ambiguity)
+    private static TransactionForRpc ToRpcForInput(Transaction tx)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+        if (rpc is EIP1559TransactionForRpc eip1559Rpc)
+            eip1559Rpc.GasPrice = null;
+        return rpc;
+    }
 
-        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
-
-        Transaction txMainnetAtoB =
-            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+    public static SimulatePayload<TransactionForRpc> CreateTransactionsForcedFail(TestRpcBlockchain chain, UInt256 nonceA)
+    {
         //shall be Ok
         Transaction txAtoB1 =
             GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
@@ -181,9 +111,13 @@ public class EthSimulateTestsBlocksAndTransactions
         //shall fail
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
-        TransactionForRpc transactionForRpc = new(txAtoB2) { Nonce = null };
-        TransactionForRpc transactionForRpc2 = new(txAtoB1) { Nonce = null };
-        SimulatePayload<TransactionForRpc> payload = new()
+
+        LegacyTransactionForRpc transactionForRpc = (LegacyTransactionForRpc)ToRpcForInput(txAtoB2);
+        transactionForRpc.Nonce = null;
+        LegacyTransactionForRpc transactionForRpc2 = (LegacyTransactionForRpc)ToRpcForInput(txAtoB1);
+        transactionForRpc2.Nonce = null;
+
+        return new()
         {
             BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
             {
@@ -197,7 +131,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { transactionForRpc2 }
+                    Calls = [transactionForRpc2]
                 },
                 new()
                 {
@@ -215,30 +149,130 @@ public class EthSimulateTestsBlocksAndTransactions
             TraceTransfers = true,
             Validation = true
         };
+    }
 
-        //Test that transfer tx works on mainchain
-        UInt256 before = chain.State.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(true, txMainnetAtoB);
-        UInt256 after = chain.State.GetBalance(TestItem.AddressA);
-        Assert.Less(after, before);
+    public static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount, TxType type = TxType.EIP1559)
+    {
+        Transaction tx = new()
+        {
+            Type = type,
+            Value = amount,
+            Nonce = nonce,
+            GasLimit = 50_000,
+            SenderAddress = from.Address,
+            To = to,
+            GasPrice = 20.GWei,
+            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20.GWei : 0
+        };
 
-        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
+        ethereumEcdsa.Sign(from, tx);
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
 
-        //Force persistancy of head block in main chain
+    [Test]
+    public async Task Test_eth_simulate_serialization()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = CreateSerializationPayload(chain);
+
+        //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
+        Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
+        Assert.That(data, Has.Count.EqualTo(7));
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
-            executor.Execute(payload, BlockParameter.Latest);
-        Assert.IsTrue(result.Result!.Error!.Contains("higher than sender balance"));
+        SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
+        blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
+        blockResult.Calls.Should().OnlyContain(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value);
+
     }
 
 
+    /// <summary>
+    ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
+    ///     We test on blocks before current head and after it,
+    ///     Note that if we get blocks before head we set simulation start state to one of that first block
+    /// </summary>
     [Test]
-    public async Task TestTransferLogsAddress()
+    public async Task Test_eth_simulate_eth_moved()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
+
+        SimulatePayload<TransactionForRpc> payload = CreateEthMovedPayload(chain, nonceA);
+
+        //Test that transfer tx works on mainchain
+        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
+        await chain.AddBlock(txMainnetAtoB);
+        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
+        Assert.That(after, Is.LessThan(before));
+
+        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
+
+        //Force persistence of head block in main chain
+        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+
+        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            executor.Execute(payload, BlockParameter.Latest);
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
+
+        Assert.That(data.Count, Is.EqualTo(9));
+
+        SimulateBlockResult<SimulateCallResult> blockResult = data[0];
+        Assert.That(blockResult.Calls.Count, Is.EqualTo(2));
+        blockResult = data.Last();
+        Assert.That(blockResult.Calls.Count, Is.EqualTo(2));
+    }
+
+    /// <summary>
+    ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulate_transactions_forced_fail()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+
+        Transaction txMainnetAtoB =
+            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
+
+        SimulatePayload<TransactionForRpc> payload = CreateTransactionsForcedFail(chain, nonceA);
+
+        //Test that transfer tx works on mainchain
+        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
+        await chain.AddBlock(txMainnetAtoB);
+        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
+        Assert.That(after, Is.LessThan(before));
+
+        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
+
+        //Force persistence of head block in main chain
+        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+
+        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            executor.Execute(payload, BlockParameter.Latest);
+        Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
+    }
+
+
+    public static SimulatePayload<TransactionForRpc> CreateTransferLogsAddressPayload()
     {
         EthereumJsonSerializer serializer = new();
         string input = """
@@ -256,6 +290,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             },
                             "calls": [
                               {
+                                "type": "0x2",
                                 "from": "0xc000000000000000000000000000000000000000",
                                 "to": "0xc100000000000000000000000000000000000000",
                                 "gas": "0x5208",
@@ -271,11 +306,143 @@ public class EthSimulateTestsBlocksAndTransactions
                         ]
                        }
                        """;
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+        return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+    }
+
+    [Test]
+    public async Task Test_eth_simulate_caps_gas_to_gas_cap()
+    {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        long gasCap = 50_000;
+        chain.RpcConfig.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns remaining gas
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractAddress,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        SimulateCallResult callResult = result.Data.First().Calls.First();
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+        Assert.That(callResult.MaxUsedGas, Is.Not.Null);
+        Assert.That(callResult.GasUsed, Is.Not.Null);
+        ulong maxUsedGas = callResult.MaxUsedGas ?? 0;
+        ulong gasUsed = callResult.GasUsed ?? 0;
+        Assert.That(maxUsedGas, Is.GreaterThanOrEqualTo(gasUsed));
+
+        UInt256 gasAvailable = new(callResult.ReturnData!, isBigEndian: true);
+        Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+    }
+
+    [Test]
+    public async Task TestTransferLogsAddress([Values] bool eip7708)
+    {
+        SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
+        OverridableReleaseSpec spec = new(London.Instance);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
+        spec.IsEip7708Enabled = eip7708;
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        var logs = result.Data.First().Calls.First().Logs.ToArray();
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+        Log[] logs = result.Data.First().Calls.First().Logs.ToArray();
+        Assert.That(logs.Length, Is.EqualTo(1));
+        Assert.That(logs.First().Address == (eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender));
+    }
+
+    [Test]
+    public async Task TestSerializationEthSimulate()
+    {
+        SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonRpcResponse response = await RpcTest.TestRequest(chain.EthRpcModule, "eth_simulateV1", payload!, "latest");
+        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = (IReadOnlyList<SimulateBlockResult<SimulateCallResult>>)successResponse.Result!;
+        Log[] logs = data[0].Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
+    }
+
+    [Test]
+    public async Task Test_eth_simulate_log_index_increments_across_transactions()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        Address contractWith2Logs = new("0xc200000000000000000000000000000000000000");
+        Address contractWith1Log = new("0xc300000000000000000000000000000000000000");
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } },
+                        { contractWith2Logs, new AccountOverride { Code = Bytes.FromHexString("0x60006000a060006000a0") } },
+                        { contractWith1Log, new AccountOverride { Code = Bytes.FromHexString("0x60006000a0") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractWith2Logs,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        },
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractWith1Log,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        SimulateBlockResult<SimulateCallResult> block = result.Data.First();
+        Assert.That(block.Calls, Has.Count.EqualTo(2));
+
+        SimulateCallResult[] calls = block.Calls.ToArray();
+
+        Log[] tx0Logs = calls[0].Logs.ToArray();
+        Assert.That(tx0Logs, Has.Length.EqualTo(2));
+        Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
+        Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+
+        Log[] tx1Logs = calls[1].Logs.ToArray();
+        Assert.That(tx1Logs, Has.Length.EqualTo(1));
+        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
 }

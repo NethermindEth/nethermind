@@ -29,7 +29,6 @@ namespace Nethermind.Network.P2P
         Node Node { get; }
         DateTime LastPingUtc { get; set; }
         DateTime LastPongUtc { get; set; }
-        void ReceiveMessage(Packet packet);
         void ReceiveMessage(ZeroPacket zeroPacket);
         int DeliverMessage<T>(T message) where T : P2PMessage;
         void EnableSnappy();
@@ -63,5 +62,7 @@ namespace Nethermind.Network.P2P
         event EventHandler<DisconnectEventArgs> Disconnected;
         event EventHandler<EventArgs> Initialized;
         event EventHandler<EventArgs> HandshakeComplete;
+        event EventHandler<PeerEventArgs> MsgReceived;
+        event EventHandler<PeerEventArgs> MsgDelivered;
     }
 }

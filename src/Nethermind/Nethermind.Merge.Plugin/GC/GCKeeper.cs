@@ -6,35 +6,47 @@ using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
+using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.GC;
 
-public class GCKeeper
+using Nethermind.Core.Extensions;
+
+public class GCKeeper : IDisposable
 {
     private static ulong _forcedGcCount = 0;
+    private readonly Lock _lock = new();
     private readonly IGCStrategy _gcStrategy;
+    private readonly int _postBlockDelayMs;
     private readonly ILogger _logger;
-    private static readonly long _defaultSize = 512.MB();
+    private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
+    private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
+    private CancellationTokenSource? _shutdownCts = new();
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
     {
         _gcStrategy = gcStrategy;
+        _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
         _logger = logManager.GetClassLogger<GCKeeper>();
+        _tryStartNoGCRegionFunc = TryStartNoGCRegion;
     }
 
-    public IDisposable TryStartNoGCRegion(long? size = null)
+    public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
+
+    public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
+
+    private IDisposable TryStartNoGCRegion()
     {
-        size ??= _defaultSize;
+        long size = _defaultSize;
+        bool pausedGCScheduler = GCScheduler.MarkGCPaused();
         if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
             try
             {
-                if (!System.GC.TryStartNoGCRegion(size.Value, true))
+                if (!System.GC.TryStartNoGCRegion(size, disallowFullBlockingGC: true))
                 {
                     failCause = FailCause.GCFailedToStartNoGCRegion;
                 }
@@ -54,10 +66,10 @@ public class GCKeeper
                 if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
             }
 
-            return new NoGCRegion(this, failCause, size, _logger);
+            return new NoGCRegion(this, failCause, size, pausedGCScheduler, _logger);
         }
 
-        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, _logger);
+        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, pausedGCScheduler, _logger);
     }
 
     private enum FailCause
@@ -76,17 +88,23 @@ public class GCKeeper
         private readonly FailCause _failCause;
         private readonly long? _size;
         private readonly ILogger _logger;
+        private readonly bool _pausedGCScheduler;
 
-        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, bool pausedGCScheduler, ILogger logger)
         {
             _gcKeeper = gcKeeper;
             _failCause = failCause;
             _size = size;
+            _pausedGCScheduler = pausedGCScheduler;
             _logger = logger;
         }
 
         public void Dispose()
         {
+            if (_pausedGCScheduler)
+            {
+                GCScheduler.MarkGCResumed();
+            }
             if (_failCause == FailCause.None)
             {
                 if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
@@ -117,7 +135,7 @@ public class GCKeeper
     {
         if (_gcScheduleTask.IsCompleted)
         {
-            lock (_gcStrategy)
+            lock (_lock)
             {
                 long timeStamp = Environment.TickCount64;
                 if (TimeSpan.FromMilliseconds(timeStamp - _lastGcTimeMs).TotalSeconds <= 3)
@@ -142,8 +160,17 @@ public class GCKeeper
         {
             // This should give time to finalize response in Engine API
             // Normally we should get block every 12s (5s on some chains)
-            // Lets say we process block in 2s, then delay 1s, then invoke GC
-            await Task.Delay(1000);
+            // Lets say we process block in 2s, then delay 125ms, then invoke GC
+            int postBlockDelayMs = _postBlockDelayMs;
+            if (postBlockDelayMs <= 0)
+            {
+                // Always async
+                await Task.Yield();
+            }
+            else
+            {
+                if (!await TaskExtensions.DelaySafe(postBlockDelayMs, _shutdownCts?.Token ?? CancellationToken.None)) return;
+            }
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
@@ -165,9 +192,7 @@ public class GCKeeper
                     GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
                 }
 
-                System.GC.Collect((int)generation, mode, blocking: true, compacting: compacting > 0);
-
-                MallocHelper.Instance.MallocTrim((uint)1.MiB());
+                GCScheduler.Instance.GCCollect((int)generation, mode, blocking: true, compacting: compacting > 0);
             }
         }
     }

@@ -1,0 +1,134 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using BenchmarkDotNet.Columns;
+using BenchmarkDotNet.Mathematics;
+using BenchmarkDotNet.Reports;
+using BenchmarkDotNet.Running;
+using Nethermind.Specs.Forks;
+using Perfolizer.Mathematics.Common;
+
+[assembly: InternalsVisibleTo("Nethermind.Precompiles.Benchmark.Test")]
+
+namespace Nethermind.Precompiles.Benchmark;
+
+public class GasColumnProvider : IColumnProvider
+{
+
+    private static readonly IColumn[] Columns = [
+        new GasColumn(),
+        new GasThroughputColumn(),
+        new GasConfidenceIntervalColumn(true),
+        new GasConfidenceIntervalColumn(false)
+    ];
+
+    public IEnumerable<IColumn> GetColumns(Summary summary) => Columns;
+
+    /// <summary>
+    /// Converts gas consumed and execution time into MGas/s throughput.
+    /// </summary>
+    internal static double CalculateMGasThroughput(long gas, double nanoseconds) => gas * 1000.0 / nanoseconds;
+
+    /// <summary>
+    /// Computes the MGas/s throughput for a given Benchmark Statistics.
+    /// </summary>
+    internal static double GetThroughputBound(long gas, Statistics stats, bool isLowerBound)
+    {
+        ConfidenceInterval ci = stats.GetConfidenceInterval(ConfidenceLevel.L99);
+        // BDN's CI is in nanoseconds; throughput = gas/time is inversely proportional,
+        // so the lower throughput bound uses the upper time bound and vice versa.
+        double timeBound = isLowerBound ? ci.Upper : ci.Lower;
+        return CalculateMGasThroughput(gas, timeBound);
+    }
+
+    private abstract class BaseGasColumn : IColumn
+    {
+        public bool AlwaysShow => true;
+        public ColumnCategory Category => ColumnCategory.Custom;
+        public int PriorityInCategory => 0;
+        public bool IsNumeric => true;
+        public UnitType UnitType => UnitType.Size;
+
+        public abstract string Id { get; }
+        public abstract string ColumnName { get; }
+        public abstract string Legend { get; }
+
+        protected static (long? gas, Statistics? stats) GetBenchmarkData(Summary summary, BenchmarkCase benchmarkCase)
+        {
+            BenchmarkDotNet.Parameters.ParameterInstance? inputParam = benchmarkCase.Parameters.Items.FirstOrDefault(p => p.Name == "Input");
+            long? gas = inputParam?.Value is PrecompileBenchmarkBase.Param precompileInput
+                ? precompileInput.Gas(Cancun.Instance)
+                : (long?)null;
+            Statistics? stats = summary.Reports.FirstOrDefault(r => r.BenchmarkCase == benchmarkCase)?.ResultStatistics;
+            return (gas, stats);
+        }
+
+        public abstract string GetValue(Summary summary, BenchmarkCase benchmarkCase);
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style)
+            => GetValue(summary, benchmarkCase);
+
+        public bool IsDefault(Summary summary, BenchmarkCase benchmarkCase) => false;
+
+        public bool IsAvailable(Summary summary)
+            => summary.BenchmarksCases.Any(
+                c => c.Parameters.Items.Any(
+                    p => p.Name == "Input" && p.Value is PrecompileBenchmarkBase.Param));
+    }
+
+    private class GasColumn : BaseGasColumn
+    {
+        public override string Id => "Gas";
+        public override string ColumnName => "Gas";
+        public override string Legend => "Amount of gas used by the operation";
+
+        public override string GetValue(Summary summary, BenchmarkCase benchmarkCase)
+        {
+            (long? gas, Statistics? _) = GetBenchmarkData(summary, benchmarkCase);
+            return gas?.ToString() ?? "N/A";
+        }
+    }
+
+    private class GasThroughputColumn : BaseGasColumn
+    {
+        public override string Id => "GasThroughput";
+        public override string ColumnName => "Throughput";
+        public override string Legend => "Amount of gas processed per second";
+
+        public override string GetValue(Summary summary, BenchmarkCase benchmarkCase)
+        {
+            (long? gas, Statistics? stats) = GetBenchmarkData(summary, benchmarkCase);
+
+            if (gas is null || stats?.Mean is null)
+            {
+                return "N/A";
+            }
+
+            double mgasThroughput = CalculateMGasThroughput(gas.Value, stats.Mean);
+            return mgasThroughput.ToString("F2") + " MGas/s";
+        }
+    }
+
+    private class GasConfidenceIntervalColumn(bool isLower) : BaseGasColumn
+    {
+        public override string Id => isLower ? "GasCI-Lower" : "GasCI-Upper";
+        public override string ColumnName => isLower ? "Throughput CI-Lower" : "Throughput CI-Upper";
+        public override string Legend => $"{(isLower ? "Lower" : "Upper")} bound of gas throughput 99% confidence interval";
+
+        public override string GetValue(Summary summary, BenchmarkCase benchmarkCase)
+        {
+            (long? gas, Statistics? stats) = GetBenchmarkData(summary, benchmarkCase);
+
+            if (gas is null || stats?.Mean is null)
+            {
+                return "N/A";
+            }
+
+            double mgasThroughput = GetThroughputBound(gas.Value, stats, isLower);
+            return mgasThroughput.ToString("F2") + " MGas/s";
+        }
+    }
+}

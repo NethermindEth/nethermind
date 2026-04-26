@@ -2,24 +2,72 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class WorldStateManager(
-    IWorldState worldState,
-    ITrieStore trieStore,
-    IDbProvider dbProvider,
-    ILogManager logManager)
-    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager)
+public class WorldStateManager : IWorldStateManager
 {
-    public override IWorldState GlobalWorldState => worldState;
+    private readonly IWorldStateScopeProvider _worldState;
+    private readonly IPruningTrieStore _trieStore;
+    private readonly IReadOnlyTrieStore _readOnlyTrieStore;
+    private readonly ILogManager _logManager;
+    private readonly ReadOnlyDb _readaOnlyCodeCb;
+    private readonly IDbProvider _dbProvider;
+    private readonly BlockingVerifyTrie? _blockingVerifyTrie;
+    private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
-    public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+    public WorldStateManager(
+        IWorldStateScopeProvider worldState,
+        IPruningTrieStore trieStore,
+        IDbProvider dbProvider,
+        ILogManager logManager,
+        ILastNStateRootTracker lastNStateRootTracker = null
+    )
     {
-        add => trieStore.ReorgBoundaryReached += value;
-        remove => trieStore.ReorgBoundaryReached -= value;
+        _dbProvider = dbProvider;
+        _worldState = worldState;
+        _trieStore = trieStore;
+        _readOnlyTrieStore = trieStore.AsReadOnly();
+        _logManager = logManager;
+
+        IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
+        _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
+        GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
+        _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
+        _lastNStateRootTracker = lastNStateRootTracker;
+        SnapServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
+            ? NoopSnapServer.Instance
+            : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
     }
+
+    public IWorldStateScopeProvider GlobalWorldState => _worldState;
+
+    public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
+
+    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+    {
+        add => _trieStore.ReorgBoundaryReached += value;
+        remove => _trieStore.ReorgBoundaryReached -= value;
+    }
+
+    public IStateReader GlobalStateReader { get; }
+
+    public ISnapServer SnapServer { get; }
+
+    public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
+
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => _readOnlyTrieStore;
+
+    public IOverridableWorldScope CreateOverridableWorldScope() => new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
+
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
+
+    public void FlushCache(CancellationToken cancellationToken) => _trieStore.PersistCache(cancellationToken);
 }

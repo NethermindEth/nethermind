@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
@@ -13,15 +10,13 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
-public ref struct ValueRlpStream(in CappedArray<byte> data)
+public ref struct ValueRlpStream(CappedArray<byte> data)
 {
-    private readonly ref readonly CappedArray<byte> _data = ref data;
+    public readonly ReadOnlySpan<byte> Data = data.AsSpan();
     private int _position = 0;
 
     internal readonly string Description =>
-        Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
-
-    public readonly ref readonly CappedArray<byte> Data => ref _data;
+        Data[..Math.Min(Rlp.DebugMessageContentLength, Data.Length)].ToHexString() ?? "0x";
 
     public int Position
     {
@@ -29,135 +24,31 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         set => _position = value;
     }
 
-    public readonly bool IsNull => Unsafe.IsNullRef(ref Unsafe.AsRef(in _data));
+    public readonly bool IsNull => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(Data));
     public readonly bool IsNotNull => !IsNull;
     public readonly int Length => Data.Length;
 
-    public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
-    {
-        int positionStored = Position;
-        int numberOfItems = 0;
-        while (Position < (beforePosition ?? Length))
-        {
-            int prefix = ReadByte();
-            if (prefix <= 128)
-            {
-            }
-            else if (prefix <= 183)
-            {
-                int length = prefix - 128;
-                SkipBytes(length);
-            }
-            else if (prefix < 192)
-            {
-                int lengthOfLength = prefix - 183;
-                int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
-                {
-                    throw new RlpException("Expected length greater or equal 56 and was {length}");
-                }
+    public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
+        => RlpHelpers.CountItems(Data, _position, beforePosition ?? Data.Length, maxSearch);
 
-                SkipBytes(length);
-            }
-            else
-            {
-                Position--;
-                int sequenceLength = ReadSequenceLength();
-                SkipBytes(sequenceLength);
-            }
+    public void SkipLength() => SkipBytes(PeekPrefixLength());
 
-            numberOfItems++;
-            if (numberOfItems >= maxSearch)
-            {
-                break;
-            }
-        }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly int PeekPrefixLength() => RlpHelpers.GetPrefixLength(PeekByte());
 
-        Position = positionStored;
-        return numberOfItems;
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly int PeekNextRlpLength() => RlpHelpers.PeekNextRlpLength(Data, _position);
 
-    public void SkipLength()
-    {
-        SkipBytes(PeekPrefixAndContentLength().PrefixLength);
-    }
-
-    public readonly int PeekNextRlpLength()
-    {
-        (int a, int b) = PeekPrefixAndContentLength();
-        return a + b;
-    }
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
-    {
-        (int prefixLength, int contentLength) result;
-        int prefix = PeekByte();
-        if (prefix <= 128)
-        {
-            result = (0, 1);
-        }
-        else if (prefix <= 183)
-        {
-            result = (1, prefix - 128);
-        }
-        else if (prefix < 192)
-        {
-            int lengthOfLength = prefix - 183;
-            if ((uint)lengthOfLength > 4)
-            {
-                // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                ThrowSequenceLengthTooLong();
-            }
-
-            int length = PeekDeserializeLength(1, lengthOfLength);
-            if (length < 56)
-            {
-                ThrowLengthTooLong(length);
-            }
-
-            result = (lengthOfLength + 1, length);
-        }
-        else if (prefix <= 247)
-        {
-            result = (1, prefix - 192);
-        }
-        else
-        {
-            int lengthOfContentLength = prefix - 247;
-            int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-            if (contentLength < 56)
-            {
-                ThrowLengthTooLong(contentLength);
-            }
-
-
-            result = (lengthOfContentLength + 1, contentLength);
-        }
-
-        return result;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowSequenceLengthTooLong()
-        {
-            throw new RlpException("Expected length of length less or equal 4");
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowLengthTooLong(int length)
-        {
-            throw new RlpException($"Expected length greater or equal 56 and was {length}");
-        }
-    }
+        => RlpHelpers.PeekPrefixAndContentLength(Data, _position);
 
     public int ReadSequenceLength()
     {
         int prefix = ReadByte();
         if (prefix < 192)
         {
-            throw new RlpException(
-                $"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message of length {Length} starting with {Description}");
+            RlpHelpers.ThrowUnexpectedPrefix(prefix);
         }
 
         if (prefix <= 247)
@@ -167,9 +58,9 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
         int lengthOfContentLength = prefix - 247;
         int contentLength = DeserializeLength(lengthOfContentLength);
-        if (contentLength < 56)
+        if (contentLength < RlpHelpers.SmallPrefixBarrier)
         {
-            throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+            RlpHelpers.ThrowUnexpectedLength(contentLength);
         }
 
         return contentLength;
@@ -179,114 +70,24 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
     {
         if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
         {
-            ThrowArgumentOutOfRangeException(lengthOfLength);
+            RlpHelpers.ThrowInvalidLength(lengthOfLength);
         }
 
-        // Will use Unsafe.ReadUnaligned as we know the length of the span is same
-        // as what we asked for and then explicitly check lengths, so can skip the
-        // additional bounds checking from BinaryPrimitives.ReadUInt16BigEndian etc
         ref byte firstElement = ref MemoryMarshal.GetReference(Read(lengthOfLength));
-
-        return DeserializeLengthRef(ref firstElement, lengthOfLength);
+        return RlpHelpers.DeserializeLengthRef(ref firstElement, lengthOfLength);
     }
 
-    private readonly int PeekDeserializeLength(int offset, int lengthOfLength)
+
+    public byte ReadByte() => Data[_position++];
+
+    public readonly byte PeekByte() => Data[_position];
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SkipBytes(int length) => _position += length;
+
+    public ReadOnlySpan<byte> Read(int length)
     {
-        if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
-        {
-            ThrowArgumentOutOfRangeException(lengthOfLength);
-        }
-
-        // Will use Unsafe.ReadUnaligned as we know the length of the span is same
-        // as what we asked for and then explicitly check lengths, so can skip the
-        // additional bounds checking from BinaryPrimitives.ReadUInt16BigEndian etc
-        ref byte firstElement = ref MemoryMarshal.GetReference(Peek(offset, lengthOfLength));
-
-        return DeserializeLengthRef(ref firstElement, lengthOfLength);
-    }
-
-    private static int DeserializeLengthRef(ref byte firstElement, int lengthOfLength)
-    {
-        int result = firstElement;
-        if (result == 0)
-        {
-            ThrowInvalidData();
-        }
-
-        if (lengthOfLength == 1)
-        {
-            // Already read above
-            // result = span[0];
-        }
-        else if (lengthOfLength == 2)
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref firstElement));
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<ushort>(ref firstElement);
-            }
-        }
-        else if (lengthOfLength == 3)
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
-                    | (result << 16);
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1))
-                    | (result << 16);
-            }
-        }
-        else
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref firstElement));
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<int>(ref firstElement);
-            }
-        }
-
-        return result;
-
-        [DoesNotReturn]
-        static void ThrowInvalidData()
-        {
-            throw new RlpException("Length starts with 0");
-        }
-    }
-
-    [DoesNotReturn]
-    static void ThrowArgumentOutOfRangeException(int lengthOfLength)
-    {
-        throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
-    }
-
-    public byte ReadByte()
-    {
-        return Data![_position++];
-    }
-
-    public readonly byte PeekByte()
-    {
-        return Data![_position];
-    }
-
-    public void SkipBytes(int length)
-    {
-        _position += length;
-    }
-
-    public Span<byte> Read(int length)
-    {
-        Span<byte> data = Data.AsSpan(_position, length);
+        ReadOnlySpan<byte> data = Data.Slice(_position, length);
         _position += length;
         return data;
     }
@@ -301,11 +102,10 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
         if (prefix != 128 + 32)
         {
-            throw new RlpException(
-                $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Length} starting with {Description}");
+            RlpHelpers.ThrowUnexpectedPrefix(prefix);
         }
 
-        Span<byte> keccakSpan = Read(32);
+        ReadOnlySpan<byte> keccakSpan = Read(32);
         if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
         {
             return Keccak.OfAnEmptyString;
@@ -330,35 +130,25 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
         if (prefix != 128 + 32)
         {
-            throw new RlpException(
-                $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Length} starting with {Description}");
+            RlpHelpers.ThrowUnexpectedPrefix(prefix);
         }
 
-        Span<byte> keccakSpan = Read(32);
+        ReadOnlySpan<byte> keccakSpan = Read(32);
         keccak = new ValueHash256(keccakSpan);
         return true;
     }
 
-    public readonly Span<byte> PeekNextItem()
+    public readonly ReadOnlySpan<byte> PeekNextItem()
     {
         int length = PeekNextRlpLength();
         return Peek(length);
     }
 
-    public readonly Span<byte> Peek(int length)
-    {
-        return Peek(0, length);
-    }
+    public readonly ReadOnlySpan<byte> Peek(int length) => Peek(0, length);
 
-    public readonly Span<byte> Peek(int offset, int length)
-    {
-        return Data.AsSpan(_position + offset, length);
-    }
+    public readonly ReadOnlySpan<byte> Peek(int offset, int length) => Data.Slice(_position + offset, length);
 
-    public byte[] DecodeByteArray()
-    {
-        return Rlp.ByteSpanToArray(DecodeByteArraySpan());
-    }
+    public byte[] DecodeByteArray() => Rlp.ByteSpanToArray(DecodeByteArraySpan());
 
     public ReadOnlySpan<byte> DecodeByteArraySpan()
     {
@@ -369,31 +159,24 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
             return span.Slice(prefix, 1);
         }
 
-        if (prefix == 128)
+        if (prefix == Rlp.EmptyByteArrayByte)
         {
             return default;
         }
 
         if (prefix <= 183)
         {
-            int length = prefix - 128;
+            int length = prefix - Rlp.EmptyByteArrayByte;
             ReadOnlySpan<byte> buffer = Read(length);
             if (buffer.Length == 1 && buffer[0] < 128)
             {
-                ThrowUnexpectedValue(buffer[0]);
+                RlpHelpers.ThrowUnexpectedByteValue(buffer[0]);
             }
 
             return buffer;
         }
 
         return DecodeLargerByteArraySpan(prefix);
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowUnexpectedValue(int buffer0)
-        {
-            throw new RlpException($"Unexpected byte value {buffer0}");
-        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -404,61 +187,26 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
             int lengthOfLength = prefix - 183;
             if (lengthOfLength > 4)
             {
-                // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                ThrowUnexpectedLengthOfLength();
+                RlpHelpers.ThrowSequenceLengthTooLong();
             }
 
             int length = DeserializeLength(lengthOfLength);
-            if (length < 56)
+            if (length < RlpHelpers.SmallPrefixBarrier)
             {
-                ThrowUnexpectedLength(length);
+                RlpHelpers.ThrowUnexpectedLength(length);
             }
 
             return Read(length);
         }
 
-        ThrowUnexpectedPrefix(prefix);
+        RlpHelpers.ThrowUnexpectedPrefix(prefix);
         return default;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowUnexpectedPrefix(int prefix)
-        {
-            throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowUnexpectedLength(int length)
-        {
-            throw new RlpException($"Expected length greater or equal 56 and was {length}");
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowUnexpectedLengthOfLength()
-        {
-            throw new RlpException("Expected length of length less or equal 4");
-        }
     }
 
-    public void SkipItem()
-    {
-        (int prefix, int content) = PeekPrefixAndContentLength();
-        SkipBytes(prefix + content);
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SkipItem() => SkipBytes(PeekNextRlpLength());
 
-    public void Reset()
-    {
-        Position = 0;
-    }
+    public void Reset() => _position = 0;
 
-    private const byte EmptyArrayByte = 128;
-
-    private const byte EmptySequenceByte = 192;
-
-    public override readonly string ToString()
-    {
-        return $"[{nameof(RlpStream)}|{Position}/{Length}]";
-    }
+    public override readonly string ToString() => $"[{nameof(RlpStream)}|{_position}/{Data.Length}]";
 }

@@ -2,426 +2,866 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test
+namespace Nethermind.Store.Test;
+
+[TestFixture(false)]
+[TestFixture(true)]
+[Parallelizable(ParallelScope.All)]
+public class StorageProviderTests(bool useFlat)
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
-    public class StorageProviderTests
+    private static readonly ILogManager LogManager = LimboLogs.Instance;
+
+    private readonly byte[][] _values =
+    [
+        [0],
+        [1],
+        [2],
+        [3],
+        [4],
+        [5],
+        [6],
+        [7],
+        [8],
+        [9],
+        [10],
+        [11],
+        [12],
+    ];
+
+    [Test]
+    public void Empty_commit_restore()
     {
-        private static readonly ILogManager LogManager = LimboLogs.Instance;
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Commit(Frontier.Instance);
+        provider.Restore(Snapshot.Empty);
+    }
 
-        private readonly byte[][] _values =
+    private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
+
+    [TestCase(-1)]
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Same_address_same_index_different_values_restore(int snapshot)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
+        provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
+
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
+    }
+
+    [Test]
+    public void Keep_in_cache()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Commit(Frontier.Instance);
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
+    }
+
+    [TestCase(-1)]
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Same_address_different_index(int snapshot)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
+        provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
+
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[Math.Min(snapshot + 1, 1)]));
+    }
+
+    [Test]
+    public void Commit_restore()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
+        provider.Commit(Frontier.Instance);
+        provider.Set(new StorageCell(ctx.Address2, 1), _values[4]);
+        provider.Set(new StorageCell(ctx.Address2, 2), _values[5]);
+        provider.Set(new StorageCell(ctx.Address2, 3), _values[6]);
+        provider.Commit(Frontier.Instance);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[7]);
+        provider.Set(new StorageCell(ctx.Address1, 2), _values[8]);
+        provider.Set(new StorageCell(ctx.Address1, 3), _values[9]);
+        provider.Commit(Frontier.Instance);
+        provider.Set(new StorageCell(ctx.Address2, 1), _values[10]);
+        provider.Set(new StorageCell(ctx.Address2, 2), _values[11]);
+        provider.Set(new StorageCell(ctx.Address2, 3), _values[12]);
+        provider.Commit(Frontier.Instance);
+        provider.Restore(Snapshot.Empty);
+
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[7]));
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[8]));
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 3)).ToArray(), Is.EqualTo(_values[9]));
+        Assert.That(provider.Get(new StorageCell(ctx.Address2, 1)).ToArray(), Is.EqualTo(_values[10]));
+        Assert.That(provider.Get(new StorageCell(ctx.Address2, 2)).ToArray(), Is.EqualTo(_values[11]));
+        Assert.That(provider.Get(new StorageCell(ctx.Address2, 3)).ToArray(), Is.EqualTo(_values[12]));
+    }
+
+    [Test]
+    public void Commit_no_changes()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
+        provider.Restore(Snapshot.Empty);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+    }
+
+    [Test]
+    public void Commit_no_changes_2()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
+        provider.Restore(Snapshot.EmptyPosition, 2, Snapshot.EmptyPosition);
+        provider.Restore(Snapshot.EmptyPosition, 1, Snapshot.EmptyPosition);
+        provider.Restore(Snapshot.EmptyPosition, 0, Snapshot.EmptyPosition);
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
+        provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+    }
+
+    [Test]
+    public void Commit_trees_clear_caches_get_previous_root()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        // block 1
+        Hash256 stateRoot;
+        WorldState storageProvider = BuildStorageProvider(ctx);
+        using (IDisposable _ = storageProvider.BeginScope(IWorldState.PreGenesis))
         {
-            new byte[] {0},
-            new byte[] {1},
-            new byte[] {2},
-            new byte[] {3},
-            new byte[] {4},
-            new byte[] {5},
-            new byte[] {6},
-            new byte[] {7},
-            new byte[] {8},
-            new byte[] {9},
-            new byte[] {10},
-            new byte[] {11},
-            new byte[] {12},
-        };
-
-        [Test]
-        public void Empty_commit_restore()
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            provider.Commit(Frontier.Instance);
-            provider.Restore(Snapshot.Empty);
-        }
-
-        private WorldState BuildStorageProvider(Context ctx)
-        {
-            return ctx.StateProvider;
-        }
-
-        [TestCase(-1)]
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        public void Same_address_same_index_different_values_restore(int snapshot)
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-            provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
-
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
-        }
-
-        [Test]
-        public void Keep_in_cache()
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-            provider.Commit(Frontier.Instance);
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-            provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-            provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-            provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
-        }
-
-        [TestCase(-1)]
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        public void Same_address_different_index(int snapshot)
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-            provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
-            provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
-            provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
-
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[Math.Min(snapshot + 1, 1)]));
-        }
-
-        [Test]
-        public void Commit_restore()
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-            provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
-            provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
-            provider.Commit(Frontier.Instance);
-            provider.Set(new StorageCell(ctx.Address2, 1), _values[4]);
-            provider.Set(new StorageCell(ctx.Address2, 2), _values[5]);
-            provider.Set(new StorageCell(ctx.Address2, 3), _values[6]);
-            provider.Commit(Frontier.Instance);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[7]);
-            provider.Set(new StorageCell(ctx.Address1, 2), _values[8]);
-            provider.Set(new StorageCell(ctx.Address1, 3), _values[9]);
-            provider.Commit(Frontier.Instance);
-            provider.Set(new StorageCell(ctx.Address2, 1), _values[10]);
-            provider.Set(new StorageCell(ctx.Address2, 2), _values[11]);
-            provider.Set(new StorageCell(ctx.Address2, 3), _values[12]);
-            provider.Commit(Frontier.Instance);
-            provider.Restore(Snapshot.Empty);
-
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[7]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[8]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address1, 3)).ToArray(), Is.EqualTo(_values[9]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address2, 1)).ToArray(), Is.EqualTo(_values[10]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address2, 2)).ToArray(), Is.EqualTo(_values[11]));
-            Assert.That(provider.Get(new StorageCell(ctx.Address2, 3)).ToArray(), Is.EqualTo(_values[12]));
-        }
-
-        [Test]
-        public void Commit_no_changes()
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-            provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
-            provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
-            provider.Restore(Snapshot.Empty);
-            provider.Commit(Frontier.Instance);
-
-            Assert.IsTrue(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero());
-        }
-
-        [Test]
-        public void Commit_no_changes_2()
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-            provider.Restore(Snapshot.EmptyPosition, 2, Snapshot.EmptyPosition);
-            provider.Restore(Snapshot.EmptyPosition, 1, Snapshot.EmptyPosition);
-            provider.Restore(Snapshot.EmptyPosition, 0, Snapshot.EmptyPosition);
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-            provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Get(new StorageCell(ctx.Address1, 1));
-            provider.Commit(Frontier.Instance);
-
-            Assert.True(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero());
-        }
-
-        [Test]
-        public void Commit_trees_clear_caches_get_previous_root()
-        {
-            Context ctx = new();
-            // block 1
-            WorldState storageProvider = BuildStorageProvider(ctx);
+            storageProvider.CreateAccount(ctx.Address1, 0);
+            storageProvider.CreateAccount(ctx.Address2, 0);
+            storageProvider.Commit(Frontier.Instance);
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
             storageProvider.Commit(Frontier.Instance);
+            storageProvider.Commit(Frontier.Instance);
+            storageProvider.CommitTree(0);
+            stateRoot = ctx.StateProvider.StateRoot;
+        }
+        BlockHeader newBase = Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject;
 
-            ctx.StateProvider.Commit(Frontier.Instance);
-            ctx.StateProvider.CommitTree(0);
-
-            // block 2
-            Hash256 stateRoot = ctx.StateProvider.StateRoot;
+        // block 2
+        using (IDisposable _ = storageProvider.BeginScope(newBase))
+        {
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             storageProvider.Commit(Frontier.Instance);
-            ctx.StateProvider.Commit(Frontier.Instance);
+            storageProvider.CommitTree(0);
+        }
 
-            // revert
-            ctx.StateProvider.Reset();
-            storageProvider.Reset();
-            ctx.StateProvider.StateRoot = stateRoot;
+        using (IDisposable _ = storageProvider.BeginScope(newBase))
+        {
+            storageProvider.AccountExists(ctx.Address1).Should().BeTrue();
 
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
 
             Assert.That(valueAfter, Is.EqualTo(_values[1]));
         }
+    }
 
-        [Test]
-        public void Can_commit_when_exactly_at_capacity_regression()
+    [Test]
+    public void Can_commit_when_exactly_at_capacity_regression()
+    {
+        using Context ctx = new(useFlat);
+        // block 1
+        WorldState storageProvider = BuildStorageProvider(ctx);
+        for (int i = 0; i < Resettable.StartCapacity; i++)
         {
-            Context ctx = new();
-            // block 1
-            WorldState storageProvider = BuildStorageProvider(ctx);
-            for (int i = 0; i < Resettable.StartCapacity; i++)
-            {
-                storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[i % 2]);
-            }
-
-            storageProvider.Commit(Frontier.Instance);
-            ctx.StateProvider.Commit(Frontier.Instance);
-
-            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
-            Assert.That(valueAfter, Is.EqualTo(_values[(Resettable.StartCapacity + 1) % 2]));
+            storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[i % 2]);
         }
 
-        /// <summary>
-        /// Transient storage should be zero if uninitialized
-        /// </summary>
-        [Test]
-        public void Can_tload_uninitialized_locations()
+        storageProvider.Commit(Frontier.Instance);
+        ctx.StateProvider.Commit(Frontier.Instance);
+
+        byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
+        Assert.That(valueAfter, Is.EqualTo(_values[(Resettable.StartCapacity + 1) % 2]));
+    }
+
+    /// <summary>
+    /// Transient storage should be zero if uninitialized
+    /// </summary>
+    [Test]
+    public void Can_tload_uninitialized_locations()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        // Should be 0 if not set
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+
+        // Should be 0 if loading from the same contract but different index
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+
+        // Should be 0 if loading from the same index but different contract
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero(), Is.True);
+    }
+
+    /// <summary>
+    /// Simple transient storage test
+    /// </summary>
+    [Test]
+    public void Can_tload_after_tstore()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+    }
+
+    /// <summary>
+    /// Transient storage can be updated and restored
+    /// </summary>
+    /// <param name="snapshot">Snapshot to restore to</param>
+    [TestCase(-1)]
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Tload_same_address_same_index_different_values_restore(int snapshot)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        Snapshot[] snapshots = new Snapshot[4];
+        snapshots[0] = provider.TakeSnapshot();
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
+        snapshots[1] = provider.TakeSnapshot();
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
+        snapshots[2] = provider.TakeSnapshot();
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[3]);
+        snapshots[3] = provider.TakeSnapshot();
+
+        Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot));
+        // Persistent storage is unimpacted by transient storage
+        Assert.That(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, Is.EqualTo(-1));
+
+        provider.Restore(snapshots[snapshot + 1]);
+
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
+    }
+
+    /// <summary>
+    /// Commit will reset transient state
+    /// </summary>
+    [Test]
+    public void Commit_resets_transient_state()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+
+        provider.Commit(Frontier.Instance);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero(), Is.True);
+    }
+
+    /// <summary>
+    /// Reset will reset transient state
+    /// </summary>
+    [Test]
+    public void Reset_resets_transient_state()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+
+        provider.Reset();
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero(), Is.True);
+    }
+
+    /// <summary>
+    /// Transient state does not impact persistent state
+    /// </summary>
+    /// <param name="snapshot">Snapshot to restore to</param>
+    [TestCase(-1)]
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Transient_state_restores_independent_of_persistent_state(int snapshot)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        Snapshot[] snapshots = new Snapshot[4];
+
+        // No updates
+        snapshots[0] = provider.TakeSnapshot();
+
+        // Only update transient
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
+        snapshots[1] = provider.TakeSnapshot();
+
+        // Update both
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[9]);
+        snapshots[2] = provider.TakeSnapshot();
+
+        // Only update persistent
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[8]);
+        snapshots[3] = provider.TakeSnapshot();
+
+        provider.Restore(snapshots[snapshot + 1]);
+
+        // Since we didn't update transient on the 3rd snapshot
+        if (snapshot == 2)
         {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            // Should be 0 if not set
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero());
+            snapshot--;
+        }
+        snapshots[0].StorageSnapshot.Should().BeEquivalentTo(Snapshot.Storage.Empty);
+        snapshots[1].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0));
+        snapshots[2].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(0, 1));
+        snapshots[3].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(1, 1));
 
-            // Should be 0 if loading from the same contract but different index
-            provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero());
+        _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray());
+    }
 
-            // Should be 0 if loading from the same index but different contract
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero());
+    /// <summary>
+    /// Persistent state does not impact transient state
+    /// </summary>
+    /// <param name="snapshot">Snapshot to restore to</param>
+    [TestCase(-1)]
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Persistent_state_restores_independent_of_transient_state(int snapshot)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        Snapshot[] snapshots = new Snapshot[4];
+
+        // No updates
+        snapshots[0] = (provider).TakeSnapshot();
+
+        // Only update persistent
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        snapshots[1] = (provider).TakeSnapshot();
+
+        // Update both
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[9]);
+        snapshots[2] = (provider).TakeSnapshot();
+
+        // Only update transient
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[8]);
+        snapshots[3] = (provider).TakeSnapshot();
+
+        provider.Restore(snapshots[snapshot + 1]);
+
+        // Since we didn't update persistent on the 3rd snapshot
+        if (snapshot == 2)
+        {
+            snapshot--;
         }
 
-        /// <summary>
-        /// Simple transient storage test
-        /// </summary>
-        [Test]
-        public void Can_tload_after_tstore()
+        snapshots.Should().Equal(
+            Snapshot.Empty,
+            new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition),
+            new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition),
+            new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition)
+        );
+
+        _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
+    }
+
+    /// <summary>
+    /// Reset will reset transient state
+    /// </summary>
+    [Test]
+    public void Selfdestruct_clears_cache()
+    {
+        PreBlockCaches preBlockCaches = new();
+        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
+        StorageCell nonAccessedStorageCell = new(TestItem.AddressA, 2);
+        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+        provider.Get(accessedStorageCell);
+        provider.Commit(Paris.Instance);
+        provider.ClearStorage(TestItem.AddressA);
+        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    [Test]
+    public void Selfdestruct_works_across_blocks()
+    {
+        using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
         {
-            Context ctx = new Context();
-            WorldState provider = BuildStorageProvider(ctx);
-
-            provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
-        }
-
-        /// <summary>
-        /// Transient storage can be updated and restored
-        /// </summary>
-        /// <param name="snapshot">Snapshot to restore to</param>
-        [TestCase(-1)]
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        public void Tload_same_address_same_index_different_values_restore(int snapshot)
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            Snapshot[] snapshots = new Snapshot[4];
-            snapshots[0] = provider.TakeSnapshot();
-            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
-            snapshots[1] = provider.TakeSnapshot();
-            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
-            snapshots[2] = provider.TakeSnapshot();
-            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[3]);
-            snapshots[3] = provider.TakeSnapshot();
-
-            Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot));
-            // Persistent storage is unimpacted by transient storage
-            Assert.That(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, Is.EqualTo(-1));
-
-            provider.Restore(snapshots[snapshot + 1]);
-
-            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
-        }
-
-        /// <summary>
-        /// Commit will reset transient state
-        /// </summary>
-        [Test]
-        public void Commit_resets_transient_state()
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-
-            provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
 
             provider.Commit(Frontier.Instance);
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        /// <summary>
-        /// Reset will reset transient state
-        /// </summary>
-        [Test]
-        public void Reset_resets_transient_state()
+        Hash256 originalStateRoot = baseBlock.StateRoot;
+
+        ctx.WrittenData.Clear();
+
+        using (provider.BeginScope(baseBlock))
         {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(new StorageCell(TestItem.AddressA, 101), [10]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
 
-            provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(baseBlock.Number + 1);
 
-            provider.Reset();
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        /// <summary>
-        /// Transient state does not impact persistent state
-        /// </summary>
-        /// <param name="snapshot">Snapshot to restore to</param>
-        [TestCase(-1)]
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        public void Transient_state_restores_independent_of_persistent_state(int snapshot)
+        baseBlock.StateRoot.Should().NotBe(originalStateRoot);
+
+        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+        ctx.WrittenData.Clear();
+
+        using (provider.BeginScope(baseBlock))
         {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            Snapshot[] snapshots = new Snapshot[4];
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
 
-            // No updates
-            snapshots[0] = provider.TakeSnapshot();
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(baseBlock.Number + 1);
 
-            // Only update transient
-            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
-            snapshots[1] = provider.TakeSnapshot();
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
 
-            // Update both
-            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[9]);
-            snapshots[2] = provider.TakeSnapshot();
+        baseBlock.StateRoot.Should().Be(originalStateRoot);
 
-            // Only update persistent
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[8]);
-            snapshots[3] = provider.TakeSnapshot();
+        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+    }
 
-            provider.Restore(snapshots[snapshot + 1]);
+    [Test]
+    public void Selfdestruct_works_even_when_its_the_only_call()
+    {
+        using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);
+        WorldState provider = BuildStorageProvider(ctx);
 
-            // Since we didn't update transient on the 3rd snapshot
-            if (snapshot == 2)
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        ctx.WrittenData.Clear();
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+        ctx.WrittenData.Clear();
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Get(new StorageCell(TestItem.AddressA, 100)).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+        }
+    }
+
+    [Test]
+    public void Selfdestruct_in_the_same_transaction()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        baseBlock.StateRoot.Should().Be(Keccak.EmptyTreeHash);
+    }
+
+    [Test]
+    public void Selfdestruct_before_commit_will_mark_contract_as_empty()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.ClearStorage(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+            Assert.That(provider.IsStorageEmpty(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
+    public void Selfdestruct_persist_between_commit()
+    {
+        PreBlockCaches preBlockCaches = new();
+        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
+        StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
+        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);
+        provider.ClearStorage(TestItem.AddressA);
+        provider.Commit(Paris.Instance);
+        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    [Test]
+    public void Eip161_empty_account_with_storage_does_not_throw_on_commit()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState worldState = ctx.StateProvider;
+        using IDisposable disposable = worldState.BeginScope(IWorldState.PreGenesis);
+
+        // Create an empty account (balance=0, nonce=0, no code) and set storage on it.
+        // EIP-161 (via SpuriousDragon+) deletes empty accounts during commit, but the
+        // storage flush has already produced a non-empty storage root. The commit must
+        // handle this gracefully by skipping the storage root update for deleted accounts.
+        worldState.CreateAccount(TestItem.AddressA, 0);
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), [1, 2, 3]);
+        worldState.Commit(SpuriousDragon.Instance);
+
+        worldState.AccountExists(TestItem.AddressA).Should().BeFalse();
+    }
+
+    [Test]
+    public void StorageClearSelfDestruct()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState worldState = ctx.StateProvider;
+
+        Hash256 stateRoot = null;
+
+        using (IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            // Set something
+            worldState.CreateAccount(TestItem.AddressA, 10);
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), Bytes.FromHexString("aaaa"));
+            worldState.Commit(SpuriousDragon.Instance);
+            worldState.CommitTree(0);
+            stateRoot = worldState.StateRoot;
+        }
+
+        using (IDisposable _ = worldState.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject))
+        {
+            // Set storage to a different value
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), Bytes.FromHexString("bbbb"));
+            worldState.Commit(SpuriousDragon.Instance);
+
+            // Delete but no clear storage
+            worldState.DeleteAccount(TestItem.AddressA);
+            worldState.Commit(SpuriousDragon.Instance);
+
+            worldState.CommitTree(1);
+            stateRoot = worldState.StateRoot;
+        }
+
+        using (IDisposable _ = worldState.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressA, 1)).IsZero(), Is.True);
+        }
+    }
+
+    [TestCase(2)]
+    [TestCase(1000)]
+    public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState worldState = ctx.StateProvider;
+        using IDisposable disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 1);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(0);
+        Hash256 emptyHash = worldState.StateRoot;
+
+        for (int i = 0; i < numItems; i++)
+        {
+            UInt256 asUInt256 = (UInt256)(i + 1);
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), asUInt256.ToBigEndian());
+        }
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(1);
+
+        Hash256 fullHash = worldState.StateRoot;
+        fullHash.Should().NotBe(emptyHash);
+
+        for (int i = 0; i < numItems; i++)
+        {
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), [0]);
+        }
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(2);
+
+        Hash256 clearedHash = worldState.StateRoot;
+
+        clearedHash.Should().Be(emptyHash);
+    }
+
+    [Test]
+    public void Set_empty_value_for_storage_cell_with_read_clears_data()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState worldState = ctx.StateProvider;
+        using IDisposable disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 1);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(0);
+        Hash256 emptyHash = worldState.StateRoot;
+
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), _values[11]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), _values[12]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(1);
+
+        Hash256 fullHash = worldState.StateRoot;
+        fullHash.Should().NotBe(emptyHash);
+
+        worldState.Get(new StorageCell(TestItem.AddressA, 1));
+        worldState.Get(new StorageCell(TestItem.AddressA, 2));
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), [0]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), [0]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(2);
+
+        Hash256 clearedHash = worldState.StateRoot;
+
+        clearedHash.Should().Be(emptyHash);
+    }
+
+    private class Context : IDisposable
+    {
+        public WorldState StateProvider { get; }
+        internal WrittenData WrittenData = null;
+        private readonly IContainer _container;
+
+        public readonly Address Address1 = new(Keccak.Compute("1"));
+        public readonly Address Address2 = new(Keccak.Compute("2"));
+
+        public Context(bool useFlat, PreBlockCaches preBlockCaches = null, bool setInitialState = true, bool trackWrittenData = false)
+        {
+            IWorldStateScopeProvider scopeProvider;
+            if (useFlat)
             {
-                snapshot--;
+                (scopeProvider, _container) = TestWorldStateFactory.CreateFlatScopeProvider();
             }
-            snapshots[0].StorageSnapshot.Should().BeEquivalentTo(Snapshot.Storage.Empty);
-            snapshots[1].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0));
-            snapshots[2].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(0, 1));
-            snapshots[3].StorageSnapshot.Should().BeEquivalentTo(new Snapshot.Storage(1, 1));
-
-            _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray());
-        }
-
-        /// <summary>
-        /// Persistent state does not impact transient state
-        /// </summary>
-        /// <param name="snapshot">Snapshot to restore to</param>
-        [TestCase(-1)]
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        public void Persistent_state_restores_independent_of_transient_state(int snapshot)
-        {
-            Context ctx = new();
-            WorldState provider = BuildStorageProvider(ctx);
-            Snapshot[] snapshots = new Snapshot[4];
-
-            // No updates
-            snapshots[0] = (provider).TakeSnapshot();
-
-            // Only update persistent
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-            snapshots[1] = (provider).TakeSnapshot();
-
-            // Update both
-            provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[9]);
-            snapshots[2] = (provider).TakeSnapshot();
-
-            // Only update transient
-            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[8]);
-            snapshots[3] = (provider).TakeSnapshot();
-
-            provider.Restore(snapshots[snapshot + 1]);
-
-            // Since we didn't update persistent on the 3rd snapshot
-            if (snapshot == 2)
+            else
             {
-                snapshot--;
+                scopeProvider = new TrieStoreScopeProvider(
+                    TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+                    new MemDb(), LimboLogs.Instance);
             }
 
-            snapshots.Should().Equal(
-                Snapshot.Empty,
-                new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(0, Snapshot.EmptyPosition)),
-                new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 0)),
-                new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 1))
-            );
-
-            _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
-        }
-
-        private class Context
-        {
-            public WorldState StateProvider { get; }
-
-            public readonly Address Address1 = new(Keccak.Compute("1"));
-            public readonly Address Address2 = new(Keccak.Compute("2"));
-
-            public Context()
+            if (preBlockCaches is not null)
             {
-                StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: true);
+            }
+
+            if (trackWrittenData)
+            {
+                WrittenData = new WrittenData(
+                    new ConcurrentDictionary<Address, Account>(),
+                    new ConcurrentDictionary<StorageCell, byte[]>(),
+                    new ConcurrentDictionary<Address, bool>()
+                );
+                scopeProvider = new WritesInterceptor(scopeProvider, WrittenData);
+            }
+
+            StateProvider = new WorldState(scopeProvider, LogManager);
+            if (setInitialState)
+            {
+                StateProvider.BeginScope(IWorldState.PreGenesis);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);
+            }
+        }
+
+        public void Dispose() => _container?.Dispose();
+    }
+
+    internal record WrittenData(
+        ConcurrentDictionary<Address, Account> Accounts,
+        ConcurrentDictionary<StorageCell, byte[]> Slots,
+        ConcurrentDictionary<Address, bool> SelfDestructed)
+    {
+        public void Clear()
+        {
+            Accounts.Clear();
+            Slots.Clear();
+            SelfDestructed.Clear();
+        }
+    }
+
+    private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData) : IWorldStateScopeProvider
+    {
+
+        public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
+
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock), writtenData);
+
+        private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
+        {
+            public void Dispose() => baseScope.Dispose();
+
+            public Hash256 RootHash => baseScope.RootHash;
+
+            public void UpdateRootHash() => baseScope.UpdateRootHash();
+
+            public Account Get(Address address) => baseScope.Get(address);
+
+            public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
+
+            public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
+
+            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);
+
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatchDecorator(baseScope.StartWriteBatch(estimatedAccountNum), writtenData);
+
+            public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
+        }
+
+        private class WriteBatchDecorator(
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
+            WrittenData writtenData
+        )
+            : IWorldStateScopeProvider.IWorldStateWriteBatch
+        {
+            public void Dispose() => writeBatch.Dispose();
+
+            public event EventHandler<IWorldStateScopeProvider.AccountUpdated> OnAccountUpdated
+            {
+                add => writeBatch.OnAccountUpdated += value;
+                remove => writeBatch.OnAccountUpdated -= value;
+            }
+
+            public void Set(Address key, Account account) => writeBatch.Set(key, account);
+
+            public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => new StorageWriteBatchDecorator(writeBatch.CreateStorageWriteBatch(key, estimatedEntries), key, writtenData);
+        }
+
+        private class StorageWriteBatchDecorator(
+            IWorldStateScopeProvider.IStorageWriteBatch baseStorageBatch,
+            Address address,
+            WrittenData writtenData
+        ) : IWorldStateScopeProvider.IStorageWriteBatch
+        {
+            public void Dispose() => baseStorageBatch?.Dispose();
+
+            public void Set(in UInt256 index, byte[] value)
+            {
+                baseStorageBatch.Set(in index, value);
+                writtenData.Slots[new StorageCell(address, index)] = value;
+            }
+
+            public void Clear()
+            {
+                baseStorageBatch.Clear();
+                writtenData.SelfDestructed[address] = true;
             }
         }
     }

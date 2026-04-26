@@ -10,33 +10,25 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
     /// <summary>
     /// Safe to be reused for all classes reading the same wrapped block tree.
     /// </summary>
-    public class ReadOnlyBlockTree : IReadOnlyBlockTree
+    public class ReadOnlyBlockTree(IBlockTree wrapped) : IReadOnlyBlockTree
     {
-        private readonly IBlockTree _wrapped;
-
-        public ReadOnlyBlockTree(IBlockTree wrapped)
-        {
-            _wrapped = wrapped;
-        }
+        private readonly IBlockTree _wrapped = wrapped;
 
         public ulong NetworkId => _wrapped.NetworkId;
         public ulong ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
-        public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
-
-        public long? LowestInsertedBodyNumber
+        public BlockHeader? LowestInsertedHeader
         {
-            get => _wrapped.LowestInsertedBodyNumber;
-            set => _wrapped.LowestInsertedBodyNumber = value;
+            get => _wrapped.LowestInsertedHeader;
+            set { }
         }
 
         public long? BestPersistedState
@@ -60,24 +52,24 @@ namespace Nethermind.Blockchain
         public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) => _wrapped.GetInfo(number, blockHash);
         public bool CanAcceptNewBlocks { get; } = false;
 
-        public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
-        {
-            await _wrapped.Accept(blockTreeVisitor, cancellationToken);
-        }
+        public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
+            => _wrapped.Accept(blockTreeVisitor, cancellationToken);
 
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
         public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
+
+        public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers,
+            BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
         public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None, BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags blockWriteFlags = WriteFlags.None) =>
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
-        public void UpdateHeadBlock(Hash256 blockHash)
-        {
+        public void UpdateHeadBlock(Hash256 blockHash) =>
             // hacky while there is not special tree for RPC
             _wrapped.UpdateHeadBlock(blockHash);
-        }
 
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 
@@ -94,6 +86,8 @@ namespace Nethermind.Blockchain
         public Hash256 SafeHash => _wrapped.SafeHash;
 
         public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
+
+        public bool HasBlock(long blockNumber, Hash256 blockHash) => _wrapped.HasBlock(blockNumber, blockHash);
 
         public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 
@@ -150,9 +144,15 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
+        event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> IBlockTree.OnForkChoiceUpdated
+        {
+            add { }
+            remove { }
+        }
+
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
-            var bestKnownNumber = BestKnownNumber;
+            long bestKnownNumber = BestKnownNumber;
             if (endNumber is null || endNumber == bestKnownNumber)
             {
                 if (Head?.Number > 0)
@@ -189,11 +189,24 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
-        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
+        public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
         public void RecalculateTreeLevels() => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(RecalculateTreeLevels)} calls");
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot
+        {
+            get => _wrapped.SyncPivot;
+            set { }
+        }
+
+        public bool IsProcessingBlock { get => _wrapped.IsProcessingBlock; set { } }
 
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
+
+        public long GetLowestBlock() => _wrapped.GetLowestBlock();
+
+        public void NewOldestBlock(long oldestBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(NewOldestBlock)} calls");
+
+        public void DeleteOldBlock(long blockNumber, Hash256 blockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlock)} calls");
     }
 }

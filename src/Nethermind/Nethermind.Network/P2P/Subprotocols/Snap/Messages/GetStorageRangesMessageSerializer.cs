@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -10,48 +10,51 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class GetStorageRangesMessageSerializer : SnapSerializerBase<GetStorageRangeMessage>
     {
-
         public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message)
         {
             NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
 
             rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(message.StoragetRange.RootHash);
-            rlpStream.Encode(message.StoragetRange.Accounts.Select(a => a.Path).ToArray()); // TODO: optimize this
-            rlpStream.Encode(message.StoragetRange.StartingHash);
-            rlpStream.Encode(message.StoragetRange.LimitHash);
+            rlpStream.Encode(message.StorageRange.RootHash);
+            IOwnedReadOnlyList<PathWithAccount> accounts = message.StorageRange.Accounts;
+            int accountsCount = accounts.Count;
+            int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;
+            rlpStream.StartSequence(accountsPathsContentLength);
+            for (int i = 0; i < accountsCount; i++)
+            {
+                rlpStream.Encode(accounts[i].Path);
+            }
+            rlpStream.Encode(message.StorageRange.StartingHash);
+            rlpStream.Encode(message.StorageRange.LimitHash);
             rlpStream.Encode(message.ResponseBytes);
         }
 
-        protected override GetStorageRangeMessage Deserialize(RlpStream rlpStream)
+        protected override GetStorageRangeMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             GetStorageRangeMessage message = new();
-            rlpStream.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
-            message.RequestId = rlpStream.DecodeLong();
+            message.RequestId = ctx.DecodeLong();
 
-            message.StoragetRange = new();
-            message.StoragetRange.RootHash = rlpStream.DecodeKeccak();
-            message.StoragetRange.Accounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
-            message.StoragetRange.StartingHash = rlpStream.DecodeKeccak();
-            message.StoragetRange.LimitHash = rlpStream.DecodeKeccak();
-            message.ResponseBytes = rlpStream.DecodeLong();
+            message.StorageRange = new();
+            message.StorageRange.RootHash = ctx.DecodeKeccak();
+            message.StorageRange.Accounts = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => new PathWithAccount() { Path = c.DecodeKeccak() }, limit: SnapMessageLimits.GetStorageRangeAccountsRlpLimit);
+            message.StorageRange.StartingHash = ctx.DecodeKeccak();
+            message.StorageRange.LimitHash = ctx.DecodeKeccak();
+            message.ResponseBytes = ctx.DecodeLong();
 
             return message;
-        }
-
-        private PathWithAccount DecodePathWithRlpData(RlpStream stream)
-        {
-            return new() { Path = stream.DecodeKeccak() };
         }
 
         public override int GetLength(GetStorageRangeMessage message, out int contentLength)
         {
             contentLength = Rlp.LengthOf(message.RequestId);
-            contentLength += Rlp.LengthOf(message.StoragetRange.RootHash);
-            contentLength += Rlp.LengthOf(message.StoragetRange.Accounts.Select(a => a.Path).ToArray(), true); // TODO: optimize this
-            contentLength += Rlp.LengthOf(message.StoragetRange.StartingHash);
-            contentLength += Rlp.LengthOf(message.StoragetRange.LimitHash);
+            contentLength += Rlp.LengthOf(message.StorageRange.RootHash);
+            int accountsCount = message.StorageRange.Accounts.Count;
+            int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;
+            contentLength += Rlp.LengthOfSequence(accountsPathsContentLength);
+            contentLength += Rlp.LengthOf(message.StorageRange.StartingHash);
+            contentLength += Rlp.LengthOf(message.StorageRange.LimitHash);
             contentLength += Rlp.LengthOf(message.ResponseBytes);
 
             return Rlp.LengthOfSequence(contentLength);

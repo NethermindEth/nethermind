@@ -3,29 +3,17 @@
 
 using System;
 using Nethermind.Blockchain.Services;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Clique
 {
-    internal class CliqueHealthHintService : IHealthHintService
+    internal class CliqueHealthHintService(ISnapshotManager snapshotManager, CliqueChainSpecEngineParameters chainSpec) : IHealthHintService
     {
-        private readonly ISnapshotManager _snapshotManager;
-        private readonly ChainSpec _chainSpec;
+        private readonly ISnapshotManager _snapshotManager = snapshotManager;
+        private readonly CliqueChainSpecEngineParameters _chainSpec = chainSpec;
 
-        public CliqueHealthHintService(ISnapshotManager snapshotManager, ChainSpec chainSpec)
-        {
-            _snapshotManager = snapshotManager;
-            _chainSpec = chainSpec;
-        }
-        public ulong? MaxSecondsIntervalForProcessingBlocksHint()
-        {
-            return _chainSpec.Clique.Period * HealthHintConstants.ProcessingSafetyMultiplier;
-        }
+        public ulong? MaxSecondsIntervalForProcessingBlocksHint() => _chainSpec.Period * HealthHintConstants.ProcessingSafetyMultiplier;
 
-        public ulong? MaxSecondsIntervalForProducingBlocksHint()
-        {
-            return Math.Max(_snapshotManager.GetLastSignersCount(), 1) * _chainSpec.Clique.Period *
+        public ulong? MaxSecondsIntervalForProducingBlocksHint() => Math.Max(_snapshotManager.GetLastSignersCount(), 1) * _chainSpec.Period *
                 HealthHintConstants.ProducingSafetyMultiplier;
-        }
     }
 }

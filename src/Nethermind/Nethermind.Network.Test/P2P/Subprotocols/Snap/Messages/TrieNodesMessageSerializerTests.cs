@@ -15,9 +15,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip()
         {
-            ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
+            using ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
 
-            TrieNodesMessage message = new(data);
+            TrieNodesMessage message = new(new ByteArrayListAdapter(data));
 
             TrieNodesMessageSerializer serializer = new();
 
@@ -27,9 +27,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void RoundtripWithCorrectLength()
         {
-            ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
+            using ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
 
-            TrieNodesMessage message = new(data);
+            TrieNodesMessage message = new(new ByteArrayListAdapter(data));
             message.RequestId = 1;
             TrieNodesMessageSerializer serializer = new();
             serializer.Serialize(message).ToHexString().Should().Be("ca01c884deadc0de82feed");

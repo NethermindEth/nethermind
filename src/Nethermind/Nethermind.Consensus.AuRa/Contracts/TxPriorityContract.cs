@@ -5,9 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
-            var logEntry = GetSearchLogEntry(nameof(PrioritySet));
+            LogEntry logEntry = GetSearchLogEntry(nameof(PrioritySet));
 
             foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
             {
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public IEnumerable<Destination> MinGasPriceSet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
-            var logEntry = GetSearchLogEntry(nameof(MinGasPriceSet));
+            LogEntry logEntry = GetSearchLogEntry(nameof(MinGasPriceSet));
 
             foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
             {
@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public bool SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<Address> items)
         {
-            var logEntry = GetSearchLogEntry(nameof(SendersWhitelistSet));
+            LogEntry logEntry = GetSearchLogEntry(nameof(SendersWhitelistSet));
 
             if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry))
             {
@@ -84,14 +84,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public Address[] DecodeAddresses(byte[] data)
         {
-            var objects = DecodeReturnData(nameof(GetSendersWhitelist), data);
+            object[] objects = DecodeReturnData(nameof(GetSendersWhitelist), data);
             return (Address[])objects[0];
         }
 
         private static Destination DecodeDestination(LogEntry log, BlockHeader blockHeader) =>
-            new Destination(
+            new(
                 new Address(log.Topics[1]),
-                log.Topics[2].Bytes.Slice(0, 4).ToArray(),
+                log.Topics[2].Bytes[..4].ToArray(),
                 AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1,
                 DestinationSource.Contract,
                 blockHeader.Number);

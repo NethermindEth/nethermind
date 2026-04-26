@@ -17,14 +17,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie;
 
@@ -40,8 +38,8 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     private readonly ILeafValueCollector _valueCollector;
 
     // For determining proofs
-    private TrieNode?[] _leftmostNodes = new TrieNode?[65];
-    private TrieNode?[] _rightmostNodes = new TrieNode?[65];
+    private readonly TrieNode?[] _leftmostNodes = new TrieNode?[65];
+    private readonly TrieNode?[] _rightmostNodes = new TrieNode?[65];
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
@@ -49,6 +47,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public bool StoppedEarly { get; set; } = false;
     public bool IsFullDbScan => false;
     public bool IsRangeScan => true;
+    public bool ExpectAccounts => false;
     private readonly CancellationToken _cancellationToken;
 
     public ReadFlags ExtraReadFlag { get; }
@@ -106,16 +105,10 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         return true;
     }
 
-    public bool ShouldVisit(in TreePathContext ctx, Hash256 nextNode)
-    {
-        return ShouldVisit(ctx.Path);
-    }
+    public bool ShouldVisit(in TreePathContext ctx, in ValueHash256 nextNode) => ShouldVisit(ctx.Path);
 
 
-    public long GetBytesSize()
-    {
-        return _currentBytesCount;
-    }
+    public long GetBytesSize() => _currentBytesCount;
 
     public ArrayPoolList<byte[]> GetProofs()
     {
@@ -146,29 +139,26 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         }
     }
 
-    public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+    public void VisitTree(in TreePathContext nodeContext, in ValueHash256 rootHash)
     {
     }
 
 
-    public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
-    {
-        throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
-    }
+    public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash) => throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
 
-    public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
+    public void VisitBranch(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
     }
 
-    public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
+    public void VisitExtension(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
     }
 
-    public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+    public void VisitLeaf(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
@@ -193,7 +183,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _skipStarthashComparison = true;
     }
 
-    public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
+    public void VisitAccount(in TreePathContext nodeContext, TrieNode node, in AccountStruct accountStruct)
     {
     }
 

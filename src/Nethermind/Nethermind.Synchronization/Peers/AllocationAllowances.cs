@@ -8,27 +8,18 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Synchronization.Peers
 {
     /// <summary>
-    /// Per-peer allocation slot counts, one byte per single <see cref="AllocationContexts"/> flag.
-    /// Mutable; callers serialise access externally (PeerInfo's methods are <see cref="MethodImplOptions.Synchronized"/>).
+    /// Per-peer concurrent-request allowance, one byte per single-bit <see cref="AllocationContexts"/> flag.
     /// </summary>
-    public struct AllocationAllowances : IEquatable<AllocationAllowances>
+    public struct AllocationAllowances(byte headers, byte bodies, byte receipts, byte state, byte snap, byte forwardHeader) : IEquatable<AllocationAllowances>
     {
-        public byte Headers;
-        public byte Bodies;
-        public byte Receipts;
-        public byte State;
-        public byte Snap;
+        public byte Headers = headers;
+        public byte Bodies = bodies;
+        public byte Receipts = receipts;
+        public byte State = state;
+        public byte Snap = snap;
+        public byte ForwardHeader = forwardHeader;
 
-        public AllocationAllowances(byte headers, byte bodies, byte receipts, byte state, byte snap)
-        {
-            Headers = headers;
-            Bodies = bodies;
-            Receipts = receipts;
-            State = state;
-            Snap = snap;
-        }
-
-        public static AllocationAllowances Default { get; } = new(1, 1, 1, 1, 1);
+        public static AllocationAllowances Default { get; } = new(1, 1, 1, 1, 1, 1);
 
         public byte this[AllocationContexts context]
         {
@@ -40,6 +31,7 @@ namespace Nethermind.Synchronization.Peers
                 AllocationContexts.Receipts => Receipts,
                 AllocationContexts.State => State,
                 AllocationContexts.Snap => Snap,
+                AllocationContexts.ForwardHeader => ForwardHeader,
                 _ => ThrowNotSingle(context),
             };
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -52,6 +44,7 @@ namespace Nethermind.Synchronization.Peers
                     case AllocationContexts.Receipts: Receipts = value; break;
                     case AllocationContexts.State: State = value; break;
                     case AllocationContexts.Snap: Snap = value; break;
+                    case AllocationContexts.ForwardHeader: ForwardHeader = value; break;
                     default: ThrowNotSingle(context); break;
                 }
             }
@@ -59,11 +52,11 @@ namespace Nethermind.Synchronization.Peers
 
         public readonly bool Equals(AllocationAllowances other) =>
             Headers == other.Headers && Bodies == other.Bodies && Receipts == other.Receipts &&
-            State == other.State && Snap == other.Snap;
+            State == other.State && Snap == other.Snap && ForwardHeader == other.ForwardHeader;
 
         public readonly override bool Equals(object? obj) => obj is AllocationAllowances other && Equals(other);
 
-        public readonly override int GetHashCode() => HashCode.Combine(Headers, Bodies, Receipts, State, Snap);
+        public readonly override int GetHashCode() => HashCode.Combine(Headers, Bodies, Receipts, State, Snap, ForwardHeader);
 
         public static bool operator ==(AllocationAllowances left, AllocationAllowances right) => left.Equals(right);
         public static bool operator !=(AllocationAllowances left, AllocationAllowances right) => !left.Equals(right);

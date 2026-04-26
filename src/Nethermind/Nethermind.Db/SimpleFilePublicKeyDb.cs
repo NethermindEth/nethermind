@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,7 +12,7 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 using Nethermind.Core;
-using Nethermind.Core.Collections;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -23,11 +24,11 @@ namespace Nethermind.Db
 
         private readonly ILogger _logger;
         private bool _hasPendingChanges;
-        private SpanConcurrentDictionary<byte, byte[]> _cache;
+        private readonly ConcurrentDictionary<byte[], byte[]> _cache = new(Bytes.EqualityComparer);
+        private readonly ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _cacheSpan;
 
-        public string DbPath { get; }
+        private string DbPath { get; }
         public string Name { get; }
-        public string Description { get; }
 
         public ICollection<byte[]> Keys => _cache.Keys.ToArray();
         public ICollection<byte[]> Values => _cache.Values;
@@ -35,60 +36,72 @@ namespace Nethermind.Db
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SimpleFilePublicKeyDb>() ?? throw new ArgumentNullException(nameof(logManager));
             ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
-            Description = $"{Name}|{DbPath}";
 
             if (!Directory.Exists(dbDirectoryPath))
             {
                 Directory.CreateDirectory(dbDirectoryPath);
             }
 
-            LoadData();
+            _cacheSpan = _cache.GetAlternateLookup<ReadOnlySpan<byte>>();
+
+            if (File.Exists(DbPath))
+            {
+                LoadData();
+            }
         }
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => Get(key, ReadFlags.None);
-            set => Set(key, value, WriteFlags.None);
+            get => Get(key);
+            set => Set(key, value);
         }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            return _cache[key];
+            _cacheSpan.TryGetValue(key, out byte[]? value);
+            return value;
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             if (value is null)
             {
-                _cache.TryRemove(key, out _);
+                if (_cacheSpan.TryRemove(key, out _))
+                {
+                    _hasPendingChanges = true;
+                }
+                return;
             }
-            else
+
+            if (!_cacheSpan.TryGetValue(key, out byte[] existingValue) || !Bytes.AreEqual(existingValue, value))
             {
-                _cache.AddOrUpdate(key.ToArray(), newValue => Add(value), (x, oldValue) => Update(oldValue, value));
+                _cacheSpan[key] = value;
+                _hasPendingChanges = true;
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out byte[] value) ? value : null)).ToArray();
 
         public void Remove(ReadOnlySpan<byte> key)
         {
-            _hasPendingChanges = true;
-            _cache.TryRemove(key, out _);
+            if (_cacheSpan.TryRemove(key, out _))
+            {
+                _hasPendingChanges = true;
+            }
         }
 
-        public bool KeyExists(ReadOnlySpan<byte> key)
-        {
-            return _cache.ContainsKey(key);
-        }
+        public bool KeyExists(ReadOnlySpan<byte> key) => _cacheSpan.ContainsKey(key);
 
-        public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear()
         {
             File.Delete(DbPath);
+            _cache.Clear();
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
@@ -97,10 +110,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 
-        public IWriteBatch StartWriteBatch()
-        {
-            return this.LikeABatch(CommitBatch);
-        }
+        public IWriteBatch StartWriteBatch() => this.LikeABatch(CommitBatch);
 
         private void CommitBatch()
         {
@@ -159,7 +169,7 @@ namespace Nethermind.Db
 
                 try
                 {
-                    BackupPath = $"{_dbPath}_{Guid.NewGuid().ToString()}";
+                    BackupPath = $"{_dbPath}_{Guid.NewGuid()}";
 
                     if (File.Exists(_dbPath))
                     {
@@ -199,16 +209,9 @@ namespace Nethermind.Db
         {
             const int maxLineLength = 2048;
 
-            _cache = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
-
-            if (!File.Exists(DbPath))
-            {
-                return;
-            }
-
             using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
 
-            byte[] rentedBuffer = ArrayPool<byte>.Shared.Rent(maxLineLength);
+            using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
             int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
 
             long offset = 0L;
@@ -219,7 +222,7 @@ namespace Nethermind.Db
                 bytes = rentedBuffer.AsSpan(0, read + bytes.Length);
                 while (true)
                 {
-                    // Store the original span incase need to undo the key slicing if end of line not found
+                    // Store the original span in case we need to undo the key slicing when the end of line is not found
                     Span<byte> iterationSpan = bytes;
                     int commaIndex = bytes.IndexOf((byte)',');
                     Span<byte> key = default;
@@ -270,7 +273,6 @@ namespace Nethermind.Db
                 read = RandomAccess.Read(fileHandle, rentedBuffer.AsSpan(bytes.Length), offset);
             }
 
-            ArrayPool<byte>.Shared.Return(rentedBuffer);
             if (bytes.Length > 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Malformed {Name}. Ignoring...");
@@ -286,24 +288,6 @@ namespace Nethermind.Db
             }
         }
 
-        private byte[] Update(byte[] oldValue, byte[] newValue)
-        {
-            if (!Bytes.AreEqual(oldValue, newValue))
-            {
-                _hasPendingChanges = true;
-            }
-
-            return newValue;
-        }
-
-        private byte[] Add(byte[] value)
-        {
-            _hasPendingChanges = true;
-            return value;
-        }
-
-        public void Dispose()
-        {
-        }
+        public void Dispose() { }
     }
 }

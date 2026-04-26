@@ -1,34 +1,34 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
-public class TransactionSubstate
+public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
-    private static readonly List<Address> _emptyDestroyList = new(0);
-    private static readonly List<LogEntry> _emptyLogs = new(0);
+    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>(Address.EqualityComparer);
+    private static readonly JournalCollection<LogEntry> _emptyLogs = new();
 
     private const string SomeError = "error";
-    private const string Revert = "revert";
+    public const string Revert = "revert";
 
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
 
-    public const string RevertedErrorMessagePrefix = "Reverted ";
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
+
 
     private static readonly FrozenDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
@@ -44,37 +44,46 @@ public class TransactionSubstate
         { 0x51, "uninitialized function" },
     }.ToFrozenDictionary();
 
+    private readonly IHashSetEnumerableCollection<Address>? _destroyList;
+    private readonly JournalCollection<LogEntry>? _logs;
+
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
+    public string? SubstateError { get; }
+    public EvmExceptionType EvmExceptionType { get; }
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public IReadOnlyCollection<LogEntry> Logs { get; }
-    public IReadOnlyCollection<Address> DestroyList { get; }
+    public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
+    public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
-    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
+    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
         Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        SubstateError = substateError;
+        EvmExceptionType = exceptionType;
         Refund = 0;
-        DestroyList = _emptyDestroyList;
-        Logs = _emptyLogs;
+        _destroyList = _emptyDestroyList;
+        _logs = _emptyLogs;
         ShouldRevert = false;
     }
 
-    public TransactionSubstate(ReadOnlyMemory<byte> output,
+    public TransactionSubstate(ReadOnlyMemory<byte> bytes,
         long refund,
-        IReadOnlyCollection<Address> destroyList,
-        IReadOnlyCollection<LogEntry> logs,
+        IHashSetEnumerableCollection<Address> destroyList,
+        JournalCollection<LogEntry> logs,
         bool shouldRevert,
         bool isTracerConnected,
+        EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {
         _logger = logger;
-        Output = output;
+        Output = bytes;
         Refund = refund;
-        DestroyList = destroyList;
-        Logs = logs;
+        _destroyList = destroyList;
+        _logs = logs;
         ShouldRevert = shouldRevert;
+        EvmExceptionType = evmExceptionType;
 
         if (!ShouldRevert)
         {
@@ -87,24 +96,25 @@ public class TransactionSubstate
         if (!isTracerConnected)
             return;
 
-        if (Output.Length <= 0)
+        if (Output.IsEmpty)
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = string.Concat(
-            RevertedErrorMessagePrefix,
-            TryGetErrorMessage(span) ?? EncodeErrorMessage(span)
-        );
+        if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
 
-    public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
-        Utf8.IsValid(span) ? Encoding.UTF8.GetString(span) : span.ToHexString(true);
+    public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.IndexOfAnyExceptInRange((byte)32, (byte)126) >= 0)
+            return span.ToHexString(true);
+
+        return Encoding.ASCII.GetString(span);
+    }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
     {
         if (span.Length < RevertPrefix) return null;
         ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
-        UInt256 start, length;
 
         if (prefix.SequenceEqual(PanicFunctionSelector))
         {
@@ -119,28 +129,23 @@ public class TransactionSubstate
             return panicReason;
         }
 
-        if (span.Length < WordSize * 2) return null;
-
         if (prefix.SequenceEqual(ErrorFunctionSelector))
         {
-            start = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (span.Length < WordSize * 2) return null;
+
+            UInt256 start = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (start != WordSize) return null;
 
-            length = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            UInt256 length = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (length > span.Length) return null;
 
             ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
             return EncodeErrorMessage(binaryMessage);
         }
 
-        start = new UInt256(span.Slice(0, WordSize), isBigEndian: true);
-        if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) return null;
-
-        length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);
-        if (UInt256.AddOverflow(lengthOffset, length, out UInt256 endOffset) || endOffset != span.Length) return null;
-
-        span = span.Slice((int)lengthOffset, (int)length);
-        return EncodeErrorMessage(span);
+        // Unknown selector — not Error(string) or Panic(uint256). Return null so the caller
+        // falls back to the Revert sentinel, matching Geth's UnpackRevert default behaviour.
+        return null;
     }
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
@@ -151,7 +156,7 @@ public class TransactionSubstate
         }
         catch (Exception e) // shouldn't happen, just for being safe
         {
-            if (_logger.IsError == true) _logger.Error("Couldn't parse revert message", e);
+            if (_logger.IsError) _logger.Error("Couldn't parse revert message", e);
             return null;
         }
     }

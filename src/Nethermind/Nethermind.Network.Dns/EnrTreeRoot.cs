@@ -29,10 +29,7 @@ public class EnrTreeRoot : EnrTreeNode
     /// </summary>
     public string Signature { get; set; } = string.Empty;
 
-    public override string ToString()
-    {
-        return $"enrtree-root:v1 e={EnrRoot} l={LinkRoot} seq={Sequence} sig={Signature}";
-    }
+    public override string ToString() => $"enrtree-root:v1 e={EnrRoot} l={LinkRoot} seq={Sequence} sig={Signature}";
 
     public override string[] Refs
     {
@@ -42,7 +39,7 @@ public class EnrTreeRoot : EnrTreeNode
         }
     }
 
-    public override string[] Links => Array.Empty<string>();
+    public override string[] Links => [];
 
-    public override string[] Records => Array.Empty<string>();
+    public override string[] Records => [];
 }

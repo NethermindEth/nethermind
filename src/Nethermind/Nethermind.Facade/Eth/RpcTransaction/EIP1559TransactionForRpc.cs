@@ -1,0 +1,71 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+
+namespace Nethermind.Facade.Eth.RpcTransaction;
+
+public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransaction<EIP1559TransactionForRpc>
+{
+    public new static TxType TxType => TxType.EIP1559;
+
+    public override TxType? Type => TxType.EIP1559;
+
+    [JsonDiscriminator]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public UInt256? MaxPriorityFeePerGas { get; set; }
+
+    [JsonDiscriminator]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public UInt256? MaxFeePerGas { get; set; }
+
+    [JsonConstructor]
+    public EIP1559TransactionForRpc() { }
+
+    public EIP1559TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+        : base(transaction, extraData)
+    {
+        MaxFeePerGas = transaction.MaxFeePerGas;
+        MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
+        // ReSharper disable once VirtualMemberCallInConstructor
+        GasPrice = extraData.BaseFee is not null
+            ? transaction.CalculateEffectiveGasPrice(eip1559Enabled: true, extraData.BaseFee.Value)
+            : transaction.MaxFeePerGas;
+    }
+
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
+    {
+        if (validateUserInput)
+        {
+            // Reject ambiguous input: both gasPrice and EIP-1559 fields
+            if (GasPrice is not null && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
+                return RpcTransactionErrors.GasPriceInEip1559;
+
+            if (MaxFeePerGas < MaxPriorityFeePerGas)
+                return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
+        }
+
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
+        if (baseResult.IsError) return baseResult;
+
+        Transaction tx = baseResult.Data;
+
+        if (tx.Supports1559)
+        {
+            tx.GasPrice = MaxPriorityFeePerGas ?? UInt256.Zero;
+            tx.DecodedMaxFeePerGas = MaxFeePerGas ?? UInt256.Zero;
+        }
+
+        return tx;
+    }
+
+    public override bool ShouldSetBaseFee() =>
+        base.ShouldSetBaseFee() || MaxFeePerGas.IsPositive() || MaxPriorityFeePerGas.IsPositive();
+
+    public new static EIP1559TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
+        => new(tx, extraData);
+}

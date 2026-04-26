@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Nethermind.Shutter</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Shutter.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Contracts\ValidatorRegistryContract.json" />
+    <None Remove="Contracts\KeyBroadcastContract.json" />
+    <None Remove="Contracts\KeyperSetManagerContract.json" />
+    <None Remove="Contracts\SequencerContract.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Contracts\ValidatorRegistryContract.json" />
+    <EmbeddedResource Include="Contracts\KeyBroadcastContract.json" />
+    <EmbeddedResource Include="Contracts\KeyperSetManagerContract.json" />
+    <EmbeddedResource Include="Contracts\KeyperSetContract.json" />
+    <EmbeddedResource Include="Contracts\SequencerContract.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+		<AdditionalFiles Include="Dto\gossip.proto" CopyToOutputDirectory="Never" />
+	</ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Libp2p" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" />
+    <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+    <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
+  </ItemGroup>
+
+</Project>

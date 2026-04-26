@@ -19,7 +19,7 @@ namespace Nethermind.Wallet.Test
 {
     public class AccountUnlockerTests
     {
-        private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+        private static readonly List<(string Name, string Content)> _files = new()
         {
             ("TestingFileF1", "PF1"),
             ("TestingFileF2", "PF2")
@@ -66,13 +66,6 @@ namespace Nethermind.Wallet.Test
                     Passwords = new[] { "A", "B" },
                     ExpectedPasswords = new[] { "A", "B" },
                 };
-
-                yield return new UnlockAccountsTest()
-                {
-                    UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
-                    Passwords = new[] { "A", "B" },
-                    ExpectedPasswords = new[] { "A", "B" },
-                };
             }
         }
 
@@ -80,9 +73,9 @@ namespace Nethermind.Wallet.Test
         public void TearDown()
         {
             string resourcePath = TestContext.CurrentContext.TestDirectory;
-            foreach ((string Name, string Content) file in _files)
+            foreach ((string Name, _) in _files)
             {
-                string filePath = Path.Combine(resourcePath, file.Name);
+                string filePath = Path.Combine(resourcePath, Name);
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
@@ -100,7 +93,7 @@ namespace Nethermind.Wallet.Test
 
             IWallet wallet = Substitute.For<IWallet>();
 
-            AccountUnlocker unlocker = new AccountUnlocker(keyStoreConfig, wallet, LimboLogs.Instance, new KeyStorePasswordProvider(keyStoreConfig));
+            AccountUnlocker unlocker = new(keyStoreConfig, wallet, LimboLogs.Instance, new KeyStorePasswordProvider(keyStoreConfig));
             unlocker.UnlockAccounts();
 
             for (int index = 0; index < test.UnlockAccounts.Length; index++)
@@ -113,10 +106,10 @@ namespace Nethermind.Wallet.Test
 
         public class UnlockAccountsTest
         {
-            public string[] Passwords { get; set; } = Array.Empty<string>();
+            public string[] Passwords { get; set; } = [];
             public List<string> PasswordFiles { get; set; } = new List<string>();
-            public Address[] UnlockAccounts { get; set; } = Array.Empty<Address>();
-            public string[] ExpectedPasswords { get; set; } = Array.Empty<string>();
+            public Address[] UnlockAccounts { get; set; } = [];
+            public string[] ExpectedPasswords { get; set; } = [];
 
             public override string ToString() => string.Join("; ", ExpectedPasswords);
         }

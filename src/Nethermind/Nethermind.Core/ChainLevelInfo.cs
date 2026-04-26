@@ -9,18 +9,14 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("Main: {HasBlockOnMainChain}, Blocks: {BlockInfos.Length}")]
-    public class ChainLevelInfo // TODO: move to blockchain namespace
+    public class ChainLevelInfo(bool hasBlockInMainChain, params BlockInfo[] blockInfos)
     {
-        public ChainLevelInfo(bool hasBlockInMainChain, params BlockInfo[] blockInfos)
-        {
-            HasBlockOnMainChain = hasBlockInMainChain;
-            BlockInfos = blockInfos;
-        }
+        private const int NotFound = -1;
 
-        public bool HasNonBeaconBlocks => BlockInfos.Any(b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
-        public bool HasBeaconBlocks => BlockInfos.Any(b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
-        public bool HasBlockOnMainChain { get; set; }
-        public BlockInfo[] BlockInfos { get; set; }
+        public bool HasNonBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
+        public bool HasBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
+        public bool HasBlockOnMainChain { get; set; } = hasBlockInMainChain;
+        public BlockInfo[] BlockInfos { get; set; } = blockInfos;
         public BlockInfo? MainChainBlock => HasBlockOnMainChain ? BlockInfos[0] : null;
 
         // ToDo we need to rethink this code
@@ -72,6 +68,21 @@ namespace Nethermind.Core
             return null;
         }
 
+        private bool TryFindBeaconMainChainIndex(out int index)
+        {
+            for (int i = 0; i < BlockInfos.Length; i++)
+            {
+                if (BlockInfos[i].IsBeaconMainChain)
+                {
+                    index = i;
+                    return true;
+                }
+            }
+
+            index = NotFound;
+            return false;
+        }
+
         public BlockInfo? FindBlockInfo(Hash256 blockHash)
         {
             int? index = FindIndex(blockHash);
@@ -103,6 +114,12 @@ namespace Nethermind.Core
                 blockInfos[index] = blockInfos[0];
                 blockInfos[0] = blockInfo;
             }
+            // prioritise new beacon info from beacon sync over old fcu
+            else if (blockInfo.IsBeaconMainChain && TryFindBeaconMainChainIndex(out int beaconMainChainIndex))
+            {
+                blockInfos[index] = blockInfos[beaconMainChainIndex];
+                blockInfos[beaconMainChainIndex] = blockInfo;
+            }
             else
             {
                 blockInfos[index] = blockInfo;
@@ -111,9 +128,6 @@ namespace Nethermind.Core
             BlockInfos = blockInfos;
         }
 
-        public void SwapToMain(int index)
-        {
-            (BlockInfos[index], BlockInfos[0]) = (BlockInfos[0], BlockInfos[index]);
-        }
+        public void SwapToMain(int index) => (BlockInfos[index], BlockInfos[0]) = (BlockInfos[0], BlockInfos[index]);
     }
 }

@@ -6,15 +6,16 @@ using System;
 namespace Nethermind.Synchronization.Peers
 {
     [Flags]
-    public enum AllocationContexts : uint
+    public enum AllocationContexts
     {
         None = 0,
         Headers = 1,
         Bodies = 2,
         Receipts = 4,
-        Blocks = Headers | Bodies | Receipts,
+        Blocks = 6,
         State = 8,
         Snap = 16,
-        All = Headers | Bodies | Receipts | Blocks | State | Snap,
+        ForwardHeader = 32,
+        All = Headers | Bodies | Receipts | Blocks | State | Snap
     }
 }

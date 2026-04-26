@@ -3,6 +3,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -10,23 +11,18 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 {
-    public class StateSyncDispatcherTester : SyncDispatcher<StateSyncBatch>
+    public class StateSyncDispatcherTester(
+        ISyncFeed<StateSyncBatch> syncFeed,
+        ISyncDownloader<StateSyncBatch> downloader,
+        ISyncPeerPool syncPeerPool,
+        IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
+        ILogManager logManager) : SyncDispatcher<StateSyncBatch>(new SyncConfig() { SyncDispatcherEmptyRequestDelayMs = 1, SyncDispatcherAllocateTimeoutMs = 1 }, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
     {
-        private readonly ISyncDownloader<StateSyncBatch> _downloader;
-
-        public StateSyncDispatcherTester(
-            ISyncFeed<StateSyncBatch> syncFeed,
-            ISyncDownloader<StateSyncBatch> downloader,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
-            ILogManager logManager) : base(0, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
-        {
-            _downloader = downloader;
-        }
+        private readonly ISyncDownloader<StateSyncBatch> _downloader = downloader;
 
         public async Task ExecuteDispatch(StateSyncBatch batch, int times)
         {
-            SyncPeerAllocation allocation = await Allocate(batch);
+            SyncPeerAllocation allocation = await Allocate(batch, default);
 
             for (int i = 0; i < times; i++)
             {

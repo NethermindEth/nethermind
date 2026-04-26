@@ -13,31 +13,19 @@ public class TestErrorLogManager : ILogManager
 
     public IReadOnlyCollection<Error> Errors => _errors;
 
-    public ILogger GetClassLogger(Type type) => GetClassLogger();
+    public ILogger GetClassLogger<T>() => new(new TestErrorLogger(_errors));
 
-    public ILogger GetClassLogger<T>() => GetClassLogger();
+    public ILogger GetLogger(string loggerName) => new(new TestErrorLogger(_errors));
 
-    public ILogger GetClassLogger() => new(new TestErrorLogger(_errors));
-
-    public ILogger GetLogger(string loggerName) => GetClassLogger();
-
-    public class TestErrorLogger : InterfaceLogger
+    public class TestErrorLogger(ConcurrentQueue<TestErrorLogManager.Error> errors) : InterfaceLogger
     {
-        private readonly ConcurrentQueue<Error> _errors;
-
-        public TestErrorLogger(ConcurrentQueue<Error> errors)
-        {
-            _errors = errors;
-        }
+        private readonly ConcurrentQueue<Error> _errors = errors;
 
         public void Info(string text) { }
         public void Warn(string text) { }
         public void Debug(string text) { }
         public void Trace(string text) { }
-        public void Error(string text, Exception ex = null)
-        {
-            _errors.Enqueue(new Error() { Text = text, Exception = ex });
-        }
+        public void Error(string text, Exception ex = null) => _errors.Enqueue(new Error() { Text = text, Exception = ex });
         public bool IsInfo => false;
         public bool IsWarn => false;
         public bool IsDebug => true;

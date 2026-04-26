@@ -19,17 +19,8 @@ namespace Nethermind.Abi
 
         public AbiBytes(int length)
         {
-            if (length > MaxLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be less or equal to {MaxLength}");
-            }
-
-            if (length <= MinLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be greater than {MinLength}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxLength);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinLength);
 
             Length = length;
             Name = $"bytes{Length}";
@@ -39,10 +30,8 @@ namespace Nethermind.Abi
 
         public override string Name { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
-        {
-            return (data.Slice(position, Length), position + (packed ? Length : MaxLength));
-        }
+        public override (object, int) Decode(byte[] data, int position, bool packed) =>
+            (data.Slice(position, Length), position + (packed ? Length : MaxLength));
 
         public override byte[] Encode(object? arg, bool packed)
         {

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Nethermind.Tools.Kute/Nethermind.Tools.Kute.csproj" />
+  <Project Path="Nethermind.Tools.Kute.Test/Nethermind.Tools.Kute.Test.csproj" />
+</Solution>

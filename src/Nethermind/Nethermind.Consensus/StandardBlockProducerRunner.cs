@@ -33,14 +33,14 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
         Block? block = null;
         try
         {
-            block = await blockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, token);
+            block = await blockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, IBlockProducer.Flags.None, token);
             if (block is not null)
             {
                 _lastProducedBlockDateTime = DateTime.UtcNow;
                 BlockProduced?.Invoke(this, new BlockEventArgs(block));
             }
         }
-        catch (Exception e) when (!(e is TaskCanceledException))
+        catch (Exception e) when (e is not TaskCanceledException)
         {
             if (Logger.IsError) Logger.Error("Failed to produce block", e);
             Metrics.FailedBlockSeals++;
@@ -60,6 +60,7 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
 
     public virtual Task StopAsync()
     {
+        if (!_isRunning) return Task.CompletedTask;
         _producerCancellationToken?.Cancel();
         _isRunning = false;
         trigger.TriggerBlockProduction -= OnTriggerBlockProduction;

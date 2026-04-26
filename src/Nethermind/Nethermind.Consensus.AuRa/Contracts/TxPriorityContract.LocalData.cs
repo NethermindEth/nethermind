@@ -14,17 +14,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public partial class TxPriorityContract
     {
-        public class LocalDataSource : FileLocalDataSource<LocalData>
+        public class LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500) : FileLocalDataSource<LocalData>(filePath, jsonSerializer, fileSystem, logManager, interval)
         {
-            public LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
-                : base(filePath, jsonSerializer, fileSystem, logManager, interval)
-            {
-            }
-
             public ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataSource() => new LocalDataSource<Address>(this, LocalData.GetWhitelist);
             public ILocalDataSource<IEnumerable<Destination>> GetPrioritiesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetPriorities);
             public ILocalDataSource<IEnumerable<Destination>> GetMinGasPricesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetMinGasPrices);
-            protected override LocalData DefaultValue => new LocalData();
+            protected override LocalData DefaultValue => new();
         }
 
         private class LocalDataSource<T> : ILocalDataSource<IEnumerable<T>>
@@ -39,8 +34,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
 
             public IEnumerable<T> Data => _localDataSource.Data is null
-                ? Enumerable.Empty<T>()
-                : _getData(_localDataSource.Data) ?? Enumerable.Empty<T>();
+                ? []
+                : _getData(_localDataSource.Data) ?? [];
 
             public event EventHandler Changed
             {
@@ -51,21 +46,21 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public class LocalData
         {
-            private Address[] _whitelist = Array.Empty<Address>();
-            private Destination[] _priorities = Array.Empty<Destination>();
-            private Destination[] _minGasPrices = Array.Empty<Destination>();
+            private Address[] _whitelist = [];
+            private Destination[] _priorities = [];
+            private Destination[] _minGasPrices = [];
 
             public Address[] Whitelist
             {
                 get => _whitelist;
-                set => _whitelist = value ?? Array.Empty<Address>();
+                set => _whitelist = value ?? [];
             }
 
             public Destination[] Priorities
             {
                 get => _priorities;
-                set => _priorities = (value ?? Array.Empty<Destination>()).Select(
-                    d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
+                set => _priorities = (value ?? []).Select(
+                    static d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
             }
 
             public Destination[] MinGasPrices
@@ -73,8 +68,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 get => _minGasPrices;
                 set
                 {
-                    _minGasPrices = (value ?? Array.Empty<Destination>()).Select(
-                        d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
+                    _minGasPrices = (value ?? []).Select(
+                        static d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
                 }
             }
 

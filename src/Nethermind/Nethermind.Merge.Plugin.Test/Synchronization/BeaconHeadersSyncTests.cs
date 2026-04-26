@@ -43,6 +43,7 @@ public class BeaconHeadersSyncTests
                 {
                     Block genesis = Build.A.Block.Genesis.TestObject;
                     _blockTree = Build.A.BlockTree()
+                        .WithSyncConfig(SyncConfig)
                         .WithoutSettingHead
                         .TestObject;
                     _blockTree.SuggestBlock(genesis);
@@ -87,7 +88,6 @@ public class BeaconHeadersSyncTests
             SyncConfig,
             Report,
             BeaconPivot,
-            MergeConfig,
             InvalidChainTracker,
             LimboLogs.Instance
         );
@@ -110,9 +110,8 @@ public class BeaconHeadersSyncTests
                 if (_report is null)
                 {
                     _report = Substitute.For<ISyncReport>();
-                    MeasuredProgress measuredProgress = new MeasuredProgress();
-                    Report.BeaconHeaders.Returns(measuredProgress);
-                    Report.BeaconHeadersInQueue.Returns(measuredProgress);
+                    ProgressLogger progressLogger = new("", LimboLogs.Instance);
+                    Report.BeaconHeaders.Returns(progressLogger);
                 }
 
                 return _report;
@@ -136,10 +135,8 @@ public class BeaconHeadersSyncTests
             set => _remoteBlockTree = value;
         }
 
-        public void SetupRemoteBlockTreeOfLength(int chainLength)
-        {
+        public void SetupRemoteBlockTreeOfLength(int chainLength) =>
             RemoteBlockTree = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
-        }
     }
 
     [Test]
@@ -150,7 +147,7 @@ public class BeaconHeadersSyncTests
             SyncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
@@ -173,14 +170,14 @@ public class BeaconHeadersSyncTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
+        blockTree.SyncPivot.Returns((1000, Keccak.Zero));
         ISyncReport report = Substitute.For<ISyncReport>();
-        report.BeaconHeadersInQueue.Returns(new MeasuredProgress());
-        MeasuredProgress measuredProgress = new();
-        report.BeaconHeaders.Returns(measuredProgress);
+        ProgressLogger progressLogger = new("", LimboLogs.Instance);
+        report.BeaconHeaders.Returns(progressLogger);
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            PivotNumber = "1000",
+            PivotNumber = 1000,
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
         };
@@ -203,7 +200,7 @@ public class BeaconHeadersSyncTests
         using HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
         feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        measuredProgress.CurrentValue.Should().Be(999);
+        progressLogger.CurrentValue.Should().Be(999);
     }
 
     [Test]
@@ -211,15 +208,15 @@ public class BeaconHeadersSyncTests
     {
         BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(1000).TestObject;
         Block genesisBlock = syncedBlockTree.FindBlock(syncedBlockTree.GenesisHash, BlockTreeLookupOptions.None)!;
-        BlockTree blockTree = Build.A.BlockTree().TestObject;
-        blockTree.SuggestBlock(genesisBlock);
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            PivotNumber = "500",
+            PivotNumber = 500,
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000000" // default difficulty in block tree builder
         };
+        BlockTree blockTree = Build.A.BlockTree().WithSyncConfig(syncConfig).TestObject;
+        blockTree.SuggestBlock(genesisBlock);
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(700, BlockTreeLookupOptions.None);
         IBeaconPivot pivot = PreparePivot(700, syncConfig, blockTree, pivotHeader);
 
@@ -302,7 +299,7 @@ public class BeaconHeadersSyncTests
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            PivotNumber = "0",
+            PivotNumber = 0,
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "0"
         };
@@ -398,6 +395,7 @@ public class BeaconHeadersSyncTests
                 : lowestHeaderNumber - batch.RequestSize;
 
             BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
+            blockTree.LowestInsertedBeaconHeader?.Number.Should().Be(lowestHeader?.Number);
             blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(lowestHeader?.Hash);
         }
     }

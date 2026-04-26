@@ -9,41 +9,39 @@ namespace Nethermind.Core.Extensions;
 
 public static class IntExtensions
 {
-    public static string ToHexString(this int @this)
+    extension(int @this)
     {
-        return $"0x{@this:x}";
+        public string ToHexString() => $"0x{@this:x}";
+
+        public UInt256 Ether => (uint)@this * Unit.Ether;
+        public UInt256 Wei => (uint)@this * Unit.Wei;
+        public UInt256 GWei => (uint)@this * Unit.GWei;
+
+        public byte[] ToBigEndianByteArray()
+            => ((uint)@this).ToBigEndianByteArray();
+
+        public byte[] ToLittleEndianByteArray()
+            => ((uint)@this).ToLittleEndianByteArray();
     }
 
-    public static UInt256 Ether(this int @this)
+    extension(uint @this)
     {
-        return (uint)@this * Unit.Ether;
-    }
-
-    public static UInt256 Wei(this int @this)
-    {
-        return (uint)@this * Unit.Wei;
-    }
-
-    public static UInt256 GWei(this int @this)
-    {
-        return (uint)@this * Unit.GWei;
-    }
-
-    public static byte[] ToByteArray(this int value)
-    {
-        byte[] bytes = new byte[sizeof(int)];
-        BinaryPrimitives.WriteInt32BigEndian(bytes, value);
-        return bytes;
-    }
-
-    public static byte[] ToBigEndianByteArray(this int value)
-    {
-        byte[] bytes = BitConverter.GetBytes(value);
-        if (BitConverter.IsLittleEndian)
+        public byte[] ToBigEndianByteArray()
         {
-            Array.Reverse(bytes);
+            byte[] bytes = BitConverter.GetBytes(@this);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(bytes);
+            }
+
+            return bytes;
         }
 
-        return bytes;
+        public byte[] ToLittleEndianByteArray()
+        {
+            byte[] bytes = new byte[sizeof(uint)];
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes, @this);
+            return bytes;
+        }
     }
 }

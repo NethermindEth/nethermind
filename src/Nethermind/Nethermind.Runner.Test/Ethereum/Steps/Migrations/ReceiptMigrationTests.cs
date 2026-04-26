@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -23,7 +24,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
-    [TestFixture]
     public class ReceiptMigrationTests
     {
         [TestCase(null, 0, false, false, false, false)] // No change to migrate
@@ -71,6 +71,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
             TestMemDb blocksDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks);
             TestMemDb txDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Transactions);
+            TestMemDb defaultDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Default);
 
             // Put the last block receipt encoding
             Block lastBlock = blockTree.FindBlock(chainLength - 1);
@@ -93,21 +94,20 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             if (commandStartBlockNumber.HasValue)
             {
-                _ = migration.Run(commandStartBlockNumber.Value);
+                _ = migration.Run(0, commandStartBlockNumber.Value);
                 await migration._migrationTask!;
             }
             else
             {
                 await migration.Run(CancellationToken.None);
+                Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
             }
-
-            Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
 
             if (wasMigrated)
             {
-                int blockNum = (commandStartBlockNumber ?? chainLength) - 1 - 1;
+                int blockNum = commandStartBlockNumber ?? (chainLength - 1);
                 int txCount = blockNum * 2;
-                txDb.KeyWasWritten((item => item.Item2 is null), txCount);
+                defaultDb.KeyWasWritten((item => item.Item2 is null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
                 outMemoryReceiptStorage.Count.Should().Be(txCount);
             }
@@ -117,50 +117,42 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
-        private class TestReceiptStorage : IReceiptStorage
+        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptStorage
         {
-            private readonly IReceiptStorage _inStorage;
-            private readonly IReceiptStorage _outStorage;
-
-            public TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage)
-            {
-                _inStorage = inStorage;
-                _outStorage = outStorage;
-            }
+            private readonly IReceiptStorage _inStorage = inStorage;
+            private readonly IReceiptStorage _outStorage = outStorage;
 
             public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
 
-            public TxReceipt[] Get(Block block, bool recover = true) => _inStorage.Get(block, recover);
+            public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => _inStorage.Get(block, recover, recoverSender);
 
             public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => _inStorage.Get(blockHash, recover);
 
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
             public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
-            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical) => _outStorage.Insert(block, txReceipts);
+            public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => _outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
+            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => _outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
 
-            public long? LowestInsertedReceiptBlockNumber
-            {
-                get => _outStorage.LowestInsertedReceiptBlockNumber;
-                set => _outStorage.LowestInsertedReceiptBlockNumber = value;
-            }
             public long MigratedBlockNumber
             {
                 get => _outStorage.MigratedBlockNumber;
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(long blockNumber, Hash256 hash)
-            {
-                return _outStorage.HasBlock(blockNumber, hash);
-            }
+            public bool HasBlock(long blockNumber, Hash256 hash) => _outStorage.HasBlock(blockNumber, hash);
 
             public void EnsureCanonical(Block block)
             {
             }
 
+            public void RemoveReceipts(Block block)
+            {
+            }
+
 #pragma warning disable CS0067
-            public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+            public event EventHandler<BlockReplacementEventArgs> NewCanonicalReceipts;
+            public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
 #pragma warning restore CS0067
         }
     }

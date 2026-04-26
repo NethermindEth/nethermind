@@ -4,24 +4,17 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 
-namespace Nethermind.JsonRpc.Data
+namespace Nethermind.JsonRpc.Data;
+
+[JsonConverter(typeof(TransactionForRpcWithTraceTypesConverter))]
+public class TransactionForRpcWithTraceTypes
 {
-    using Nethermind.JsonRpc.Modules.Trace;
+    public TransactionForRpc Transaction { get; set; }
+    public string[] TraceTypes { get; set; }
 
-    [JsonConverter(typeof(TransactionForRpcWithTraceTypesConverter))]
-    public class TransactionForRpcWithTraceTypes
-    {
-        public TransactionForRpc Transaction { get; set; }
-        public string[] TraceTypes { get; set; }
-    }
-}
-
-namespace Nethermind.JsonRpc.Modules.Trace
-{
-    using Nethermind.JsonRpc.Data;
-    public class TransactionForRpcWithTraceTypesConverter : JsonConverter<TransactionForRpcWithTraceTypes>
+    private class TransactionForRpcWithTraceTypesConverter : JsonConverter<TransactionForRpcWithTraceTypes>
     {
         public override TransactionForRpcWithTraceTypes? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -29,8 +22,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             if (reader.TokenType != JsonTokenType.StartArray)
             {
-                throw new JsonException();
+                throw new JsonException($"Expected array but got {reader.TokenType}");
             }
+
             reader.Read();
 
             value.Transaction = JsonSerializer.Deserialize<TransactionForRpc>(ref reader, options);
@@ -43,8 +37,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpcWithTraceTypes value, JsonSerializerOptions options)
-        {
-            throw new NotSupportedException();
-        }
+            => throw new NotSupportedException();
     }
 }

@@ -6,31 +6,22 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Logging.NLog;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class BlockchainTestsBugHunter : BlockchainTestBase, IBlockchainTestRunner
+    public class BlockchainTestsBugHunter(ITestSourceLoader testsSource) : BlockchainTestBase, IBlockchainTestRunner
     {
-        private ITestSourceLoader _testsSource;
-        private ConsoleColor _defaultColour;
-
-        public BlockchainTestsBugHunter(ITestSourceLoader testsSource)
-        {
-            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-            _defaultColour = Console.ForegroundColor;
-        }
+        private ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+        private ConsoleColor _defaultColor = Console.ForegroundColor;
 
         public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
         {
-            List<EthereumTestResult> testResults = new List<EthereumTestResult>();
+            List<EthereumTestResult> testResults = new();
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
-            IEnumerable<BlockchainTest> tests = (IEnumerable<BlockchainTest>)_testsSource.LoadTests();
+            IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
             foreach (BlockchainTest test in tests)
             {
-                Setup();
-
                 Console.Write($"{test,-120} ");
                 if (test.LoadFailure is not null)
                 {
@@ -48,13 +39,12 @@ namespace Nethermind.Blockchain.Test.Runner
                     else
                     {
                         WriteRed("FAIL");
-                        NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
+                        _ = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
                         if (!Directory.Exists(directoryName))
                         {
                             Directory.CreateDirectory(directoryName);
                         }
 
-                        Setup();
                         await RunTest(test);
                     }
                 }
@@ -67,14 +57,14 @@ namespace Nethermind.Blockchain.Test.Runner
         {
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine(text);
-            Console.ForegroundColor = _defaultColour;
+            Console.ForegroundColor = _defaultColor;
         }
 
         private void WriteGreen(string text)
         {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine(text);
-            Console.ForegroundColor = _defaultColour;
+            Console.ForegroundColor = _defaultColor;
         }
     }
 }

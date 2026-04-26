@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Int256;
-
 namespace Nethermind.Core;
 
 /// <summary>
@@ -10,13 +8,15 @@ namespace Nethermind.Core;
 /// </summary>
 public static class Eip2935Constants
 {
+    public const string ContractAddressKey = "HISTORY_STORAGE_ADDRESS";
+
     /// <summary>
     /// The <c>HISTORY_STORAGE_ADDRESS</c> parameter.
     /// </summary>
-    public static readonly Address BlockHashHistoryAddress = new("0x25a219378dad9b3503c8268c9ca836a52427a4fb");
+    public static readonly Address BlockHashHistoryAddress = new("0x0000F90827F1C53a10cb7A02335B175320002935");
 
     /// <summary>
     /// The <c>HISTORY_SERVE_WINDOW</c> parameter.
     /// </summary>
-    public static readonly long RingBufferSize = 8192;
+    public static readonly long RingBufferSize = 8191;
 }

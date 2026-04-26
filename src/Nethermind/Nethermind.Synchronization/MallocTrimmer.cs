@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
@@ -18,13 +19,21 @@ public class MallocTrimmer
 
     public MallocTrimmer(
         ISyncModeSelector syncModeSelector,
+        ISyncConfig syncConfig,
+        ILogManager logManager
+    ) : this(syncModeSelector, TimeSpan.FromSeconds(syncConfig.MallocTrimIntervalSec), logManager)
+    {
+    }
+
+    public MallocTrimmer(
+        ISyncModeSelector syncModeSelector,
         TimeSpan interval,
         ILogManager logManager,
         MallocHelper? mallocHelper = null
     )
     {
         _mallocHelper = mallocHelper ?? new MallocHelper();
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<MallocTrimmer>();
 
         if (interval == TimeSpan.Zero) return;
 
@@ -51,7 +60,7 @@ public class MallocTrimmer
         // does not go down, but RSS and GC load does.
         long startTime = Stopwatch.GetTimestamp();
         if (_logger.IsDebug) _logger.Debug("Trimming malloc heaps");
-        bool wasReleased = _mallocHelper.MallocTrim((uint)1.MiB());
+        bool wasReleased = _mallocHelper.MallocTrim((uint)1.MiB);
         if (_logger.IsDebug) _logger.Debug($"Trimming malloc heap took {Stopwatch.GetElapsedTime(startTime)}. wasReleased: {wasReleased}");
     }
 }

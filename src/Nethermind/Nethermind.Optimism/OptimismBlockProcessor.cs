@@ -2,49 +2,87 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
 public class OptimismBlockProcessor : BlockProcessor
 {
+    private readonly IWorldState _stateProvider;
+    private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly Create2DeployerContractRewriter? _contractRewriter;
+    private readonly ICostHelper _costHelper;
 
     public OptimismBlockProcessor(
-        ISpecProvider? specProvider,
-        IBlockValidator? blockValidator,
-        IRewardCalculator? rewardCalculator,
-        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldState? stateProvider,
-        IReceiptStorage? receiptStorage,
-        IBlockhashStore? blockhashStore,
-        ILogManager? logManager,
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        IRewardCalculator rewardCalculator,
+        IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+        IWorldState stateProvider,
+        IReceiptStorage receiptStorage,
+        IBlockhashStore blockhashStore,
+        IBeaconBlockRootHandler beaconBlockRootHandler,
+        ILogManager logManager,
         IOptimismSpecHelper opSpecHelper,
         Create2DeployerContractRewriter contractRewriter,
-        IWithdrawalProcessor? withdrawalProcessor = null,
-        IBlockCachePreWarmer? preWarmer = null)
-        : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, blockhashStore, logManager, withdrawalProcessor,
-            ReceiptsRootCalculator.Instance, preWarmer)
+        IWithdrawalProcessor withdrawalProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        ICostHelper costHelper)
+        : base(
+            specProvider,
+            blockValidator,
+            rewardCalculator,
+            blockTransactionsExecutor,
+            stateProvider,
+            receiptStorage,
+            beaconBlockRootHandler,
+            blockhashStore,
+            logManager,
+            withdrawalProcessor,
+            executionRequestsProcessor)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
+        _stateProvider = stateProvider;
+        _opSpecHelper = opSpecHelper;
         _contractRewriter = contractRewriter;
+        _costHelper = costHelper;
         ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }
 
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
-        return base.ProcessBlock(block, blockTracer, options);
+        TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
+
+        if (_opSpecHelper.IsJovian(block.Header))
+        {
+            UInt256 daFootprintBig = _costHelper.ComputeDaFootprint(block);
+            (ulong daFootprint, bool hasOverflow) = daFootprintBig.UlongWithOverflow;
+            if (hasOverflow || daFootprint > long.MaxValue)
+                throw new InvalidOperationException($"DA Footprint overflow ({daFootprintBig}) at block {block.Header.Number}");
+
+            if (block.Header.BlobGasUsed != daFootprint)
+            {
+                block.Header.BlobGasUsed = daFootprint;
+                block.Header.Hash = block.Header.CalculateHash();
+            }
+        }
+
+        return receipts;
     }
 }
