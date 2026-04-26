@@ -258,7 +258,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (substate.DestroyList.Count > 1)
                 {
                     Address[] orderedDestroyList = [.. substate.DestroyList];
-                    Array.Sort(orderedDestroyList, AddressComparer.Instance);
+                    Array.Sort(orderedDestroyList);
                     accountsToFinalize = orderedDestroyList;
                 }
 
@@ -1105,7 +1105,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
                 {
-                    if (slotChanges.Changes.Count > 0 && !slotChanges.Changes.Values[^1].NewValue.IsZero)
+                    if (slotChanges.Changes.Count > 0 && !slotChanges.Changes.Values[^1].Value.IsZero)
                     {
                         createdSlots++;
                     }
