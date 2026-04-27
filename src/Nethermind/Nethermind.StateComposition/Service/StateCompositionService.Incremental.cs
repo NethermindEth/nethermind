@@ -18,7 +18,21 @@ internal sealed partial class StateCompositionService
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         Hash256 lastRoot = _stateHolder.LastProcessedStateRoot;
-        if (lastRoot == Hash256.Zero) return;
+        if (lastRoot == Hash256.Zero)
+        {
+            // No baseline yet — bootstrap-on-startup couldn't run because the head
+            // was null at init. Trigger a scan now that a head exists. AnalyzeAsync
+            // is serialized by its own scan semaphore, so a duplicate dispatch is
+            // a no-op rather than a race.
+            BlockHeader? header = e.Block.Header;
+            if (header?.StateRoot is null) return;
+            _ = Task.Run(async () =>
+            {
+                try { await AnalyzeAsync(header, CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception ex) when (_logger.IsError) { _logger.Error("StateComposition: deferred bootstrap scan failed", ex); }
+            });
+            return;
+        }
 
         Hash256? newRoot = e.Block.Header.StateRoot;
         if (newRoot is null || newRoot == lastRoot) return;
