@@ -66,14 +66,14 @@ jobs:
             {
               echo 'matrix<<MATRIX_END'
               echo '[
-                {"suite":"ethereum/engine", "limit":"engine-[^wc]", "parallelism":4, "name":"engine-other-1"},
-                {"suite":"ethereum/engine", "limit":"engine-[^wc]", "parallelism":4, "name":"engine-other-2"},
-                {"suite":"ethereum/engine", "limit":"engine-[^wc]", "parallelism":4, "name":"engine-other-3"},
-                {"suite":"ethereum/engine", "limit":"engine-[^wc]", "parallelism":4, "name":"engine-other-4"},
-                {"suite":"ethereum/engine", "limit":"engine-[^wc]", "parallelism":4, "name":"engine-other-5"},
-                {"suite":"ethereum/engine", "limit":"engine-[^wc]", "parallelism":4, "name":"engine-other-6"},
-                {"suite":"ethereum/engine", "limit":"engine-[^wc]", "parallelism":4, "name":"engine-other-7"},
-                {"suite":"ethereum/engine", "limit":"engine-[^wc]", "parallelism":4, "name":"engine-other-8"}
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "parallelism":4, "name":"engine-other-1"},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "parallelism":4, "name":"engine-other-2"},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "parallelism":4, "name":"engine-other-3"},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "parallelism":4, "name":"engine-other-4"},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "parallelism":4, "name":"engine-other-5"},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "parallelism":4, "name":"engine-other-6"},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "parallelism":4, "name":"engine-other-7"},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "parallelism":4, "name":"engine-other-8"}
               ]'
               echo 'MATRIX_END'
             } >> "$GITHUB_OUTPUT"
