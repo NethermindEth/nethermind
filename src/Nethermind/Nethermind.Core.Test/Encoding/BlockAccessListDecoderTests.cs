@@ -29,6 +29,68 @@ public class BlockAccessListDecoderTests
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
+    // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
+    // wrap converts that to RlpException so callers see a consistent failure mode
+    // (engine_newPayloadV5 returns a clean error instead of crashing the RPC).
+    [Test]
+    public void Decode_empty_bytes_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<BlockAccessList>([]), Throws.TypeOf<RlpException>());
+
+    // 0xf8 announces a long-form list with a 1-byte length follower, but the byte is missing.
+    [Test]
+    public void Decode_truncated_outer_list_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<BlockAccessList>(new byte[] { 0xf8 }), Throws.TypeOf<RlpException>());
+
+    // 0xc1 0xc0 = outer list of 1 containing an empty inner list. EIP-7928 requires each
+    // AccountChanges to be a 6-field sequence; an empty list is structurally invalid.
+    [Test]
+    public void Decode_inner_empty_list_in_account_changes_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<BlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
+
+    [Test]
+    public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
+    {
+        // SlotChanges = [StorageKey, List[StorageChange]]. An empty StorageChange list means a
+        // slot with no changes — that slot belongs in storage_reads instead. Geth bal-devnet-4
+        // rejects this with "empty storage writes".
+        SlotChanges withEmptyChanges = new(123u, new SortedList<uint, StorageChange>(PrestateAwareIndexComparer.Instance));
+        byte[] rlp = Rlp.Encode(withEmptyChanges).Bytes;
+
+        RlpException? thrown = null;
+        try
+        {
+            Rlp.ValueDecoderContext ctx = new(rlp);
+            SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        }
+        catch (RlpException e)
+        {
+            thrown = e;
+        }
+
+        Assert.That(thrown, Is.Not.Null);
+        Assert.That(thrown!.Message, Does.Contain("Empty storage_changes"));
+    }
+
+    [Test]
+    public void Decoded_slot_changes_uses_prestate_aware_comparer()
+    {
+        // Wire path: AccountChangesDecoder/SlotChangesDecoder build SortedLists with
+        // PrestateAwareIndexComparer so that LoadPreStateToSuggestedBlockAccessList grafting
+        // a PrestateIndex entry afterwards keeps it sorted first. Decoded entries are real
+        // ascending uints, behaviorally identical to plain ascending — but the comparer must
+        // be the prestate-aware one for the later graft to behave correctly.
+        StorageChange change = new(0, 0xCC);
+        SlotChanges seed = new(7u, new SortedList<uint, StorageChange>(PrestateAwareIndexComparer.Instance) { { 0, change } });
+        byte[] rlp = Rlp.Encode(seed).Bytes;
+
+        Rlp.ValueDecoderContext ctx = new(rlp);
+        SlotChanges decoded = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        // Graft a prestate entry as LoadPreState would, then verify it lands first.
+        decoded.AddStorageChange(new StorageChange(Eip7928Constants.PrestateIndex, 0xAA));
+        Assert.That(decoded.Changes.Keys[0], Is.EqualTo(Eip7928Constants.PrestateIndex));
+    }
+
     [Test]
     public void Can_decode_then_encode_balance_change()
     {
@@ -42,6 +104,36 @@ public class BlockAccessListDecoderTests
         Console.WriteLine(encoded);
         Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Balance_change_roundtrips_with_index_above_uint16_range()
+    {
+        // EIP-7928 widened BlockAccessIndex to uint32 (commit 645099785a). This test catches
+        // any regression to the old uint16 decoder by using an index above 65535.
+        BalanceChange original = new(0x10_0000u, 0x42);
+
+        Rlp encoded = Rlp.Encode(original);
+        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        BalanceChange decoded = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(decoded, Is.EqualTo(original));
+        Assert.That(decoded.Index, Is.EqualTo(0x10_0000u));
+    }
+
+    [Test]
+    public void Balance_change_roundtrips_with_max_uint32_index()
+    {
+        // Upper bound of EIP-7928 BlockAccessIndex spec.
+        // (Eip7928Constants.PrestateIndex collides with this value but is internal-only and
+        // never appears on the wire.)
+        BalanceChange original = new(uint.MaxValue, 0x1);
+
+        Rlp encoded = Rlp.Encode(original);
+        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        BalanceChange decoded = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(decoded.Index, Is.EqualTo(uint.MaxValue));
     }
 
     [Test]
@@ -63,7 +155,7 @@ public class BlockAccessListDecoderTests
     public void Can_decode_then_encode_slot_change()
     {
         StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-        SlotChanges expected = new(0, new SortedList<int, StorageChange> { { 0, parentHashStorageChange } });
+        SlotChanges expected = new(0, new SortedList<uint, StorageChange> { { 0, parentHashStorageChange } });
 
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
 
@@ -136,7 +228,7 @@ public class BlockAccessListDecoderTests
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        SortedList<int, StorageChange> storageChanges = new() { { 10, storageChange } };
+        SortedList<uint, StorageChange> storageChanges = new() { { 10, storageChange } };
         SlotChanges slotChanges = new(0xbad, storageChanges);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
@@ -211,10 +303,15 @@ public class BlockAccessListDecoderTests
     {
         UInt256 slot1 = UInt256.One;
         UInt256 slot2 = new(2);
+        // Each SlotChanges must have at least one StorageChange (per EIP-7928 / geth bal-devnet-4
+        // "empty storage_changes" rejection). Add a real change so this test exercises the
+        // unsorted-slot-order check rather than the empty-changes check.
+        SortedList<uint, StorageChange> innerChanges1 = new(PrestateAwareIndexComparer.Instance) { { 0, new StorageChange(0, 1) } };
+        SortedList<uint, StorageChange> innerChanges2 = new(PrestateAwareIndexComparer.Instance) { { 0, new StorageChange(0, 2) } };
         SortedList<UInt256, SlotChanges> storageChanges = new(DescendingComparer<UInt256>())
         {
-            { slot1, new SlotChanges(slot1) },
-            { slot2, new SlotChanges(slot2) }
+            { slot1, new SlotChanges(slot1, innerChanges1) },
+            { slot2, new SlotChanges(slot2, innerChanges2) }
         };
         AccountChanges accountChanges = new(
             TestItem.AddressA,
@@ -257,7 +354,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_balance_changes_throws()
     {
-        SortedList<int, BalanceChange> balanceChanges = new(DescendingComparer<int>())
+        SortedList<uint, BalanceChange> balanceChanges = new(DescendingComparer<uint>())
         {
             { 1, new(1, UInt256.One) },
             { 2, new(2, UInt256.Zero) }
@@ -280,7 +377,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_nonce_changes_throws()
     {
-        SortedList<int, NonceChange> nonceChanges = new(DescendingComparer<int>())
+        SortedList<uint, NonceChange> nonceChanges = new(DescendingComparer<uint>())
         {
             { 1, new(1, 1) },
             { 2, new(2, 2) }
@@ -303,7 +400,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_code_changes_throws()
     {
-        SortedList<int, CodeChange> codeChanges = new(DescendingComparer<int>())
+        SortedList<uint, CodeChange> codeChanges = new(DescendingComparer<uint>())
         {
             { 1, new(1, [0x01]) },
             { 2, new(2, [0x02]) }
@@ -326,7 +423,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_slot_changes_with_unsorted_storage_changes_throws()
     {
-        SortedList<int, StorageChange> storageChanges = new(DescendingComparer<int>())
+        SortedList<uint, StorageChange> storageChanges = new(DescendingComparer<uint>())
         {
             { 1, new(1, UInt256.One) },
             { 2, new(2, UInt256.Zero) }

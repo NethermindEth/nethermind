@@ -168,6 +168,9 @@ public static class BlockErrorMessages
     public static string BlockLevelAccessListExceededSizeLimit(int balItems, long maxBalItems) =>
         $"BlockLevelAccessListExceededSizeLimit: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
 
+    public static string BlockLevelAccessListIndexOutOfRange(uint index, uint maxAllowed) =>
+        $"BlockLevelAccessListIndexOutOfRange: BlockAccessIndex {index} exceeds allowed range [0, {maxAllowed}] (txCount + 1).";
+
     public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 

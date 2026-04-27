@@ -11,7 +11,7 @@ public class StorageChangeDecoder : IndexedChangeDecoder<StorageChange>
     public static StorageChangeDecoder Instance => _instance ??= new();
 
     protected override StorageChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
-        => new(ctx.DecodeUShort(), ctx.DecodeUInt256());
+        => new(ctx.DecodeUInt(), ctx.DecodeUInt256());
 
     protected override void EncodeValue(RlpStream stream, StorageChange item)
         => stream.Encode(item.Value);

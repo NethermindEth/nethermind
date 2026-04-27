@@ -42,7 +42,7 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
-        int blockAccessIndex,
+        uint blockAccessIndex,
         Action<BlockAccessList> balSetup,
         Action<IWorldState>? genesisSetup = null)
     {
@@ -74,7 +74,7 @@ public class BlockAccessListBasedWorldStateTests
             blockAccessIndex: 0,
             balSetup: bal =>
                 AddAccountRead(bal, TestItem.AddressA)
-                    .AddBalanceChange(new BalanceChange(-1, 100)),
+                    .AddBalanceChange(new BalanceChange(Eip7928Constants.PrestateIndex, 100)),
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
         using (scope)
         {
@@ -90,7 +90,7 @@ public class BlockAccessListBasedWorldStateTests
             balSetup: bal =>
             {
                 AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                ac.AddBalanceChange(new BalanceChange(-1, 100));
+                ac.AddBalanceChange(new BalanceChange(Eip7928Constants.PrestateIndex, 100));
                 ac.AddBalanceChange(new BalanceChange(0, 200));
             },
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
@@ -108,7 +108,7 @@ public class BlockAccessListBasedWorldStateTests
             balSetup: bal =>
             {
                 AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                ac.AddNonceChange(new NonceChange(-1, 0));
+                ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 0));
                 ac.AddNonceChange(new NonceChange(0, 3));
             },
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
@@ -164,8 +164,8 @@ public class BlockAccessListBasedWorldStateTests
             {
                 // The account exists if we can resolve it in the BAL
                 AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                ac.AddNonceChange(new NonceChange(-1, 0));
-                ac.AddBalanceChange(new BalanceChange(-1, 1));
+                ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 0));
+                ac.AddBalanceChange(new BalanceChange(Eip7928Constants.PrestateIndex, 1));
                 ac.ExistedBeforeBlock = true;
             },
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 1));
