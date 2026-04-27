@@ -394,7 +394,7 @@ public class BlockProcessorTests
         balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
         balManager.Setup(block);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults =
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
         [
             new(),
             new()
