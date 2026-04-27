@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
@@ -157,31 +158,24 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         Dictionary<ulong, Transaction> queued = new();
         UInt256 expectedNonce = accountNonce;
 
-        Transaction[] sorted = ArrayPool<Transaction>.Shared.Rent(length);
-        try
+        using ArrayPoolList<Transaction> sorted = new(length);
+        sorted.AddRange(transactions.AsSpan(0, length));
+        sorted.Sort(NonceComparer.Instance);
+        for (int i = 0; i < length; i++)
         {
-            transactions.AsSpan(0, length).CopyTo(sorted);
-            Array.Sort(sorted, 0, length, NonceComparer.Instance);
-            for (int i = 0; i < length; i++)
+            Transaction transaction = sorted[i];
+            ulong transactionNonce = (ulong)transaction.Nonce;
+            if (transaction.Nonce == expectedNonce)
             {
-                Transaction transaction = sorted[i];
-                ulong transactionNonce = (ulong)transaction.Nonce;
-                if (transaction.Nonce == expectedNonce)
-                {
-                    pending[transactionNonce] = transaction;
-                    expectedNonce = transaction.Nonce + 1;
-                }
-                else
-                {
-                    // Indexer (not Add) so a duplicate nonce — should be impossible given
-                    // TxTypeTxFilter, but defensive — does not crash the RPC handler.
-                    queued[transactionNonce] = transaction;
-                }
+                pending[transactionNonce] = transaction;
+                expectedNonce = transaction.Nonce + 1;
             }
-        }
-        finally
-        {
-            ArrayPool<Transaction>.Shared.Return(sorted, clearArray: true);
+            else
+            {
+                // Indexer (not Add) so a duplicate nonce — should be impossible given
+                // TxTypeTxFilter, but defensive — does not crash the RPC handler.
+                queued[transactionNonce] = transaction;
+            }
         }
 
         return (pending, queued);
@@ -192,23 +186,16 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         int pending = 0;
         UInt256 expectedNonce = accountNonce;
 
-        Transaction[] sorted = ArrayPool<Transaction>.Shared.Rent(length);
-        try
+        using ArrayPoolList<Transaction> sorted = new(length);
+        sorted.AddRange(transactions.AsSpan(0, length));
+        sorted.Sort(NonceComparer.Instance);
+        for (int i = 0; i < length; i++)
         {
-            transactions.AsSpan(0, length).CopyTo(sorted);
-            Array.Sort(sorted, 0, length, NonceComparer.Instance);
-            for (int i = 0; i < length; i++)
+            if (sorted[i].Nonce == expectedNonce)
             {
-                if (sorted[i].Nonce == expectedNonce)
-                {
-                    pending++;
-                    expectedNonce += UInt256.One;
-                }
+                pending++;
+                expectedNonce += UInt256.One;
             }
-        }
-        finally
-        {
-            ArrayPool<Transaction>.Shared.Return(sorted, clearArray: true);
         }
 
         return pending;
