@@ -250,7 +250,10 @@ public class SyncDispatcherTests
         }
     }
 
-    [Test]
+    // Inherently timing-sensitive: relies on a 200 ms window where DisposeAsync must still be blocked on
+    // an in-flight HandleResponse. Slow CI runners under parallel load can race past the window even though
+    // the production invariant being checked is intact (see PR #10804 for prior flake-fix attempt).
+    [Test, Retry(3)]
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
     {
         using CancellationTokenSource cts = new();
