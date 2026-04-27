@@ -1,19 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class Eip8037Tests
+public class Eip8037Tests : VirtualMachineTestsBase
 {
+    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
+
     private static IEnumerable<TestCaseData> ConstantsTestCases()
     {
         yield return new TestCaseData(GasCostOf.CostPerStateByte).Returns(1174L).SetName("CostPerStateByte");
@@ -220,6 +230,43 @@ public class Eip8037Tests
         Assert.That(regularRefund, Is.Zero);
         Assert.That((gas.StateReservoir, gas.StateGasUsed),
             Is.EqualTo((GasCostOf.NewAccountState - 2 * GasCostOf.SSetState, intrinsicAuthState + 2 * GasCostOf.SSetState)));
+    }
+
+    [Test]
+    public void Call_depth_exceeded_create_does_not_credit_state_gas_refund()
+    {
+        byte[] code = Prepare.EvmCode.Create([], UInt256.Zero).Done;
+        CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code);
+        ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            codeInfo,
+            executingAccount: Recipient,
+            caller: Sender,
+            codeSource: Recipient,
+            callDepth: VirtualMachineStatics.MaxCallDepth,
+            transferValue: UInt256.Zero,
+            value: UInt256.Zero,
+            inputData: ReadOnlyMemory<byte>.Empty);
+        EthereumGasPolicy gas = new()
+        {
+            Value = 1_000_000,
+            StateReservoir = GasCostOf.CreateState,
+            CostPerStateByte = GasCostOf.CostPerStateByte,
+        };
+        StackAccessTracker accessTracker = new();
+        using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
+            gas,
+            ExecutionType.CALL,
+            env,
+            in accessTracker,
+            Snapshot.Empty);
+
+        Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Amsterdam.Instance));
+        Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
+
+        Machine.ExecuteTransaction<OffFlag>(vmState, TestState, NullTxTracer.Instance);
+
+        Assert.That((vmState.Gas.StateGasUsed, vmState.Gas.StateReservoir, vmState.StateGasRefundPending),
+            Is.EqualTo((0L, GasCostOf.CreateState, 0L)));
     }
 
     [Test]
