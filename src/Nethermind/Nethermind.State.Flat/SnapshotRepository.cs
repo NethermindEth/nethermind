@@ -78,11 +78,24 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
                         default: continue;
                     }
 
-                    // Overshoot: snapshot jumps past target
+                    bool edgePersisted = e >= 2;
+
                     if (from.BlockNumber < targetState.BlockNumber)
                     {
-                        snapshot.Dispose();
-                        continue;
+                        // In-memory snapshots are persistence-granular; overshoot means unusable edge.
+                        // Persisted (especially compacted) snapshots can span past the target — accept
+                        // as the terminal element without enqueuing further.
+                        if (!edgePersisted)
+                        {
+                            snapshot.Dispose();
+                            continue;
+                        }
+
+                        if (_logger.IsTrace) _logger.Trace($"BFS terminal persisted edge: {from} -> {current} spans below target {targetState} (persisted={edgePersisted})");
+                        int terminalIdx = visited.Count;
+                        visited.Add((snapshot, parentIdx));
+                        winnerIndex = terminalIdx;
+                        break;
                     }
 
                     // Cycle: already visited this node
@@ -92,7 +105,6 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
                         continue;
                     }
 
-                    bool edgePersisted = snapshot is PersistedSnapshot;
                     if (_logger.IsTrace) _logger.Trace($"BFS edge: {from} -> {current} (persisted={edgePersisted})");
 
                     int idx = visited.Count;

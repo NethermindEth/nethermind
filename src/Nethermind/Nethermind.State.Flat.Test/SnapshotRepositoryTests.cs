@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -9,6 +10,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Storage;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -19,6 +22,7 @@ public class SnapshotRepositoryTests
     private SnapshotRepository _repository = null!;
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
+    private MemoryArenaManager _memArena = null!;
 
     [SetUp]
     public void SetUp()
@@ -26,7 +30,11 @@ public class SnapshotRepositoryTests
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
         _repository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
+        _memArena = new MemoryArenaManager();
     }
+
+    [TearDown]
+    public void TearDown() => _memArena.Dispose();
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {
@@ -305,6 +313,35 @@ public class SnapshotRepositoryTests
 
     #endregion
 
+    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to)
+    {
+        Snapshot snap = CreateSnapshot(from, to);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
+        snap.Dispose();
+        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
+        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
+        data.CopyTo(span);
+        writer.GetWriter().Advance(data.Length);
+        (_, ArenaReservation reservation) = writer.Complete();
+        return new PersistedSnapshot(id, from, to, PersistedSnapshotType.Full, reservation);
+    }
+
+    private static void SetupSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
+        mockRepo.TryLeaseSnapshotTo(toState, out PersistedSnapshot? _).Returns(callInfo =>
+        {
+            snapshot.AcquireLease();
+            callInfo[1] = snapshot;
+            return true;
+        });
+
+    private static void SetupCompactedSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
+        mockRepo.TryLeaseCompactedSnapshotTo(toState, out PersistedSnapshot? _).Returns(callInfo =>
+        {
+            snapshot.AcquireLease();
+            callInfo[1] = snapshot;
+            return true;
+        });
+
     #region AssembleSnapshotsUntil
 
     [Test]
@@ -363,6 +400,65 @@ public class SnapshotRepositoryTests
         using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(to, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(1));
+    }
+
+    #endregion
+
+    #region AssembleSnapshots
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AssembleSnapshots_PersistedSpanning_BelowTarget_AcceptedAsTerminal(bool asCompacted)
+    {
+        StateId s0 = CreateStateId(0);
+        StateId s2 = CreateStateId(2);
+        StateId s5 = CreateStateId(5);
+
+        IPersistedSnapshotRepository mockRepo = Substitute.For<IPersistedSnapshotRepository>();
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s5);
+
+        if (asCompacted)
+            SetupCompactedSnapshotTo(mockRepo, s5, persisted);
+        else
+            SetupSnapshotTo(mockRepo, s5, persisted);
+
+        SnapshotRepository repo = new(mockRepo, LimboLogs.Instance);
+        using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
+
+        Assert.That(result.Persisted.Count, Is.EqualTo(1));
+        Assert.That(result.InMemory.Count, Is.EqualTo(0));
+        Assert.That(result.Persisted[0].From.BlockNumber, Is.LessThan(s2.BlockNumber));
+    }
+
+    [Test]
+    public void AssembleSnapshots_InMemoryOvershoot_Rejected()
+    {
+        StateId s2 = CreateStateId(2);
+        StateId s5 = CreateStateId(5);
+
+        AddSnapshotToRepository(0, 5, compacted: true);
+
+        using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
+
+        Assert.That(result.SnapshotCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void AssembleSnapshots_ExactPersistedMatch_AcceptedAsWinner()
+    {
+        StateId s2 = CreateStateId(2);
+        StateId s5 = CreateStateId(5);
+
+        IPersistedSnapshotRepository mockRepo = Substitute.For<IPersistedSnapshotRepository>();
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(1, s2, s5);
+        SetupSnapshotTo(mockRepo, s5, persisted);
+
+        SnapshotRepository repo = new(mockRepo, LimboLogs.Instance);
+        using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
+
+        Assert.That(result.Persisted.Count, Is.EqualTo(1));
+        Assert.That(result.InMemory.Count, Is.EqualTo(0));
+        Assert.That(result.Persisted[0].From.BlockNumber, Is.EqualTo(s2.BlockNumber));
     }
 
     #endregion
