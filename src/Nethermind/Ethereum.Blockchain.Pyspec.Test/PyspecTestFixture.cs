@@ -3,10 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
@@ -27,6 +32,7 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
     public async Task Test(BlockchainTest test)
     {
         LegacyStateTestFixtureGuard.SkipIfBuggyEelsConversion(test);
+        Eip2935FixtureGuard.SkipIfInconsistentHistoryStorage(test);
         Assert.That((await RunTest(test)).Pass, Is.True);
     }
 
@@ -55,6 +61,7 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestB
     public async Task Test(BlockchainTest test)
     {
         LegacyStateTestFixtureGuard.SkipIfBuggyEelsConversion(test);
+        Eip2935FixtureGuard.SkipIfInconsistentHistoryStorage(test);
         Assert.That((await RunTest(test)).Pass, Is.True);
     }
 
@@ -118,6 +125,68 @@ internal static class LegacyStateTestFixtureGuard
             return hex.Length == 64
                 && hex.EndsWith(LegacyDifficultySentinelMixHashSuffix, StringComparison.OrdinalIgnoreCase);
         }
+    }
+}
+
+/// <summary>
+/// Skips EEST engine fixtures whose post-state history storage contradicts the
+/// payload chain. EIP-2935 stores <c>block.parent.hash</c> at slot
+/// <c>(block.number - 1) % HISTORY_SERVE_WINDOW</c>; some snøbal-devnet-4
+/// withdrawal-request fixtures contain stale values after the last-minute
+/// static-cpsb fixture rebuild.
+/// </summary>
+internal static class Eip2935FixtureGuard
+{
+    public static void SkipIfInconsistentHistoryStorage(BlockchainTest test)
+    {
+        if (!HasInconsistentHistoryStorage(test, out string detail)) return;
+
+        Assert.Ignore($"Skipped — EEST fixture for '{test.Name}' has inconsistent EIP-2935 history storage ({detail}).");
+    }
+
+    private static bool HasInconsistentHistoryStorage(BlockchainTest test, out string detail)
+    {
+        detail = null;
+        if (test.EngineNewPayloads is null || test.PostState is null)
+            return false;
+
+        Address historyAddress = Eip2935Constants.BlockHashHistoryAddress;
+        if (!test.PostState.TryGetValue(historyAddress, out AccountState historyState))
+            return false;
+
+        Dictionary<UInt256, (string BlockNumber, string ParentHash)> expectedHistory = new();
+        foreach (TestEngineNewPayloadsJson payload in test.EngineNewPayloads)
+        {
+            if (payload.Params is null || payload.Params.Length == 0) continue;
+
+            JsonElement executionPayload = payload.Params[0];
+            if (executionPayload.ValueKind != JsonValueKind.Object) continue;
+            if (!executionPayload.TryGetProperty("blockNumber", out JsonElement blockNumberElement)) continue;
+            if (!executionPayload.TryGetProperty("parentHash", out JsonElement parentHashElement)) continue;
+
+            string blockNumberHex = blockNumberElement.GetString();
+            string parentHash = parentHashElement.GetString();
+            if (blockNumberHex is null || parentHash is null) continue;
+
+            long blockNumber = Convert.ToInt64(blockNumberHex[2..], 16);
+            if (blockNumber == 0) continue;
+
+            UInt256 storageSlot = new((ulong)((blockNumber - 1) % Eip2935Constants.RingBufferSize));
+            expectedHistory[storageSlot] = (blockNumberHex, parentHash);
+        }
+
+        foreach ((UInt256 storageSlot, (string blockNumberHex, string parentHash)) in expectedHistory)
+        {
+            if (!historyState.Storage.TryGetValue(storageSlot, out byte[] storedValue)) continue;
+
+            string storedHash = Hash256.FromBytesWithPadding(storedValue).ToString(true);
+            if (string.Equals(storedHash, parentHash, StringComparison.OrdinalIgnoreCase)) continue;
+
+            detail = $"block {blockNumberHex} parentHash {parentHash}, post-state slot {storageSlot.ToString(CultureInfo.InvariantCulture)} has {storedHash}";
+            return true;
+        }
+
+        return false;
     }
 }
 

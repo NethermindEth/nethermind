@@ -456,7 +456,7 @@ public class BlockValidator(
 
     private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
     {
-        BlockAccessList bal = block.BlockAccessList!;
+        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
         long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
         if (bal.ItemCount > maxBalItems)
@@ -474,7 +474,7 @@ public class BlockValidator(
     // Mirrors geth bal-devnet-4 check `txIdx >= blockTxCount + 2`.
     private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
     {
-        BlockAccessList bal = block.BlockAccessList!;
+        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
         uint maxAllowed = (uint)block.Transactions.Length + 1;
 
         foreach (AccountChanges accountChanges in bal.AccountChanges)
