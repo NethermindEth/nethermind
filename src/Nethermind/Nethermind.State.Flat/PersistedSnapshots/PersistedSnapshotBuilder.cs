@@ -49,31 +49,80 @@ public static class PersistedSnapshotBuilder
 
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer) where TWriter : IByteBufferWriter
     {
-        // Single pass: partition state nodes into top/compact/fallback
-        List<(TreePath Path, TrieNode Node)> stateTop = [], stateCompact = [], stateFallback = [];
-        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
-        {
-            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
-            TreePath path = kv.Key;
-            if (path.Length <= TopPathThreshold) stateTop.Add((path, kv.Value));
-            else if (path.Length <= CompactPathThreshold) stateCompact.Add((path, kv.Value));
-            else stateFallback.Add((path, kv.Value));
-        }
-        stateTop.Sort(StateNodeComparer);
-        stateCompact.Sort(StateNodeComparer);
-        stateFallback.Sort(StateNodeComparer);
+        // Declare mutable locals populated by the parallel jobs below.
+        List<(TreePath Path, TrieNode Node)> stateTop = null!, stateCompact = null!, stateFallback = null!;
+        List<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storCompact = null!, storFallback = null!;
+        ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = null!;
+        ArrayPoolList<Address> uniqueAddresses = null!;
 
-        // Single pass: partition storage nodes into compact/fallback
-        List<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storCompact = [], storFallback = [];
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
-        {
-            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
-            (Hash256 addr, TreePath path) = kv.Key.Key;
-            if (path.Length <= CompactPathThreshold) storCompact.Add(((addr, path), kv.Value));
-            else storFallback.Add(((addr, path), kv.Value));
-        }
-        storCompact.Sort(StorageNodeComparer);
-        storFallback.Sort(StorageNodeComparer);
+        // Parallel extraction + sort: three independent jobs over disjoint dictionaries.
+        Parallel.Invoke(
+            () =>
+            {
+                // Job A: state trie nodes — partition into top/compact/fallback, then sort.
+                List<(TreePath, TrieNode)> top = [], compact = [], fallback = [];
+                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+                {
+                    if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
+                    TreePath path = kv.Key;
+                    if (path.Length <= TopPathThreshold) top.Add((path, kv.Value));
+                    else if (path.Length <= CompactPathThreshold) compact.Add((path, kv.Value));
+                    else fallback.Add((path, kv.Value));
+                }
+                Parallel.Invoke(
+                    () => top.Sort(StateNodeComparer),
+                    () => compact.Sort(StateNodeComparer),
+                    () => fallback.Sort(StateNodeComparer));
+                stateTop = top; stateCompact = compact; stateFallback = fallback;
+            },
+            () =>
+            {
+                // Job B: storage trie nodes — partition into compact/fallback, then sort.
+                List<((Hash256, TreePath), TrieNode)> compact = [], fallback = [];
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+                {
+                    if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
+                    (Hash256 addr, TreePath path) = kv.Key.Key;
+                    if (path.Length <= CompactPathThreshold) compact.Add(((addr, path), kv.Value));
+                    else fallback.Add(((addr, path), kv.Value));
+                }
+                Parallel.Invoke(
+                    () => compact.Sort(StorageNodeComparer),
+                    () => fallback.Sort(StorageNodeComparer));
+                storCompact = compact; storFallback = fallback;
+            },
+            () =>
+            {
+                // Job C: account column prep — build sorted storages and unique address list.
+                HashSet<HashedKey<Address>> seen = [];
+                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+                    seen.Add(kv.Key);
+                foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
+                    seen.Add(kv.Key);
+
+                ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> storages =
+                    new(Math.Max(1, snapshot.StoragesCount));
+                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+                {
+                    (Address addr, UInt256 slot) = kv.Key.Key;
+                    storages.Add(((addr, slot), kv.Value));
+                    seen.Add(addr);
+                }
+                storages.Sort((a, b) =>
+                {
+                    int cmp = a.Key.Addr.Bytes.SequenceCompareTo(b.Key.Addr.Bytes);
+                    if (cmp != 0) return cmp;
+                    return a.Key.Slot.CompareTo(b.Key.Slot);
+                });
+
+                ArrayPoolList<Address> addrs = new(Math.Max(1, seen.Count));
+                foreach (HashedKey<Address> addr in seen)
+                    addrs.Add(addr);
+                addrs.Sort((a, b) => a.Bytes.SequenceCompareTo(b.Bytes));
+
+                sortedStorages = storages;
+                uniqueAddresses = addrs;
+            });
 
         HsstBuilder<TWriter> outer = new(ref writer);
         try
@@ -82,7 +131,7 @@ public static class PersistedSnapshotBuilder
             WriteMetadataColumn(ref outer, snapshot);
 
             // Column 0x01: Unified account column (accounts, self-destruct, storage)
-            WriteAccountColumn(ref outer, snapshot);
+            WriteAccountColumn(ref outer, snapshot, sortedStorages, uniqueAddresses);
 
             // Column 0x03: State nodes (compact, path length 6-15)
             WriteStateNodesColumnCompact(ref outer, stateCompact);
@@ -104,6 +153,8 @@ public static class PersistedSnapshotBuilder
         finally
         {
             outer.Dispose();
+            sortedStorages?.Dispose();
+            uniqueAddresses?.Dispose();
         }
     }
 
@@ -138,35 +189,11 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.MetadataTag);
     }
 
-    private static void WriteAccountColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteAccountColumn<TWriter>(
+        ref HsstBuilder<TWriter> outer, Snapshot snapshot,
+        ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
+        ArrayPoolList<Address> uniqueAddresses) where TWriter : IByteBufferWriter
     {
-        HashSet<HashedKey<Address>> seen = [];
-        foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
-            seen.Add(kv.Key);
-        foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
-            seen.Add(kv.Key);
-
-        // Pre-sort storages by (Address, Slot) for efficient iteration
-        using ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = new(Math.Max(1, snapshot.StoragesCount));
-        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
-        {
-            (Address addr, UInt256 slot) = kv.Key.Key;
-            sortedStorages.Add(((addr, slot), kv.Value));
-            seen.Add(addr);
-        }
-        sortedStorages.Sort((a, b) =>
-        {
-            int cmp = a.Key.Addr.Bytes.SequenceCompareTo(b.Key.Addr.Bytes);
-            if (cmp != 0) return cmp;
-            return a.Key.Slot.CompareTo(b.Key.Slot);
-        });
-
-        // Build sorted unique address list
-        using ArrayPoolList<Address> uniqueAddresses = new(Math.Max(1, seen.Count));
-        foreach (HashedKey<Address> addr in seen)
-            uniqueAddresses.Add(addr);
-        uniqueAddresses.Sort((a, b) => a.Bytes.SequenceCompareTo(b.Bytes));
-
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 2;
 
