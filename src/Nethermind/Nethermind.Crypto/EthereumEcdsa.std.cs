@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto;
 
+#pragma warning disable NETH003 // Build variant: only one of EthereumEcdsa.std.cs / EthereumEcdsa.zkevm.cs is compiled per build
 public class EthereumEcdsa(ulong chainId) : Ecdsa, IEthereumEcdsa
 {
     public ulong ChainId => chainId;

@@ -37,7 +37,7 @@ public class ConfigRegistrationSource : IRegistrationSource
             InstanceSharing.Shared,
             InstanceOwnership.OwnedByLifetimeScope,
             new[] { service },
-            new Dictionary<string, object>());
+            new Dictionary<string, object?>());
 
         return new IComponentRegistration[] { registration };
     }
