@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
@@ -83,17 +84,40 @@ internal static class LegacyStateTestFixtureGuard
 
     private static bool HasLegacyDifficultySentinel(BlockchainTest test)
     {
-        if (test.Blocks is null) return false;
-        foreach (TestBlockJson block in test.Blocks)
+        if (test.Blocks is not null)
         {
-            string mixHash = block.BlockHeader?.MixHash;
-            if (mixHash is null) continue;
-            // Match `0x` + 64 hex chars ending with the legacy difficulty value 0x20000.
-            string hex = mixHash.StartsWith("0x", StringComparison.Ordinal) ? mixHash[2..] : mixHash;
-            if (hex.Length == 64 && hex.EndsWith(LegacyDifficultySentinelMixHashSuffix, StringComparison.OrdinalIgnoreCase))
-                return true;
+            foreach (TestBlockJson block in test.Blocks)
+            {
+                if (Matches(block.BlockHeader?.MixHash))
+                    return true;
+            }
         }
+
+        if (test.EngineNewPayloads is not null)
+        {
+            // Engine variant: the post-merge prevRandao field replaces mixHash on the wire,
+            // and EELS preserves the same legacy 0x...020000 sentinel through the conversion.
+            foreach (TestEngineNewPayloadsJson payload in test.EngineNewPayloads)
+            {
+                if (payload.Params is null || payload.Params.Length == 0) continue;
+                JsonElement param = payload.Params[0];
+                if (param.ValueKind != JsonValueKind.Object) continue;
+                if (!param.TryGetProperty("prevRandao", out JsonElement prevRandao)) continue;
+                if (Matches(prevRandao.GetString()))
+                    return true;
+            }
+        }
+
         return false;
+
+        // Match `0x` + 64 hex chars ending with the legacy difficulty value 0x20000.
+        static bool Matches(string value)
+        {
+            if (value is null) return false;
+            string hex = value.StartsWith("0x", StringComparison.Ordinal) ? value[2..] : value;
+            return hex.Length == 64
+                && hex.EndsWith(LegacyDifficultySentinelMixHashSuffix, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
 
