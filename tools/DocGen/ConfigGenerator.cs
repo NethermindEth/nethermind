@@ -101,7 +101,7 @@ internal static class ConfigGenerator
             if (configAttr?.HiddenFromDocs ?? true)
                 continue;
 
-            string description = configAttr.Description.Replace("\n", "\n  ").TrimEnd(' ');
+            string description = configAttr!.Description.Replace("\n", "\n  ").TrimEnd(' ');
             string cliAlias = string.IsNullOrWhiteSpace(configAttr.CliOptionAlias)
                 ? $"{moduleName}-{prop.Name}"
                 : configAttr.CliOptionAlias;

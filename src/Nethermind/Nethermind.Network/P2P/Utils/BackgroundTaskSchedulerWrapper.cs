@@ -65,6 +65,11 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         {
             await input.BackgroundTask(input.Request, cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && handler.Session.IsClosing)
+        {
+            // Session shutdown or disconnect canceled the task; do not treat it as a background task failure.
+            return;
+        }
         catch (Exception e)
         {
             DisconnectReason disconnectReason = e switch
