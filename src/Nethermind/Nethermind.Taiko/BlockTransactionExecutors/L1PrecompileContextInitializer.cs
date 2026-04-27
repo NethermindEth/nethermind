@@ -10,8 +10,15 @@ namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 internal static class L1PrecompileContextInitializer
 {
-    // 4 selector + 32 uint48-word (first field of (uint48,bytes32,bytes32) tuple — minimum bytes to read anchorBlockId).
+    // AnchorV4 calldata layout: 4-byte selector + ABI-encoded (uint48, bytes32, bytes32).
+    //   bytes [0..4)   = function selector
+    //   bytes [4..36)  = uint48 anchorBlockId (right-padded to a 32-byte word)
+    //   bytes [36..68) = bytes32 (the parent meta-hash; not consumed here)
+    // 4 + 32 + 32 = 68 — the minimum length we need before reading anchorBlockId.
     private const int AnchorV4MinimumLength = 68;
+
+    // 4 selector + 32 uint48-word — exclusive end offset of the anchorBlockId ABI word,
+    // used as the upper bound when slicing tx.Data for the UInt256 decode.
     private const int AnchorV4CheckpointWordEnd = 36;
 
     /// <summary>
