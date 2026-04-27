@@ -45,9 +45,6 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         {
             return AcceptTxResult.Accepted;
         }
-
-        tx.IsServiceTransaction = true;
-
         if (tx.IsSignTransaction(spec))
         {
             AcceptTxResult result = ValidateSignTransaction(tx, headerNumber, spec);
@@ -63,6 +60,8 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         {
             return AcceptTxResult.Invalid.WithMessage("Special transaction sender is not an epoch candidate");
         }
+
+        tx.IsServiceTransaction = true;
 
         return AcceptTxResult.Accepted;
     }
