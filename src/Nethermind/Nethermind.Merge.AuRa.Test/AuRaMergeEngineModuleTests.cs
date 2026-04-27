@@ -35,8 +35,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.AuRa.Test;
 
-[System.Diagnostics.CodeAnalysis.SuppressMessage("NUnit", "NUnit1034:Class is used as a base class and should be abstract", Justification = "Concrete fixture; derived ParallelAuRaMergeEngineModuleTests reruns with parallel flag")]
-public class AuRaMergeEngineModuleTests : EngineModuleTests
+[TestFixture(true)]
+[TestFixture(false)]
+public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(parallel)
 {
     protected override MergeTestBlockchain CreateBaseBlockchain(IMergeConfig? mergeConfig = null)
         => new MergeAuRaTestBlockchain(mergeConfig);

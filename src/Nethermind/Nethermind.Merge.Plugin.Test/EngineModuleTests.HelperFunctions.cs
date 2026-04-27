@@ -29,9 +29,18 @@ using Nethermind.State;
 namespace Nethermind.Merge.Plugin.Test
 {
     [Parallelizable(ParallelScope.All)]
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("NUnit", "NUnit1034:Class is used as a base class and should be abstract", Justification = "Concrete fixture; derived ParallelEngineModuleTests reruns with parallel flag")]
-    public partial class EngineModuleTests : BaseEngineModuleTests
+    [TestFixture(true)]
+    [TestFixture(false)]
+    public partial class EngineModuleTests(bool parallel) : BaseEngineModuleTests
     {
+        protected override MergeTestBlockchain CreateBaseBlockchain(
+            IMergeConfig? mergeConfig = null)
+        {
+            MergeTestBlockchain bc = base.CreateBaseBlockchain(mergeConfig);
+            bc.ParallelExecutionOverride = parallel;
+            return bc;
+        }
+
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
