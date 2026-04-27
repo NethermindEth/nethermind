@@ -9,7 +9,6 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using NSubstitute;

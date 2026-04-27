@@ -4,7 +4,6 @@
 using System;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -26,7 +25,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
