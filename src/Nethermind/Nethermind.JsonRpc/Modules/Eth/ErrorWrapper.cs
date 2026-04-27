@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// </summary>
 internal static class ErrorWrapper
 {
-    public static string EthCall(string inner, long gasLimit) =>
+    public static string EthCallIntrinsicGas(string inner, long gasLimit) =>
         $"err: {inner} (supplied gas {gasLimit})";
 
     public static string EstimateGasBinarySearch(string inner, long gas) =>
@@ -23,7 +23,4 @@ internal static class ErrorWrapper
         $"failed to apply transaction: {txHash} err: {inner}";
 
     public static string DebugTrace(string inner) => $"tracing failed: {inner}";
-
-    // eth_simulateV1: no wrap. Geth propagates the bare core error directly through
-    // its simulate handler, so Nethermind matches by NOT wrapping for that endpoint.
 }

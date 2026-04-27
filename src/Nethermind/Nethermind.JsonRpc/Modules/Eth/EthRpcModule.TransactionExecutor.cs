@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
@@ -138,9 +139,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
-                    string wrapped = ErrorWrapper.EthCall(result.Error, tx.GasLimit);
+                    string message = result.Error == TransactionResult.GasLimitBelowIntrinsicGas.ErrorDescription
+                        ? ErrorWrapper.EthCallIntrinsicGas(result.Error, tx.GasLimit)
+                        : result.Error;
                     int errorCode = result.InputError ? ErrorCodes.InvalidInput : ErrorCodes.ExecutionError;
-                    return ResultWrapper<string>.Fail(wrapped, errorCode);
+                    return ResultWrapper<string>.Fail(message, errorCode);
                 }
 
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
