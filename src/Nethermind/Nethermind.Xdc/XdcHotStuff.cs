@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -25,6 +25,7 @@ namespace Nethermind.Xdc
         ISpecProvider specProvider,
         IBlockProducer blockBuilder,
         IEpochSwitchManager epochSwitchManager,
+        ISnapshotManager snapshotManager,
         IMasternodesCalculator masternodesCalculator,
         IQuorumCertificateManager quorumCertificateManager,
         IVotesManager votesManager,
@@ -39,6 +40,7 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlockProducer _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
         private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
+        private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         private readonly IMasternodesCalculator _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
         private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
         private readonly IVotesManager _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
@@ -235,11 +237,14 @@ namespace Nethermind.Xdc
             }
 
             if (_highestSignTxNumber < roundParent.Number
-                && IsMasternode(epochInfo, _signer.Address)
                 && ((roundParent.Number % spec.MergeSignRange == 0)))
             {
-                _highestSignTxNumber = roundParent.Number;
-                await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
+                Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(roundParent.Number, spec);
+                if (snapshot is not null && snapshot.NextEpochCandidates.AsSpan().IndexOf(_signer.Address) != -1)
+                {
+                    _highestSignTxNumber = roundParent.Number;
+                    await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
+                }
             }
 
             _writeRoundInfo = false;
@@ -334,7 +339,7 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            // Check voting rule            
+            // Check voting rule
             if (!head.IsSelfMined && !_votesManager.VerifyVotingRules(head, out string error))
             {
                 if (_logger.IsDebug)
