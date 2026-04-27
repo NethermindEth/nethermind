@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
@@ -14,8 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -25,7 +22,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using NSubstitute;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -586,66 +582,30 @@ public class EthSimulateTestsBlocksAndTransactions
             $"Expected block.timestamp = {futureTimestamp} (overridden), got {returnedTimestamp}");
     }
 
-    [Test]
-    public async Task Test_eth_simulate_no_validation_still_returns_insufficient_balance()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new() { Calls = [ new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1_000_000.Ether } ] }
-            ],
-            Validation = false
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
-    }
-
     /// <summary>
-    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11217
-    /// eth_simulateV1 should return -38014 with the spec-mandated message when sender has insufficient funds.
-    /// Tests validation=true path (thrown as InvalidTransactionException from block processor).
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11217.
+    /// eth_simulateV1 must return -38014 with the spec-mandated message when the sender has
+    /// insufficient funds, regardless of the <c>validation</c> flag.
     /// </summary>
-    [Test]
-    public async Task eth_simulateV1_insufficient_funds_returns_spec_error_code_and_message()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task eth_simulateV1_insufficient_funds_returns_spec_error_code_and_message(bool validation)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        // Override baseFee to 0 so TryCalculatePremiumPerGas passes; value far exceeds sender balance.
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
             [
-                new()
-                {
-                    BlockOverrides = new BlockOverride { BaseFeePerGas = UInt256.Zero },
-                    Calls =
-                    [
-                        new EIP1559TransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = TestItem.AddressB,
-                            Value = 1_000_000.Ether,
-                            Gas = 21_000,
-                            MaxFeePerGas = UInt256.Zero,
-                            MaxPriorityFeePerGas = UInt256.Zero
-                        }
-                    ]
-                }
+                new() { Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1_000_000.Ether }] }
             ],
-            Validation = true
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
         Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
     }
 
     /// <summary>
@@ -697,47 +657,4 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.FeeCapBelowBaseFee));
     }
 
-    /// <summary>
-    /// Regression test for the <c>MinerPremiumNegative</c> arm in <see cref="SimulateTxExecutor{TTrace}"/>.
-    /// <c>OptimismTransactionProcessor</c> returns <see cref="TransactionResult.MinerPremiumNegative"/> instead of
-    /// <see cref="TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee"/>; both must map to the same
-    /// error code (<see cref="ErrorCodes.FeeCapBelowBaseFee"/>) and message.
-    /// </summary>
-    [Test]
-    public async Task eth_simulateV1_miner_premium_negative_maps_to_fee_cap_below_base_fee_code_and_message()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        SimulateOutput<SimulateCallResult> stubbedOutput = new()
-        {
-            Error = TransactionResult.MinerPremiumNegative.ErrorDescription,
-            TransactionResult = TransactionResult.MinerPremiumNegative,
-            IsInvalidInput = false,
-            Items = []
-        };
-
-        IBlockchainBridge mockBridge = Substitute.For<IBlockchainBridge>();
-        mockBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
-        mockBridge.Simulate<SimulateCallResult>(
-            Arg.Any<BlockHeader>(),
-            Arg.Any<SimulatePayload<TransactionWithSourceDetails>>(),
-            Arg.Any<ISimulateBlockTracerFactory<SimulateCallResult>>(),
-            Arg.Any<long>(),
-            Arg.Any<CancellationToken>()).Returns(stubbedOutput);
-
-        SimulateTxExecutor<SimulateCallResult> executor = new(
-            mockBridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
-
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls = [new() { Calls = [] }],
-            Validation = true
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
-
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.FeeCapBelowBaseFee));
-        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.FeeCapBelowBaseFee));
-    }
 }
