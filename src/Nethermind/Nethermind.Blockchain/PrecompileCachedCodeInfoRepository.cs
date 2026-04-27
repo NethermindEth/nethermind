@@ -7,7 +7,6 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -35,9 +34,6 @@ public class PrecompileCachedCodeInfoRepository(
         }
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
-
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
-        baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         baseCodeInfoRepository.InsertCode(code, codeOwner, spec);

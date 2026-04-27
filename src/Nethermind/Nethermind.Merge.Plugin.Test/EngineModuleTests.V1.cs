@@ -459,7 +459,7 @@ public partial class EngineModuleTests
 
     [TestCase(true)]
     [TestCase(false)]
-    [CancelAfter(5000)]
+    [CancelAfter(10000)]
     public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor, CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()

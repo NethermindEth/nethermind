@@ -55,7 +55,6 @@ public partial class Rlp
         RegisterDecoder(typeof(NonceChange), NonceChangeDecoder.Instance);
         RegisterDecoder(typeof(SlotChanges), SlotChangesDecoder.Instance);
         RegisterDecoder(typeof(StorageChange), StorageChangeDecoder.Instance);
-        RegisterDecoder(typeof(StorageRead), StorageReadDecoder.Instance);
         RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         RegisterDecoder(typeof(Withdrawal), new WithdrawalDecoder());
 
