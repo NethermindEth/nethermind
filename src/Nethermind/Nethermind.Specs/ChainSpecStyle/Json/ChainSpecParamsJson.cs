@@ -161,6 +161,8 @@ public class ChainSpecParamsJson
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
+    public ulong? Eip7976TransitionTimestamp { get; set; }
+    public ulong? Eip7981TransitionTimestamp { get; set; }
     public Address Eip7002ContractAddress { get; set; }
     public ulong? Eip7251TransitionTimestamp { get; set; }
     public Address Eip7251ContractAddress { get; set; }
@@ -173,7 +175,6 @@ public class ChainSpecParamsJson
     public ulong? Eip7918TransitionTimestamp { get; set; }
     public ulong? Eip7934TransitionTimestamp { get; set; }
     public int? Eip7934MaxRlpBlockSize { get; set; }
-    public ulong? Eip7907TransitionTimestamp { get; set; }
 
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }

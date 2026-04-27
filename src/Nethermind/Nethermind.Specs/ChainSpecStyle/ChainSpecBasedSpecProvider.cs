@@ -182,7 +182,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
-            releaseSpec.MaximumUncleCount = 2;
+            // EIP-3675: zero uncles post-merge. Runtime fallback is MergeHeaderValidator.
+            releaseSpec.MaximumUncleCount = IsPostMergeRelease(chainSpec, releaseStartBlock, releaseStartTimestamp) ? 0 : 2;
             releaseSpec.DifficultyBoundDivisor = 1;
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
@@ -277,16 +278,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7251Enabled = (chainSpec.Parameters.Eip7251TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
             releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7976Enabled = (chainSpec.Parameters.Eip7976TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7981Enabled = (chainSpec.Parameters.Eip7981TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7883Enabled = (chainSpec.Parameters.Eip7883TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip7594Enabled = (chainSpec.Parameters.Eip7594TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7825Enabled = (chainSpec.Parameters.Eip7825TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7918Enabled = (chainSpec.Parameters.Eip7918TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.IsEip7907Enabled = (chainSpec.Parameters.Eip7907TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            if (releaseSpec.IsEip7907Enabled)
-            {
-                releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7907;
-            }
             releaseSpec.IsEip8024Enabled = (chainSpec.Parameters.Eip8024TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
@@ -308,7 +306,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7708Enabled = (chainSpec.Parameters.Eip7708TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip7954Enabled = (chainSpec.Parameters.Eip7954TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            if (releaseSpec.IsEip7954Enabled && !releaseSpec.IsEip7907Enabled)
+            if (releaseSpec.IsEip7954Enabled)
             {
                 releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
             }
@@ -346,6 +344,19 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
         }
+
+        // Shanghai (EIP-4895) is the first post-Paris timestamp-activated fork, so TTD-driven
+        // chains like mainnet cross into post-merge once they reach it - that's the only
+        // non-obvious branch below. TTD=0 covers PoS-from-genesis. TerminalPoWBlockNumber
+        // fires only when releaseStartBlock advances past it, which requires the chainspec to
+        // carry post-merge block-number transitions (TerminalPoWBlockNumber is excluded from
+        // AddTransitions above, so it creates no spec boundary of its own). Paris-era blocks
+        // on TTD-driven chains with no such later transitions are not detected here - runtime
+        // MergeHeaderValidator (UnclesHash == empty via PoSSwitcher) is the safety net.
+        private static bool IsPostMergeRelease(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp) =>
+            chainSpec.Parameters.TerminalTotalDifficulty?.IsZero == true
+            || releaseStartBlock > (chainSpec.Parameters.TerminalPoWBlockNumber ?? long.MaxValue)
+            || (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= (releaseStartTimestamp ?? 0);
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {

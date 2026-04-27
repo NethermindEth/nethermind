@@ -396,7 +396,7 @@ public class AdminModuleTests
     public async Task No_subscription_name_admin()
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe");
-        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"Incorrect parameters count, expected: 2, actual: 0\"},\"id\":67}";
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 0\"},\"id\":67}";
         expectedResult.Should().Be(serialized);
     }
 

@@ -25,7 +25,7 @@ public class TestErrorLogManager : ILogManager
         public void Warn(string text) { }
         public void Debug(string text) { }
         public void Trace(string text) { }
-        public void Error(string text, Exception ex = null) => _errors.Enqueue(new Error() { Text = text, Exception = ex });
+        public void Error(string text, Exception? ex = null) => _errors.Enqueue(new Error() { Text = text, Exception = ex });
         public bool IsInfo => false;
         public bool IsWarn => false;
         public bool IsDebug => true;
@@ -35,7 +35,7 @@ public class TestErrorLogManager : ILogManager
 
     public record Error
     {
-        public string Text { get; init; }
-        public Exception Exception { get; init; }
+        public required string Text { get; init; }
+        public Exception? Exception { get; init; }
     }
 }

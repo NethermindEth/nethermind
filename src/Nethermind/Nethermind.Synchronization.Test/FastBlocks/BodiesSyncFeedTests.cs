@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -17,6 +18,7 @@ using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -44,6 +46,7 @@ public class BodiesSyncFeedTests
     public void Setup()
     {
         _syncingFromBlockTree = Build.A.BlockTree()
+            .WithTransactions(new InMemoryReceiptStorage())
             .OfChainLength(100)
             .TestObject;
 
@@ -77,7 +80,7 @@ public class BodiesSyncFeedTests
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
-            Always.Valid,
+            CreateBlockValidator(),
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -89,6 +92,9 @@ public class BodiesSyncFeedTests
             flushDbInterval: 10
         );
     }
+
+    private static BlockValidator CreateBlockValidator() =>
+        new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
     [TearDown]
     public void TearDown()
@@ -152,6 +158,30 @@ public class BodiesSyncFeedTests
                 _pivotBlock.Number - 3,
                 // Skipped
                 _pivotBlock.Number - 5]);
+    }
+
+    [Test]
+    public async Task ShouldHandleSparseBodyResponseWithoutReportingBreach()
+    {
+        _feed.InitializeFeed();
+
+        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Block skippedBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Block thirdBlock = _syncingFromBlockTree.FindBlock(req.Infos[2]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body]);
+        req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(req);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+        Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
+        Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
+        Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
+        _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            Arg.Any<DisconnectReason>(),
+            Arg.Any<string>());
     }
 
     [Test]

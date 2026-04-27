@@ -87,6 +87,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsOpIsthmusEnabled { get; set; }
     public bool IsOpJovianEnabled { get; set; }
     public bool IsEip7623Enabled { get; set; }
+    public bool IsEip7976Enabled { get; set; }
+    public bool IsEip7981Enabled { get; set; }
     public bool IsEip7883Enabled { get; set; }
     public bool IsEip5656Enabled { get; set; }
     public bool IsEip6780Enabled { get; set; }
@@ -100,7 +102,6 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7918Enabled { get; set; }
     public bool IsEip7934Enabled { get; set; }
     public int Eip7934MaxRlpBlockSize { get; set; }
-    public bool IsEip7907Enabled { get; set; }
     public ulong TargetBlobCount { get; set; }
     public ulong MaxBlobCount { get; set; }
     public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;

@@ -17,7 +17,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
-using Nethermind.Era1;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
@@ -54,8 +53,10 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
+            .AddModule(new DatabaseMigrationsModule())
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
-            .AddModule(new EraModule())
+            .AddModule(new Era1.EraModule())
+            .AddModule(new EraE.EraEModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))

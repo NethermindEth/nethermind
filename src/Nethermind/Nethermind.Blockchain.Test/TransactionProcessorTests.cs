@@ -267,6 +267,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         Transaction tx = Build.A.Transaction
             .WithValue(txValue)
+            .WithGasPrice(0)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
@@ -278,10 +279,16 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
 
-        if (txValue + (UInt256)gasLimit > AccountBalance)
+        if (txValue == AccountBalance)
+        {
+            // Gas price is zero so no gas payment is needed; sending the full balance as value is valid.
+            Assert.That(err, Is.Null);
+            Assert.That(estimate, Is.EqualTo(GasCostOf.Transaction));
+        }
+        else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
             Assert.That(err, Is.Not.Null); // Should have error
-            Assert.That(err, Is.EqualTo("Transaction execution fails"));
+            Assert.That(err, Is.EqualTo("insufficient funds for transfer"));
         }
         else
         {
@@ -305,7 +312,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
             yield return new TestCaseData(AccountBalance - GasCostOf.Transaction - gasLimit + 1)
             { TestName = "More than (account balance - tx cost)", ExpectedResult = GasCostOf.Transaction };
             yield return new TestCaseData(AccountBalance)
-            { TestName = "Exactly account balance", ExpectedResult = 0L };
+            { TestName = "Exactly account balance", ExpectedResult = (long)GasCostOf.Transaction };
 
             yield return new TestCaseData(AccountBalance + 1)
             { TestName = "More than account balance", ExpectedResult = 0L };

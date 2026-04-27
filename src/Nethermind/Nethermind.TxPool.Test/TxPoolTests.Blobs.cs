@@ -1034,7 +1034,7 @@ namespace Nethermind.TxPool.Test
         {
             get
             {
-                TestCaseData MakeTestCase(string testName, int finalCount, BlobsSupportMode mode, params TestAction[] testActions)
+                static TestCaseData MakeTestCase(string testName, int finalCount, BlobsSupportMode mode, params TestAction[] testActions)
                     => new(mode, testActions) { TestName = $"EvictProofVersion({mode}): {testName}", ExpectedResult = finalCount };
 
                 foreach (BlobsSupportMode mode in new[] { BlobsSupportMode.InMemory, BlobsSupportMode.Storage })
