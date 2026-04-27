@@ -134,7 +134,6 @@ public static partial class EvmInstructions
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
         {
-            RefundCreateStateGas(ref gas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
         }
