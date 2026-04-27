@@ -120,8 +120,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             builder.AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
                 .AddScoped<IProducedBlockSuggester, ProducedBlockSuggester>();
         }
-
-        if (initConfig.ExitOnInvalidBlock) builder.AddStep(typeof(ExitOnInvalidBlock));
     }
 
     private class StandardBlockValidationModule : Module, IBlockValidationModule
