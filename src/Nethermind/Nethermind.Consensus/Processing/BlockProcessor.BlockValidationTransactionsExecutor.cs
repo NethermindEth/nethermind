@@ -27,8 +27,6 @@ public partial class BlockProcessor
 
         public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
-        public virtual void SetBlockAccessListManager(in IBlockAccessListManager balManager) { }
-
         public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             Metrics.ResetBlockStats();
