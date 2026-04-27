@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -26,7 +27,7 @@ public sealed class NewPayloadSszHandler(IAsyncHandler<ExecutionPayload, Payload
         (ExecutionPayload payload, byte[]?[] _, Hash256? beaconRoot, byte[][]? requests) =
             SszCodec.DecodeNewPayloadRequest(body, version);
 
-        if (version >= 3)
+        if (version >= EngineApiVersions.NewPayload.V3)
             payload.ParentBeaconBlockRoot = beaconRoot;
 
         payload.ExecutionRequests = requests;

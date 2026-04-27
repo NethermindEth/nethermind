@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Autofac;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api.Extensions;
+using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -52,7 +53,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IHandler<IEnumerable<string>, IEnumerable<string>>>(ctx);
         services.Bridge<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(ctx);
 
-        services.AddSingleton<ISszProcessExitSource>(new SszProcessExitSource { ProcessExit = ctx.Resolve<JsonRpcProcessor>().ProcessExit });
+        services.AddSingleton<ISszProcessExitSource>(new SszProcessExitSource { ProcessExit = ctx.Resolve<IProcessExitSource>().Token });
 
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler>();
 

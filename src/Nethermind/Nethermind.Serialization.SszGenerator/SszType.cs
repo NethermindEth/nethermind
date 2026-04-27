@@ -470,9 +470,7 @@ class SszType
         Dictionary<string, IPropertySymbol> mostDerived = new(StringComparer.Ordinal);
         foreach (ITypeSymbol t in typeChain)
         {
-            foreach (IPropertySymbol p in t.GetMembers().OfType<IPropertySymbol>()
-                .Where(p => p.GetMethod?.DeclaredAccessibility == Accessibility.Public
-                         && p.SetMethod?.DeclaredAccessibility == Accessibility.Public))
+            foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
             {
                 mostDerived[p.Name] = p;
             }
@@ -481,9 +479,7 @@ class SszType
         HashSet<string> seen = new(StringComparer.Ordinal);
         foreach (ITypeSymbol t in typeChain)
         {
-            foreach (IPropertySymbol p in t.GetMembers().OfType<IPropertySymbol>()
-                .Where(p => p.GetMethod?.DeclaredAccessibility == Accessibility.Public
-                         && p.SetMethod?.DeclaredAccessibility == Accessibility.Public))
+            foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
             {
                 if (!seen.Add(p.Name))
                     continue;
@@ -498,6 +494,11 @@ class SszType
             }
         }
     }
+
+    private static IEnumerable<IPropertySymbol> GetPublicReadWriteProperties(ITypeSymbol type) =>
+        type.GetMembers().OfType<IPropertySymbol>()
+            .Where(p => p.GetMethod?.DeclaredAccessibility == Accessibility.Public
+                     && p.SetMethod?.DeclaredAccessibility == Accessibility.Public);
 
     private static bool HasAttribute(ITypeSymbol typeSymbol, string attributeName) =>
         typeSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);

@@ -5,7 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Net.Mime;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,12 +40,22 @@ public sealed class SszMiddleware(
         @"^/engine/v(?<version>\d+)/(?<resource>[a-z][a-z\-]*(?:/[a-z][a-z\-]*)*)(?:/(?<extra>[^/]+))?$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private const string OctetStream = "application/octet-stream";
-    private const int MaxBodySize = 16 * 1024 * 1024;
-    private readonly ILookup<(string Method, string Resource), ISszEndpointHandler> _routes =
-        handlers.ToLookup(
-            h => (h.HttpMethod, h.Resource.ToLowerInvariant()),
-            StringComparer.OrdinalIgnoreCase.ToTupleComparer());
+    private const int MaxBodySize = 0x1000000;
+    private readonly Dictionary<(string Method, string Resource), List<ISszEndpointHandler>> _routes = BuildRoutes(handlers);
+
+    private static Dictionary<(string, string), List<ISszEndpointHandler>> BuildRoutes(
+        IEnumerable<ISszEndpointHandler> handlers)
+    {
+        Dictionary<(string, string), List<ISszEndpointHandler>> dict = new(TupleComparerExtensions.OrdinalIgnoreCaseTupleComparer);
+        foreach (ISszEndpointHandler h in handlers)
+        {
+            (string, string) key = (h.HttpMethod, h.Resource.ToLowerInvariant());
+            if (!dict.TryGetValue(key, out List<ISszEndpointHandler>? list))
+                dict[key] = list = [];
+            list.Add(h);
+        }
+        return dict;
+    }
 
     public async Task InvokeAsync(HttpContext ctx)
     {
@@ -125,7 +135,11 @@ public sealed class SszMiddleware(
 
     private bool TryResolveHandler(string method, string resource, int version, out ISszEndpointHandler? handler)
     {
-        IEnumerable<ISszEndpointHandler> candidates = _routes[(method, resource.ToLowerInvariant())];
+        if (!_routes.TryGetValue((method, resource.ToLowerInvariant()), out List<ISszEndpointHandler>? candidates))
+        {
+            handler = null;
+            return false;
+        }
         ISszEndpointHandler? fallback = null;
 
         foreach (ISszEndpointHandler candidate in candidates)
@@ -150,12 +164,12 @@ public sealed class SszMiddleware(
             return false;
 
         if (ctx.Request.Method is "POST")
-            return ctx.Request.ContentType?.Contains(OctetStream, StringComparison.OrdinalIgnoreCase) == true;
+            return ctx.Request.ContentType?.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true;
 
         if (ctx.Request.Method == "GET")
         {
             foreach (string? v in ctx.Request.Headers.Accept)
-                if (v is not null && v.Contains(OctetStream, StringComparison.OrdinalIgnoreCase))
+                if (v is not null && v.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
                     return true;
         }
         return false;
@@ -205,8 +219,8 @@ internal sealed class SszProcessExitSource : ISszProcessExitSource
 
 file static class TupleComparerExtensions
 {
-    internal static IEqualityComparer<(string, string)> ToTupleComparer(
-        this StringComparer inner) => new TupleStringComparer(inner);
+    internal static readonly IEqualityComparer<(string, string)> OrdinalIgnoreCaseTupleComparer =
+        new TupleStringComparer(StringComparer.OrdinalIgnoreCase);
 
     private sealed class TupleStringComparer(StringComparer inner)
         : IEqualityComparer<(string, string)>
