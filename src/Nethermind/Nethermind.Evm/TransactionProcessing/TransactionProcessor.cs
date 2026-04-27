@@ -611,7 +611,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return TransactionResult.InsufficientSenderBalance;
+                return InsufficientFundsForTransferResult(tx, senderBalance);
             }
 
             bool overflows;
@@ -621,7 +621,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (overflows || balanceLeft < maxGasFee)
                 {
                     TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                    return TransactionResult.InsufficientMaxFeePerGasForSenderBalance;
+                    return InsufficientFundsForGasAndValueResult(tx, senderBalance, tx.MaxFeePerGas);
                 }
 
                 if (tx.SupportsBlobs)
@@ -630,7 +630,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
                     {
                         TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                        return BuildInsufficientFundsResult(tx, senderBalance, effectiveGasPrice);
+                        return InsufficientFundsForGasAndValueResult(tx, senderBalance, effectiveGasPrice);
                     }
                 }
             }
@@ -648,7 +648,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return BuildInsufficientFundsResult(tx, senderBalance, effectiveGasPrice);
+                return InsufficientFundsForGasAndValueResult(tx, senderBalance, effectiveGasPrice);
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
@@ -656,12 +656,16 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private static TransactionResult BuildInsufficientFundsResult(Transaction tx, UInt256 senderBalance, UInt256 effectiveGasPrice)
+        private static TransactionResult InsufficientFundsForTransferResult(Transaction tx, UInt256 senderBalance) =>
+            TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
+                $"insufficient funds for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
+
+        private static TransactionResult InsufficientFundsForGasAndValueResult(Transaction tx, UInt256 senderBalance, UInt256 gasPrice)
         {
-            UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out UInt256 gasCost);
+            UInt256.MultiplyOverflow((UInt256)tx.GasLimit, gasPrice, out UInt256 gasCost);
             UInt256.AddOverflow(gasCost, tx.Value, out UInt256 want);
             return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
-                $"err: insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want} (supplied gas {tx.GasLimit})");
+                $"insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
         }
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
@@ -1111,7 +1115,12 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult Ok = new();
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
         public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "gas limit below intrinsic gas");
-        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient MaxFeePerGas for sender balance");
+        // Geth-aligned wording (core/error.go ErrInsufficientFunds / ErrInsufficientFundsForTransfer).
+        // Used by callers that don't have transaction context to format the address/have/want
+        // suffix (Optimism, SimulateBridgeHelper, BlockchainBridge fallbacks). The detailed variants
+        // emitted by InsufficientFundsFor*Result in this file produce the full
+        // "<base>: address %v have %v want %v" format matching core/state_transition.go.
+        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient funds for gas * price + value");
         public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient funds for transfer");
         public static readonly TransactionResult MalformedTransaction = new(ErrorType.MalformedTransaction, errorDescription: "malformed");
         public static readonly TransactionResult MinerPremiumNegative = new(ErrorType.MinerPremiumNegative, errorDescription: "miner premium is negative");
