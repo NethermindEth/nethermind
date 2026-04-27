@@ -5,11 +5,15 @@ using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 
 public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccessListsMessage>
 {
+    private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockAccessListsMessage>(
+        GethSyncLimits.MaxBodyFetch, nameof(BlockAccessListsMessage.BlockAccessLists));
+
     protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message)
     {
         NettyRlpStream stream = new(byteBuffer);
@@ -23,17 +27,8 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
 
     protected override BlockAccessListsMessage DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId)
     {
-        int length = ctx.ReadSequenceLength();
-        int endPosition = ctx.Position + length;
-
-        ArrayPoolList<byte[]> blockAccessLists = new(16);
-        while (ctx.Position < endPosition)
-        {
-            byte[] balBytes = ctx.DecodeByteArray();
-            blockAccessLists.Add(balBytes);
-        }
-
-        ctx.Check(endPosition);
+        ArrayPoolList<byte[]> blockAccessLists =
+            ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext nestedContext) => nestedContext.DecodeByteArray(), limit: RlpLimit);
         return new BlockAccessListsMessage(requestId, blockAccessLists);
     }
 

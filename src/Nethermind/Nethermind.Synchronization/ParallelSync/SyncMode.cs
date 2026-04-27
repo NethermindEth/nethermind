@@ -85,7 +85,9 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
         public static bool HaveNotSyncedReceiptsYet(this SyncMode syncMode) =>
-            syncMode.HasFlag(SyncMode.FastBlocks) ||
+            syncMode.HasFlag(SyncMode.FastHeaders) ||
+            syncMode.HasFlag(SyncMode.FastBodies) ||
+            syncMode.HasFlag(SyncMode.FastReceipts) ||
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
             syncMode.HasFlag(SyncMode.SnapSync) ||

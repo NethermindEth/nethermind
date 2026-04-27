@@ -188,6 +188,33 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         }
     }
 
+    private bool IsValidAccessList(BlockInfo blockInfo, byte[] accessListRlp, out string? errorMessage)
+    {
+        BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+        if (header is null)
+        {
+            errorMessage = "missing header";
+            return false;
+        }
+
+        Hash256? expectedHash = header.BlockAccessListHash;
+        if (expectedHash is null)
+        {
+            errorMessage = "missing block access list hash";
+            return false;
+        }
+
+        Hash256 actualHash = new(ValueKeccak.Compute(accessListRlp).Bytes);
+        if (actualHash != expectedHash)
+        {
+            errorMessage = $"block access list hash mismatch, expected {expectedHash}, got {actualHash}";
+            return false;
+        }
+
+        errorMessage = null;
+        return true;
+    }
+
     private int InsertAccessLists(BlockAccessListsSyncBatch batch)
     {
         bool hasBreachedProtocol = false;
@@ -209,7 +236,9 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                     break;
                 }
 
-                if (!hasBreachedProtocol)
+                string? errorMessage = null;
+                bool isValid = !hasBreachedProtocol && IsValidAccessList(blockInfo, accessListRlp, out errorMessage);
+                if (isValid)
                 {
                     try
                     {
@@ -225,6 +254,20 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 }
                 else
                 {
+                    if (!hasBreachedProtocol)
+                    {
+                        hasBreachedProtocol = true;
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - {errorMessage}");
+
+                        if (batch.ResponseSourcePeer is not null)
+                        {
+                            _syncPeerPool.ReportBreachOfProtocol(
+                                batch.ResponseSourcePeer,
+                                DisconnectReason.InvalidTxOrUncle,
+                                $"invalid block access list: {errorMessage}");
+                        }
+                    }
+
                     _syncStatusList.MarkPending(blockInfo);
                 }
             }

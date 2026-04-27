@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
+using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V71;
@@ -73,6 +74,23 @@ public class BlockAccessListsMessageSerializerTests
         IByteBuffer payload = Unpooled.WrappedBuffer([0xcb, 0x89, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xc0]);
 
         Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+    }
+
+    [Test]
+    public void Rejects_too_many_block_access_lists()
+    {
+        BlockAccessListsMessageSerializer serializer = new();
+        ArrayPoolList<byte[]> bals = new(GethSyncLimits.MaxBodyFetch + 1);
+        for (int i = 0; i <= GethSyncLimits.MaxBodyFetch; i++)
+        {
+            bals.Add(BlockAccessListsMessage.EmptyBal);
+        }
+
+        using BlockAccessListsMessage msg = new(45, bals);
+        IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg, out _));
+        serializer.Serialize(payload, msg);
+
+        Assert.Throws<RlpLimitException>(() => serializer.Deserialize(payload));
     }
 }
 

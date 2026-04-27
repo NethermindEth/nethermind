@@ -29,6 +29,13 @@ public class SyncedTxGossipPolicyTests
     public bool can_gossip(SyncMode mode) =>
         ((ITxGossipPolicy)new SyncedTxGossipPolicy(new StaticSelector(mode))).ShouldListenToGossipedTransactions;
 
+    [TestCase(SyncMode.FastHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies, ExpectedResult = true)]
+    [TestCase(SyncMode.FastReceipts, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBlockAccessLists, ExpectedResult = false)]
+    public bool receipts_unsynced_ignores_block_access_lists_only_mode(SyncMode mode) =>
+        mode.HaveNotSyncedReceiptsYet();
+
     [Test]
     public void Composite_reflects_sync_mode_transitions()
     {
