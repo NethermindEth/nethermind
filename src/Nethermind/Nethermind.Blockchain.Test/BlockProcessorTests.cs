@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
@@ -11,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -23,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -33,8 +36,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -47,17 +48,24 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
+        ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
+            new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
+            stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            transactionsExecutor,
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
+            new ExecutionRequestsProcessor(transactionProcessor),
+            balManager);
+
         BranchProcessor branchProcessor = new(
             processor,
             HoodiSpecProvider.Instance,
@@ -208,77 +216,6 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [TestCaseSource(nameof(BlockValidationTransactionsExecutor_bal_validation_cases))]
-    public void BlockValidationTransactionsExecutor_validates_bal_only_when_validation_enabled(
-        ProcessingOptions processingOptions,
-        bool shouldValidateBlockAccessList)
-    {
-        TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
-        stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), 37_568);
-
-        ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
-        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(static callInfo =>
-        {
-            Transaction transaction = callInfo.Arg<Transaction>();
-            transaction.SpentGas = 63_586;
-            transaction.BlockGasUsed = 37_568;
-            return TransactionResult.Ok;
-        });
-
-        BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider);
-        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
-        BlockReceiptsTracer receiptsTracer = new();
-        receiptsTracer.StartNewBlockTrace(block);
-
-        txExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, CancellationToken.None);
-
-        if (shouldValidateBlockAccessList)
-        {
-            Assert.That(stateProvider.ValidatedGasRemaining, Is.EqualTo(new long[] { 37_568L, 0L }));
-        }
-        else
-        {
-            Assert.That(stateProvider.ValidatedGasRemaining, Is.Empty);
-        }
-    }
-
-    [TestCase(2_000, false)]
-    [TestCase(1_999, true)]
-    [MaxTime(Timeout.MaxTestTime)]
-    public void ParallelWorldState_bal_read_budget_uses_eip_7928_item_cost(long gasRemaining, bool shouldThrow)
-    {
-        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
-        BlockAccessList suggestedBlockAccessList = new();
-        suggestedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
-        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, gasRemaining);
-
-        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, gasRemaining);
-
-        if (shouldThrow)
-        {
-            Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
-        }
-        else
-        {
-            Assert.That(act, Throws.Nothing);
-        }
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void ParallelWorldState_bal_read_budget_ignores_reads_already_in_generated_bal()
-    {
-        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
-        BlockAccessList suggestedBlockAccessList = new();
-        suggestedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
-        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, -1);
-        stateProvider.GeneratedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
-
-        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, -1);
-
-        Assert.That(act, Throws.Nothing);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
@@ -319,14 +256,14 @@ public class BlockProcessorTests
 
         BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
-        IWorldState stateProvider = new WorldStateStab();
+        WorldStateStab stateProvider = new();
 
         using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider.GetUntrackedReader());
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), WorldStateStab.GetUntrackedReader());
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
@@ -347,31 +284,8 @@ public class BlockProcessorTests
         }
 
         public CacheType ClearCaches() => default;
+        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public void Dispose() { }
-    }
-
-    private sealed class TrackingBlockAccessListWorldState(IWorldState innerWorldState)
-        : WrappedWorldState(innerWorldState), IBlockAccessListBuilder
-    {
-        public bool TracingEnabled { get; set; }
-        public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
-        public List<long> ValidatedGasRemaining { get; } = [];
-
-        private long _gasUsed;
-
-        public void AddAccountRead(Address address)
-        {
-        }
-
-        public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed) => _gasUsed = gasUsed;
-
-        public long GasUsed()
-            => _gasUsed;
-
-        public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining)
-            => ValidatedGasRemaining.Add(gasRemaining);
-
-        public void SetBlockAccessList(Block block, IReleaseSpec spec) { }
     }
 
     public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()
@@ -380,5 +294,47 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_uses_block_gas_for_bal_validation_budget");
         yield return new TestCaseData(ProcessingOptions.NoValidation, false)
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
+    }
+
+    [TestCase(2000, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(long gasRemaining, bool shouldThrow)
+    {
+        // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        BlockAccessListManager balManager = new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+        // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(TestItem.AddressA);
+        suggestedBal.AddStorageRead(TestItem.AddressA, 1);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(gasRemaining)
+            .WithBlockAccessList(suggestedBal)
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+        // Generated BAL has the account but no storage reads
+        balManager.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressA);
+
+        if (shouldThrow)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => balManager.ValidateBlockAccessList(block, 0));
+        }
+        else
+        {
+            Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+        }
     }
 }
