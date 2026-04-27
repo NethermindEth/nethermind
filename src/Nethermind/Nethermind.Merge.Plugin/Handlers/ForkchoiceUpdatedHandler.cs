@@ -126,6 +126,8 @@ public class ForkchoiceUpdatedHandler(
 
             if (headBlockHeader is null)
             {
+                syncPeerPool.WakeUpAll();
+
                 if (_logger.IsDebug) _logger.Debug($"Attempting to fetch header from peer: {simpleRequestStr}.");
                 headBlockHeader = await syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash);
             }

@@ -250,12 +250,6 @@ public class InitializeNetwork : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
 
-        await _api.RlpxPeer.Init();
-
-        await _api.StaticNodesManager.InitAsync();
-
-        await _api.TrustedNodesManager.InitAsync();
-
         _api.ProtocolsManager = CreateProtocolManager();
 
         if (_syncConfig.SnapServingEnabled == true)
@@ -267,7 +261,6 @@ public class InitializeNetwork : IStep
             _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
         }
 
-
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
@@ -278,6 +271,14 @@ public class InitializeNetwork : IStep
         {
             await plugin.InitNetworkProtocol();
         }
+
+        // Capabilities must be finalized before the RLPx listener accepts peers. Otherwise
+        // early sessions can negotiate only the default ETH version and never upgrade.
+        await _api.RlpxPeer.Init();
+
+        await _api.StaticNodesManager.InitAsync();
+
+        await _api.TrustedNodesManager.InitAsync();
     }
 
     protected virtual IProtocolsManager CreateProtocolManager() => new ProtocolsManager(

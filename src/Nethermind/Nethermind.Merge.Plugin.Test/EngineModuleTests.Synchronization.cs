@@ -11,7 +11,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -24,7 +23,6 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -110,29 +108,36 @@ public partial class EngineModuleTests
             .WithPostMergeFlag(true)
             .TestObject;
         // sync has not started yet
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
 
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer
-            .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(1) { block.Header }));
-        SyncPeerAllocation alloc = new(new PeerInfo(syncPeer), AllocationContexts.All);
+        ISyncPeer peerWithoutHeader = Substitute.For<ISyncPeer>();
+        peerWithoutHeader
+            .GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<BlockHeader?>(null));
+
+        ISyncPeer peerWithHeader = Substitute.For<ISyncPeer>();
+        peerWithHeader
+            .GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<BlockHeader?>(block.Header));
+
         chain.SyncPeerPool
-            .Allocate(
-                Arg.Any<IPeerAllocationStrategy>(),
-                Arg.Any<AllocationContexts>(),
-                Arg.Any<int>(),
-                Arg.Any<CancellationToken>())
-            .Returns(alloc);
+            .InitializedPeers
+            .Returns(
+            [
+                new PeerInfo(peerWithoutHeader),
+                new PeerInfo(peerWithHeader),
+            ]);
 
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
+        chain.SyncPeerPool.Received(1).WakeUpAll();
+        await peerWithoutHeader.Received(1).GetHeadBlockHeader(block.Hash!, Arg.Any<CancellationToken>());
+        await peerWithHeader.Received(1).GetHeadBlockHeader(block.Hash!, Arg.Any<CancellationToken>());
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
     }
 
     [Test]
@@ -156,30 +161,24 @@ public partial class EngineModuleTests
             .WithPostMergeFlag(true)
             .TestObject;
         // sync has not started yet
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer
-            .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
             .Throws(new TimeoutException());
 
-        SyncPeerAllocation alloc = new(new PeerInfo(syncPeer), AllocationContexts.All);
         chain.SyncPeerPool
-            .Allocate(
-                Arg.Any<IPeerAllocationStrategy>(),
-                Arg.Any<AllocationContexts>(),
-                Arg.Any<int>(),
-                Arg.Any<CancellationToken>())
-            .Returns(alloc);
+            .InitializedPeers
+            .Returns([new PeerInfo(syncPeer)]);
 
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
     }
 
     [Test]

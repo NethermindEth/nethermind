@@ -110,7 +110,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                 break;
         }
 
-        // Pad remaining entries with empty BALs if we stopped early
+        // Pad remaining entries with the unavailable BAL marker if we stopped early.
         while (results.Count < hashes.Count)
         {
             results.Add(BlockAccessListsMessage.EmptyBal);

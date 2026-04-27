@@ -31,7 +31,9 @@ public class BlockAccessListsMessageSerializerTests
         BlockAccessListsMessageSerializer serializer = new();
         ArrayPoolList<byte[]> bals = new(1) { BlockAccessListsMessage.EmptyBal };
         using BlockAccessListsMessage msg = new(43, bals);
-        SerializerTester.TestZero(serializer, msg);
+
+        Assert.That(BlockAccessListsMessage.EmptyBal, Is.EqualTo(new[] { Rlp.EmptyByteArrayByte }));
+        SerializerTester.TestZero(serializer, msg, "c42bc28180");
     }
 
     [Test]
@@ -50,7 +52,7 @@ public class BlockAccessListsMessageSerializerTests
     public void Rejects_extra_outer_payload()
     {
         BlockAccessListsMessageSerializer serializer = new();
-        IByteBuffer payload = Unpooled.WrappedBuffer([0xc5, 0x01, 0xc2, 0x81, 0xc0, 0xc0]);
+        IByteBuffer payload = Unpooled.WrappedBuffer([0xc5, 0x01, 0xc2, 0x81, 0x80, 0xc0]);
 
         Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
     }

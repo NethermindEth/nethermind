@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -151,18 +152,49 @@ namespace Nethermind.Synchronization.Peers
                 using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
 
-                using IOwnedReadOnlyList<BlockHeader>? headers = await syncPeerPool.AllocateAndRun(
-                    peer => peer.GetBlockHeaders(hash, 1, 0, cancellationToken),
-                    BySpeedStrategy.FastestHeader,
-                    AllocationContexts.Headers,
-                    cts.Token);
+                PeerInfo[] peers = syncPeerPool.InitializedPeers.ToArray();
+                if (peers.Length == 0)
+                {
+                    return null;
+                }
 
-                return headers?.Count == 1 ? headers[0] : null;
+                List<Task<BlockHeader?>> requests = new(peers.Length);
+                foreach (PeerInfo peer in peers)
+                {
+                    requests.Add(FetchHeader(peer, hash, cts.Token));
+                }
+
+                while (requests.Count > 0)
+                {
+                    Task<BlockHeader?> completedRequest = await Task.WhenAny(requests);
+                    requests.Remove(completedRequest);
+
+                    BlockHeader? header = await completedRequest;
+                    if (header is not null)
+                    {
+                        await cts.CancelAsync();
+                        return header;
+                    }
+                }
+
+                return null;
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
             {
                 // Timeout or no peer.
                 return null;
+            }
+
+            static async Task<BlockHeader?> FetchHeader(PeerInfo peer, Hash256 headerHash, CancellationToken token)
+            {
+                try
+                {
+                    return await peer.SyncPeer.GetHeadBlockHeader(headerHash, token);
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+                {
+                    return null;
+                }
             }
         }
     }
