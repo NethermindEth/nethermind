@@ -90,14 +90,19 @@ public class XdcHeaderValidator(
             return false;
         }
 
-        if (_sealValidator is XdcSealValidator xdcSealValidator ?
-            !xdcSealValidator.ValidateParams(parent, header, out error) :
-            !_sealValidator.ValidateParams(parent, header, isUncle))
+        if (_sealValidator is XdcSealValidator xdcSealValidator)
         {
-            error = "Invalid consensus data in header.";
-            return false;
+            if (!xdcSealValidator.ValidateParams(parent, header, out error))
+                return false;
         }
-
+        else
+        {
+            if (!_sealValidator.ValidateParams(parent, header, isUncle))
+            {
+                error = "Invalid consensus data in header.";
+                return false;
+            }
+        }
         return true;
     }
 
