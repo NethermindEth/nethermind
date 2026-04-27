@@ -138,8 +138,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
+                    string wrapped = ErrorWrapper.EthCall(result.Error, tx.GasLimit);
                     int errorCode = result.InputError ? ErrorCodes.InvalidInput : ErrorCodes.ExecutionError;
-                    return ResultWrapper<string>.Fail(result.Error, errorCode);
+                    return ResultWrapper<string>.Fail(wrapped, errorCode);
                 }
 
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
@@ -180,7 +181,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, token);
 
-                return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent, result.ExecutionReverted, result.OutputData);
+                string? errorMessage = result.Error;
+                if (!result.ExecutionReverted && !result.InputError && errorMessage is not null)
+                {
+                    errorMessage = ErrorWrapper.EstimateGasBinarySearch(errorMessage, tx.GasLimit);
+                }
+
+                return CreateResultWrapper(result.InputError, errorMessage, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent, result.ExecutionReverted, result.OutputData);
             }
         }
 
@@ -197,9 +204,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     gasUsed: GetResultGas(tx, result, spec),
                     result.Error);
 
-                return result.InputError
-                    ? ResultWrapper<AccessListResultForRpc?>.Fail(result.Error!, ErrorCodes.InvalidInput)
-                    : ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
+                if (result.InputError)
+                {
+                    string wrapped = ErrorWrapper.CreateAccessList(result.Error!, tx.Hash!);
+                    return ResultWrapper<AccessListResultForRpc?>.Fail(wrapped, ErrorCodes.InvalidInput);
+                }
+                return ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
             }
 
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result, IReleaseSpec spec)
