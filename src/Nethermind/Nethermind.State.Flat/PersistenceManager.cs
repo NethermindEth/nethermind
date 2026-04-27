@@ -260,9 +260,22 @@ public class PersistenceManager(
             }
             else if (snapshotLevelToConvert.HasValue)
             {
-                using ArrayPoolList<StateId> snapshotIds = _snapshotRepository.GetStatesAtBlockNumber(snapshotLevelToConvert.Value);
+                long start = snapshotLevelToConvert.Value;
+                // Next compactSize-aligned boundary >= start
+                long end = ((start - 1) / _compactSize + 1) * _compactSize;
 
-                foreach (StateId state in snapshotIds)
+                using ArrayPoolList<StateId> allStateIds = new(64);
+                int boundaryStart = 0;
+                for (long b = start; b <= end; b++)
+                {
+                    if (b == end) boundaryStart = allStateIds.Count;
+                    using ArrayPoolList<StateId> statesAtBlock = _snapshotRepository.GetStatesAtBlockNumber(b);
+                    foreach (StateId state in statesAtBlock)
+                        allStateIds.Add(state);
+                }
+
+                // Parallel base conversion across the whole batch
+                Parallel.ForEach(allStateIds, state =>
                 {
                     if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
                     {
@@ -271,9 +284,13 @@ public class PersistenceManager(
                         _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
                         snapshot.Dispose();
                     }
+                });
 
-                    // Also convert compacted snapshot of size _compactSize as persistable
-                    if (_snapshotRepository.TryLeaseCompactedState(state, out Snapshot? compacted))
+                // Boundary-block compacted promotion (sequential; full-size compacted only exists at end)
+                for (int i = boundaryStart; i < allStateIds.Count; i++)
+                {
+                    StateId endState = allStateIds[i];
+                    if (_snapshotRepository.TryLeaseCompactedState(endState, out Snapshot? compacted))
                     {
                         if (compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize)
                         {
@@ -282,17 +299,18 @@ public class PersistenceManager(
                             _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw);
 
                             using PersistedSnapshotList existing = _persistedSnapshotRepository.AssembleSnapshotsForCompaction(compacted.To, compacted.From.BlockNumber);
-                            for (int i = 0; i < existing.Count; i++)
-                                existing[i].AdviseDontNeed();
+                            Parallel.For(0, existing.Count, j => existing[j].AdviseDontNeed());
                         }
                         compacted.Dispose();
                     }
-
-                    EnsureCompactorStarted();
-                    _compactPersistedJobs.Writer.WriteAsync(state).AsTask().Wait();
                 }
 
-                _snapshotRepository.RemoveStatesUntil(snapshotLevelToConvert.Value);
+                EnsureCompactorStarted();
+                // TODO: enqueue inner states
+                for (int i = boundaryStart; i < allStateIds.Count; i++)
+                    _compactPersistedJobs.Writer.WriteAsync(allStateIds[i]).AsTask().Wait();
+
+                _snapshotRepository.RemoveStatesUntil(end);
             }
             else if (persistedToPersist is not null)
             {
