@@ -161,10 +161,10 @@ public static class BaseFlatPersistence
             return true;
         }
 
-        public ValueHash256 CurrentKey => _currentKey;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+        public readonly ValueHash256 CurrentKey => _currentKey;
+        public readonly ReadOnlySpan<byte> CurrentValue => _currentValue;
 
-        public void Dispose() => view.Dispose();
+        public readonly void Dispose() => view.Dispose();
     }
 
     public struct StorageIterator(ISortedView view, byte[] addressSuffix) : IPersistence.IFlatIterator
@@ -192,10 +192,10 @@ public static class BaseFlatPersistence
             return false;
         }
 
-        public ValueHash256 CurrentKey => _currentKey;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+        public readonly ValueHash256 CurrentKey => _currentKey;
+        public readonly ReadOnlySpan<byte> CurrentValue => _currentValue;
 
-        public void Dispose() => view.Dispose();
+        public readonly void Dispose() => view.Dispose();
     }
 
     public struct WriteBatch(
@@ -207,7 +207,7 @@ public static class BaseFlatPersistence
     ) : BasePersistence.IHashedFlatWriteBatch
     {
         [SkipLocalsInit]
-        public void SelfDestruct(in ValueHash256 accountPath)
+        public readonly void SelfDestruct(in ValueHash256 accountPath)
         {
             Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
@@ -216,13 +216,13 @@ public static class BaseFlatPersistence
                 StoragePrefixPortion + StorageSlotKeySize, accountPath.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]);
         }
 
-        public void RemoveAccount(in ValueHash256 addrHash)
+        public readonly void RemoveAccount(in ValueHash256 addrHash)
         {
             ReadOnlySpan<byte> key = addrHash.Bytes[..AccountKeyLength];
             state.Remove(key);
         }
 
-        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
+        public readonly void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
 
@@ -237,14 +237,14 @@ public static class BaseFlatPersistence
             }
         }
 
-        public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)
+        public readonly void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)
         {
             ReadOnlySpan<byte> key = addrHash.Bytes[..AccountKeyLength];
             state.PutSpan(key, account, flags);
         }
 
         [SkipLocalsInit]
-        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        public readonly void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
         {
             Span<byte> firstKey = stackalloc byte[AccountKeyLength];
             Span<byte> lastKey = stackalloc byte[AccountKeyLength + 1]; // +1 for exclusive upper bound
@@ -255,7 +255,7 @@ public static class BaseFlatPersistence
         }
 
         [SkipLocalsInit]
-        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+        public readonly void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
         {
             Span<byte> firstKey = stackalloc byte[StorageKeyLength];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];

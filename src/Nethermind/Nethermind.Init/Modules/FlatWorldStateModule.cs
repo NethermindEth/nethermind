@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -17,11 +18,14 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
+using Nethermind.Api;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.SnapServer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.Synchronization.FastSync;
@@ -63,11 +67,27 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
+                ctx.Resolve<IPersistedSnapshotRepository>()))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
+            .AddSingleton<IArenaManager>((ctx) =>
+            {
+                string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
+                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"));
+            })
+            .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
+            {
+                string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
+                ArenaManager baseArena = new(Path.Combine(basePath, "arenas"));
+                IArenaManager compactedArena = ctx.Resolve<IArenaManager>();
+                PersistedSnapshotRepository repo = new(baseArena, compactedArena, basePath, ctx.Resolve<IFlatDbConfig>());
+                repo.LoadFromCatalog();
+                return repo;
+            })
+            .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()

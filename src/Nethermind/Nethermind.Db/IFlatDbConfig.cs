@@ -31,10 +31,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 
-    [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]
-    int MaxReorgDepth { get; set; }
+    [ConfigItem(Description = "Max in-memory reorg depth before converting to persisted snapshots", DefaultValue = "256")]
+    int MaxInMemoryReorgDepth { get; set; }
 
-    [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "2")]
+    [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "4")]
     int MinCompactSize { get; set; }
 
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
@@ -48,4 +48,19 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "false")]
+    bool EnableLongFinality { get; set; }
+
+    [ConfigItem(Description = "Total max reorg depth (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
+    int LongFinalityReorgDepth { get; set; }
+
+    [ConfigItem(Description = "Path for persisted snapshot arena files (relative to data dir)", DefaultValue = "snapshots")]
+    string PersistedSnapshotPath { get; set; }
+
+    [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "4294967296")]
+    long ArenaFileSizeBytes { get; set; }
+
+    [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer)", DefaultValue = "1024")]
+    int PersistedSnapshotMaxCompactSize { get; set; }
 }

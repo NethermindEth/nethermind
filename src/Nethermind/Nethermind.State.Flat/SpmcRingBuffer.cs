@@ -35,11 +35,11 @@ public sealed class SpmcRingBuffer<T>
     // --- head (consumers) + padding to avoid false sharing with _tail ---
     private long _head;
 #pragma warning disable CS0169 // Field is never used
-    private long _headPad1, _headPad2, _headPad3, _headPad4, _headPad5, _headPad6, _headPad7;
+    private readonly long _headPad1, _headPad2, _headPad3, _headPad4, _headPad5, _headPad6, _headPad7;
 
     // --- tail (producer) + padding ---
     private long _tail;
-    private long _tailPad1, _tailPad2, _tailPad3, _tailPad4, _tailPad5, _tailPad6, _tailPad7;
+    private readonly long _tailPad1, _tailPad2, _tailPad3, _tailPad4, _tailPad5, _tailPad6, _tailPad7;
 #pragma warning restore CS0169 // Field is never used
 
     public SpmcRingBuffer(int capacityPowerOfTwo)
