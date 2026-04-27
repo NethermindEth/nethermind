@@ -199,7 +199,7 @@ namespace Nethermind.AuRa.Test
             ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
                 new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
-                stateProvider, HoodiSpecProvider.Instance, balManager);
+                stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
             AuRaBlockProcessor processor = new(
                 GnosisSpecProvider.Instance,
                 new AuRaChainSpecEngineParameters(),

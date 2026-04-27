@@ -52,7 +52,7 @@ public class BlockProcessorTests
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
-            stateProvider, HoodiSpecProvider.Instance, balManager);
+            stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,

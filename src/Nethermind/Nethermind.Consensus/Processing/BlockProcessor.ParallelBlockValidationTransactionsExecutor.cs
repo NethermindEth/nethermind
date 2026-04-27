@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -10,6 +11,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -20,9 +22,12 @@ public partial class BlockProcessor
         IWorldState stateProvider,
         ISpecProvider specProvider,
         IBlockAccessListManager balManager,
+        ILogManager logManager,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : IBlockProcessor.IBlockTransactionsExecutor
     {
+        private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
+
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
             balManager.SetBlockExecutionContext(blockExecutionContext);
@@ -131,7 +136,21 @@ public partial class BlockProcessor
                 // Observe the background task before propagating, so its exception isn't lost
                 // as an unobserved task exception. The worker's TrySetCanceled above guarantees
                 // IncrementalValidation will unblock and complete.
-                try { incrementalValidationTask.GetAwaiter().GetResult(); } catch { /* swallowed; rethrow original below */ }
+                try
+                {
+                    incrementalValidationTask.GetAwaiter().GetResult();
+                }
+                catch (TaskCanceledException)
+                {
+                    // Expected: induced by our own TrySetCanceled in the worker catch.
+                }
+                catch (Exception ex)
+                {
+                    // Independent secondary fault (BAL validator, gas check, etc.). Surfacing
+                    // here because the original exception is what we rethrow — this branch is
+                    // the only place this fault is observable.
+                    if (_logger.IsError) _logger.Error("BAL incremental validation faulted while a parallel worker was already failing.", ex);
+                }
                 throw;
             }
 
