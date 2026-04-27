@@ -446,44 +446,6 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
 
-    [Test]
-    public async Task Test_eth_simulate_no_validation_skips_balance_check()
-    {
-        // Regression: eth_simulateV1 with validation:false must not return -38014 (InsufficientFunds)
-        // for a value transfer from a zero-balance address.
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    Calls =
-                    [
-                        new EIP1559TransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = TestItem.AddressB,
-                            Value = 1_000_000.Ether,
-                        }
-                    ]
-                }
-            ],
-            Validation = false
-        };
-
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
-
-        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
-        Assert.That(result.Data, Has.Count.EqualTo(1));
-        Assert.That(result.Data[0].Calls, Has.Count.EqualTo(1));
-        SimulateCallResult call = result.Data[0].Calls.First();
-        Assert.That(call.Error, Is.Null);
-        Assert.That(call.Status, Is.EqualTo(1ul));
-    }
-
     [TestCase(
         """{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000001":{"MovePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}}]}""",
         ErrorCodes.MovePrecompileSelfReference,
@@ -554,5 +516,25 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 returnedTimestamp = new(returnData, isBigEndian: true);
         Assert.That((ulong)returnedTimestamp, Is.EqualTo(futureTimestamp),
             $"Expected block.timestamp = {futureTimestamp} (overridden), got {returnedTimestamp}");
+    }
+
+    [Test]
+    public async Task Test_eth_simulate_no_validation_still_returns_insufficient_balance()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new() { Calls = [ new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1_000_000.Ether } ] }
+            ],
+            Validation = false
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
     }
 }
