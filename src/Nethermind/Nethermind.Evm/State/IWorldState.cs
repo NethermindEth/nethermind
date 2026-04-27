@@ -25,16 +25,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     IDisposable BeginScope(BlockHeader? baseBlock);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
-    new ref readonly UInt256 GetBalance(Address address);
-    new ref readonly ValueHash256 GetCodeHash(Address address);
-
-    /// <summary>
-    /// Gets a read-only view of this world state that avoids wrapper-specific tracking side effects.
-    /// This is intended for speculative reads that must observe the current mutable state without
-    /// contributing to generated block-level access lists.
-    /// </summary>
-    IReadOnlyStateProvider GetUntrackedReader() => this;
-
+    new UInt256 GetBalance(Address address);
+    new ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
@@ -106,6 +98,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
+    // used by Arbitrum
     void CreateEmptyAccountIfDeleted(Address address);
 
     /// <summary>
@@ -148,6 +141,10 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void ResetTransient();
 
+    public void AddAccountRead(Address address) { }
+
+    public IDisposable? BeginSystemAccountReadSuppression() => null;
+
     // See https://eips.ethereum.org/EIPS/eip-7610
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {
@@ -155,5 +152,4 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
         return accountExists
             && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
     }
-
 }

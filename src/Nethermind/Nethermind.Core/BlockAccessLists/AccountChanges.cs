@@ -8,6 +8,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -21,8 +23,11 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IList<SlotChanges> StorageChanges => _storageChanges.Values;
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public IList<UInt256> ChangedSlots => _storageChanges.Keys;
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IReadOnlyCollection<StorageRead> StorageReads => _storageReads;
+    public SortedSet<UInt256> StorageReads => _storageReads;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IList<BalanceChange> BalanceChanges => _balanceChanges.Values;
@@ -33,33 +38,40 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IList<CodeChange> CodeChanges => _codeChanges.Values;
 
+    [JsonIgnore]
+    public bool ExistedBeforeBlock { get; set; }
+
+    [JsonIgnore]
+    public bool EmptyBeforeBlock { get; set; }
+
+    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     private readonly SortedList<UInt256, SlotChanges> _storageChanges;
-    private readonly SortedSet<StorageRead> _storageReads;
-    private readonly SortedList<ushort, BalanceChange> _balanceChanges;
-    private readonly SortedList<ushort, NonceChange> _nonceChanges;
-    private readonly SortedList<ushort, CodeChange> _codeChanges;
+    private readonly SortedSet<UInt256> _storageReads;
+    private readonly SortedList<int, BalanceChange> _balanceChanges;
+    private readonly SortedList<int, NonceChange> _nonceChanges;
+    private readonly SortedList<int, CodeChange> _codeChanges;
 
     public AccountChanges()
     {
         Address = Address.Zero;
-        _storageChanges = [];
-        _storageReads = [];
-        _balanceChanges = [];
-        _nonceChanges = [];
-        _codeChanges = [];
+        _storageChanges = new(GenericComparer.GetOptimized<UInt256>());
+        _storageReads = new(GenericComparer.GetOptimized<UInt256>());
+        _balanceChanges = new(GenericComparer.GetOptimized<int>());
+        _nonceChanges = new(GenericComparer.GetOptimized<int>());
+        _codeChanges = new(GenericComparer.GetOptimized<int>());
     }
 
     public AccountChanges(Address address)
     {
         Address = address;
-        _storageChanges = [];
-        _storageReads = [];
-        _balanceChanges = [];
-        _nonceChanges = [];
-        _codeChanges = [];
+        _storageChanges = new(GenericComparer.GetOptimized<UInt256>());
+        _storageReads = new(GenericComparer.GetOptimized<UInt256>());
+        _balanceChanges = new(GenericComparer.GetOptimized<int>());
+        _nonceChanges = new(GenericComparer.GetOptimized<int>());
+        _codeChanges = new(GenericComparer.GetOptimized<int>());
     }
 
-    public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<ushort, BalanceChange> balanceChanges, SortedList<ushort, NonceChange> nonceChanges, SortedList<ushort, CodeChange> codeChanges)
+    public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
     {
         Address = address;
         _storageChanges = storageChanges;
@@ -89,6 +101,37 @@ public class AccountChanges : IEquatable<AccountChanges>
     public static bool operator !=(AccountChanges left, AccountChanges right) =>
         !(left == right);
 
+    public void Merge(AccountChanges other)
+    {
+        // Only merge reads for slots that don't already have changes in this BAL.
+        foreach (UInt256 read in other._storageReads)
+        {
+            if (!HasStorageChange(read))
+            {
+                _storageReads.Add(read);
+            }
+        }
+
+        foreach (KeyValuePair<UInt256, SlotChanges> kv in other._storageChanges)
+        {
+            if (_storageChanges.TryGetValue(kv.Key, out SlotChanges? existing))
+            {
+                existing.Merge(kv.Value);
+            }
+            else
+            {
+                _storageChanges.Add(kv.Key, kv.Value);
+                // When a new change is merged for a slot that previously only had a read,
+                // remove the now-redundant read. A change entry supersedes a read.
+                RemoveStorageRead(kv.Key);
+            }
+        }
+
+        _balanceChanges.AddRange(other._balanceChanges);
+        _nonceChanges.AddRange(other._nonceChanges);
+        _codeChanges.AddRange(other._codeChanges);
+    }
+
     // n.b. implies that length of changes is zero
     public bool HasStorageChange(UInt256 key)
         => _storageChanges.ContainsKey(key);
@@ -101,7 +144,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         if (TryGetSlotChanges(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
         {
             _storageChanges.Remove(key);
-            _storageReads.Add(new(key));
+            _storageReads.Add(key);
         }
     }
 
@@ -116,22 +159,32 @@ public class AccountChanges : IEquatable<AccountChanges>
         return existing;
     }
 
-    public IEnumerable<SlotChanges> SlotChangesAtIndex(ushort index)
+    public bool HasSlotChangesAtIndex(int index)
+    {
+        foreach (SlotChanges slotChanges in StorageChanges)
+        {
+            if (slotChanges.Changes.ContainsKey(index))
+                return true;
+        }
+        return false;
+    }
+
+    public IEnumerable<SlotChanges> SlotChangesAtIndex(int index)
     {
         foreach (SlotChanges slotChanges in StorageChanges)
         {
             if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
             {
-                yield return new(slotChanges.Slot, new SortedList<ushort, StorageChange>() { { index, storageChange } });
+                yield return new(slotChanges.Key, new SortedList<int, StorageChange>(GenericComparer.GetOptimized<int>()) { { index, storageChange } });
             }
         }
     }
 
     public void AddStorageRead(UInt256 key)
-        => _storageReads.Add(new(key));
+        => _storageReads.Add(key);
 
     public void RemoveStorageRead(UInt256 key)
-        => _storageReads.Remove(new(key));
+        => _storageReads.Remove(key);
 
     public void SelfDestruct()
     {
@@ -146,9 +199,9 @@ public class AccountChanges : IEquatable<AccountChanges>
     }
 
     public void AddBalanceChange(BalanceChange balanceChange)
-        => _balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
+        => _balanceChanges[balanceChange.Index] = balanceChange;
 
-    public bool PopBalanceChange(ushort index, [NotNullWhen(true)] out BalanceChange? balanceChange)
+    public bool PopBalanceChange(int index, [NotNullWhen(true)] out BalanceChange? balanceChange)
     {
         balanceChange = null;
         if (PopChange(_balanceChanges, index, out BalanceChange change))
@@ -163,9 +216,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         => _balanceChanges.TryGetValue(index, out BalanceChange balanceChange) ? balanceChange : null;
 
     public void AddNonceChange(NonceChange nonceChange)
-        => _nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
+        => _nonceChanges.Add(nonceChange.Index, nonceChange);
 
-    public bool PopNonceChange(ushort index, [NotNullWhen(true)] out NonceChange? nonceChange)
+    public bool PopNonceChange(int index, [NotNullWhen(true)] out NonceChange? nonceChange)
     {
         nonceChange = null;
         if (PopChange(_nonceChanges, index, out NonceChange change))
@@ -180,9 +233,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         => _nonceChanges.TryGetValue(index, out NonceChange nonceChange) ? nonceChange : null;
 
     public void AddCodeChange(CodeChange codeChange)
-        => _codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
+        => _codeChanges.Add(codeChange.Index, codeChange);
 
-    public bool PopCodeChange(ushort index, [NotNullWhen(true)] out CodeChange? codeChange)
+    public bool PopCodeChange(int index, [NotNullWhen(true)] out CodeChange? codeChange)
     {
         codeChange = null;
         if (PopChange(_codeChanges, index, out CodeChange change))
@@ -193,7 +246,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
-    public CodeChange? CodeChangeAtIndex(ushort index)
+    public CodeChange? CodeChangeAtIndex(int index)
         => _codeChanges.TryGetValue(index, out CodeChange codeChange) ? codeChange : null;
 
     public override string ToString()
@@ -213,19 +266,144 @@ public class AccountChanges : IEquatable<AccountChanges>
         return sb.ToString();
     }
 
-    private static bool PopChange<T>(SortedList<ushort, T> changes, ushort index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
+    public UInt256? GetNonce(int blockAccessIndex)
+    {
+        // todo: binary search
+        UInt256? lastNonce = null;
+        foreach (KeyValuePair<int, NonceChange> change in _nonceChanges)
+        {
+            if (change.Key >= blockAccessIndex)
+            {
+                return lastNonce;
+            }
+            lastNonce = change.Value.Value;
+        }
+        return lastNonce;
+    }
+
+    public UInt256? GetBalance(int blockAccessIndex)
+    {
+        UInt256? lastBalance = null;
+        foreach (KeyValuePair<int, BalanceChange> change in _balanceChanges)
+        {
+            if (change.Key >= blockAccessIndex)
+            {
+                return lastBalance;
+            }
+            lastBalance = change.Value.Value;
+        }
+        return lastBalance;
+    }
+
+    public byte[] GetCode(int blockAccessIndex)
+    {
+        GetCodeChange(blockAccessIndex, out CodeChange? codeChange);
+        return codeChange!.Value.Code;
+    }
+
+    public ValueHash256 GetCodeHash(int blockAccessIndex)
+    {
+        GetCodeChange(blockAccessIndex, out CodeChange? codeChange);
+        return codeChange!.Value.CodeHash;
+    }
+
+    public HashSet<UInt256> GetAllSlots(int blockAccessIndex)
+    {
+        HashSet<UInt256> slots = [];
+        foreach (SlotChanges slotChange in _storageChanges.Values)
+        {
+            UInt256 lastValue = 0;
+            foreach (StorageChange storageChange in slotChange.Changes.Values)
+            {
+                if (storageChange.Index > blockAccessIndex)
+                {
+                    if (lastValue != 0)
+                    {
+                        slots.Add(slotChange.Key);
+                    }
+                    break;
+                }
+                lastValue = storageChange.Value;
+            }
+        }
+        return slots;
+    }
+
+    // check if account exists at start of tx at index
+    public bool AccountExists(int blockAccessIndex)
+    {
+        if (ExistedBeforeBlock)
+        {
+            // cannot be destroyed if already exists
+            return true;
+        }
+
+        if (blockAccessIndex == 0)
+        {
+            return ExistedBeforeBlock;
+        }
+
+        foreach (KeyValuePair<int, NonceChange> change in _nonceChanges)
+        {
+            if (change.Key < blockAccessIndex)
+            {
+                return true;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        foreach (KeyValuePair<int, BalanceChange> change in _balanceChanges)
+        {
+            if (change.Key < blockAccessIndex)
+            {
+                return true;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
+
+    // assumes prestate not loaded
+    public void CheckWasChanged() => _wasChanged = _balanceChanges.Count > 0 || _nonceChanges.Count > 0 || _codeChanges.Count > 0 || _storageChanges.Count > 0;
+
+    [JsonIgnore]
+    public bool AccountChanged => _wasChanged;
+    private bool _wasChanged = false;
+
+    private void GetCodeChange(int blockAccessIndex, out CodeChange? codeChange)
+    {
+        codeChange = null;
+        foreach (KeyValuePair<int, CodeChange> change in _codeChanges)
+        {
+            if (change.Key >= blockAccessIndex)
+            {
+                return;
+            }
+            codeChange = change.Value;
+        }
+    }
+
+    private static bool PopChange<T>(SortedList<int, T> changes, int index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
     {
         change = default;
 
         if (changes.Count == 0)
             return false;
 
-        KeyValuePair<ushort, T> lastChange = changes.Last();
+        int c = changes.Count;
+        KeyValuePair<int, T> lastChange = new(changes.Keys[c - 1], changes.Values[c - 1]);
 
         if (lastChange.Key == index)
         {
-            changes.RemoveAt(changes.Count - 1);
             change = lastChange.Value;
+            changes.RemoveAt(c - 1);
             return true;
         }
 

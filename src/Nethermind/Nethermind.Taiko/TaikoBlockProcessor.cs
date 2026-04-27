@@ -42,6 +42,7 @@ public class TaikoBlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
+    IBlockAccessListManager balManager,
     ZkGasMeterHolder? zkGasMeterHolder = null)
     : BlockProcessor(
         specProvider,
@@ -54,7 +55,8 @@ public class TaikoBlockProcessor(
         blockHashStore,
         logManager,
         withdrawalProcessor,
-        executionRequestsProcessor)
+        executionRequestsProcessor,
+        balManager)
 {
     private readonly ZkGasMeterHolder? _zkGasMeterHolder = zkGasMeterHolder;
     private readonly ulong _blockZkGasLimit = ZkGasSchedule.ResolveBlockZkGasLimit(specProvider.ChainId);
