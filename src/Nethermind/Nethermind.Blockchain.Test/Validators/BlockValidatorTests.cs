@@ -249,6 +249,7 @@ public class BlockValidatorTests
             new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
             "BlockLevelAccessListNotEnabled")
         { TestName = "BlockLevelAccessListNotEnabled" };
+
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
@@ -264,7 +265,7 @@ public class BlockValidatorTests
 
     [TestCase(30_000, true)]
     [TestCase(29_999, false)]
-    public void ValidateSuggestedBlock_Enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
+    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
@@ -291,13 +292,13 @@ public class BlockValidatorTests
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
         }
     }
 
     [TestCase(30_000, true)]
     [TestCase(29_999, false)]
-    public void ValidateProcessedBlock_Enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(long gasLimit, bool expectedValid)
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(long gasLimit, bool expectedValid)
     {
         // Hive eels/consume-rlp feeds blocks via RLP, which leaves Block.BlockAccessList null
         // (BlockDecoder does not decode BAL). The pre-execution check in
@@ -339,7 +340,7 @@ public class BlockValidatorTests
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
         }
     }
 }
