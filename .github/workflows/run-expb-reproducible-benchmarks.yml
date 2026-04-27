@@ -1947,6 +1947,12 @@ jobs:
           echo "========================================="
           echo ""
 
+          # Populate GITHUB_OUTPUT for downstream quality gate
+          {
+            echo "exception_found=${exception_found}"
+            echo "invalid_block_found=${invalid_block_found}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Upload metrics artifact
         if: always()
         uses: actions/upload-artifact@v4
