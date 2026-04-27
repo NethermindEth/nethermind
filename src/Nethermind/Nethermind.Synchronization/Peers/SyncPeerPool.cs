@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization.Peers
             // values up to MaxAllocationSlots; anything higher is clamped at registration time.
             byte slots = (byte)Math.Clamp(allocationSlots, 1, MaxAllocationSlots);
             // Headers reliably hang when given a high allowance, so they remain pinned at 1
-            _allocationAllowances = new AllocationAllowances(headers: 1, bodies: slots, receipts: slots, state: slots, snap: slots, forwardHeader: 1);
+            _allocationAllowances = new AllocationAllowances(headers: 1, bodies: slots, receipts: slots, state: slots, snap: slots, forwardHeader: slots);
 
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}, AllocationSlots: {slots}");
         }
