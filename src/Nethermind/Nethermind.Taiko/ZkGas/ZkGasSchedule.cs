@@ -16,8 +16,42 @@ namespace Nethermind.Taiko.ZkGas;
 /// </summary>
 public static class ZkGasSchedule
 {
-    /// <summary>Maximum ZK gas permitted within a single Unzen block.</summary>
+    /// <summary>Chain id of the Taiko Alethia mainnet.</summary>
+    public const ulong TaikoMainnetChainId = 167_000;
+
+    /// <summary>Chain id of the Taiko devnet.</summary>
+    public const ulong TaikoDevnetChainId = 167_001;
+
+    /// <summary>Chain id of the Taiko Masaya testnet.</summary>
+    public const ulong TaikoMasayaChainId = 167_011;
+
+    /// <summary>Chain id of the Taiko Hoodi testnet.</summary>
+    public const ulong TaikoHoodiChainId = 167_013;
+
+    /// <summary>
+    /// Default Unzen block ZK gas limit applied to Devnet, Hoodi and Mainnet.
+    /// </summary>
     public const ulong BlockZkGasLimit = 100_000_000;
+
+    /// <summary>
+    /// Masaya-specific Unzen block ZK gas limit. Masaya runs with a larger ZK budget
+    /// (1B) so that load tests can drive the chain near its execution gas ceiling
+    /// without the prover budget becoming the binding constraint.
+    /// Mirrors <c>MASAYA_BLOCK_ZK_GAS_LIMIT</c> in alethia-reth's
+    /// <c>crates/evm/src/zk_gas/unzen.rs</c>.
+    /// </summary>
+    public const ulong MasayaBlockZkGasLimit = 1_000_000_000;
+
+    /// <summary>
+    /// Returns the Unzen block ZK gas limit for the given chain id. Masaya
+    /// (<see cref="TaikoMasayaChainId"/>) uses <see cref="MasayaBlockZkGasLimit"/>;
+    /// every other network uses <see cref="BlockZkGasLimit"/>. Opcode multipliers,
+    /// precompile multipliers and spawn estimates are identical across all networks.
+    /// </summary>
+    /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
+    /// <returns>The block ZK gas limit in ZK gas units.</returns>
+    public static ulong ResolveBlockZkGasLimit(ulong chainId) =>
+        chainId == TaikoMasayaChainId ? MasayaBlockZkGasLimit : BlockZkGasLimit;
 
     /// <summary>Fail-safe multiplier for any opcode or precompile not explicitly listed.</summary>
     public const ushort FailsafeMultiplier = ushort.MaxValue;

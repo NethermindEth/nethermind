@@ -10,13 +10,15 @@ namespace Nethermind.Taiko.ZkGas;
 /// <summary>
 /// Block-level tracer that wraps an inner <see cref="IBlockTracer"/> and adds
 /// ZK gas metering via <see cref="ZkGasTxTracer"/> for every transaction.
-/// A fresh <see cref="ZkGasMeter"/> is created for each block.
+/// A fresh <see cref="ZkGasMeter"/> is created for each block, sized according
+/// to the active network's Unzen block ZK gas limit.
 /// </summary>
-public sealed class ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null) : IBlockTracer
+public sealed class ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null, ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit) : IBlockTracer
 {
     private readonly IBlockTracer _inner = inner;
     private readonly ZkGasMeterHolder? _holder = holder;
-    private ZkGasMeter _meter = new();
+    private readonly ulong _blockZkGasLimit = blockZkGasLimit;
+    private ZkGasMeter _meter = new(blockZkGasLimit);
 
     /// <summary>The ZK gas meter for the current block.</summary>
     public ZkGasMeter Meter => _meter;
@@ -33,7 +35,7 @@ public sealed class ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holde
     /// </summary>
     public void StartNewBlockTrace(Block block)
     {
-        _meter = new ZkGasMeter();
+        _meter = new ZkGasMeter(_blockZkGasLimit);
         if (_holder is not null) _holder.Meter = _meter;
         _inner.StartNewBlockTrace(block);
     }

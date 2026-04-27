@@ -57,6 +57,7 @@ public class TaikoBlockProcessor(
         executionRequestsProcessor)
 {
     private readonly ZkGasMeterHolder? _zkGasMeterHolder = zkGasMeterHolder;
+    private readonly ulong _blockZkGasLimit = ZkGasSchedule.ResolveBlockZkGasLimit(specProvider.ChainId);
 
     /// <summary>
     /// Wraps the incoming block tracer with ZK gas metering, delegates to
@@ -71,7 +72,7 @@ public class TaikoBlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
-        ZkGasBlockTracer zkGasTracer = new(blockTracer, _zkGasMeterHolder);
+        ZkGasBlockTracer zkGasTracer = new(blockTracer, _zkGasMeterHolder, _blockZkGasLimit);
 
         TxReceipt[] receipts = base.ProcessBlock(block, zkGasTracer, options, spec, token);
 

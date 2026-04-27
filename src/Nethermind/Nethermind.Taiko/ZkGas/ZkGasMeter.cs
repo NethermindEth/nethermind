@@ -7,13 +7,28 @@ namespace Nethermind.Taiko.ZkGas;
 /// Checked ZK gas accounting for a single block execution.
 /// Tracks per-transaction and per-block ZK gas usage, enforcing the block limit.
 /// </summary>
-public class ZkGasMeter
+/// <remarks>
+/// Production code should resolve the limit via
+/// <see cref="ZkGasSchedule.ResolveBlockZkGasLimit(ulong)"/> using the chain id from the
+/// active spec provider so Masaya gets its larger budget while every other network keeps
+/// the canonical 100M cap. The default <see cref="ZkGasSchedule.BlockZkGasLimit"/> is used
+/// when the meter is constructed without an explicit limit (tests and network-agnostic
+/// call sites).
+/// </remarks>
+/// <param name="blockZkGasLimit">Maximum ZK gas permitted within a single block.</param>
+public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit)
 {
+    /// <summary>Per-block ZK gas ceiling captured at construction time.</summary>
+    private readonly ulong _blockZkGasLimit = blockZkGasLimit;
+
     /// <summary>Finalized ZK gas accumulated from fully committed transactions.</summary>
     private ulong _blockZkGasUsed;
 
     /// <summary>In-flight ZK gas accumulated for the currently executing transaction.</summary>
     private ulong _txZkGasUsed;
+
+    /// <summary>The block ZK gas ceiling enforced by this meter.</summary>
+    public ulong BlockZkGasLimit => _blockZkGasLimit;
 
     /// <summary>Whether the block ZK gas limit has been exceeded.</summary>
     public bool IsLimitExceeded { get; private set; }
@@ -44,7 +59,7 @@ public class ZkGasMeter
             return false;
         }
 
-        if (next > ZkGasSchedule.BlockZkGasLimit)
+        if (next > _blockZkGasLimit)
         {
             IsLimitExceeded = true;
             _txZkGasUsed = 0;
@@ -127,7 +142,7 @@ public class ZkGasMeter
 
         // Check projected block total
         ulong projectedBlock = _blockZkGasUsed + nextTx;
-        if (projectedBlock < _blockZkGasUsed || projectedBlock > ZkGasSchedule.BlockZkGasLimit)
+        if (projectedBlock < _blockZkGasUsed || projectedBlock > _blockZkGasLimit)
         {
             IsLimitExceeded = true;
             return false;
