@@ -70,7 +70,7 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestB
 /// real client actually executes. Telltale signal in the fixture is the legacy difficulty
 /// value <c>0x20000</c> baked into the post-merge mixHash field — real prevRandao is
 /// effectively random and would never be exactly <c>0x...020000</c>.
-/// Track upstream EELS fix; remove when bal@&gt;v5.7.0 ships with the SSTOREs included.
+/// Track upstream EELS fix; remove when a BAL fixture release ships with the SSTOREs included.
 /// </summary>
 internal static class LegacyStateTestFixtureGuard
 {
@@ -79,7 +79,7 @@ internal static class LegacyStateTestFixtureGuard
     public static void SkipIfBuggyEelsConversion(BlockchainTest test)
     {
         if (!HasLegacyDifficultySentinel(test)) return;
-        Assert.Ignore($"Skipped — EELS bal@v5.7.0 ported_static fixture for '{test.Name}' omits system pre-block SSTOREs from the BAL (legacy state-test conversion bug).");
+        Assert.Ignore($"Skipped — EELS ported_static fixture for '{test.Name}' omits system pre-block SSTOREs from the BAL (legacy state-test conversion bug).");
     }
 
     private static bool HasLegacyDifficultySentinel(BlockchainTest test)
