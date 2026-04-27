@@ -129,13 +129,10 @@ public class ForensicsProcessorTests
         Assert.That(highestCommittedQcs[2], Is.EqualTo(incomingQc));
     }
 
-    private static ForensicsProcessor BuildForensicsProcessor(IBlockTree blockTree)
-    {
-        return new ForensicsProcessor(
+    private static ForensicsProcessor BuildForensicsProcessor(IBlockTree blockTree) => new(
             blockTree,
             Substitute.For<IEpochSwitchManager>(),
             LimboLogs.Instance);
-    }
 
     private static QuorumCertificate BuildQc(string seed, ulong round, long number)
     {

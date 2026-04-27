@@ -78,11 +78,11 @@ public class XdcPool<T> where T : IXdcPoolItem
     // Forensics needs same-round votes across different pool keys to detect signer equivocation.
     public IReadOnlyCollection<T> GetItemsFromRoundExcludingKey(T item)
     {
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
             (ulong Round, Hash256 hash) targetKey = item.PoolKey();
             List<T> items = [];
-            foreach (KeyValuePair<(ulong Round, Hash256 Hash), ArrayPoolList<T>> pair in _items)
+            foreach (KeyValuePair<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pair in _items)
             {
                 (ulong Round, Hash256 Hash) key = pair.Key;
                 if (key.Round != targetKey.Round || key.Hash == targetKey.hash)
@@ -90,11 +90,7 @@ public class XdcPool<T> where T : IXdcPoolItem
                     continue;
                 }
 
-                ArrayPoolList<T> list = pair.Value;
-                for (int i = 0; i < list.Count; i++)
-                {
-                    items.Add(list[i]);
-                }
+                items.AddRange(pair.Value.Values);
             }
 
             return items;

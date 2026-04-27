@@ -573,8 +573,5 @@ public class ForensicsTests
         return ulong.Parse(value, CultureInfo.InvariantCulture);
     }
 
-    private static void RegisterRealForensicsProcessor(ContainerBuilder builder)
-    {
-        builder.RegisterType<ForensicsProcessor>().As<IForensicsProcessor>().SingleInstance();
-    }
+    private static void RegisterRealForensicsProcessor(ContainerBuilder builder) => builder.RegisterType<ForensicsProcessor>().As<IForensicsProcessor>().SingleInstance();
 }
