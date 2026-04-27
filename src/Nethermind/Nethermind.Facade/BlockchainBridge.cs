@@ -163,8 +163,7 @@ namespace Nethermind.Facade
                 Error = ConstructError(tryCallResult, callOutputTracer.Error),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted &&
-                             tryCallResult.Error is not TransactionResult.ErrorType.InsufficientSenderBalance,
+                InputError = !tryCallResult.TransactionExecuted,
                 ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
             };
         }

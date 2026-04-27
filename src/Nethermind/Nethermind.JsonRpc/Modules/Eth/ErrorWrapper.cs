@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// </summary>
 internal static class ErrorWrapper
 {
-    public static string EthCallIntrinsicGas(string inner, long gasLimit) =>
+    public static string EthCall(string inner, long gasLimit) =>
         $"err: {inner} (supplied gas {gasLimit})";
 
     public static string EstimateGasBinarySearch(string inner, long gas) =>

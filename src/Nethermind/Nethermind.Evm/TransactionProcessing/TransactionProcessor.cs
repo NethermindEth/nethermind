@@ -603,7 +603,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                string errorDetail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas} (supplied gas {tx.GasLimit})";
+                string errorDetail = $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}";
                 return TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, errorDetail);
             }
 
@@ -1111,11 +1111,6 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult Ok = new();
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
         public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "gas limit below intrinsic gas");
-        // Geth-aligned wording (core/error.go ErrInsufficientFunds / ErrInsufficientFundsForTransfer).
-        // Used by callers that don't have transaction context to format the address/have/want
-        // suffix (Optimism, SimulateBridgeHelper, BlockchainBridge fallbacks). The detailed variants
-        // emitted by InsufficientFundsFor*Result in this file produce the full
-        // "<base>: address %v have %v want %v" format matching core/state_transition.go.
         public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient funds for gas * price + value");
         public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient funds for transfer");
         public static readonly TransactionResult MalformedTransaction = new(ErrorType.MalformedTransaction, errorDescription: "malformed");
