@@ -30,7 +30,7 @@ public class XdcSubnetSealValidatorTests
         XdcSubnetSealValidator validator = CreateValidator(specProvider, calculator, CreateEpochSwitchManager(true));
         XdcSubnetBlockHeader parent = BuildParentHeader(899);
         XdcSubnetBlockHeader header = BuildSubnetHeader(parent, 900, 110,
-            b => b.WithValidators(candidates)            
+            b => b.WithValidators(candidates)
             .WithAuthor(candidates[0]));
 
         bool ok = validator.ValidateParams(parent, header, out string? error);
