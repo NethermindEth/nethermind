@@ -488,7 +488,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     public void AccountChanges_GetBalance_ReturnsPreBlockValue_WhenOnlyPreStateExists()
     {
         AccountChanges ac = new(TestItem.AddressA);
-        ac.AddBalanceChange(new BalanceChange(-1, 500));
+        ac.AddBalanceChange(new BalanceChange(Eip7928Constants.PrestateIndex, 500));
         UInt256? balance = ac.GetBalance(0);
         Assert.That(balance, Is.EqualTo((UInt256)500));
     }
@@ -497,7 +497,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     public void AccountChanges_GetNonce_ReturnsPreBlockValue_WhenOnlyPreStateExists()
     {
         AccountChanges ac = new(TestItem.AddressA);
-        ac.AddNonceChange(new NonceChange(-1, 3));
+        ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 3));
         UInt256? nonce = ac.GetNonce(0);
         Assert.That(nonce, Is.EqualTo((UInt256)3));
     }

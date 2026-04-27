@@ -57,13 +57,13 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, BalanceChange> balanceChangesList = ToSortedByIndex(balanceChanges, "Balance");
+        SortedList<uint, BalanceChange> balanceChangesList = ToSortedByIndex(balanceChanges, "Balance");
 
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, NonceChange> nonceChangesList = ToSortedByIndex(nonceChanges, "Nonce");
+        SortedList<uint, NonceChange> nonceChangesList = ToSortedByIndex(nonceChanges, "Nonce");
 
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, CodeChange> codeChangesList = ToSortedByIndex(codeChanges, "Code");
+        SortedList<uint, CodeChange> codeChangesList = ToSortedByIndex(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
@@ -104,14 +104,18 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         return Rlp.LengthOfSequence(length);
     }
 
-    private static SortedList<int, T> ToSortedByIndex<T>(T[] items, string changeName)
+    private static SortedList<uint, T> ToSortedByIndex<T>(T[] items, string changeName)
         where T : struct, IIndexedChange
     {
-        int? lastIndex = null;
-        SortedList<int, T> sorted = new(items.Length, GenericComparer.GetOptimized<int>());
+        uint? lastIndex = null;
+        // PrestateAwareIndexComparer keeps PrestateIndex sorted first if the suggested BAL
+        // later has prestate entries grafted in by LoadPreStateToSuggestedBlockAccessList.
+        // For wire-decoded entries (always real uint indices) it behaves identically to
+        // ascending uint compare, since real values never collide with the sentinel.
+        SortedList<uint, T> sorted = new(items.Length, PrestateAwareIndexComparer.Instance);
         foreach (T item in items)
         {
-            int index = item.Index;
+            uint index = item.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException($"{changeName} changes were in incorrect order.");
