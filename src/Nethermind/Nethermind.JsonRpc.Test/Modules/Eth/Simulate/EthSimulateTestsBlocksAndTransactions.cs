@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -18,6 +19,7 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
@@ -462,6 +464,67 @@ public class EthSimulateTestsBlocksAndTransactions
 
         result.ErrorCode.Should().Be(expectedErrorCode);
         result.Result.Error.Should().Be(expectedMessage);
+    }
+
+    // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
+    private static readonly byte[] PrevRandaoBytecode = [0x44, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xF3];
+
+    private static Task<TestRpcBlockchain> CreatePostMergeChain()
+    {
+        TestRpcBlockchain chain = new();
+        // MergeBlockNumber = 0 ensures simulated blocks have IsPostMerge = true,
+        // so PREVRANDAO reads header.MixHash rather than header.Difficulty.
+        TestSpecProvider specProvider = new(Cancun.Instance);
+        specProvider.UpdateMergeTransitionInfo(0);
+        return TestRpcBlockchain.ForTest(chain).Build(specProvider);
+    }
+
+    [TestCase("0xc300000000000000000000000000000000000000000000000000000000000001",
+        TestName = "prevrandao_with_nonzero_override_returns_overridden_value")]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000",
+        TestName = "prevrandao_with_zero_override_returns_zero")]
+    [TestCase(null,
+        TestName = "prevrandao_without_override_returns_zero")]
+    public async Task eth_simulateV1_prevrandao_opcode_returns_expected_value(string? overrideHex)
+    {
+        TestRpcBlockchain chain = await CreatePostMergeChain();
+        Hash256? overrideHash = overrideHex is not null ? new Hash256(overrideHex) : null;
+        Hash256 expected = overrideHash ?? Hash256.Zero;
+        Address contractAddress = TestItem.AddressC;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = overrideHash is not null ? new BlockOverride { PrevRandao = overrideHash } : null,
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contractAddress, new AccountOverride { Code = PrevRandaoBytecode } },
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractAddress,
+                            Gas = 100_000
+                        }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        result.Result.ResultType.Should().Be(Core.ResultType.Success);
+        SimulateCallResult callResult = result.Data.First().Calls.First();
+        callResult.Status.Should().Be((ulong)ResultType.Success);
+        callResult.ReturnData.Should().NotBeNull().And.HaveCount(32);
+        new Hash256(callResult.ReturnData!).Should().Be(expected);
     }
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
