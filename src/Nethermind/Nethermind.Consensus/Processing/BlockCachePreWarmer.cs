@@ -393,24 +393,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     static (i, state) =>
                     {
                         Transaction tx = state.Payload.Transactions[i];
-                        Address? sender = tx.SenderAddress;
-
-                        try
-                        {
-                            if (sender is not null)
-                            {
-                                state.Scope!.WorldState.WarmUp(sender);
-                            }
-
-                            Address to = tx.To;
-                            if (to is not null)
-                            {
-                                state.Scope!.WorldState.WarmUp(to);
-                            }
-                        }
-                        catch (MissingTrieNodeException)
-                        {
-                        }
+                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
 
                         return state;
                     },
@@ -480,6 +463,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         }
                     }
                     worldState.Get(new StorageCell(address, slot));
+                }
+            }
+            catch (MissingTrieNodeException)
+            {
+            }
+        }
+
+        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
+        {
+            try
+            {
+                if (sender is not null)
+                {
+                    worldState.WarmUp(sender);
+                }
+
+                if (to is not null)
+                {
+                    worldState.WarmUp(to);
                 }
             }
             catch (MissingTrieNodeException)
