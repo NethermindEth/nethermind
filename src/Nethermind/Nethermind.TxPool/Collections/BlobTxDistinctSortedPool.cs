@@ -210,17 +210,14 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                     }
 
                     availableMask = wrapper.GetAvailableCellMask() & requestedMask;
-                    if (availableMask.IsEmpty)
-                    {
-                        break;
-                    }
-
                     if (!TryGetFlattenedCellsForBlob(wrapper, blobIndex, requestedMask, out cells))
                     {
-                        break;
+                        cells = [];
                     }
 
-                    proofs = BlobCellsHelper.SelectProofs(wrapper, blobIndex, requestedMask);
+                    proofs = availableMask.IsEmpty
+                        ? []
+                        : BlobCellsHelper.SelectProofs(wrapper, blobIndex, requestedMask);
                     return true;
                 }
             }
@@ -248,9 +245,20 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             return true;
         }
 
+        if (cells.Length != wrapper.Commitments.Length * cellMask.Count)
+        {
+            return false;
+        }
+
         BlobCellMask mergedMask = wrapper.CellMask | cellMask;
         byte[][] mergedCells = BlobCellsHelper.MergeFlattenedCells(wrapper.Cells, wrapper.CellMask, cells, cellMask, wrapper.Commitments.Length);
-        blobTx.NetworkWrapper = wrapper with { CellMask = mergedMask, Cells = mergedCells };
+        ShardBlobNetworkWrapper mergedWrapper = wrapper with { CellMask = mergedMask, Cells = mergedCells };
+        if (!BlobCellsHelper.ValidateCells(mergedWrapper))
+        {
+            return false;
+        }
+
+        blobTx.NetworkWrapper = mergedWrapper;
         OnBlobTransactionUpdatedNonLocked(blobTx);
         return true;
     }
@@ -296,10 +304,10 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         }
 
         int cellsPerBlob = availableMask.Count;
-        cells = new byte[cellsPerBlob][];
 
         if (wrapper.HasFullBlobs())
         {
+            cells = new byte[cellsPerBlob][];
             using ArrayPoolSpan<byte> allCells = new(Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob);
             KzgPolynomialCommitments.ComputeCells(allCells, wrapper.Blobs[blobIndex]);
             int i = 0;
@@ -317,6 +325,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             return false;
         }
 
+        cells = new byte[cellsPerBlob][];
         int sourceCellsPerBlob = wrapper.CellMask.Count;
         int sourceOffset = blobIndex * sourceCellsPerBlob;
         int sourcePosition = 0;

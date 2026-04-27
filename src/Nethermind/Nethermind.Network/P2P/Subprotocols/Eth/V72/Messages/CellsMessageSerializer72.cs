@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using DotNetty.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -12,6 +13,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 public class CellsMessageSerializer72 : IZeroMessageSerializer<CellsMessage72>
 {
+    private const int MaxCellsPerTransaction = BlobCellMask.CellCount * Eip7594Constants.MaxBlobsPerTx;
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<CellsMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(CellsMessage72.Hashes));
 
     public CellsMessage72 Deserialize(IByteBuffer byteBuffer) =>
@@ -27,10 +29,26 @@ public class CellsMessageSerializer72 : IZeroMessageSerializer<CellsMessage72>
         List<byte[][]> cellsByTx = new(hashes.Count);
         while (ctx.Position < cellsEnd)
         {
-            cellsByTx.Add(ctx.DecodeByteArrays());
+            if (cellsByTx.Count >= hashes.Count)
+            {
+                throw new RlpLimitException($"Too many cell groups in {nameof(CellsMessage72)}: more than {hashes.Count}.");
+            }
+
+            byte[][] cells = ctx.DecodeByteArrays();
+            if (cells.Length > MaxCellsPerTransaction)
+            {
+                throw new RlpLimitException($"Too many cells in {nameof(CellsMessage72)} group: {cells.Length}, max {MaxCellsPerTransaction}.");
+            }
+
+            cellsByTx.Add(cells);
         }
 
         byte[] cellMask = ctx.DecodeByteArraySpan().ToArray();
+        if (cellsByTx.Count != hashes.Count)
+        {
+            throw new RlpException($"Wrong format of {nameof(CellsMessage72)} message. Hashes count: {hashes.Count} Cells count: {cellsByTx.Count}.");
+        }
+
         return new CellsMessage72(hashes.AsSpan().ToArray(), cellsByTx.ToArray(), cellMask);
     }
 

@@ -329,7 +329,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-            _txPool.SubmitTx(nonceGapTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            Assert.That(_txPool.SubmitTx(nonceGapTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
         [Test]
@@ -1301,9 +1301,9 @@ namespace Nethermind.TxPool.Test
             BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
             BlobCellMask additionalMask = BlobCellMask.FromIndices([7]);
             BlobCellMask requestedMask = initialMask | additionalMask;
-            BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells).Should().BeTrue();
-            BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells).Should().BeTrue();
-            BlobCellsHelper.TryGetFlattenedCells(fullWrapper, requestedMask, out byte[][] mergedCellsExpected).Should().BeTrue();
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, requestedMask, out byte[][] mergedCellsExpected), Is.True);
 
             byte[][] emptyBlobs = new byte[fullWrapper.Blobs.Length][];
             for (int i = 0; i < emptyBlobs.Length; i++)
@@ -1321,23 +1321,71 @@ namespace Nethermind.TxPool.Test
             };
 
             AcceptTxResult result = _txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None);
-            result.Should().Be(AcceptTxResult.Accepted, result.ToString());
-            _txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction storedSparseBlobTx).Should().BeTrue();
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), result.ToString());
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction storedSparseBlobTx), Is.True);
             ShardBlobNetworkWrapper storedWrapper = (ShardBlobNetworkWrapper)storedSparseBlobTx!.NetworkWrapper!;
-            storedWrapper.HasFullBlobs().Should().BeFalse();
-            storedWrapper.CellMask.Should().Be(initialMask);
-            storedWrapper.Cells.Should().BeEquivalentTo(initialCells);
+            Assert.That(storedWrapper.HasFullBlobs(), Is.False);
+            Assert.That(storedWrapper.CellMask, Is.EqualTo(initialMask));
+            Assert.That(storedWrapper.Cells, Is.EquivalentTo(initialCells));
 
-            _txPool.TryMergeBlobCells(sparseBlobTx.Hash!, additionalMask, additionalCells).Should().BeTrue();
-            _txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction mergedSparseBlobTx).Should().BeTrue();
+            Assert.That(_txPool.TryMergeBlobCells(sparseBlobTx.Hash!, additionalMask, additionalCells), Is.True);
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction mergedSparseBlobTx), Is.True);
 
             ShardBlobNetworkWrapper mergedWrapper = (ShardBlobNetworkWrapper)mergedSparseBlobTx!.NetworkWrapper!;
-            mergedWrapper.CellMask.Should().Be(requestedMask);
-            mergedWrapper.Cells.Should().BeEquivalentTo(mergedCellsExpected);
+            Assert.That(mergedWrapper.CellMask, Is.EqualTo(requestedMask));
+            Assert.That(mergedWrapper.Cells, Is.EquivalentTo(mergedCellsExpected));
 
-            _txPool.TryGetBlobCells(sparseBlobTx.Hash!, requestedMask, out BlobCellMask availableMask, out byte[][] mergedCells).Should().BeTrue();
-            availableMask.Should().Be(requestedMask);
-            mergedCells.Should().BeEquivalentTo(mergedCellsExpected);
+            Assert.That(_txPool.TryGetBlobCells(sparseBlobTx.Hash!, requestedMask, out BlobCellMask availableMask, out byte[][] mergedCells), Is.True);
+            Assert.That(availableMask, Is.EqualTo(requestedMask));
+            Assert.That(mergedCells, Is.EquivalentTo(mergedCellsExpected));
+        }
+
+        [Test]
+        public void should_reject_invalid_sparse_cells_merge()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask additionalMask = BlobCellMask.FromIndices([7]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] invalidCells), Is.True);
+
+            invalidCells[0] = (byte[])invalidCells[0].Clone();
+            invalidCells[0][0] ^= 0x01;
+
+            byte[][] emptyBlobs = new byte[fullWrapper.Blobs.Length][];
+            for (int i = 0; i < emptyBlobs.Length; i++)
+            {
+                emptyBlobs[i] = [];
+            }
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = emptyBlobs,
+                CellMask = initialMask,
+                Cells = initialCells,
+            };
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryMergeBlobCells(sparseBlobTx.Hash!, additionalMask, invalidCells), Is.False);
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction storedSparseBlobTx), Is.True);
+
+            ShardBlobNetworkWrapper storedWrapper = (ShardBlobNetworkWrapper)storedSparseBlobTx!.NetworkWrapper!;
+            Assert.That(storedWrapper.CellMask, Is.EqualTo(initialMask));
+            Assert.That(storedWrapper.Cells, Is.EquivalentTo(initialCells));
         }
     }
 }

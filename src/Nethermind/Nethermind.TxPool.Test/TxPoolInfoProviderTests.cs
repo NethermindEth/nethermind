@@ -76,10 +76,10 @@ namespace Nethermind.TxPool.Test
 
             TxPoolInfo info = _infoProvider.GetInfo();
 
-            info.Pending.Should().ContainKey(_address);
-            info.Pending[_address].Keys.Should().BeEquivalentTo(new[] { 1UL });
-            info.Queued.Should().ContainKey(_address);
-            info.Queued[_address].Keys.Should().BeEquivalentTo(new[] { 3UL });
+            Assert.That(info.Pending.ContainsKey(_address), Is.True);
+            Assert.That(info.Pending[_address].Keys, Is.EquivalentTo(new[] { 1UL }));
+            Assert.That(info.Queued.ContainsKey(_address), Is.True);
+            Assert.That(info.Queued[_address].Keys, Is.EquivalentTo(new[] { 3UL }));
         }
 
         private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce) => transactionNonce[nonce].Nonce.Should().Be(nonce);

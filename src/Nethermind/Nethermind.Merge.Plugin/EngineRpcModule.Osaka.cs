@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -14,7 +13,6 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV5Result?> _getPayloadHandlerV5 = getPayloadHandlerV5;
     private readonly IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> _getBlobsHandlerV2 = getBlobsHandlerV2;
-    private readonly IAsyncHandler<GetBlobsHandlerV4Request, IEnumerable<BlobCellsAndProofsV1>> _getBlobsHandlerV4 = getBlobsHandlerV4;
 
     public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV5(byte[] payloadId)
         => _getPayloadHandlerV5.HandleAsync(payloadId);
@@ -24,13 +22,4 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> engine_getBlobsV3(byte[][] blobVersionedHashes)
          => _getBlobsHandlerV2.HandleAsync(new(blobVersionedHashes, true));
-
-    public Task<ResultWrapper<IEnumerable<BlobCellsAndProofsV1>>> engine_getBlobsV4(byte[][] blobVersionedHashes, byte[] indicesBitarray)
-         => _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, BlobCellMask.FromBytes(indicesBitarray)));
-
-    public Task<ResultWrapper<object>> engine_blobCustodyUpdatedV1(byte[] indicesBitarray)
-    {
-        _blobCustodyTracker.Update(BlobCellMask.FromBytes(indicesBitarray));
-        return Task.FromResult(ResultWrapper<object>.Success(null!));
-    }
 }

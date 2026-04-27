@@ -17,16 +17,48 @@ public static class BlobCellsHelper
             return wrapper.Cells is null && wrapper.CellMask.IsEmpty;
         }
 
-        if (wrapper.Cells is null || wrapper.CellMask.IsEmpty)
+        if (wrapper.Cells is null)
         {
-            return true;
+            return wrapper.CellMask.IsEmpty;
+        }
+
+        if (wrapper.CellMask.IsEmpty)
+        {
+            return wrapper.Cells.Length == 0;
         }
 
         int blobCount = wrapper.Commitments.Length;
         int cellsPerBlob = wrapper.CellMask.Count;
-        if (cellsPerBlob == 0 || wrapper.Cells.Length != blobCount * cellsPerBlob)
+        if (cellsPerBlob == 0
+            || wrapper.Blobs.Length != blobCount
+            || wrapper.Proofs.Length != blobCount * Ckzg.CellsPerExtBlob
+            || wrapper.Cells.Length != blobCount * cellsPerBlob)
         {
             return false;
+        }
+
+        for (int i = 0; i < blobCount; i++)
+        {
+            if (wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < wrapper.Proofs.Length; i++)
+        {
+            if (wrapper.Proofs[i].Length != Ckzg.BytesPerProof)
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < wrapper.Cells.Length; i++)
+        {
+            if (wrapper.Cells[i].Length != Ckzg.BytesPerCell)
+            {
+                return false;
+            }
         }
 
         using ArrayPoolSpan<byte> flatCommitments = new(blobCount * cellsPerBlob * Ckzg.BytesPerCommitment);
@@ -71,10 +103,9 @@ public static class BlobCellsHelper
             return false;
         }
 
-        cells = new byte[blobCount * cellsPerBlob][];
-
         if (wrapper.HasFullBlobs())
         {
+            cells = new byte[blobCount * cellsPerBlob][];
             using ArrayPoolSpan<byte> allCells = new(Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob);
             for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
             {
@@ -92,9 +123,11 @@ public static class BlobCellsHelper
 
         if (wrapper.Cells is null)
         {
+            cells = [];
             return false;
         }
 
+        cells = new byte[blobCount * cellsPerBlob][];
         int sourceCellsPerBlob = wrapper.CellMask.Count;
         for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
         {

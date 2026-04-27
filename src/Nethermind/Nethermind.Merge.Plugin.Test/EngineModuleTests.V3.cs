@@ -371,7 +371,7 @@ public partial class EngineModuleTests
                 Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                 Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-                Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IEnumerable<BlobCellsAndProofsV1>>>(),
+                Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IEnumerable<BlobCellsAndProofsV1?>?>>(),
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
                 Substitute.For<IEngineRequestsTracker>(),

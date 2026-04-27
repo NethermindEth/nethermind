@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -16,16 +16,24 @@ namespace Nethermind.TxPool
         public TxPoolInfo GetInfo()
         {
             // BTW this class should be rewritten or removed - a lot of unnecessary allocations
-            Dictionary<AddressAsKey, Transaction[]> groupedTransactions = new(txPool.GetPendingTransactionsBySender());
+            Dictionary<AddressAsKey, Transaction[]> groupedTransactions = new();
+            foreach ((AddressAsKey sender, Transaction[] transactions) in txPool.GetPendingTransactionsBySender())
+            {
+                groupedTransactions[sender] = Copy(transactions);
+            }
+
             foreach ((AddressAsKey sender, Transaction[] blobTransactions) in txPool.GetPendingLightBlobTransactionsBySender())
             {
                 if (groupedTransactions.TryGetValue(sender, out Transaction[]? existing))
                 {
-                    groupedTransactions[sender] = existing.Concat(blobTransactions).ToArray();
+                    Transaction[] combined = new Transaction[existing.Length + blobTransactions.Length];
+                    Array.Copy(existing, combined, existing.Length);
+                    Array.Copy(blobTransactions, 0, combined, existing.Length, blobTransactions.Length);
+                    groupedTransactions[sender] = combined;
                 }
                 else
                 {
-                    groupedTransactions[sender] = blobTransactions;
+                    groupedTransactions[sender] = Copy(blobTransactions);
                 }
             }
 
@@ -38,7 +46,8 @@ namespace Nethermind.TxPool
                 UInt256 expectedNonce = accountNonce;
                 Dictionary<ulong, Transaction> pending = new();
                 Dictionary<ulong, Transaction> queued = new();
-                IOrderedEnumerable<Transaction> transactionsOrderedByNonce = group.Value.OrderBy(static t => t.Nonce);
+                Transaction[] transactionsOrderedByNonce = group.Value;
+                Array.Sort(transactionsOrderedByNonce, static (left, right) => left.Nonce.CompareTo(right.Nonce));
 
                 foreach (Transaction? transaction in transactionsOrderedByNonce)
                 {
@@ -66,6 +75,13 @@ namespace Nethermind.TxPool
             }
 
             return new TxPoolInfo(pendingTransactions, queuedTransactions);
+        }
+
+        private static Transaction[] Copy(Transaction[] transactions)
+        {
+            Transaction[] copy = new Transaction[transactions.Length];
+            Array.Copy(transactions, copy, transactions.Length);
+            return copy;
         }
     }
 }

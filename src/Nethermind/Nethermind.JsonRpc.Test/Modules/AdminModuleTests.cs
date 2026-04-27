@@ -681,7 +681,8 @@ public class AdminModuleTests
         // Assert
         PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(capabilities);
-        peerInfo.Protocols.Should().ContainKeys("eth", "snap");
+        Assert.That(peerInfo.Protocols.Keys, Does.Contain("eth"));
+        Assert.That(peerInfo.Protocols.Keys, Does.Contain("snap"));
     }
 
     [Test]
@@ -714,8 +715,8 @@ public class AdminModuleTests
         // Assert
         PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(new[] { new Capability("eth", 68) });
-        peerInfo.Protocols.Should().ContainKey("eth");
-        peerInfo.Protocols.Should().NotContainKey("snap");
+        Assert.That(peerInfo.Protocols.Keys, Does.Contain("eth"));
+        Assert.That(peerInfo.Protocols.Keys, Does.Not.Contain("snap"));
     }
 
     [Test]
@@ -733,8 +734,9 @@ public class AdminModuleTests
         // Assert
         PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(capabilities);
-        peerInfo.Protocols.Should().ContainKeys("eth", "snap");
-        GetProtocolVersion(peerInfo.Protocols["eth"]).Should().Be(68);
+        Assert.That(peerInfo.Protocols.Keys, Does.Contain("eth"));
+        Assert.That(peerInfo.Protocols.Keys, Does.Contain("snap"));
+        Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(68));
     }
 
     [Test]
@@ -751,8 +753,9 @@ public class AdminModuleTests
 
         // Assert
         PeerInfo peerInfo = result.Data[0];
-        peerInfo.Protocols.Should().ContainKeys("eth", "snap");
-        GetProtocolVersion(peerInfo.Protocols["eth"]).Should().Be(72);
+        Assert.That(peerInfo.Protocols.Keys, Does.Contain("eth"));
+        Assert.That(peerInfo.Protocols.Keys, Does.Contain("snap"));
+        Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(72));
     }
 
     [Test]
@@ -769,8 +772,8 @@ public class AdminModuleTests
         // Assert
         PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(new[] { new Capability("eth", 66) });
-        peerInfo.Protocols.Should().ContainKey("eth");
-        peerInfo.Protocols.Should().NotContainKey("snap"); // Old versions don't support snap
+        Assert.That(peerInfo.Protocols.Keys, Does.Contain("eth"));
+        Assert.That(peerInfo.Protocols.Keys, Does.Not.Contain("snap")); // Old versions don't support snap
     }
 
     [Test]

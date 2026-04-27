@@ -33,26 +33,24 @@ public readonly record struct BlobCellMask(UInt128 Value)
     public BlobCellMask Intersect(BlobCellMask other) => new(Value & other.Value);
     public BlobCellMask Union(BlobCellMask other) => new(Value | other.Value);
 
-    public IEnumerable<int> EnumerateSetBits()
-    {
-        UInt128 value = Value;
-        for (int i = 0; i < CellCount && value != UInt128.Zero; i++)
-        {
-            if ((value & UInt128.One) != 0)
-            {
-                yield return i;
-            }
-
-            value >>= 1;
-        }
-    }
+    public SetBitEnumerator EnumerateSetBits() => new(Value);
 
     public byte[] ToBytes()
     {
         byte[] bytes = new byte[FixedByteLength];
-        BinaryPrimitives.WriteUInt64BigEndian(bytes, (ulong)(Value >> 64));
-        BinaryPrimitives.WriteUInt64BigEndian(bytes.AsSpan(8), (ulong)Value);
+        WriteTo(bytes);
         return bytes;
+    }
+
+    public void WriteTo(Span<byte> destination)
+    {
+        if (destination.Length < FixedByteLength)
+        {
+            throw new ArgumentOutOfRangeException(nameof(destination), destination.Length, $"Blob cell mask destination must be at least {FixedByteLength} bytes.");
+        }
+
+        BinaryPrimitives.WriteUInt64BigEndian(destination, (ulong)(Value >> 64));
+        BinaryPrimitives.WriteUInt64BigEndian(destination[8..], (ulong)Value);
     }
 
     public static BlobCellMask FromBytes(ReadOnlySpan<byte> bytes)
@@ -87,4 +85,32 @@ public readonly record struct BlobCellMask(UInt128 Value)
 
     public static BlobCellMask operator &(BlobCellMask left, BlobCellMask right) => left.Intersect(right);
     public static BlobCellMask operator |(BlobCellMask left, BlobCellMask right) => left.Union(right);
+
+    public ref struct SetBitEnumerator(UInt128 value)
+    {
+        private UInt128 _value = value;
+        private int _index;
+
+        public int Current { get; private set; }
+
+        public readonly SetBitEnumerator GetEnumerator() => this;
+
+        public bool MoveNext()
+        {
+            while (_index < CellCount && _value != UInt128.Zero)
+            {
+                bool isSet = (_value & UInt128.One) != 0;
+                _value >>= 1;
+                if (isSet)
+                {
+                    Current = _index++;
+                    return true;
+                }
+
+                _index++;
+            }
+
+            return false;
+        }
+    }
 }

@@ -284,57 +284,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task GetBlobsV4_should_return_requested_cells_and_proofs([Values(1, 2, 3)] int numberOfBlobs)
-    {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
-        IEngineRpcModule rpcModule = chain.EngineRpcModule;
-
-        Transaction blobTx = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
-            .WithMaxFeePerGas(1.GWei)
-            .WithMaxPriorityFeePerGas(1.GWei)
-            .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-
-        BlobCellMask requestedMask = BlobCellMask.FromIndices([0, 5, 127]);
-        ResultWrapper<IEnumerable<BlobCellsAndProofsV1>> result = await rpcModule.engine_getBlobsV4(blobTx.BlobVersionedHashes!, requestedMask.ToBytes());
-
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] expectedCells).Should().BeTrue();
-
-        BlobCellsAndProofsV1[] blobsAndProofs = result.Data.ToArray();
-        int cellsPerBlob = requestedMask.Count;
-
-        result.Result.Should().Be(Result.Success);
-        blobsAndProofs.Should().HaveCount(numberOfBlobs);
-
-        for (int i = 0; i < numberOfBlobs; i++)
-        {
-            blobsAndProofs[i].BlobCells.Should().BeEquivalentTo(expectedCells.Skip(i * cellsPerBlob).Take(cellsPerBlob));
-            blobsAndProofs[i].Proofs.Should().BeEquivalentTo(BlobCellsHelper.SelectProofs(wrapper, i, requestedMask));
-        }
-    }
-
-    [Test]
-    public async Task BlobCustodyUpdatedV1_should_update_tracker()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
-        IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
-
-        BlobCellMask requestedMask = BlobCellMask.FromIndices([1, 4, 9]);
-        ResultWrapper<object> result = await rpcModule.engine_blobCustodyUpdatedV1(requestedMask.ToBytes());
-
-        result.Result.Should().Be(Result.Success);
-        blobCustodyTracker.CurrentMask.Should().Be(requestedMask);
-    }
-
-    [Test]
     public async Task GetBlobsV1_should_return_invalid_fork_post_osaka()
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
