@@ -36,6 +36,8 @@ public class PersistenceManager(
     private readonly int _maxInMemoryReorgDepth = configuration.MaxInMemoryReorgDepth;
     private readonly int _longFinalityReorgDepth = configuration.LongFinalityReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
+    private readonly int _minCompactSize = Math.Max(configuration.MinCompactSize, 2);
+    private readonly int _persistedSnapshotMaxCompactSize = configuration.PersistedSnapshotMaxCompactSize;
     private readonly IPersistence _persistence = persistence;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
@@ -44,7 +46,7 @@ public class PersistenceManager(
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
-    private readonly Channel<StateId> _compactPersistedJobs = Channel.CreateBounded<StateId>(16);
+    private readonly Channel<ArrayPoolList<StateId>> _compactPersistedJobs = Channel.CreateBounded<ArrayPoolList<StateId>>(16);
     private readonly CancellationTokenSource _cancelTokenSource = new();
     private Task? _compactPersistedTask;
 
@@ -60,19 +62,48 @@ public class PersistenceManager(
     {
         try
         {
-            await foreach (StateId stateId in _compactPersistedJobs.Reader.ReadAllAsync(cancellationToken))
+            await foreach (ArrayPoolList<StateId> batch in _compactPersistedJobs.Reader.ReadAllAsync(cancellationToken))
             {
                 try
                 {
-                    _persistedSnapshotCompactor.DoCompactSnapshot(stateId);
+                    ProcessCompactBatch(batch);
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Error compacting persisted snapshot. {ex}");
+                    _logger.Error($"Error compacting persisted snapshot batch. {ex}");
+                }
+                finally
+                {
+                    batch.Dispose();
                 }
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            while (_compactPersistedJobs.Reader.TryRead(out ArrayPoolList<StateId>? batch))
+                batch.Dispose();
+        }
+    }
+
+    private void ProcessCompactBatch(ArrayPoolList<StateId> batch)
+    {
+        if (batch.Count == 0) return;
+
+        // Group states by compact size, ascending
+        SortedDictionary<int, List<StateId>> buckets = new();
+        foreach (StateId s in batch)
+        {
+            long b = s.BlockNumber;
+            if (b == 0) continue;
+            int compactSize = (int)Math.Min(b & -b, _persistedSnapshotMaxCompactSize);
+            if (compactSize < _minCompactSize || compactSize == _compactSize) continue;
+            if (!buckets.TryGetValue(compactSize, out List<StateId>? bucket))
+                buckets[compactSize] = bucket = [];
+            bucket.Add(s);
+        }
+
+        foreach (List<StateId> bucket in buckets.Values)
+            Parallel.ForEach(bucket, state => _persistedSnapshotCompactor.DoCompactSnapshot(state));
     }
 
     public async ValueTask DisposeAsync()
@@ -264,7 +295,7 @@ public class PersistenceManager(
                 // Next compactSize-aligned boundary >= start
                 long end = ((start - 1) / _compactSize + 1) * _compactSize;
 
-                using ArrayPoolList<StateId> allStateIds = new(64);
+                ArrayPoolList<StateId> allStateIds = new(64);
                 int boundaryStart = 0;
                 for (long b = start; b <= end; b++)
                 {
@@ -297,18 +328,13 @@ public class PersistenceManager(
                             long sw = Stopwatch.GetTimestamp();
                             _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(compacted, isPersistable: true);
                             _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw);
-
-                            using PersistedSnapshotList existing = _persistedSnapshotRepository.AssembleSnapshotsForCompaction(compacted.To, compacted.From.BlockNumber);
-                            Parallel.For(0, existing.Count, j => existing[j].AdviseDontNeed());
                         }
                         compacted.Dispose();
                     }
                 }
 
                 EnsureCompactorStarted();
-                // TODO: enqueue inner states
-                for (int i = boundaryStart; i < allStateIds.Count; i++)
-                    _compactPersistedJobs.Writer.WriteAsync(allStateIds[i]).AsTask().Wait();
+                _compactPersistedJobs.Writer.WriteAsync(allStateIds).AsTask().Wait();
 
                 _snapshotRepository.RemoveStatesUntil(end);
             }
