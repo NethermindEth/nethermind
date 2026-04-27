@@ -86,14 +86,15 @@ namespace Nethermind.Synchronization.Peers
         {
             get
             {
+                // Loop-driven via the AllocationAllowances indexer so this stays in sync with _orderedContexts;
+                // the positional ctor is the one place that hard-codes the field-to-byte mapping.
                 ulong a = ReadSlots();
-                return new(
-                    (byte)(a >> (0 * SlotBits)),
-                    (byte)(a >> (1 * SlotBits)),
-                    (byte)(a >> (2 * SlotBits)),
-                    (byte)(a >> (3 * SlotBits)),
-                    (byte)(a >> (4 * SlotBits)),
-                    (byte)(a >> (5 * SlotBits)));
+                AllocationAllowances result = default;
+                for (int i = 0; i < SingleContextCount; i++)
+                {
+                    result[_orderedContexts[i]] = (byte)(a >> (i * SlotBits));
+                }
+                return result;
             }
         }
 
