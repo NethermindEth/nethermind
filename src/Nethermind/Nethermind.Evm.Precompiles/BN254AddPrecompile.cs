@@ -16,7 +16,7 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
     private const int InputLength = 128;
     private const int OutputLength = 64;
 
-    public static readonly BN254AddPrecompile Instance = new();
+    public static BN254AddPrecompile Instance { get; } = new();
 
     public static Address Address { get; } = Address.FromNumber(6);
 
@@ -27,6 +27,9 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 150L : 500L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+
+    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length > InputLength ? inputData[..InputLength] : inputData;
 
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)

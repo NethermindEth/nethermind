@@ -97,4 +97,11 @@ internal static partial class XdcExtensions
         stream.Position = ctx.Position;
         return signature;
     }
+
+    public static bool IsGapPlusOne(this XdcSubnetBlockHeader header, IXdcReleaseSpec spec)
+    {
+        if (header.Number == 1)
+            return true;
+        return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
+    }
 }

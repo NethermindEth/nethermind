@@ -49,7 +49,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         configProvider.AddSource(argsSource);
 
         configProvider.Initialize();
-        (_, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (_, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Is.Empty);
     }
@@ -70,7 +70,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(1));
         Assert.Multiple(() =>
@@ -96,7 +96,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(3));
         Assert.Multiple(() =>
@@ -121,7 +121,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(1));
         Assert.Multiple(() =>
@@ -145,7 +145,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         ConfigProvider? configProvider = new();
         configProvider.AddSource(envSource);
 
-        (bool isSet, object value) = envSource.GetValue(typeof(string), "BlocksConfig", "ExtraData");
+        (bool isSet, object? value) = envSource.GetValue(typeof(string), "BlocksConfig", "ExtraData");
 
         Assert.Multiple(() =>
         {
@@ -171,7 +171,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         Assert.DoesNotThrow(configProvider.Initialize);
 
-        (bool isSet, object value) = envSource.GetValue(typeof(bool), "BloomConfig", "Index");
+        (bool isSet, object? value) = envSource.GetValue(typeof(bool), "BloomConfig", "Index");
 
         Assert.Multiple(() =>
         {

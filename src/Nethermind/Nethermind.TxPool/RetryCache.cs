@@ -79,7 +79,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                                         }
                                         catch (Exception ex)
                                         {
-                                            if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
+                                            _logger.TraceError($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
                                         }
                                     }
                                 }
@@ -111,7 +111,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_expiringQueueCounter > _expiringQueueLimit)
         {
-            if (_logger.IsDebug) _logger.Warn($"{typeof(TResourceId)} retry queue is full");
+            _logger.DebugWarn($"{typeof(TResourceId)} retry queue is full");
 
             return AnnounceResult.RequestRequired;
         }

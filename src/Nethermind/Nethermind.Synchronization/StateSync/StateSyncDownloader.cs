@@ -77,7 +77,7 @@ namespace Nethermind.Synchronization.StateSync
             }
             catch (Exception e)
             {
-                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
+                Logger.TraceError("Error after dispatching the state sync request", e);
             }
             finally
             {
