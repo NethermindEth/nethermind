@@ -311,14 +311,15 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong Pack(AllocationAllowances a) =>
-            ((ulong)a.Headers << (0 * SlotBits))
-          | ((ulong)a.Bodies << (1 * SlotBits))
-          | ((ulong)a.Receipts << (2 * SlotBits))
-          | ((ulong)a.State << (3 * SlotBits))
-          | ((ulong)a.Snap << (4 * SlotBits))
-          | ((ulong)a.ForwardHeader << (5 * SlotBits));
+        // Drives byte-slot positions from _orderedContexts so Pack, BuildSlotDelta, and the byte readers in
+        // IsAllocated / IsAllocationFull / AvailableAllocationSlots all share one ordering source of truth.
+        private static ulong Pack(AllocationAllowances a)
+        {
+            ulong packed = 0;
+            for (int i = 0; i < SingleContextCount; i++)
+                packed |= ((ulong)a[_orderedContexts[i]]) << (i * SlotBits);
+            return packed;
+        }
 
         /// <summary>
         /// True if any byte-slot of <paramref name="value"/> is zero among the byte boundaries set in <paramref name="participating"/>.
