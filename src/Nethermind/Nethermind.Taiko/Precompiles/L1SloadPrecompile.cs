@@ -23,7 +23,6 @@ namespace Nethermind.Taiko.Precompiles;
 public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 {
     private const string L1StorageAccessFailed = "l1 storage access failed";
-    private static readonly byte[] InvalidLengthInput = [];
 
     public static L1SloadPrecompile Instance { get; } = new();
 
@@ -43,9 +42,6 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength ? 0L : L1PrecompileConstants.L1SloadPerLoadGasCost;
-
-    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
-        inputData.Length == L1PrecompileConstants.L1SloadExpectedInputLength ? inputData : InvalidLengthInput;
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {

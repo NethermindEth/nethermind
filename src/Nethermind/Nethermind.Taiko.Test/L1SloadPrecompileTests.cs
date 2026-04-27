@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Test;
 using Nethermind.Int256;
 using Nethermind.Taiko.Precompiles;
 using Nethermind.Taiko.TaikoSpec;
@@ -13,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Taiko.Test;
 
 [TestFixture]
-public class L1SloadPrecompileTests: PrecompileTests<L1SloadPrecompile, L1SloadPrecompileTests>
+public class L1SloadPrecompileTests
 {
     private L1SloadPrecompile _precompile = null!;
     private IReleaseSpec _spec = null!;
@@ -126,16 +125,6 @@ public class L1SloadPrecompileTests: PrecompileTests<L1SloadPrecompile, L1SloadP
         Assert.That(disabledSpec.IsPrecompile(precompileAddress), Is.False,
             "L1SloadPrecompile address should not be identified as precompile when RIP-7728 is disabled");
     }
-
-    [TestCase(
-        "000000000000000000000000000000000000007B000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000003E8",
-        "11",
-        TestName = "Valid input + 1 trailing byte")]
-    [TestCase(
-        "",
-        "0011",
-        TestName = "2-byte invalid input")]
-    public void NormalizedInput_SameOutput(string input, string trailing) => RunEffectiveInputTest(input, trailing);
 
     /// <summary>
     /// Input byte order matches spec: [address|storageKey|blockNumber].

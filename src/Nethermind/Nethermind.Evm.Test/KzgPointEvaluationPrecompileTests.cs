@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class KzgPointEvaluationPrecompileTests : PrecompileTests<KzgPointEvaluationPrecompile, KzgPointEvaluationPrecompileTests>
+public class KzgPointEvaluationPrecompileTests
 {
     private static readonly byte[] _predefinedSuccessAnswer =
         Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
@@ -63,21 +63,6 @@ public class KzgPointEvaluationPrecompileTests : PrecompileTests<KzgPointEvaluat
     }
 
     public static IEnumerable<TestCaseData> GasTests => InvalidTestCases.Union(ValidTestCases);
-
-    [TestCase(
-        "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c44401400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-        "11",
-        TestName = "Valid input + 1 trailing byte")]
-    [TestCase(
-        "",
-        "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-        TestName = "191-byte invalid input")]
-    [TestCase(
-        "",
-        "0011",
-        TestName = "2-byte invalid input")]
-    public void NormalizedInput_SameOutput(string input, string trailing) =>
-        RunEffectiveInputTest(input, trailing);
 
     private static byte[] CreateKzgTestInput(string versionedHash, string z, string y, string commitment, string proof)
     {

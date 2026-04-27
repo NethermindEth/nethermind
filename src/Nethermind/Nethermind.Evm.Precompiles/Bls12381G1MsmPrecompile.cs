@@ -13,7 +13,6 @@ namespace Nethermind.Evm.Precompiles;
 public partial class Bls12381G1MsmPrecompile : IPrecompile<Bls12381G1MsmPrecompile>
 {
     public const int ItemSize = 160;
-    private static readonly byte[] InvalidLengthInput = [];
 
     public static Bls12381G1MsmPrecompile Instance { get; } = new();
 
@@ -30,9 +29,6 @@ public partial class Bls12381G1MsmPrecompile : IPrecompile<Bls12381G1MsmPrecompi
         int k = inputData.Length / ItemSize;
         return 12000L * k * Eip2537.DiscountForG1(k) / 1000;
     }
-
-    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
-        inputData.Length != 0 && inputData.Length % ItemSize == 0 ? inputData : InvalidLengthInput;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

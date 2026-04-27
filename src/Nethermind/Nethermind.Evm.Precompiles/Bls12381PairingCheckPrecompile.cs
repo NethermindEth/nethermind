@@ -13,7 +13,6 @@ namespace Nethermind.Evm.Precompiles;
 public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381PairingCheckPrecompile>
 {
     private const int PairSize = 384;
-    private static readonly byte[] InvalidLengthInput = [];
 
     public static Bls12381PairingCheckPrecompile Instance { get; } = new();
 
@@ -26,9 +25,6 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
     public long BaseGasCost(IReleaseSpec _) => 37700L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 32600L * (inputData.Length / PairSize);
-
-    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
-        inputData.Length != 0 && inputData.Length % PairSize == 0 ? inputData : InvalidLengthInput;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 
