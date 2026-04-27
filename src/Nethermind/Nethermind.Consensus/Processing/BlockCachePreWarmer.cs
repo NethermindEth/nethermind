@@ -69,7 +69,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (_preBlockCaches is not null && (!_parallelExecutionEnabled || (_parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled)))
+        if (ShouldRunPreWarmerOrBatchRead(spec))
         {
             CacheType result = _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
@@ -110,6 +110,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     public void Dispose() => (_envPool as IDisposable)?.Dispose();
+
+    // run batch read process if enabled
+    // otherwise run prewarming, except if parallel execution is enabled
+    private bool ShouldRunPreWarmerOrBatchRead(IReleaseSpec spec)
+        => _preBlockCaches is not null && (!_parallelExecutionEnabled || (_parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled));
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
