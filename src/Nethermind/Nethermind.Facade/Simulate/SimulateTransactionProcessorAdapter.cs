@@ -26,7 +26,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         }
         transaction.Hash = transaction.CalculateHash();
 
-        TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
+        TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Simulate(transaction, txTracer);
 
         // Keep track of gas left
         long blockGasUsed = transaction.BlockGasUsed;

@@ -385,6 +385,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7976Enabled { get; }
 
         /// <summary>
+        /// Access List Token Floor Pricing
+        /// </summary>
+        bool IsEip7981Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

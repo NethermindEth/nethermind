@@ -35,5 +35,6 @@ public static class IntrinsicGasCalculator
         Calculate<EthereumGasPolicy>(transaction, releaseSpec);
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec) =>
-        IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec);
+        IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec,
+            IGasPolicy<EthereumGasPolicy>.CalculateFloorTokensInAccessList(transaction, releaseSpec));
 }
