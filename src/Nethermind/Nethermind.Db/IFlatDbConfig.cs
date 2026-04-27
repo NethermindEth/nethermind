@@ -63,4 +63,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer)", DefaultValue = "1024")]
     int PersistedSnapshotMaxCompactSize { get; set; }
+
+    [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]
+    bool ValidatePersistedSnapshot { get; set; }
 }

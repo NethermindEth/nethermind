@@ -25,6 +25,7 @@ public class PersistedSnapshotCompactor(
     private readonly int _compactSize = config.CompactSize;
     private readonly int _persistedSnapshotMaxCompactSize = config.PersistedSnapshotMaxCompactSize;
     private readonly int _minCompactSize = Math.Max(config.MinCompactSize, 2);
+    private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
 
     /// <summary>
     /// Try to compact persisted snapshots using logarithmic compaction.
@@ -105,14 +106,17 @@ public class PersistedSnapshotCompactor(
 
             (location, reservation) = arenaWriter.Complete();
 
-            PersistedSnapshot compacted = new(0, from, to, PersistedSnapshotType.Linked, reservation);
-            try
+            if (_validatePersistedSnapshot)
             {
-                PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, snapshots, true);
-            }
-            finally
-            {
-                compacted.Dispose();
+                PersistedSnapshot compacted = new(0, from, to, PersistedSnapshotType.Linked, reservation);
+                try
+                {
+                    PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, snapshots, true);
+                }
+                finally
+                {
+                    compacted.Dispose();
+                }
             }
         }
 

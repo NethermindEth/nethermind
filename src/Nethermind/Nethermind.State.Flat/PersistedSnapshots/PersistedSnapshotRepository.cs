@@ -20,6 +20,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     private readonly IArenaManager _compactedArenaManager = compactedArenaManager;
     private readonly SnapshotCatalog _catalog = new(Path.Combine(basePath, "catalog.bin"));
     private readonly int _compactSize = config.CompactSize;
+    private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _persistableCompactedSnapshots = new();
@@ -136,7 +137,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             _catalog.Save();
 
             PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, reservation);
-            PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+            if (_validatePersistedSnapshot)
+                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
             if (isPersistable)
                 _persistableCompactedSnapshots[snapshot.To] = persisted;
             else
