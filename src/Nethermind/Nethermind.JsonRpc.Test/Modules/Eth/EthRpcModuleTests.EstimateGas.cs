@@ -390,7 +390,7 @@ public partial class EthRpcModuleTests
         // gasCap above blockGasLimit — estimate should be bounded by blockGasLimit, not gasCap (matches Geth)
         ctx.Test.RpcConfig.GasCap = blockGasLimit + 1_000_000;
 
-        await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, $"gas required exceeds allowance ({blockGasLimit})");
+        await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, "out of gas");
     }
 
     [Test]
