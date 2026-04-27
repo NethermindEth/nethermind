@@ -17,8 +17,8 @@ namespace Nethermind.Evm.Precompiles
         /// Returns the normalized input version, that produces the same <see cref="Run"/> output.
         /// </summary>
         /// <remarks>
-        /// Used to minimize caching memory usage.
-        /// Should be much faster than executing <see cref="Run"/> itself.
+        /// Used to minimize caching memory usage by grouping same-result inputs under the same key.
+        /// Should be much faster than executing <see cref="Run"/> itself and not allocate.
         /// </remarks>
         ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => inputData;
 
