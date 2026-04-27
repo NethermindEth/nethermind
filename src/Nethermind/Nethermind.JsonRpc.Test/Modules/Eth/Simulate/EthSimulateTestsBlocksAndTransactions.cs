@@ -270,7 +270,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
+        Assert.That(result.Result!.Error, Is.EqualTo("Insufficient funds to pay for gas fees and value for a transaction"));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
     }
 
 
@@ -597,7 +598,98 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
+        Assert.That(result.Result!.Error, Is.EqualTo("Insufficient funds to pay for gas fees and value for a transaction"));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
+    }
+
+    /// <summary>
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11217
+    /// eth_simulateV1 should return -38014 with the spec-mandated message when sender has insufficient funds.
+    /// Tests validation=true path (thrown as InvalidTransactionException from block processor).
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_insufficient_funds_returns_spec_error_code_and_message()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // Override baseFee to 0 so TryCalculatePremiumPerGas passes; value far exceeds sender balance.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { BaseFeePerGas = UInt256.Zero },
+                    Calls =
+                    [
+                        new EIP1559TransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = 1_000_000.Ether,
+                            Gas = 21_000,
+                            MaxFeePerGas = UInt256.Zero,
+                            MaxPriorityFeePerGas = UInt256.Zero
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
+        Assert.That(result.Result!.Error, Is.EqualTo("Insufficient funds to pay for gas fees and value for a transaction"));
+    }
+
+    /// <summary>
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11215
+    /// eth_simulateV1 with validation:true and maxFeePerGas below block baseFee must return
+    /// code -38012 with message "Transactions baseFeePerGas is too low".
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_fee_cap_below_base_fee_returns_spec_error_code_and_message()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // baseFeePerGas = 100 gwei, maxFeePerGas = 1 gwei → fee cap is below base fee
+        UInt256 baseFee = 100.GWei;
+        UInt256 feeCap = 1.GWei;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { BaseFeePerGas = baseFee },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } }
+                    },
+                    Calls =
+                    [
+                        new EIP1559TransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            Gas = 21_000,
+                            MaxFeePerGas = feeCap,
+                            MaxPriorityFeePerGas = UInt256.Zero
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.FeeCapBelowBaseFee));
+        Assert.That(result.Result!.Error, Is.EqualTo("Transactions baseFeePerGas is too low"));
     }
 }

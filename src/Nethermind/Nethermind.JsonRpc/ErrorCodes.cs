@@ -123,6 +123,11 @@ namespace Nethermind.JsonRpc
         public const int Default = -32000;
 
         /// <summary>
+        /// Transaction maxFeePerGas is below the block base fee — eth_simulateV1 spec error
+        /// </summary>
+        public const int FeeCapBelowBaseFee = -38012;
+
+        /// <summary>
         /// Invalid intrinsic gas. Miner premium is negative
         /// </summary>
         public const int IntrinsicGas = -38013;
