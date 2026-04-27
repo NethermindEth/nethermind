@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
@@ -13,6 +14,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -22,6 +25,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -270,7 +274,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error, Is.EqualTo("Insufficient funds to pay for gas fees and value for a transaction"));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
     }
 
@@ -598,7 +602,7 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result!.Error, Is.EqualTo("Insufficient funds to pay for gas fees and value for a transaction"));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
     }
 
@@ -641,13 +645,13 @@ public class EthSimulateTestsBlocksAndTransactions
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
-        Assert.That(result.Result!.Error, Is.EqualTo("Insufficient funds to pay for gas fees and value for a transaction"));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
     }
 
     /// <summary>
     /// Regression test for https://github.com/NethermindEth/nethermind/issues/11215
     /// eth_simulateV1 with validation:true and maxFeePerGas below block baseFee must return
-    /// code -38012 with message "Transactions baseFeePerGas is too low".
+    /// code -38012 with message "max fee per gas less than block base fee".
     /// </summary>
     [Test]
     public async Task eth_simulateV1_fee_cap_below_base_fee_returns_spec_error_code_and_message()
@@ -690,6 +694,50 @@ public class EthSimulateTestsBlocksAndTransactions
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.FeeCapBelowBaseFee));
-        Assert.That(result.Result!.Error, Is.EqualTo("Transactions baseFeePerGas is too low"));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.FeeCapBelowBaseFee));
+    }
+
+    /// <summary>
+    /// Regression test for the <c>MinerPremiumNegative</c> arm in <see cref="SimulateTxExecutor{TTrace}"/>.
+    /// <c>OptimismTransactionProcessor</c> returns <see cref="TransactionResult.MinerPremiumNegative"/> instead of
+    /// <see cref="TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee"/>; both must map to the same
+    /// error code (<see cref="ErrorCodes.FeeCapBelowBaseFee"/>) and message.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_miner_premium_negative_maps_to_fee_cap_below_base_fee_code_and_message()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulateOutput<SimulateCallResult> stubbedOutput = new()
+        {
+            Error = TransactionResult.MinerPremiumNegative.ErrorDescription,
+            TransactionResult = TransactionResult.MinerPremiumNegative,
+            IsInvalidInput = false,
+            Items = []
+        };
+
+        IBlockchainBridge mockBridge = Substitute.For<IBlockchainBridge>();
+        mockBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        mockBridge.Simulate<SimulateCallResult>(
+            Arg.Any<BlockHeader>(),
+            Arg.Any<SimulatePayload<TransactionWithSourceDetails>>(),
+            Arg.Any<ISimulateBlockTracerFactory<SimulateCallResult>>(),
+            Arg.Any<long>(),
+            Arg.Any<CancellationToken>()).Returns(stubbedOutput);
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(
+            mockBridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = [new() { Calls = [] }],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.FeeCapBelowBaseFee));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.FeeCapBelowBaseFee));
     }
 }

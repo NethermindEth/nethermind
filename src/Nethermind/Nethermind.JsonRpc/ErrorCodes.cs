@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc
         public const int FeeCapBelowBaseFee = -38012;
 
         /// <summary>
-        /// Invalid intrinsic gas. Miner premium is negative
+        /// Transaction gas limit is below the intrinsic gas cost
         /// </summary>
         public const int IntrinsicGas = -38013;
 

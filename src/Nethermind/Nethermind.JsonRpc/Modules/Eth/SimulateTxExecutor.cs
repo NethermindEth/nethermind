@@ -276,10 +276,10 @@ public class SimulateTxExecutor<TTrace>(
         {
             TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
                 or TransactionResult.ErrorType.MinerPremiumNegative
-                => "Transactions baseFeePerGas is too low",
+                => SimulateErrorMessages.FeeCapBelowBaseFee,
             TransactionResult.ErrorType.InsufficientSenderBalance
                 or TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
-                => "Insufficient funds to pay for gas fees and value for a transaction",
+                => SimulateErrorMessages.InsufficientFunds,
             _ => null
         };
 
@@ -288,4 +288,22 @@ public class SimulateTxExecutor<TTrace>(
         EvmExceptionType.Revert => ErrorCodes.ExecutionReverted,
         _ => ErrorCodes.VMError
     };
+}
+
+/// <summary>
+/// Canonical eth_simulateV1 error message strings shared between the executor and tests.
+/// </summary>
+internal static class SimulateErrorMessages
+{
+    /// <summary>
+    /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
+    /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).
+    /// </summary>
+    public const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+
+    /// <summary>
+    /// Returned when the sender does not have enough balance to cover gas + value
+    /// (error code <see cref="ErrorCodes.InsufficientFunds"/>).
+    /// </summary>
+    public const string InsufficientFunds = "Insufficient funds to pay for gas fees and value for a transaction";
 }
