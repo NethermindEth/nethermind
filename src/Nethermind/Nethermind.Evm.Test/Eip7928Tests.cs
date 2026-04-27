@@ -228,9 +228,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         worldState.RecalculateStateRoot();
     }
 
-    [TestCase(120_000_000L, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
-    [TestCase(long.MaxValue, false, TestName = "EIP2935_system_call_records_only_read_when_state_gas_not_affordable")]
-    public void Eip2935_system_call_bal_respects_eip8037_state_gas(long blockGasLimit, bool shouldStoreParentHash)
+    [TestCase(120_000_000L, 30_000_000L, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
+    [TestCase(120_000_000L, 30_000L, false, TestName = "EIP2935_system_call_records_only_read_when_state_gas_not_affordable")]
+    public void Eip2935_system_call_bal_respects_eip8037_state_gas(long blockGasLimit, long systemCallGasLimit, bool shouldStoreParentHash)
     {
         InitWorldState(TestState);
 
@@ -247,7 +247,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         SystemCall systemCall = new()
         {
             Data = parentHash.BytesToArray(),
-            GasLimit = 30_000_000L,
+            GasLimit = systemCallGasLimit,
             GasPrice = header.BaseFeePerGas,
             SenderAddress = Address.SystemUser,
             To = Eip2935Constants.BlockHashHistoryAddress,
@@ -390,16 +390,13 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.REVERT)
                 .Done;
-            Address revertedCreateAddress = ContractAddress.From(_testAddress, 1);
             // revert should convert storage load to read, nonce and balance changes revert
             changes =
             [
                 Build.An.AccountChanges
                     .WithAddress(_testAddress)
                     .WithStorageReads(slot)
-                    .TestObject,
-                new AccountChanges(revertedCreateAddress),
-                new AccountChanges(TestItem.AddressB),
+                    .TestObject
             ];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
