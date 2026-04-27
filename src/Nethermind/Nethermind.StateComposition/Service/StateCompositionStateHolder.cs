@@ -19,11 +19,21 @@ internal sealed class StateCompositionStateHolder
     private readonly Lock _lock = new();
 
     private StateCompositionStats _currentStats;
-    private TrieDepthDistribution _currentDistribution;
+    // Initialize ImmutableArray fields to Empty so BuildReport() serializes before
+    // the first scan publishes a real distribution.
+    private TrieDepthDistribution _currentDistribution = new()
+    {
+        AccountTrieLevels = ImmutableArray<TrieLevelStat>.Empty,
+        StorageTrieLevels = ImmutableArray<TrieLevelStat>.Empty,
+        StorageMaxDepthHistogram = ImmutableArray<long>.Empty,
+        BranchOccupancyDistribution = ImmutableArray<long>.Empty,
+    };
     private ScanMetadata _lastScanMetadata;
     private bool _hasScanBaseline;
 
-    private CumulativeTrieStats _incrementalStats;
+    // Initialize SlotCountHistogram to Empty (not default) so BuildReport() can be
+    // serialized before the first scan completes. STJ throws on default(ImmutableArray<T>).
+    private CumulativeTrieStats _incrementalStats = new() { SlotCountHistogram = ImmutableArray<long>.Empty };
     private bool _hasIncrementalBaseline;
     private readonly CumulativeDepthStats _currentDepthStats = new();
     private long _incrementalBlock;
