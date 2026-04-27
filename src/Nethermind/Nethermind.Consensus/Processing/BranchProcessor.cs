@@ -200,7 +200,7 @@ public class BranchProcessor(
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        ShouldPreWarmOrBatchRead(suggestedBlock, spec)
+        ShouldSkipPreWarming(suggestedBlock, spec)
             ? null
             : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,
@@ -208,9 +208,10 @@ public class BranchProcessor(
                 token,
                 beaconBlockRootHandler);
 
-    // run batch read process if enabled
-    // otherwise run prewarming, except if parallel execution is enabled
-    private bool ShouldPreWarmOrBatchRead(Block suggestedBlock, IReleaseSpec spec)
+    // Skip prewarming for tiny blocks — overhead outweighs the benefit. Exception: when parallel
+    // BAL batch-read is enabled and the block carries a BAL, the prewarmer's batch-read path
+    // is still worthwhile and we keep it on regardless of tx count.
+    private bool ShouldSkipPreWarming(Block suggestedBlock, IReleaseSpec spec)
         => suggestedBlock.Transactions.Length < 3 && !(_parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled && suggestedBlock.BlockAccessList is not null);
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();

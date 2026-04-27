@@ -60,6 +60,12 @@ public class BlockAccessListManager(
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
+    // Cache key guarding LoadPreStateToSuggestedBlockAccessList against double-mutation of the
+    // suggested block's BAL: that method appends -1 (pre-state) entries in place, so calling it
+    // twice for the same Block instance corrupts the BAL. PrepareForProcessing can be invoked
+    // more than once per block within the same DI scope (the manager is scoped to the main
+    // processing context, not per block) — e.g. on retry — so we skip the load when the hash
+    // matches the most recently loaded one.
     private Hash256 _lastLoadedBal = Hash256.Zero;
 
     private void Reset()
@@ -85,7 +91,7 @@ public class BlockAccessListManager(
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
 
-            // check last loaded bal to avoid loading prestate again
+            // See _lastLoadedBal field comment — skip when the same block is re-prepared.
             if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
             {
                 _lastLoadedBal = suggestedBlock.Hash;
