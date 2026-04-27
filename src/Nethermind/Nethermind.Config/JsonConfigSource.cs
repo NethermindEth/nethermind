@@ -39,14 +39,14 @@ public class JsonConfigSource : IConfigSource
             StringBuilder missingConfigFileMessage = new($"Config file {configFilePath} does not exist.");
             try
             {
-                string directory = Path.GetDirectoryName(configFilePath);
+                string? directory = Path.GetDirectoryName(configFilePath);
                 directory = Path.IsPathRooted(configFilePath)
                     ? directory
-                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, directory);
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, directory!);
 
                 missingConfigFileMessage.AppendLine().AppendLine($"Search directory: {directory}");
 
-                string[] configFiles = Directory.GetFiles(directory, "*.json");
+                string[] configFiles = Directory.GetFiles(directory!, "*.json");
                 if (configFiles.Length > 0)
                 {
                     missingConfigFileMessage.AppendLine("Found the following config files:");
@@ -121,10 +121,10 @@ public class JsonConfigSource : IConfigSource
     private void ParseValue(Type type, string category, string name)
     {
         string valueString = _values[category][name];
-        _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name);
+        _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name)!;
     }
 
-    public (bool IsSet, object Value) GetValue(Type type, string category, string name)
+    public (bool IsSet, object? Value) GetValue(Type type, string category, string name)
     {
         (bool isSet, _) = GetRawValue(category, name);
         if (isSet)
@@ -140,7 +140,7 @@ public class JsonConfigSource : IConfigSource
         return (false, ConfigSourceHelper.GetDefault(type));
     }
 
-    public (bool IsSet, string Value) GetRawValue(string category, string name)
+    public (bool IsSet, string? Value) GetRawValue(string category, string name)
     {
         if (string.IsNullOrEmpty(category) || string.IsNullOrEmpty(name))
         {
@@ -151,5 +151,5 @@ public class JsonConfigSource : IConfigSource
         return (isSet, isSet ? _values[category][name] : null);
     }
 
-    public IEnumerable<(string Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
+    public IEnumerable<(string? Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => ((string?)m.Key, n)));
 }
