@@ -16,8 +16,8 @@ namespace Nethermind.Evm.Precompiles;
 public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 {
     private const int RequiredInputLength = 213;
-    private static readonly byte[] InvalidLengthInput = [];
-    private static readonly byte[] InvalidFlagInput = new byte[RequiredInputLength].WithValueAt(212, 0xFF);
+    private static readonly ReadOnlyMemory<byte> InvalidLengthInput = ReadOnlyMemory<byte>.Empty;
+    private static readonly ReadOnlyMemory<byte> InvalidFlagInput = new byte[RequiredInputLength].WithValueAt(212, 0xFF);
 
     public static Blake2FPrecompile Instance { get; } = new();
 
