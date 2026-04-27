@@ -42,7 +42,7 @@ public class FlatStateReader(
         using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
         if (reader is null)
         {
-            return Array.Empty<byte>();
+            return [];
         }
 
         return reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address)) ?? [];
@@ -56,12 +56,7 @@ public class FlatStateReader(
     {
         StateId stateId = new(baseBlock);
 
-        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
-        if (reader is null)
-        {
-            throw new InvalidOperationException($"State at {baseBlock} not found");
-        }
-
+        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId) ?? throw new InvalidOperationException($"State at {baseBlock} not found");
         ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
 
         PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);

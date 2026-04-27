@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -11,8 +12,10 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
@@ -24,33 +27,79 @@ public class PersistenceManager(
     IFinalizedStateProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
-    ILogManager logManager) : IPersistenceManager
+    ILogManager logManager,
+    IPersistedSnapshotCompactor persistedSnapshotCompactor,
+    IPersistedSnapshotRepository persistedSnapshotRepository) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
-    private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
+    private readonly int _maxInMemoryReorgDepth = configuration.MaxInMemoryReorgDepth;
+    private readonly int _longFinalityReorgDepth = configuration.LongFinalityReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
-    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = new(); // Presort make it faster
+    private readonly IPersistence _persistence = persistence;
+    private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
+    private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
+    private readonly IPersistedSnapshotCompactor _persistedSnapshotCompactor = persistedSnapshotCompactor;
+    private readonly IPersistedSnapshotRepository _persistedSnapshotRepository = persistedSnapshotRepository;
+    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
+
+    private readonly Channel<StateId> _compactPersistedJobs = Channel.CreateBounded<StateId>(16);
+    private readonly CancellationTokenSource _cancelTokenSource = new();
+    private Task? _compactPersistedTask;
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;
 
-    public IPersistence.IPersistenceReader LeaseReader() => persistence.CreateReader();
+    private Task EnsureCompactorStarted() =>
+        _compactPersistedTask ??= RunPersistedCompactor(_cancelTokenSource.Token);
+
+    private readonly Histogram _persistedSnapshotConvertTime =
+        Prometheus.Metrics.CreateHistogram("persisted_snapshot_convert_time", "persisted_snapshot_convert_time", "size");
+
+    private async Task RunPersistedCompactor(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (StateId stateId in _compactPersistedJobs.Reader.ReadAllAsync(cancellationToken))
+            {
+                try
+                {
+                    _persistedSnapshotCompactor.DoCompactSnapshot(stateId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error compacting persisted snapshot. {ex}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cancelTokenSource.Cancel();
+        _compactPersistedJobs.Writer.Complete();
+        if (_compactPersistedTask is not null)
+            await _compactPersistedTask;
+        _cancelTokenSource.Dispose();
+    }
+
+    public IPersistence.IPersistenceReader LeaseReader() => _persistence.CreateReader();
 
     public StateId GetCurrentPersistedStateId()
     {
         if (_currentPersistedStateId == StateId.PreGenesis)
         {
-            using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+            using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
             _currentPersistedStateId = reader.CurrentState;
         }
         return _currentPersistedStateId;
     }
 
-    private Snapshot? GetFinalizedSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
+    private (PersistedSnapshot? Persisted, Snapshot? InMemory) GetFinalizedSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
-        Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
-        using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
+        Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
+        using ArrayPoolList<StateId> states = _snapshotRepository.GetStatesAtBlockNumber(blockNumber);
         foreach (StateId stateId in states)
         {
             if (stateId.StateRoot != finalizedStateRoot) continue;
@@ -58,39 +107,54 @@ public class PersistenceManager(
             Snapshot? snapshot;
             if (compactedSnapshot)
             {
-                if (!snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
+                if (!_snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
             }
             else
             {
-                if (!snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
+                if (!_snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
             }
 
             if (snapshot.From == currentPersistedState)
             {
                 if (_logger.IsDebug) _logger.Debug($"Persisting compacted state {stateId}");
 
-                return snapshot;
+                return (null, snapshot);
             }
 
             snapshot.Dispose();
         }
 
-        return null;
+        // No in-memory snapshot found — try persisted snapshot at same block/root
+        if (finalizedStateRoot is not null)
+        {
+            StateId targetStateId = new(blockNumber, finalizedStateRoot);
+            bool found = compactedSnapshot
+                ? _persistedSnapshotRepository.TryLeasePersistableCompactedSnapshotTo(targetStateId, out PersistedSnapshot? persisted)
+                : _persistedSnapshotRepository.TryLeaseSnapshotTo(targetStateId, out persisted);
+            if (found)
+            {
+                if (persisted!.From == currentPersistedState)
+                    return (persisted, null);
+                persisted.Dispose();
+            }
+        }
+
+        return (null, null);
     }
 
     private Snapshot? GetFirstSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
-        using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
+        using ArrayPoolList<StateId> states = _snapshotRepository.GetStatesAtBlockNumber(blockNumber);
         foreach (StateId stateId in states)
         {
             Snapshot? snapshot;
             if (compactedSnapshot)
             {
-                if (!snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
+                if (!_snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
             }
             else
             {
-                if (!snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
+                if (!_snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
             }
 
             if (snapshot.From == currentPersistedState)
@@ -106,63 +170,149 @@ public class PersistenceManager(
         return null;
     }
 
-    internal Snapshot? DetermineSnapshotToPersist(StateId latestSnapshot)
+    internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, long? snapshotLevelToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
-        // Actually, the latest compacted snapshot, not the latest snapshot.
         long lastSnapshotNumber = latestSnapshot.BlockNumber;
 
-        StateId currentPersistedState = GetCurrentPersistedStateId();
-        long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
-        long inMemoryStateDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
-        if (inMemoryStateDepth - _compactSize < _minReorgDepth)
-        {
-            // Keep some state in memory
-            return null;
-        }
+        long? TryGetSnapshotLevelToConvert() => _snapshotRepository.GetEarliestSnapshotId()?.BlockNumber;
 
-        Snapshot? snapshotToPersist;
+        StateId currentPersistedState = GetCurrentPersistedStateId();
+        long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
+        long snapshotsDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
+        if (snapshotsDepth - _compactSize < _minReorgDepth)
+        {
+            long? earliestInMemory = TryGetSnapshotLevelToConvert();
+            if (earliestInMemory == null)
+            {
+                return (null, null, null);
+            }
+
+            long inMemoryDepth = lastSnapshotNumber - earliestInMemory.Value;
+            if (inMemoryDepth <= _maxInMemoryReorgDepth + _compactSize)
+            {
+                // No action needed
+                return (null, null, null);
+            }
+
+            return (null, null, TryGetSnapshotLevelToConvert());
+        }
 
         long afterPersistPersistedBlockNumber = currentPersistedState.BlockNumber + _compactSize;
         if (afterPersistPersistedBlockNumber > finalizedBlockNumber)
         {
-            if (inMemoryStateDepth <= _maxReorgDepth)
+            if (snapshotsDepth <= _maxInMemoryReorgDepth)
             {
-                // Unfinalized, and still under max reorg depth
-                return null;
+                // No action needed
+                return (null, null, null);
             }
 
-            if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Force persisting to conserve memory. finalized block number is {finalizedBlockNumber}.");
-            snapshotToPersist = GetFirstSnapshotAtBlockNumber(currentPersistedState.BlockNumber + _compactSize, currentPersistedState, true) ??
-                                GetFirstSnapshotAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, false);
-        }
-        else
-        {
-            snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + _compactSize, currentPersistedState, true) ??
-                                GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, false);
+            if (snapshotsDepth > _longFinalityReorgDepth)
+            {
+                // Need to force persisted snapshot
+                return (TryGetForcePersistedSnapshot(currentPersistedState, snapshotsDepth), null, null);
+            }
+
+            // Memory pressure with unfinalized state: convert to persisted snapshots instead of force-persisting to RocksDB
+            if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Converting to persisted snapshots. finalized block number is {finalizedBlockNumber}.");
+
+            return (null, null, TryGetSnapshotLevelToConvert());
         }
 
-        if (snapshotToPersist is null)
+        (PersistedSnapshot? persistedSnapshot, Snapshot? snapshotToPersist) =
+            GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + _compactSize, currentPersistedState, true);
+
+        bool compactedSnapshot = true;
+        if (snapshotToPersist is null && persistedSnapshot is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Unable to find snapshot to persist. Current persisted state {currentPersistedState}. Compact size {_compactSize}.");
+            compactedSnapshot = false;
+            (persistedSnapshot, snapshotToPersist) =
+                GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, false);
         }
 
-        return snapshotToPersist;
+        if (snapshotToPersist is not null)
+            return (null, snapshotToPersist, null);
+
+        if (persistedSnapshot is not null)
+        {
+            if (compactedSnapshot)
+            {
+                _logger.Warn($"Persisting persisted snapshot {persistedSnapshot.From} to {persistedSnapshot.To}, is compacted snapshot {compactedSnapshot}. {currentPersistedState}");
+            }
+            return (persistedSnapshot, null, null);
+        }
+
+        if (_logger.IsWarn) _logger.Warn($"Unable to find snapshot to persist. Current persisted state {currentPersistedState}. Compact size {_compactSize}.");
+        return (null, null, null);
     }
 
     public void AddToPersistence(StateId latestSnapshot)
     {
         using Lock.Scope scope = _persistenceLock.EnterScope();
-        // Attempt to add snapshots into bigcache
         while (true)
         {
-            Snapshot? snapshotToSave = DetermineSnapshotToPersist(latestSnapshot);
+            (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? snapshotLevelToConvert) = DetermineSnapshotAction(latestSnapshot);
 
-            if (snapshotToSave is null) return;
-            using Snapshot _ = snapshotToSave; // dispose
+            if (toPersist is not null)
+            {
+                using Snapshot _ = toPersist;
+                PersistSnapshot(toPersist);
+                _currentPersistedStateId = toPersist.To;
+            }
+            else if (snapshotLevelToConvert.HasValue)
+            {
+                using ArrayPoolList<StateId> snapshotIds = _snapshotRepository.GetStatesAtBlockNumber(snapshotLevelToConvert.Value);
 
-            // Add the canon snapshot
-            PersistSnapshot(snapshotToSave);
-            _currentPersistedStateId = snapshotToSave.To;
+                foreach (StateId state in snapshotIds)
+                {
+                    if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
+                    {
+                        long sw = Stopwatch.GetTimestamp();
+                        _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(snapshot);
+                        _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
+                        snapshot.Dispose();
+                    }
+
+                    // Also convert compacted snapshot of size _compactSize as persistable
+                    if (_snapshotRepository.TryLeaseCompactedState(state, out Snapshot? compacted))
+                    {
+                        if (compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize)
+                        {
+                            long sw = Stopwatch.GetTimestamp();
+                            _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(compacted, isPersistable: true);
+                            _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw);
+
+                            using PersistedSnapshotList existing = _persistedSnapshotRepository.AssembleSnapshotsForCompaction(compacted.To, compacted.From.BlockNumber);
+                            for (int i = 0; i < existing.Count; i++)
+                                existing[i].AdviseDontNeed();
+                        }
+                        compacted.Dispose();
+                    }
+
+                    EnsureCompactorStarted();
+                    _compactPersistedJobs.Writer.WriteAsync(state).AsTask().Wait();
+                }
+
+                _snapshotRepository.RemoveStatesUntil(snapshotLevelToConvert.Value);
+            }
+            else if (persistedToPersist is not null)
+            {
+                using PersistedSnapshot _ = persistedToPersist;
+                PersistPersistedSnapshot(persistedToPersist);
+                _currentPersistedStateId = persistedToPersist.To;
+                int pruned = _persistedSnapshotRepository.PruneBefore(persistedToPersist.To);
+                if (pruned > 0)
+                {
+                    Metrics.PersistedSnapshotPrunes += pruned;
+                    Metrics.PersistedSnapshotCount = _persistedSnapshotRepository.SnapshotCount;
+                    Metrics.PersistedSnapshotMemory = _persistedSnapshotRepository.BaseSnapshotMemory;
+                    Metrics.CompactedPersistedSnapshotMemory = _persistedSnapshotRepository.CompactedSnapshotMemory;
+                    if (_logger.IsDebug) _logger.Debug($"Pruned {pruned} persisted snapshots before block {persistedToPersist.To.BlockNumber}");
+                }
+            }
+            else
+            {
+                break;
+            }
         }
     }
 
@@ -175,7 +325,7 @@ public class PersistenceManager(
         using Lock.Scope scope = _persistenceLock.EnterScope();
 
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        StateId? latestStateId = snapshotRepository.GetLastSnapshotId();
+        StateId? latestStateId = _snapshotRepository.GetLastSnapshotId();
 
         if (latestStateId is null)
         {
@@ -186,15 +336,20 @@ public class PersistenceManager(
         while (currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
         {
             // Try finalized snapshots first (compacted, then non-compacted)
-            Snapshot? snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(
+            (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) = GetFinalizedSnapshotAtBlockNumber(
                 currentPersistedState.BlockNumber + _compactSize,
                 currentPersistedState,
                 compactedSnapshot: true);
+            persisted?.Dispose();
 
-            snapshotToPersist ??= GetFinalizedSnapshotAtBlockNumber(
-                currentPersistedState.BlockNumber + 1,
-                currentPersistedState,
-                compactedSnapshot: false);
+            if (snapshotToPersist is null)
+            {
+                (persisted, snapshotToPersist) = GetFinalizedSnapshotAtBlockNumber(
+                    currentPersistedState.BlockNumber + 1,
+                    currentPersistedState,
+                    compactedSnapshot: false);
+                persisted?.Dispose();
+            }
 
             // Fall back to the first available snapshot if finalized not available
             snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
@@ -223,7 +378,7 @@ public class PersistenceManager(
 
     public void ResetPersistedStateId()
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         _currentPersistedStateId = reader.CurrentState;
     }
 
@@ -235,7 +390,7 @@ public class PersistenceManager(
         if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
 
         long sw = Stopwatch.GetTimestamp();
-        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
             foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
@@ -268,7 +423,7 @@ public class PersistenceManager(
 
             long stateNodesSize = 0;
             // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer.Select(v => ((Hash256, TreePath))v))
             {
                 (_, TreePath path) = k;
 
@@ -296,7 +451,7 @@ public class PersistenceManager(
 
             long storageNodesSize = 0;
             // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer.Select(v => ((Hash256, TreePath))v))
             {
                 (Hash256 address, TreePath path) = k;
 
@@ -323,4 +478,52 @@ public class PersistenceManager(
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
+
+    private PersistedSnapshot? TryGetForcePersistedSnapshot(StateId currentPersistedState, long totalDepth)
+    {
+        if (totalDepth <= _longFinalityReorgDepth) return null;
+        PersistedSnapshot? oldest = _persistedSnapshotRepository.TryGetSnapshotFrom(currentPersistedState);
+        if (oldest is not null && _logger.IsWarn)
+            _logger.Warn($"Total reorg depth {totalDepth} exceeds LongFinalityReorgDepth {_longFinalityReorgDepth}. Force persisting persisted snapshot {oldest.From} -> {oldest.To}.");
+        return oldest;
+    }
+
+    internal void PersistPersistedSnapshot(PersistedSnapshot snapshot)
+    {
+        long sw = Stopwatch.GetTimestamp();
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
+        {
+            foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
+            {
+                if (kv.Value) continue;
+                batch.SelfDestruct(kv.Key);
+            }
+
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
+            {
+                batch.SetAccount(kv.Key, kv.Value);
+            }
+
+            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
+            {
+                ((Address addr, UInt256 slot), SlotValue? value) = kv;
+                batch.SetStorage(addr, slot, value);
+            }
+
+            foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
+            {
+                batch.SetStateTrieNode(kv.Key, kv.Value);
+            }
+
+            foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
+            {
+                ((Hash256AsKey address, TreePath path), TrieNode node) = kv;
+                batch.SetStorageTrieNode(address, path, node);
+            }
+        }
+
+        Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
+    }
+
 }

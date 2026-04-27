@@ -182,7 +182,7 @@ public static class BasePersistence
         where TWriteBatch : struct, IHashedFlatWriteBatch
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
-        private TWriteBatch _flatWriteBatch = flatWriteBatch;
+        private readonly TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
 
@@ -229,7 +229,7 @@ public static class BasePersistence
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
         private readonly int _accountSpanBufferSize = 256;
-        private TFlatReader _flatReader = flatReader;
+        private readonly TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
         {
@@ -280,8 +280,8 @@ public static class BasePersistence
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
-        private TTrieReader _trieReader = trieReader;
-        private TFlatReader _flatReader = flatReader;
+        private readonly TTrieReader _trieReader = trieReader;
+        private readonly TFlatReader _flatReader = flatReader;
 
         public StateId CurrentState { get; } = currentState;
 
@@ -322,8 +322,8 @@ public static class BasePersistence
         where TFlatWriteBatch : struct, IFlatWriteBatch
         where TTrieWriteBatch : struct, ITrieWriteBatch
     {
-        private TFlatWriteBatch _flatWriter = flatWriteBatch;
-        private TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
+        private readonly TFlatWriteBatch _flatWriter = flatWriteBatch;
+        private readonly TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
 
         public void Dispose() => disposer.Dispose();
 

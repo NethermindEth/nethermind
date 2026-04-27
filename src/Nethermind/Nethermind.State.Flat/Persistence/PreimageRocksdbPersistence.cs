@@ -127,7 +127,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
     ) : BasePersistence.IFlatWriteBatch
         where TWriteBatch : struct, BasePersistence.IHashedFlatWriteBatch
     {
-        private TWriteBatch _flatWriteBatch = flatWriteBatch;
+        private readonly TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr)
         {
@@ -181,7 +181,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         where TFlatReader : struct, BasePersistence.IHashedFlatReader
     {
         private const int AccountSpanBufferSize = 256;
-        private TFlatReader _flatReader = flatReader;
+        private readonly TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
         {
@@ -210,7 +210,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
-        public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
+        public readonly byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             throw new InvalidOperationException("Raw operation not available in preimage mode");
 
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>

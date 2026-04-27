@@ -27,7 +27,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
-    private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
+    private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates

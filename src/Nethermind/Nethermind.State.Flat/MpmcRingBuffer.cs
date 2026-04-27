@@ -33,11 +33,11 @@ public sealed class MpmcRingBuffer<T>
 #pragma warning disable CS0169 // Field is never used
     // --- head (consumers) + padding ---
     private long _head;
-    private long _p1, _p2, _p3, _p4, _p5, _p6, _p7;
+    private readonly long _p1, _p2, _p3, _p4, _p5, _p6, _p7;
 
     // --- tail (producers) + padding ---
     private long _tail;
-    private long _p8, _p9, _p10, _p11, _p12, _p13, _p14;
+    private readonly long _p8, _p9, _p10, _p11, _p12, _p13, _p14;
 #pragma warning restore CS0169 // Field is never used
 
     public MpmcRingBuffer(int capacityPowerOfTwo)
