@@ -377,7 +377,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                if (Bal is not null)
+                if (Bal is not null && Bal.AccountChanges.Count > 0)
                 {
                     WarmupFromBal(parallelOptions, envPool);
                 }
@@ -426,7 +426,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
         {
             using ArrayPoolList<AccountChanges> accounts = Bal!.AccountChanges.ToPooledList(Bal!.AccountChanges.Count);
-            if (accounts.Count == 0) return;
 
             WarmingState<ArrayPoolList<AccountChanges>> baseState = new(envPool, accounts, parent);
 
@@ -440,47 +439,52 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     AccountChanges ac = state.Payload[i];
                     IWorldState worldState = state.Scope!.WorldState;
 
-                    try
-                    {
-                        Address address = ac.Address;
-                        worldState.WarmUp(address);
-
-                        // Merge two sorted sequences (ChangedSlots, StorageReads) into one
-                        // ascending pass for better trie path locality
-                        IList<UInt256> changed = ac.ChangedSlots;
-                        int slotIndex = 0;
-                        using SortedSet<UInt256>.Enumerator readEnumerator = ac.StorageReads.GetEnumerator();
-                        bool hasRead = readEnumerator.MoveNext();
-
-                        while (slotIndex < changed.Count || hasRead)
-                        {
-                            UInt256 slot;
-                            if (!hasRead)
-                            {
-                                slot = changed[slotIndex++];
-                            }
-                            else
-                            {
-                                slot = readEnumerator.Current;
-                                if (slotIndex < changed.Count && changed[slotIndex].CompareTo(in slot) <= 0)
-                                {
-                                    slot = changed[slotIndex++];
-                                }
-                                else
-                                {
-                                    hasRead = readEnumerator.MoveNext();
-                                }
-                            }
-                            worldState.Get(new StorageCell(address, slot));
-                        }
-                    }
-                    catch (MissingTrieNodeException)
-                    {
-                    }
+                    WarmupBalAccount(ac, worldState);
 
                     return state;
                 },
                 WarmingState<ArrayPoolList<AccountChanges>>.FinallyAction);
+        }
+
+        private static void WarmupBalAccount(AccountChanges ac, IWorldState worldState)
+        {
+            try
+            {
+                Address address = ac.Address;
+                worldState.WarmUp(address);
+
+                // Merge two sorted sequences (ChangedSlots, StorageReads) into one
+                // ascending pass for better trie path locality
+                IList<UInt256> changed = ac.ChangedSlots;
+                int slotIndex = 0;
+                using SortedSet<UInt256>.Enumerator readEnumerator = ac.StorageReads.GetEnumerator();
+                bool hasRead = readEnumerator.MoveNext();
+
+                while (slotIndex < changed.Count || hasRead)
+                {
+                    UInt256 slot;
+                    if (!hasRead)
+                    {
+                        slot = changed[slotIndex++];
+                    }
+                    else
+                    {
+                        slot = readEnumerator.Current;
+                        if (slotIndex < changed.Count && changed[slotIndex].CompareTo(in slot) <= 0)
+                        {
+                            slot = changed[slotIndex++];
+                        }
+                        else
+                        {
+                            hasRead = readEnumerator.MoveNext();
+                        }
+                    }
+                    worldState.Get(new StorageCell(address, slot));
+                }
+            }
+            catch (MissingTrieNodeException)
+            {
+            }
         }
     }
 

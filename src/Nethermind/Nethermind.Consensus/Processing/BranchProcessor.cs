@@ -200,13 +200,18 @@ public class BranchProcessor(
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        suggestedBlock.Transactions.Length < 3 && !(_parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled && suggestedBlock.BlockAccessList is not null)
+        ShouldPreWarmOrBatchRead(suggestedBlock, spec)
             ? null
             : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,
                 spec,
                 token,
                 beaconBlockRootHandler);
+
+    // run batch read process if enabled
+    // otherwise run prewarming, except if parallel execution is enabled
+    private bool ShouldPreWarmOrBatchRead(Block suggestedBlock, IReleaseSpec spec)
+        => suggestedBlock.Transactions.Length < 3 && !(_parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled && suggestedBlock.BlockAccessList is not null);
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
