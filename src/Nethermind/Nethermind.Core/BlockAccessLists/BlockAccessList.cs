@@ -17,7 +17,7 @@ namespace Nethermind.Core.BlockAccessLists;
 public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
     [JsonIgnore]
-    public int Index = 0;
+    public uint Index = 0;
 
     /// storage keys across all accounts + addresses
     [JsonIgnore]
@@ -229,7 +229,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
         {
             // Push changes in reverse order so they restore in original order
-            foreach (KeyValuePair<int, StorageChange> change in slotChanges.Changes)
+            foreach (KeyValuePair<uint, StorageChange> change in slotChanges.Changes)
             {
                 _changes.Push(new()
                 {
@@ -362,7 +362,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     }
 
     // todo: optimize early validation
-    public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
+    public IEnumerable<ChangeAtIndex> GetChangesAtIndex(uint index)
     {
         foreach (AccountChanges accountChanges in AccountChanges)
         {
@@ -564,7 +564,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public UInt256? PreTxBalance { get; init; }
         public UInt256? PreTxStorage { get; init; }
         public byte[]? PreTxCode { get; init; }
-        public int BlockAccessIndex { get; init; }
+        public uint BlockAccessIndex { get; init; }
     }
 }
 

@@ -27,12 +27,12 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void Setup(Block block) { }
     public void SpendGas(long gas) { }
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
-    public ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null) => throw new InvalidOperationException("NullBlockAccessListManager does not provide transaction processors.");
+    public ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null) => throw new InvalidOperationException("NullBlockAccessListManager does not provide transaction processors.");
     public void NextTransaction() { }
     public void Rollback() { }
     public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token) { }
     public void SetBlockAccessList(Block block) { }
-    public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true) { }
+    public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true) { }
     public void StoreBeaconRoot(Block block, IReleaseSpec spec) { }
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }
     public void ProcessWithdrawals(Block block, IReleaseSpec spec) { }

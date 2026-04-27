@@ -11,7 +11,7 @@ public class NonceChangeDecoder : IndexedChangeDecoder<NonceChange>
     public static NonceChangeDecoder Instance => _instance ??= new();
 
     protected override NonceChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
-        => new(ctx.DecodeUShort(), ctx.DecodeULong());
+        => new(ctx.DecodeUInt(), ctx.DecodeULong());
 
     protected override void EncodeValue(RlpStream stream, NonceChange item)
         => stream.Encode(item.Value);

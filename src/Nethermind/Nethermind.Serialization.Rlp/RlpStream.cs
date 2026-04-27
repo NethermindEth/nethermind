@@ -385,6 +385,8 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(int value) => Encode((ulong)(long)value);
 
+        public void Encode(uint value) => Encode((ulong)value);
+
         public void Encode(long value) => Encode((ulong)value);
 
         [SkipLocalsInit]
