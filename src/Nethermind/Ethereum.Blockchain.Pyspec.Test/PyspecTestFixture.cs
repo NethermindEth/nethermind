@@ -86,7 +86,7 @@ internal static class LegacyStateTestFixtureGuard
         if (test.Blocks is null) return false;
         foreach (TestBlockJson block in test.Blocks)
         {
-            string? mixHash = block.BlockHeader?.MixHash;
+            string mixHash = block.BlockHeader?.MixHash;
             if (mixHash is null) continue;
             // Match `0x` + 64 hex chars ending with the legacy difficulty value 0x20000.
             string hex = mixHash.StartsWith("0x", StringComparison.Ordinal) ? mixHash[2..] : mixHash;
