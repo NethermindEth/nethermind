@@ -16,35 +16,31 @@ namespace Nethermind.Consensus.Processing;
 public partial class BlockProcessor
 {
     public class ParallelBlockValidationTransactionsExecutor(
-        ITransactionProcessorAdapter transactionProcessor,
+        IBlockProcessor.IBlockTransactionsExecutor inner,
         IWorldState stateProvider,
         ISpecProvider specProvider,
         IBlockAccessListManager balManager,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
-        : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, transactionProcessedEventHandler)
+        : IBlockProcessor.IBlockTransactionsExecutor
     {
-        private TxReceipt[] _txReceipts;
-
-        public override void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
             balManager.SetBlockExecutionContext(blockExecutionContext);
-            base.SetBlockExecutionContext(blockExecutionContext);
+            inner.SetBlockExecutionContext(blockExecutionContext);
         }
 
-        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             if (!balManager.Enabled)
             {
-                return base.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+                return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
             Metrics.ResetBlockStats();
 
-            _txReceipts = !block.IsGenesis && balManager.ParallelExecutionEnabled ?
-                ProcessTransactionsParallel(block, processingOptions, token) :
-                ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
-
-            return _txReceipts;
+            return !block.IsGenesis && balManager.ParallelExecutionEnabled
+                ? ProcessTransactionsParallel(block, processingOptions, token)
+                : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
         }
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
@@ -55,7 +51,7 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
@@ -79,46 +75,65 @@ public partial class BlockProcessor
                 gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>();
             }
 
-            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler, token), token);
+            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, transactionProcessedEventHandler, token), token);
 
-            // ParallelUnbalancedWork handles uneven tx execution times better than Parallel.For
-            ParallelUnbalancedWork.For(
-                0,
-                len + 1,
-                ParallelUnbalancedWork.DefaultOptions,
-                (block, processingOptions, stateProvider: _stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
-                static (i, state) =>
-                {
-                    if (i == 0)
+            try
+            {
+                // ParallelUnbalancedWork handles uneven tx execution times better than Parallel.For
+                ParallelUnbalancedWork.For(
+                    0,
+                    len + 1,
+                    ParallelUnbalancedWork.DefaultOptions,
+                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                    static (i, state) =>
                     {
-                        // ApplyStateChanges mutates the shared stateProvider so runs inside
-                        // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                        // workers read from BAL-backed world states, not stateProvider.
-                        BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                        if (i == 0)
+                        {
+                            // ApplyStateChanges mutates the shared stateProvider so runs inside
+                            // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
+                            // workers read from BAL-backed world states, not stateProvider.
+                            BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                            return state;
+                        }
+
+                        int txIndex = i - 1;
+                        try
+                        {
+                            Transaction tx = state.txs[txIndex];
+                            ProcessTransaction(
+                                state.balManager.GetTxProcessor(i),
+                                state.stateProvider,
+                                state.block,
+                                tx,
+                                txIndex,
+                                state.receiptsTracers[txIndex],
+                                state.processingOptions);
+                            state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
+                        }
+                        catch (InvalidBlockException ex)
+                        {
+                            state.gasResults[txIndex].SetResult((state.txs[txIndex].GasLimit, 0, ex));
+                        }
+                        catch
+                        {
+                            // Ensure IncrementalValidation is not permanently blocked on gasResults[j]
+                            // if an unexpected exception escapes the worker (e.g. NRE, OCE).
+                            // SetCanceled unblocks the inner GetAwaiter().GetResult() loop.
+                            state.gasResults[txIndex].TrySetCanceled();
+                            throw;
+                        }
+
                         return state;
-                    }
-
-                    int txIndex = i - 1;
-                    try
-                    {
-                        Transaction tx = state.txs[txIndex];
-                        ProcessTransaction(
-                            state.balManager.GetTxProcessor(i),
-                            state.stateProvider,
-                            state.block,
-                            tx,
-                            txIndex,
-                            state.receiptsTracers[txIndex],
-                            state.processingOptions);
-                        state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
-                    }
-                    catch (InvalidBlockException ex)
-                    {
-                        state.gasResults[txIndex].SetResult((state.txs[txIndex].GasLimit, 0, ex));
-                    }
-
-                    return state;
-                });
+                    });
+            }
+            catch
+            {
+                // Observe the background task before propagating, so its exception isn't lost
+                // as an unobserved task exception. The worker's TrySetCanceled above guarantees
+                // IncrementalValidation will unblock and complete.
+                try { incrementalValidationTask.GetAwaiter().GetResult(); } catch { /* swallowed; rethrow original below */ }
+                throw;
+            }
 
             incrementalValidationTask.GetAwaiter().GetResult();
             return CombineReceipts(receiptsTracers, len, block);
@@ -154,7 +169,7 @@ public partial class BlockProcessor
             ProcessingOptions processingOptions)
         {
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
-            if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+            if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
     }
 }
