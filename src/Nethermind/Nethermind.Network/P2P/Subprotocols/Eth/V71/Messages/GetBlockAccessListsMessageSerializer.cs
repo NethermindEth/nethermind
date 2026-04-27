@@ -40,6 +40,7 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
     private static int GetHashesContentLength(IOwnedReadOnlyList<Hash256> hashes)
     {
         int contentLength = 0;
+
         for (int i = 0; i < hashes.Count; i++)
         {
             contentLength += Rlp.LengthOf(hashes[i]);

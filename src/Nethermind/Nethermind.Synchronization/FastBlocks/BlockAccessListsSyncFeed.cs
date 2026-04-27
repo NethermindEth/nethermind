@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -290,7 +290,6 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             _logger.Debug(
                 $"{nameof(BlockAccessListsSyncBatch)} back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
     }
-
     private void UpdateSyncReport()
     {
         _syncReport.FastBlocksAccessLists.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);

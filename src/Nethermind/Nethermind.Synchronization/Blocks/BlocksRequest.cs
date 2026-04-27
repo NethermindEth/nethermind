@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.Blocks
         public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
         public OwnedBlockBodies? OwnedBodies { get; set; }
         public IOwnedReadOnlyList<BlockHeader> BlockAccessListsRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
-        public IOwnedReadOnlyList<byte[]>? BlockAccessLists { get; set; }
+        public IOwnedReadOnlyList<byte[]?>? BlockAccessLists { get; set; }
         public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
         public IOwnedReadOnlyList<TxReceipt[]?>? Receipts { get; set; }
 

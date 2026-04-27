@@ -86,44 +86,34 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     private Task<BlockAccessListsMessage> Handle(GetBlockAccessListsMessage request, CancellationToken cancellationToken)
     {
         IOwnedReadOnlyList<Hash256> hashes = request.Hashes;
-        ArrayPoolList<byte[]> results = new(hashes.Count);
+        ArrayPoolList<byte[]?> results = new(hashes.Count);
         long totalSize = 0;
 
         for (int i = 0; i < hashes.Count; i++)
         {
             if (cancellationToken.IsCancellationRequested)
+            {
                 break;
+            }
 
             byte[]? balRlp = SyncServer.GetBlockAccessListRlp(hashes[i]);
-
-            if (balRlp is null)
-            {
-                results.Add(BlockAccessListsMessage.EmptyBal);
-            }
-            else
-            {
-                results.Add(balRlp);
-                totalSize += balRlp.Length;
-            }
+            results.Add(balRlp);
+            totalSize += balRlp?.Length ?? 1;
 
             if (totalSize > BalResponseSoftLimit)
+            {
                 break;
-        }
-
-        // Pad remaining entries with the unavailable BAL marker if we stopped early.
-        while (results.Count < hashes.Count)
-        {
-            results.Add(BlockAccessListsMessage.EmptyBal);
+            }
         }
 
         return Task.FromResult(new BlockAccessListsMessage(request.RequestId, results));
     }
 
-    public async Task<IOwnedReadOnlyList<byte[]>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+    public async Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
     {
         if (blockHashes.Count == 0)
         {
-            return ArrayPoolList<byte[]>.Empty();
+            return ArrayPoolList<byte[]?>.Empty();
         }
 
         ArrayPoolList<Hash256> hashList = new(blockHashes.Count);
@@ -140,6 +130,6 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         return response.BlockAccessLists;
     }
 
-    Task<IOwnedReadOnlyList<byte[]>> ISyncPeer.GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+    Task<IOwnedReadOnlyList<byte[]?>> ISyncPeer.GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         => GetBlockAccessLists(blockHashes, token);
 }

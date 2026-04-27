@@ -1,11 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
 using System;
 using System.Collections;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -45,6 +45,17 @@ namespace Nethermind.Synchronization.Test
             return peerInfo.CanBeAllocated(contexts);
         }
 
+        [TestCase(EthVersions.Eth70, ExpectedResult = false)]
+        [TestCase(EthVersions.Eth71, ExpectedResult = true)]
+        public bool SupportsBlockAccessListAllocation(byte protocolVersion)
+        {
+            ISyncPeer peer = SetupSyncPeer("Nethermind/v1.31.0/X64-Linux/10.0.0");
+            peer.ProtocolVersion.Returns(protocolVersion);
+            PeerInfo peerInfo = new(peer);
+
+            return peerInfo.CanBeAllocated(AllocationContexts.BlockAccessLists);
+        }
+
         public static IEnumerable OpenEthereumVersionTests
         {
             get
@@ -64,8 +75,8 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer peer = SetupSyncPeer(versionString);
 
             Version? version = peer.GetOpenEthereumVersion(out int releaseCandidate);
-            version.Should().Be(expectedVersion);
-            releaseCandidate.Should().Be(expectedReleaseCandidate);
+            Assert.That(version, Is.EqualTo(expectedVersion));
+            Assert.That(releaseCandidate, Is.EqualTo(expectedReleaseCandidate));
         }
 
         private static ISyncPeer SetupSyncPeer(string versionString)

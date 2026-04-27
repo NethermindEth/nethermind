@@ -64,7 +64,7 @@ public class BlockAccessListsSyncFeedTests
     [Test]
     public void Rejects_block_access_list_with_wrong_header_hash()
     {
-        byte[] wrongBal = [0x80];
+        byte[] wrongBal = [0xc1, 0x01];
         BlockHeader header = Build.A.BlockHeader
             .WithBlockAccessListHash(TestItem.KeccakB)
             .TestObject;
@@ -74,7 +74,7 @@ public class BlockAccessListsSyncFeedTests
 
         BlockAccessListsSyncBatch batch = new([blockInfo])
         {
-            Response = new ArrayPoolList<byte[]>(1) { wrongBal },
+            Response = new ArrayPoolList<byte[]?>(1) { wrongBal },
             ResponseSourcePeer = peerInfo
         };
 
@@ -86,5 +86,27 @@ public class BlockAccessListsSyncFeedTests
             peerInfo,
             DisconnectReason.InvalidTxOrUncle,
             Arg.Is<string>(static message => message.Contains("invalid block access list")));
+    }
+
+    [Test]
+    public void Treats_absent_bal_as_unavailable_without_penalizing_peer()
+    {
+        BlockInfo blockInfo = new(TestItem.KeccakA, 1) { BlockNumber = 1 };
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+
+        BlockAccessListsSyncBatch batch = new([blockInfo])
+        {
+            Response = new ArrayPoolList<byte[]?>(1) { null },
+            ResponseSourcePeer = peerInfo
+        };
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(batch);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            Arg.Any<DisconnectReason>(),
+            Arg.Any<string>());
     }
 }

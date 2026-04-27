@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.Blocks
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
             int blockAccessListsRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
             int receiptsRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
@@ -390,7 +390,10 @@ namespace Nethermind.Synchronization.Blocks
             using BlocksRequest _ = response;
             BlockBody[]? bodies = response.OwnedBodies?.Bodies;
             response.OwnedBodies?.Disown();
-            IOwnedReadOnlyList<byte[]>? blockAccessLists = response.BlockAccessLists;
+            IOwnedReadOnlyList<byte[]?>? blockAccessLists = response.BlockAccessLists;
+            bool unsupportedBlockAccessListsPeer = response.BlockAccessListsRequests.Count > 0 &&
+                                                   peer is not null &&
+                                                   !peer.SyncPeer.SupportsBlockAccessLists();
 
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             using ArrayPoolListRef<Block> blocks = new(response.BodiesRequests?.Count ?? 0);
@@ -519,6 +522,11 @@ namespace Nethermind.Synchronization.Blocks
 
                 if ((blockAccessLists?.Count ?? 0) <= i)
                 {
+                    if (unsupportedBlockAccessListsPeer)
+                    {
+                        result = SyncResponseHandlingResult.LesserQuality;
+                    }
+
                     entry.RetryAccessListRequest();
                     continue;
                 }
@@ -584,7 +592,6 @@ namespace Nethermind.Synchronization.Blocks
             errorMessage = null;
             return true;
         }
-
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
         {
             Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptEncoder);

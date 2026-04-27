@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -34,7 +34,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
             request.OwnedBodies = await peerInfo.SyncPeer.GetBlockBodies(bodiesHash, cancellationToken);
         }
 
-        if (request.BlockAccessListsRequests.Count > 0)
+        if (request.BlockAccessListsRequests.Count > 0 && peerInfo.SyncPeer.SupportsBlockAccessLists())
         {
             using ArrayPoolList<Hash256> blockAccessListsHash = BuildHashList(request.BlockAccessListsRequests);
             request.BlockAccessLists = await peerInfo.SyncPeer.GetBlockAccessLists(blockAccessListsHash, cancellationToken);

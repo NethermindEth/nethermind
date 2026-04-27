@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -88,7 +88,9 @@ public interface ISyncConfig : IConfig
     public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
     [ConfigItem(Description = $$"""
-        The earliest block access list downloaded with fast sync when `{{nameof(DownloadAccessListsInFastSync)}}` is set to `true`. The actual value is determined as follows:
+        The earliest block access list downloaded with fast sync when `{{nameof(DownloadAccessListsInFastSync)}}` is set to `true`.
+        The calculated barrier is floored by `{{nameof(AncientBodiesBarrier)}}` so access lists are not downloaded for blocks whose bodies are skipped.
+        The actual value is determined as follows:
 
         ```
         max{ 1, min{ PivotNumber, max{ AncientBodiesBarrier, AncientAccessListsBarrier } } }

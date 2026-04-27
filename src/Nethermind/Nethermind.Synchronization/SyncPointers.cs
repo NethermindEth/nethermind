@@ -56,6 +56,7 @@ public class SyncPointers : ISyncPointers
             _lowestInsertedAccessListBlock = value;
             if (value.HasValue)
             {
+                // Keccak.Zero is a metadata sentinel inside the BAL DB, matching the receipts pointer pattern.
                 _blockAccessListsDb.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
             }
         }

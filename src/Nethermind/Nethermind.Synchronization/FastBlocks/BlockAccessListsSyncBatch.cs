@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -9,7 +9,7 @@ namespace Nethermind.Synchronization.FastBlocks;
 public class BlockAccessListsSyncBatch(BlockInfo?[] infos) : FastBlocksBatch
 {
     public BlockInfo?[] Infos { get; } = infos;
-    public IOwnedReadOnlyList<byte[]>? Response { get; set; }
+    public IOwnedReadOnlyList<byte[]?>? Response { get; set; }
 
     public override void Dispose()
     {

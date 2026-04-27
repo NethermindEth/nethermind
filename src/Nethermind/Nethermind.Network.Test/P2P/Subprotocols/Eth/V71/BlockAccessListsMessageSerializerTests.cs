@@ -6,8 +6,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
@@ -20,29 +20,28 @@ public class BlockAccessListsMessageSerializerTests
     public void Roundtrip_empty()
     {
         BlockAccessListsMessageSerializer serializer = new();
-        using BlockAccessListsMessage msg = new(42, ArrayPoolList<byte[]>.Empty());
+        using BlockAccessListsMessage msg = new(42, ArrayPoolList<byte[]?>.Empty());
         SerializerTester.TestZero(serializer, msg);
     }
 
     [Test]
-    public void Roundtrip_single_empty_bal()
+    public void Roundtrip_single_absent_bal()
     {
         BlockAccessListsMessageSerializer serializer = new();
-        ArrayPoolList<byte[]> bals = new(1) { BlockAccessListsMessage.EmptyBal };
+        ArrayPoolList<byte[]?> bals = new(1) { null };
         using BlockAccessListsMessage msg = new(43, bals);
 
-        Assert.That(BlockAccessListsMessage.EmptyBal, Is.EqualTo(new[] { Rlp.EmptyByteArrayByte }));
-        SerializerTester.TestZero(serializer, msg, "c42bc28180");
+        SerializerTester.TestZero(serializer, msg, "c32bc180");
     }
 
     [Test]
     public void Roundtrip_multiple_bals()
     {
         BlockAccessListsMessageSerializer serializer = new();
-        ArrayPoolList<byte[]> bals = new(3);
+        ArrayPoolList<byte[]?> bals = new(3);
         bals.Add(new byte[] { 0xc1, 0x80 });
         bals.Add(new byte[] { 0xc2, 0x01, 0x02 });
-        bals.Add(BlockAccessListsMessage.EmptyBal);
+        bals.Add(null);
         using BlockAccessListsMessage msg = new(44, bals);
         SerializerTester.TestZero(serializer, msg);
     }
@@ -60,7 +59,7 @@ public class BlockAccessListsMessageSerializerTests
     public void Roundtrip_negative_request_id()
     {
         BlockAccessListsMessageSerializer serializer = new();
-        using BlockAccessListsMessage msg = new(-1, ArrayPoolList<byte[]>.Empty());
+        using BlockAccessListsMessage msg = new(-1, ArrayPoolList<byte[]?>.Empty());
 
         SerializerTester.TestZero(serializer, msg);
     }
@@ -78,10 +77,10 @@ public class BlockAccessListsMessageSerializerTests
     public void Rejects_too_many_block_access_lists()
     {
         BlockAccessListsMessageSerializer serializer = new();
-        ArrayPoolList<byte[]> bals = new(GethSyncLimits.MaxBodyFetch + 1);
+        ArrayPoolList<byte[]?> bals = new(GethSyncLimits.MaxBodyFetch + 1);
         for (int i = 0; i <= GethSyncLimits.MaxBodyFetch; i++)
         {
-            bals.Add(BlockAccessListsMessage.EmptyBal);
+            bals.Add(null);
         }
 
         using BlockAccessListsMessage msg = new(45, bals);
