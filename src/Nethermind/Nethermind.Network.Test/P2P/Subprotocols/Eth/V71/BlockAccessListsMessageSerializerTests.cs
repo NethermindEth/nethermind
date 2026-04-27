@@ -5,11 +5,9 @@ using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
-using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
