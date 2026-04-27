@@ -26,18 +26,13 @@ public class Eip8037Tests
     [TestCaseSource(nameof(ConstantsTestCases))]
     public long Constants_are_calculated_correctly(long actual) => actual;
 
-    private static IEnumerable<TestCaseData> DynamicCostPerStateByteTestCases()
-    {
-        yield return new TestCaseData(1_000_000L, 1L).SetName("CostPerStateByte_1M");
-        yield return new TestCaseData(30_000_000L, 150L).SetName("CostPerStateByte_30M");
-        yield return new TestCaseData(60_000_000L, 662L).SetName("CostPerStateByte_60M");
-        yield return new TestCaseData(100_000_000L, 1174L).SetName("CostPerStateByte_100M");
-        yield return new TestCaseData(200_000_000L, 2198L).SetName("CostPerStateByte_200M");
-    }
-
-    [TestCaseSource(nameof(DynamicCostPerStateByteTestCases))]
-    public void Cost_per_state_byte_is_quantized_from_block_gas_limit(long blockGasLimit, long expectedCostPerStateByte) =>
-        Assert.That(GasCostOf.CalculateCostPerStateByte(blockGasLimit), Is.EqualTo(expectedCostPerStateByte));
+    [TestCase(0L)]
+    [TestCase(1_000_000L)]
+    [TestCase(30_000_000L)]
+    [TestCase(100_000_000L)]
+    [TestCase(200_000_000L)]
+    public void Cost_per_state_byte_is_static(long blockGasLimit) =>
+        Assert.That(GasCostOf.CalculateCostPerStateByte(blockGasLimit), Is.EqualTo(GasCostOf.CostPerStateByte));
 
     [TestCase(1, ExpectedResult = 6L)]
     [TestCase(32, ExpectedResult = 6L)]
