@@ -24,11 +24,20 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         UInt256 slot = ctx.DecodeUInt256();
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
-        int? lastIndex = null;
-        SortedList<int, StorageChange> changesList = new(changes.Length, GenericComparer.GetOptimized<int>());
+        // EIP-7928: a slot in storage_changes must have at least one change.
+        // A slot with zero changes belongs in storage_reads instead.
+        if (changes.Length == 0)
+        {
+            throw new RlpException("Empty storage_changes for slot; slot with no changes belongs in storage_reads.");
+        }
+
+        uint? lastIndex = null;
+        // See AccountChangesDecoder.ToSortedByIndex: prestate-aware so a later
+        // LoadPreStateToSuggestedBlockAccessList graft sorts prestate first.
+        SortedList<uint, StorageChange> changesList = new(changes.Length, PrestateAwareIndexComparer.Instance);
         foreach (StorageChange s in changes)
         {
-            int index = s.Index;
+            uint index = s.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
