@@ -40,7 +40,11 @@ namespace Nethermind.Merge.AuRa.Test;
 public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(parallel)
 {
     protected override MergeTestBlockchain CreateBaseBlockchain(IMergeConfig? mergeConfig = null)
-        => new MergeAuRaTestBlockchain(mergeConfig);
+    {
+        MergeTestBlockchain bc = new MergeAuRaTestBlockchain(mergeConfig);
+        bc.ParallelExecutionOverride = Parallel;
+        return bc;
+    }
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
     private const string _auraWithdrawalContractAddress = "0xbabe2bed00000000000000000000000000000003";

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -43,7 +42,13 @@ public class BlockAccessListManager(
     IWithdrawalProcessorFactory withdrawalProcessorFactory)
     : IBlockAccessListManager
 {
-    public class ParallelExecutionException(InvalidBlockException innerException) : InvalidBlockException(innerException.InvalidBlock, innerException.Message, innerException);
+    public class ParallelExecutionException(InvalidBlockException innerException)
+        : InvalidTransactionException(
+            innerException.InvalidBlock,
+            innerException.Message,
+            (innerException as InvalidTransactionException)?.Reason
+                ?? TransactionResult.WithDetail(TransactionResult.ErrorType.MalformedTransaction, $"Parallel execution failure: {innerException.Message}"),
+            innerException);
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
@@ -161,7 +166,7 @@ public class BlockAccessListManager(
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 
                 if (ex is not null)
-                    ExceptionDispatchInfo.Capture(new ParallelExecutionException(ex)).Throw();
+                    throw new ParallelExecutionException(ex);
 
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 

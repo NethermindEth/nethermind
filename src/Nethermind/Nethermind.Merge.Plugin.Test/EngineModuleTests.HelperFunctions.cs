@@ -33,11 +33,13 @@ namespace Nethermind.Merge.Plugin.Test
     [TestFixture(false)]
     public partial class EngineModuleTests(bool parallel) : BaseEngineModuleTests
     {
+        protected bool Parallel { get; } = parallel;
+
         protected override MergeTestBlockchain CreateBaseBlockchain(
             IMergeConfig? mergeConfig = null)
         {
             MergeTestBlockchain bc = base.CreateBaseBlockchain(mergeConfig);
-            bc.ParallelExecutionOverride = parallel;
+            bc.ParallelExecutionOverride = Parallel;
             return bc;
         }
 
