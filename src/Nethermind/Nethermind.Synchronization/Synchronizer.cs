@@ -107,7 +107,7 @@ namespace Nethermind.Synchronization
 
         private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
         {
-            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastAccessLists) || e.WasModeFinished(SyncMode.FastBlocks))
+            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastBlockAccessLists) || e.WasModeFinished(SyncMode.FastBlocks))
             {
                 GC.Collect(2, GCCollectionMode.Aggressive, true, true);
             }

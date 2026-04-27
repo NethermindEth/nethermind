@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization
 
         [GaugeMetric]
         [Description("Access lists downloaded in fast blocks stage")]
-        public static long FastAccessLists;
+        public static long FastBlockAccessLists;
 
         [GaugeMetric]
         [Description("State synced in bytes")]
