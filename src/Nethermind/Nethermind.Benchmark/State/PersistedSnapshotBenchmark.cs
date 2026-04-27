@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -60,7 +61,7 @@ public class PersistedSnapshotBenchmark
         NoopPersistenceReader reader = new NoopPersistenceReader();
         PersistedSnapshotList emptyPersisted = new PersistedSnapshotList(initial: 0);
         ReadOnlySnapshotBundle readOnly = new ReadOnlySnapshotBundle(
-            emptySnapshots, reader, recordDetailedMetrics: false, emptyPersisted);
+            emptySnapshots, reader, recordDetailedMetrics: false, emptyPersisted, NullBlockRangeTrieForest.Instance, 0);
         NullTrieNodeCache cache = new NullTrieNodeCache();
         SnapshotBundle bundle = new SnapshotBundle(
             readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing);

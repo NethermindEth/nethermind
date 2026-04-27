@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
 using NUnit.Framework;
@@ -43,7 +44,7 @@ public class PersistenceManagerPersistedTests
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        _ = new PersistedSnapshotCompactor(repo, compactedArena, config, LimboLogs.Instance);
+        _ = new PersistedSnapshotCompactor(repo, compactedArena, config, NullBlockRangeTrieForest.Instance, LimboLogs.Instance);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -67,7 +68,7 @@ public class PersistenceManagerPersistedTests
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        _ = new PersistedSnapshotCompactor(repo, compactedArena, config, LimboLogs.Instance);
+        _ = new PersistedSnapshotCompactor(repo, compactedArena, config, NullBlockRangeTrieForest.Instance, LimboLogs.Instance);
 
         // Persist snapshots at various block heights
         StateId s0 = new(0, Keccak.EmptyTreeHash);

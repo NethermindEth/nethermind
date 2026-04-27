@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
@@ -29,7 +30,8 @@ public class PersistenceManager(
     ISnapshotRepository snapshotRepository,
     ILogManager logManager,
     IPersistedSnapshotCompactor persistedSnapshotCompactor,
-    IPersistedSnapshotRepository persistedSnapshotRepository) : IPersistenceManager
+    IPersistedSnapshotRepository persistedSnapshotRepository,
+    BlockRangeForestDeletionDriver deletionDriver) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
@@ -38,11 +40,13 @@ public class PersistenceManager(
     private readonly int _compactSize = configuration.CompactSize;
     private readonly int _minCompactSize = Math.Max(configuration.MinCompactSize, 2);
     private readonly int _persistedSnapshotMaxCompactSize = configuration.PersistedSnapshotMaxCompactSize;
+    private readonly int _blockRangePerForest = configuration.BlockRangePerForest;
     private readonly IPersistence _persistence = persistence;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
     private readonly IPersistedSnapshotCompactor _persistedSnapshotCompactor = persistedSnapshotCompactor;
     private readonly IPersistedSnapshotRepository _persistedSnapshotRepository = persistedSnapshotRepository;
+    private readonly BlockRangeForestDeletionDriver _deletionDriver = deletionDriver;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
@@ -521,6 +525,9 @@ public class PersistenceManager(
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
+
+        long belowBlockRange = BlockRangeForestKey.BlockRangeForBlock(snapshot.To.BlockNumber, _blockRangePerForest);
+        _deletionDriver.DeleteBatch(belowBlockRange, 2 * (snapshot.StateNodesCount + snapshot.StorageNodesCount));
     }
 
     private PersistedSnapshot? TryGetForcePersistedSnapshot(StateId currentPersistedState, long totalDepth)
@@ -535,6 +542,8 @@ public class PersistenceManager(
     internal void PersistPersistedSnapshot(PersistedSnapshot snapshot)
     {
         long sw = Stopwatch.GetTimestamp();
+        int stateNodeCount = 0;
+        int storageNodeCount = 0;
 
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
@@ -558,16 +567,21 @@ public class PersistenceManager(
             foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
             {
                 batch.SetStateTrieNode(kv.Key, kv.Value);
+                stateNodeCount++;
             }
 
             foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
             {
                 ((Hash256AsKey address, TreePath path), TrieNode node) = kv;
                 batch.SetStorageTrieNode(address, path, node);
+                storageNodeCount++;
             }
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
+
+        long belowBlockRange = BlockRangeForestKey.BlockRangeForBlock(snapshot.To.BlockNumber, _blockRangePerForest);
+        _deletionDriver.DeleteBatch(belowBlockRange, 2 * (stateNodeCount + storageNodeCount));
     }
 
 }

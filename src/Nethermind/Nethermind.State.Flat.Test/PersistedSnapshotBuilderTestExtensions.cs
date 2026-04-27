@@ -49,4 +49,15 @@ internal static class PersistedSnapshotBuilderTestExtensions
         PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref pooled.GetWriter(), referencedIds);
         return pooled.WrittenSpan.ToArray();
     }
+
+    public static byte[] MergeSnapshotsNoTrie(PersistedSnapshotList snapshots)
+    {
+        int totalSize = 0;
+        for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
+        totalSize += 4096;
+
+        using PooledByteBufferWriter pooled = new(totalSize);
+        PersistedSnapshotBuilder.NWayMergeSnapshotsNoTrie(snapshots, ref pooled.GetWriter());
+        return pooled.WrittenSpan.ToArray();
+    }
 }

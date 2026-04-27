@@ -21,6 +21,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Api;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.SnapServer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -68,11 +69,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
-                ctx.Resolve<IPersistedSnapshotRepository>()))
+                ctx.Resolve<IPersistedSnapshotRepository>(),
+                ctx.Resolve<IBlockRangeTrieForest>()))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
+            .AddSingleton<BlockRangeForestDeletionDriver>()
             .AddSingleton<IArenaManager>((ctx) =>
             {
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
@@ -106,6 +109,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 syncConfig.SnapServingEnabled ??= true;
             })
             .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
+
+            // BlockRangeTrieForest
+            .AddDatabase(DbNames.BlockRangeTrieForest)
+            .AddSingleton<IBlockRangeTrieForest>((ctx) =>
+                new BlockRangeTrieForest(ctx.ResolveKeyed<IDb>(DbNames.BlockRangeTrieForest)))
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)

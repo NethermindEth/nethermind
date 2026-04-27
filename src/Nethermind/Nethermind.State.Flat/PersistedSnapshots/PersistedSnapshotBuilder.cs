@@ -1108,6 +1108,96 @@ public static class PersistedSnapshotBuilder
 
     /// <summary>
     /// N-way metadata merge: from_block/from_hash from oldest, to_block/to_hash/version from newest.
+    /// <summary>
+    /// Merges N persisted snapshots (oldest-first) into a new snapshot that contains only
+    /// the metadata and account columns. All trie-node columns are omitted.
+    /// Used when RLPs have been written to <c>BlockRangeTrieForest</c> instead.
+    /// </summary>
+    internal static void NWayMergeSnapshotsNoTrie<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer) where TWriter : IByteBufferWriter
+    {
+        int n = snapshots.Count;
+
+        using MemoryArenaManager tempArena = new(1024 * 1024);
+        PersistedSnapshotList mergeSnapshots = new(n);
+
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                if (snapshots[i].Type == PersistedSnapshotType.Full)
+                {
+                    int estimatedSize = snapshots[i].Size / 2 + 4096;
+                    using ArenaWriter tempWriter = tempArena.CreateWriter(Math.Max(estimatedSize, snapshots[i].Size));
+                    ConvertFullToLinked(snapshots[i], ref tempWriter.GetWriter());
+                    (_, ArenaReservation tempRes) = tempWriter.Complete();
+                    PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
+                        PersistedSnapshotType.Linked, tempRes);
+                    mergeSnapshots.Add(convertedSnap);
+                }
+                else
+                {
+                    if (!snapshots[i].TryAcquire())
+                        throw new InvalidOperationException("Cannot acquire lease for snapshot");
+                    mergeSnapshots.Add(snapshots[i]);
+                }
+            }
+
+            using HsstBuilder<TWriter> outerBuilder = new(ref writer);
+
+            // Metadata (no noderefs, empty ref_ids — trie data lives in forest)
+            {
+                ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+                NWayMetadataMergeNoTrie(snapshots, ref valueWriter);
+                outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
+            }
+
+            // Account column only
+            {
+                ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+                NWayMergeAccountColumn(mergeSnapshots, PersistedSnapshot.AccountColumnTag, ref valueWriter);
+                outerBuilder.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
+            }
+
+            outerBuilder.Build();
+        }
+        finally
+        {
+            mergeSnapshots.Dispose();
+        }
+    }
+
+    private static void NWayMetadataMergeNoTrie<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer) where TWriter : IByteBufferWriter
+    {
+        int n = snapshots.Count;
+        ReadOnlySpan<byte> oldestData = snapshots[0].GetSpan();
+        ReadOnlySpan<byte> newestData = snapshots[n - 1].GetSpan();
+
+        Hsst.Hsst oldestOuter = new(oldestData);
+        Hsst.Hsst newestOuter = new(newestData);
+        oldestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> oldestMeta);
+        newestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> newestMeta);
+
+        Hsst.Hsst oldestHsst = new(oldestMeta);
+        Hsst.Hsst newestHsst = new(newestMeta);
+
+        oldestHsst.TryGet("from_block"u8, out ReadOnlySpan<byte> fromBlock);
+        oldestHsst.TryGet("from_hash"u8, out ReadOnlySpan<byte> fromHash);
+        newestHsst.TryGet("to_block"u8, out ReadOnlySpan<byte> toBlock);
+        newestHsst.TryGet("to_hash"u8, out ReadOnlySpan<byte> toHash);
+        newestHsst.TryGet("version"u8, out ReadOnlySpan<byte> version);
+
+        using HsstBuilder<TWriter> builder = new(ref writer);
+        // "forest_spilled" marks that trie data is in BlockRangeTrieForest, not inline.
+        // Key order (ASCII): "forest_spilled" < "from_block" < "from_hash" < "to_block" < "to_hash" < "version"
+        builder.Add("forest_spilled"u8, [0x01]);
+        builder.Add("from_block"u8, fromBlock);
+        builder.Add("from_hash"u8, fromHash);
+        builder.Add("to_block"u8, toBlock);
+        builder.Add("to_hash"u8, toHash);
+        builder.Add("version"u8, version);
+        builder.Build();
+    }
+
     /// Injects noderefs=[0x01] and ref_ids from referencedIds set.
     /// Emits in sorted key order.
     /// </summary>

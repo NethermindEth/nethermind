@@ -158,6 +158,14 @@ public static class PersistedSnapshotReader
         return inner.TryGet("noderefs"u8, out _);
     }
 
+    internal static bool CheckForestSpilledFlag(ReadOnlySpan<byte> data)
+    {
+        Hsst.Hsst outer = new(data);
+        if (!outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaColumn)) return false;
+        Hsst.Hsst inner = new(metaColumn);
+        return inner.TryGet("forest_spilled"u8, out _);
+    }
+
     internal static int[]? ReadRefIdsFromMetadata(ReadOnlySpan<byte> snapshotData)
     {
         Hsst.Hsst outer = new(snapshotData);

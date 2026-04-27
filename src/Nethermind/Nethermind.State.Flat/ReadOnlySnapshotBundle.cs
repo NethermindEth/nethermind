@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
@@ -25,7 +26,9 @@ public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
-    PersistedSnapshotList persistedSnapshots)
+    PersistedSnapshotList persistedSnapshots,
+    IBlockRangeTrieForest blockRangeTrieForest,
+    int blockRangePerForest)
     : RefCountingDisposable
 {
     public int SnapshotCount => persistedSnapshots.Count + snapshots.Count;
@@ -242,6 +245,10 @@ public sealed class ReadOnlySnapshotBundle(
         }
         _persistedSnapshotSkipTime.WithLabels("state_rlp").Observe(Stopwatch.GetTimestamp() - sw);
 
+        // Scan forest from newest persisted snapshot range down to persisted-state range
+        byte[]? forestRlp = TryLoadStateRlpFromForest(path, hash);
+        if (forestRlp is not null) return forestRlp;
+
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
@@ -265,12 +272,49 @@ public sealed class ReadOnlySnapshotBundle(
         }
         _persistedSnapshotSkipTime.WithLabels("storage_rlp").Observe(Stopwatch.GetTimestamp() - sw);
 
+        // Scan forest from newest persisted snapshot range down to persisted-state range
+        byte[]? forestRlp = TryLoadStorageRlpFromForest(address, path, hash);
+        if (forestRlp is not null) return forestRlp;
+
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
+    }
+
+    private byte[]? TryLoadStateRlpFromForest(in TreePath path, Hash256 hash)
+    {
+        if (persistedSnapshots.Count == 0 || blockRangePerForest == 0) return null;
+
+        long upperRange = BlockRangeForestKey.BlockRangeForBlock(persistedSnapshots[^1].To.BlockNumber, blockRangePerForest);
+        long lowerRange = BlockRangeForestKey.BlockRangeForBlock(persistenceReader.CurrentState.BlockNumber, blockRangePerForest);
+        ValueHash256 valueHash = hash;
+
+        for (long r = upperRange; r >= lowerRange; r--)
+        {
+            byte[]? rlp = blockRangeTrieForest.TryGetState(r, path, valueHash);
+            if (rlp is not null) return rlp;
+        }
+        return null;
+    }
+
+    private byte[]? TryLoadStorageRlpFromForest(Hash256 address, in TreePath path, Hash256 hash)
+    {
+        if (persistedSnapshots.Count == 0 || blockRangePerForest == 0) return null;
+
+        long upperRange = BlockRangeForestKey.BlockRangeForBlock(persistedSnapshots[^1].To.BlockNumber, blockRangePerForest);
+        long lowerRange = BlockRangeForestKey.BlockRangeForBlock(persistenceReader.CurrentState.BlockNumber, blockRangePerForest);
+        ValueHash256 addrHash = address;
+        ValueHash256 valueHash = hash;
+
+        for (long r = upperRange; r >= lowerRange; r--)
+        {
+            byte[]? rlp = blockRangeTrieForest.TryGetStorage(r, addrHash, path, valueHash);
+            if (rlp is not null) return rlp;
+        }
+        return null;
     }
 
     private void GuardDispose()

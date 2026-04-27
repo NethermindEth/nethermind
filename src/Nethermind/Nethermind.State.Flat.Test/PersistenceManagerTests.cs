@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
@@ -59,6 +60,9 @@ public class PersistenceManagerTests
         _persistedSnapshotRepository = Substitute.For<IPersistedSnapshotRepository>();
         _memArena = new MemoryArenaManager();
 
+        BlockRangeForestDeletionDriver deletionDriver = new(
+            NullBlockRangeTrieForest.Instance,
+            new MemColumnsDb<FlatDbColumns>());
         _persistenceManager = new PersistenceManager(
             _config,
             _finalizedStateProvider,
@@ -66,7 +70,8 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
-            _persistedSnapshotRepository);
+            _persistedSnapshotRepository,
+            deletionDriver);
     }
 
     [TearDown]

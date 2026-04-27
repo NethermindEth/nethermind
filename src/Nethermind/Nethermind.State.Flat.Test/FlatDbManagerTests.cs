@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using NSubstitute;
@@ -63,7 +64,8 @@ public class FlatDbManagerTests
         _blocksConfig,
         LimboLogs.Instance,
         enableDetailedMetrics: false,
-        Substitute.For<IPersistedSnapshotRepository>());
+        Substitute.For<IPersistedSnapshotRepository>(),
+        NullBlockRangeTrieForest.Instance);
 
     private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {

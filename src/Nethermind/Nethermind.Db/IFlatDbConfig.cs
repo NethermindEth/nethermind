@@ -66,4 +66,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]
     bool ValidatePersistedSnapshot { get; set; }
+
+    [ConfigItem(Description = "Block range granularity for BlockRangeTrieForest (number of blocks per range bucket)", DefaultValue = "8192")]
+    int BlockRangePerForest { get; set; }
 }

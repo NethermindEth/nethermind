@@ -5,13 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
+using ForestImpl = Nethermind.State.Flat.BlockRangeTrieForest.BlockRangeTrieForest;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -58,7 +61,7 @@ public class PersistedSnapshotCompactorTests
             // CompactSize=4, MinCompactSize=2. Use 8 blocks so compactSize = 8 & -8 = 8 > CompactSize=4, triggering compaction.
             // (compactSize == _compactSize is now skipped since persistable snapshots are produced by PersistenceManager)
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, NullBlockRangeTrieForest.Instance, Nethermind.Logging.LimboLogs.Instance);
 
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("1"));
@@ -300,6 +303,106 @@ public class PersistedSnapshotCompactorTests
         PersistedSnapshot compacted = CreatePersistedSnapshot(100, toMerge[0].From, toMerge[toMerge.Count - 1].To,
             PersistedSnapshotType.Linked, merged);
         PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, toMerge, true);
+    }
+
+    [Test]
+    public void ForestSpilledSnapshot_IsForestSpilledTrue_NodeRlpReturnsFalse_AccountsRoundTrip()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s2 = new(2, Keccak.Compute("2"));
+
+        TreePath path = new(Keccak.Compute("path"), 4);
+        byte[] rlp1 = Bytes.FromHexString("C080");
+
+        SnapshotContent content1 = new();
+        content1.StateNodes[path] = new TrieNode(NodeType.Leaf, rlp1);
+        content1.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
+        Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
+
+        SnapshotContent content2 = new();
+        content2.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
+        Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2);
+
+        PersistedSnapshot base1 = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1);
+        PersistedSnapshot base2 = CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2);
+        PersistedSnapshotList toMerge = new(2);
+        toMerge.Add(base1);
+        toMerge.Add(base2);
+
+        byte[] noTrieData = PersistedSnapshotBuilderTestExtensions.MergeSnapshotsNoTrie(toMerge);
+        PersistedSnapshot spilled = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, noTrieData);
+
+        Assert.That(spilled.IsForestSpilled, Is.True);
+        Assert.That(spilled.TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> _), Is.False);
+        Assert.That(spilled.TryGetAccount(TestItem.AddressA, out ReadOnlySpan<byte> _), Is.True);
+        Assert.That(spilled.TryGetAccount(TestItem.AddressB, out ReadOnlySpan<byte> _), Is.True);
+    }
+
+    [Test]
+    public void Compactor_WithForest_DumpsFullSnapshotTrieNodes_OutputIsForestSpilled()
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
+            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig());
+            repo.LoadFromCatalog();
+
+            // CompactSize=4, MinCompactSize=2, BlockRangePerForest=4
+            // At block 8: compactSize = 8 & -8 = 8 > CompactSize=4 → triggers forest-spilled compaction
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2, BlockRangePerForest = 4 };
+            using SnapshotableMemDb forestDb = new();
+            ForestImpl forest = new(forestDb);
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, forest, Nethermind.Logging.LimboLogs.Instance);
+
+            StateId s0 = new(0, Keccak.EmptyTreeHash);
+            TreePath path = new(Keccak.Compute("statePath"), 4);
+            byte[] nodeRlp = Bytes.FromHexString("C080");
+
+            // Create 8 consecutive base snapshots; put a trie node in the first one
+            StateId prev = s0;
+            for (int i = 1; i <= 8; i++)
+            {
+                StateId next = new(i, Keccak.Compute(i.ToString()));
+                SnapshotContent content = new();
+                if (i == 1)
+                {
+                    content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
+                }
+                content.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)i * 100).TestObject;
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+                prev = next;
+            }
+
+            StateId s8 = new(8, Keccak.Compute("8"));
+            compactor.DoCompactSnapshot(s8);
+
+            // Compacted snapshot at block 8 should be forest-spilled
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(s8, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(compacted!.IsForestSpilled, Is.True);
+            Assert.That(compacted.TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> _), Is.False);
+
+            // All accounts are still readable
+            for (int i = 0; i < 8; i++)
+                Assert.That(compacted.TryGetAccount(TestItem.Addresses[i], out ReadOnlySpan<byte> _), Is.True);
+
+            // The forest should contain the trie node from block 1 (range 0 = floor(1/4) = 0)
+            Hash256 hash = Keccak.Compute(nodeRlp);
+            byte[]? rlpFromForest = forest.TryGetState(0, path, hash);
+            Assert.That(rlpFromForest, Is.EqualTo(nodeRlp));
+
+            compacted.Dispose();
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
     }
 
     [Test]

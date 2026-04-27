@@ -15,6 +15,7 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -87,6 +88,8 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
                 .WithParameter(TypedParameter.From(PersistedSnapshotList.Empty()))
+                .WithParameter(TypedParameter.From<IBlockRangeTrieForest>(NullBlockRangeTrieForest.Instance))
+                .WithParameter(new NamedParameter("blockRangePerForest", 0))
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();

@@ -50,6 +50,13 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal Dictionary<int, PersistedSnapshot>? ReferencedSnapshotsLookup => _referencedSnapshots;
     internal bool HasNodeRefs { get; }
 
+    /// <summary>
+    /// True when this snapshot's trie-node columns were omitted because RLPs are stored in
+    /// <c>BlockRangeTrieForest</c> instead. <see cref="TryLoadStateNodeRlp"/> and
+    /// <see cref="TryLoadStorageNodeRlp"/> always return false for such snapshots.
+    /// </summary>
+    public bool IsForestSpilled { get; }
+
     public int Id { get; }
     public StateId From { get; }
     public StateId To { get; }
@@ -75,6 +82,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         _reservation = reservation;
         _reservation.AcquireLease();
         HasNodeRefs = PersistedSnapshotReader.CheckHasNodeRefsFlag(GetSpan());
+        IsForestSpilled = PersistedSnapshotReader.CheckForestSpilledFlag(GetSpan());
 
         if (referencedSnapshots is { Length: > 0 })
         {
@@ -106,11 +114,17 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool? TryGetSelfDestructFlag(Address address) =>
         PersistedSnapshotReader.TryGetSelfDestructFlag(GetSpan(), address);
 
-    public bool TryLoadStateNodeRlp(scoped in TreePath path, out ReadOnlySpan<byte> nodeRlp) =>
-        PersistedSnapshotReader.TryLoadStateNodeRlp(GetSpan(), in path, _referencedSnapshots, HasNodeRefs, out nodeRlp);
+    public bool TryLoadStateNodeRlp(scoped in TreePath path, out ReadOnlySpan<byte> nodeRlp)
+    {
+        if (IsForestSpilled) { nodeRlp = default; return false; }
+        return PersistedSnapshotReader.TryLoadStateNodeRlp(GetSpan(), in path, _referencedSnapshots, HasNodeRefs, out nodeRlp);
+    }
 
-    public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, scoped out ReadOnlySpan<byte> nodeRlp) =>
-        PersistedSnapshotReader.TryLoadStorageNodeRlp(GetSpan(), address, in path, _referencedSnapshots, HasNodeRefs, out nodeRlp);
+    public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, scoped out ReadOnlySpan<byte> nodeRlp)
+    {
+        if (IsForestSpilled) { nodeRlp = default; return false; }
+        return PersistedSnapshotReader.TryLoadStorageNodeRlp(GetSpan(), address, in path, _referencedSnapshots, HasNodeRefs, out nodeRlp);
+    }
 
     /// <summary>
     /// Read the "ref_ids" list from a snapshot's metadata column.

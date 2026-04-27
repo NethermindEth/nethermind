@@ -13,6 +13,8 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.BlockRangeTrieForest;
+using ForestImpl = Nethermind.State.Flat.BlockRangeTrieForest.BlockRangeTrieForest;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Storage;
@@ -278,7 +280,8 @@ public class LongFinalityIntegrationTests
             new BlocksConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false,
-            persistedSnapshotRepository: repo);
+            persistedSnapshotRepository: repo,
+            blockRangeTrieForest: NullBlockRangeTrieForest.Instance);
 
         ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
 
@@ -362,5 +365,78 @@ public class LongFinalityIntegrationTests
         Assert.That(config.LongFinalityReorgDepth, Is.EqualTo(90000));
         Assert.That(config.PersistedSnapshotPath, Is.EqualTo("snapshots"));
         Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(4L * 1024 * 1024 * 1024));
+    }
+
+    /// <summary>
+    /// Verifies the full forest lifecycle across two forest ranges:
+    /// 1. Compaction populates forest range 0 and range 1 with trie nodes.
+    /// 2. The deletion driver drains range 0 (below range 1).
+    /// 3. Range 1 entries remain intact after deletion.
+    /// </summary>
+    [Test]
+    public void Forest_CompactionPopulates_DeletionDrains_AcrossRanges()
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_forest_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
+            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig());
+            repo.LoadFromCatalog();
+
+            // CompactSize=4, BlockRangePerForest=4 → range 0 = blocks 0-3, range 1 = blocks 4-7.
+            // At block 8: compactSize=8 > CompactSize=4 → forest-spilled compaction.
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2, BlockRangePerForest = 4 };
+            using SnapshotableMemDb forestDb = new();
+            ForestImpl forest = new(forestDb);
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, forest, LimboLogs.Instance);
+
+            TreePath pathRange0 = new(Keccak.Compute("nodeRange0"), 4);
+            TreePath pathRange1 = new(Keccak.Compute("nodeRange1"), 4);
+            byte[] rlpRange0 = [0xC0, 0x80];
+            byte[] rlpRange1 = [0xC1, 0x80];
+
+            // Create 8 snapshots: first has a node in range 0 (block 1), fifth has a node in range 1 (block 5).
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            for (int i = 1; i <= 8; i++)
+            {
+                StateId next = new(i, Keccak.Compute(i.ToString()));
+                SnapshotContent content = new();
+                if (i == 1) content.StateNodes[pathRange0] = new TrieNode(NodeType.Leaf, rlpRange0);
+                if (i == 5) content.StateNodes[pathRange1] = new TrieNode(NodeType.Leaf, rlpRange1);
+                content.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)i * 100).TestObject;
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+                prev = next;
+            }
+
+            StateId s8 = new(8, Keccak.Compute("8"));
+            compactor.DoCompactSnapshot(s8);
+
+            // Both ranges should be in the forest
+            Assert.That(forest.TryGetState(0, pathRange0, Keccak.Compute(rlpRange0)), Is.EqualTo(rlpRange0));
+            Assert.That(forest.TryGetState(1, pathRange1, Keccak.Compute(rlpRange1)), Is.EqualTo(rlpRange1));
+
+            // The compacted snapshot should be forest-spilled and still have all accounts
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(s8, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(compacted!.IsForestSpilled, Is.True);
+            for (int i = 0; i < 8; i++)
+                Assert.That(compacted.TryGetAccount(TestItem.Addresses[i], out ReadOnlySpan<byte> _), Is.True);
+            compacted.Dispose();
+
+            // Deletion driver: drain range 0 (belowBlockRange=1 means delete range 0 entries)
+            using MemColumnsDb<FlatDbColumns> metaDb = new();
+            BlockRangeForestDeletionDriver driver = new(forest, metaDb);
+            driver.DeleteBatch(belowBlockRange: 1, count: 100);
+
+            // Range 0 drained, range 1 intact
+            Assert.That(forest.TryGetState(0, pathRange0, Keccak.Compute(rlpRange0)), Is.Null);
+            Assert.That(forest.TryGetState(1, pathRange1, Keccak.Compute(rlpRange1)), Is.EqualTo(rlpRange1));
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
     }
 }

@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
@@ -69,7 +70,8 @@ public class FlatDbManagerPersistedTests
             new BlocksConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false,
-            persistedSnapshotRepository: repo);
+            persistedSnapshotRepository: repo,
+            blockRangeTrieForest: NullBlockRangeTrieForest.Instance);
 
         Assert.That(manager, Is.Not.Null);
     }
@@ -114,7 +116,8 @@ public class FlatDbManagerPersistedTests
             new BlocksConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false,
-            persistedSnapshotRepository: repo);
+            persistedSnapshotRepository: repo,
+            blockRangeTrieForest: NullBlockRangeTrieForest.Instance);
 
         ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
 
@@ -151,7 +154,8 @@ public class FlatDbManagerPersistedTests
             new BlocksConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false,
-            persistedSnapshotRepository: repo);
+            persistedSnapshotRepository: repo,
+            blockRangeTrieForest: NullBlockRangeTrieForest.Instance);
 
         await manager.DisposeAsync();
         compactedArena.Dispose();

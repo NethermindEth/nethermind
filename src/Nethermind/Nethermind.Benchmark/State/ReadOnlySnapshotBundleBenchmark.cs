@@ -13,7 +13,9 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
@@ -163,7 +165,7 @@ public class ReadOnlySnapshotBundleBenchmark
         }
 
         _bundle = new ReadOnlySnapshotBundle(
-            finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+            finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotList.Empty(), NullBlockRangeTrieForest.Instance, 0);
 
         // --- Hit arrays ---
         _hitAccounts = new Address[ArraySize];

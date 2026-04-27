@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
@@ -266,7 +267,9 @@ internal static class PersistedSnapshotUtils
             SnapshotPooledList.Empty(),
             new ThrowingPersistenceReader(),
             false,
-            bundleSnapshots);
+            bundleSnapshots,
+            NullBlockRangeTrieForest.Instance,
+            0);
 
         try
         {

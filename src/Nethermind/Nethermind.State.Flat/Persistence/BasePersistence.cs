@@ -29,6 +29,7 @@ public static class BasePersistence
     public const int StoragePrefixPortion = 4;
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
+    private static readonly byte[] ForestDeletionCursorKey = Keccak.Compute("ForestDeletionCursor").BytesToArray();
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
@@ -45,6 +46,12 @@ public static class BasePersistence
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
     }
+
+    internal static byte[]? ReadForestDeletionCursor(IReadOnlyKeyValueStore kv) =>
+        kv.Get(ForestDeletionCursorKey);
+
+    internal static void SetForestDeletionCursor(IWriteOnlyKeyValueStore kv, ReadOnlySpan<byte> cursor) =>
+        kv.PutSpan(ForestDeletionCursorKey, cursor);
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {

@@ -416,4 +416,15 @@ public class DbConfig : IDbConfig
 
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
+
+    // BlockRangeTrieForest: ordered by (range, halfPath, hash). Bloom filters kept (optimize_filters_for_hits=false)
+    // so range misses are fast. Large write buffers because this DB gets bulk-written during compaction.
+    public string? BlockRangeTrieForestDbRocksDbOptions { get; set; } =
+        "write_buffer_size=64000000;" +
+        "max_write_buffer_number=4;" +
+        "optimize_filters_for_hits=false;" +
+        "block_based_table_factory.block_size=16000;" +
+        "compaction_pri=kOldestLargestSeqFirst;" +
+        "";
+    public string? BlockRangeTrieForestDbAdditionalRocksDbOptions { get; set; }
 }

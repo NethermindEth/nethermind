@@ -7,6 +7,7 @@ using System.Threading.Channels;
 using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie.Pruning;
@@ -51,6 +52,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private readonly int _compactSize;
     private readonly TimeSpan _compactorStallTimeout;
+    private readonly IBlockRangeTrieForest _blockRangeTrieForest;
+    private readonly int _blockRangePerForest;
 
     // For debugging. Do the compaction synchronously
     private readonly bool _inlineCompaction;
@@ -71,7 +74,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IBlocksConfig blocksConfig,
         ILogManager logManager,
         bool enableDetailedMetrics,
-        IPersistedSnapshotRepository persistedSnapshotRepository)
+        IPersistedSnapshotRepository persistedSnapshotRepository,
+        IBlockRangeTrieForest blockRangeTrieForest)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
@@ -81,6 +85,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistedSnapshotRepository = persistedSnapshotRepository;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _blockRangeTrieForest = blockRangeTrieForest;
+        _blockRangePerForest = config.BlockRangePerForest;
 
         _compactSize = config.CompactSize;
 
@@ -257,7 +263,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotList.Empty());
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotList.Empty(), _blockRangeTrieForest, _blockRangePerForest);
         }
 
         long sw = 0;
@@ -314,7 +320,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _snapshotBundleBlockNumberDepth.WithLabels("in_memory").Observe(inMemoryDepth);
             _snapshotBundleBlockNumberDepth.WithLabels("persisted").Observe(persistedDepth);
 
-            ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted);
+            ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted, _blockRangeTrieForest, _blockRangePerForest);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
