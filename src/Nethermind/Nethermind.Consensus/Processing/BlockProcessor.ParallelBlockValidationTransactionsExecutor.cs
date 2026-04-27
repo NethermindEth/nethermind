@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -70,14 +69,14 @@ public partial class BlockProcessor
         {
             int len = block.Transactions.Length;
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
-            TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[len];
+            TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[len];
 
             for (int i = 0; i < len; i++)
             {
                 BlockReceiptsTracer tracer = new(true);
                 tracer.StartNewBlockTrace(block);
                 receiptsTracers[i] = tracer;
-                gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>();
+                gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>();
             }
 
             Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler, token), token);
@@ -113,7 +112,7 @@ public partial class BlockProcessor
                             state.processingOptions);
                         state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                     }
-                    catch (Exception ex)
+                    catch (InvalidBlockException ex)
                     {
                         state.gasResults[txIndex].SetResult((state.txs[txIndex].GasLimit, 0, ex));
                     }
