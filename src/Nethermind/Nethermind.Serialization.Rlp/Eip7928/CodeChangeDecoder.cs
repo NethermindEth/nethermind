@@ -14,7 +14,7 @@ public class CodeChangeDecoder : IndexedChangeDecoder<CodeChange>
     private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
 
     protected override CodeChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
-        => new(ctx.DecodeUShort(), ctx.DecodeByteArray(_codeLimit));
+        => new(ctx.DecodeUInt(), ctx.DecodeByteArray(_codeLimit));
 
     protected override void EncodeValue(RlpStream stream, CodeChange item)
         => stream.Encode(item.Code);

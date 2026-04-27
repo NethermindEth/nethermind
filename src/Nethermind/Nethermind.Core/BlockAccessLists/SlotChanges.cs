@@ -10,9 +10,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public record SlotChanges(UInt256 Key, SortedList<int, StorageChange> Changes)
+public record SlotChanges(UInt256 Key, SortedList<uint, StorageChange> Changes)
 {
-    public SlotChanges(UInt256 slot) : this(slot, new(GenericComparer.GetOptimized<int>())) { }
+    public SlotChanges(UInt256 slot) : this(slot, new(PrestateAwareIndexComparer.Instance)) { }
 
     public virtual bool Equals(SlotChanges? other) =>
         other is not null &&
@@ -27,7 +27,7 @@ public record SlotChanges(UInt256 Key, SortedList<int, StorageChange> Changes)
 
     public void Merge(SlotChanges other)
     {
-        foreach (KeyValuePair<int, StorageChange> kv in other.Changes)
+        foreach (KeyValuePair<uint, StorageChange> kv in other.Changes)
         {
             Changes[kv.Key] = kv.Value;
         }
@@ -36,7 +36,7 @@ public record SlotChanges(UInt256 Key, SortedList<int, StorageChange> Changes)
     public void AddStorageChange(StorageChange storageChange)
         => Changes.Add(storageChange.Index, storageChange);
 
-    public bool TryPopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
+    public bool TryPopStorageChange(uint index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 
@@ -55,13 +55,13 @@ public record SlotChanges(UInt256 Key, SortedList<int, StorageChange> Changes)
         return false;
     }
 
-    public byte[] Get(int blockAccessIndex)
+    public byte[] Get(uint blockAccessIndex)
     {
         Span<byte> tmp = stackalloc byte[32];
         UInt256 lastValue = 0;
-        foreach (KeyValuePair<int, StorageChange> change in Changes)
+        foreach (KeyValuePair<uint, StorageChange> change in Changes)
         {
-            if (change.Key >= blockAccessIndex)
+            if (change.Key != Eip7928Constants.PrestateIndex && change.Key >= blockAccessIndex)
             {
                 lastValue.ToBigEndian(tmp);
                 return [.. tmp.WithoutLeadingZeros()];
