@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -152,14 +151,8 @@ namespace Nethermind.Synchronization.Peers
                 using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
 
-                PeerInfo[] peers = syncPeerPool.InitializedPeers.ToArray();
-                if (peers.Length == 0)
-                {
-                    return null;
-                }
-
-                List<Task<BlockHeader?>> requests = new(peers.Length);
-                foreach (PeerInfo peer in peers)
+                List<Task<BlockHeader?>> requests = new(syncPeerPool.InitializedPeersCount);
+                foreach (PeerInfo peer in syncPeerPool.InitializedPeers)
                 {
                     requests.Add(FetchHeader(peer, hash, cts.Token));
                 }
@@ -177,12 +170,23 @@ namespace Nethermind.Synchronization.Peers
                     }
                 }
 
-                return null;
+                return await FetchAllocatedHeader(syncPeerPool, hash, cts.Token);
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
             {
                 // Timeout or no peer.
                 return null;
+            }
+
+            static async Task<BlockHeader?> FetchAllocatedHeader(ISyncPeerPool syncPeerPool, Hash256 headerHash, CancellationToken token)
+            {
+                using IOwnedReadOnlyList<BlockHeader>? headers = await syncPeerPool.AllocateAndRun(
+                    peer => peer.GetBlockHeaders(headerHash, 1, 0, token),
+                    BySpeedStrategy.FastestHeader,
+                    AllocationContexts.Headers,
+                    token);
+
+                return headers?.Count == 1 ? headers[0] : null;
             }
 
             static async Task<BlockHeader?> FetchHeader(PeerInfo peer, Hash256 headerHash, CancellationToken token)

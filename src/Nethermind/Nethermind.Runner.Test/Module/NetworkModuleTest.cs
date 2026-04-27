@@ -9,7 +9,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -39,6 +38,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -65,7 +65,7 @@ public class NetworkModuleTest
             .Build();
 
         IReadOnlyList<IProtocolHandlerFactory> factories = container.Resolve<IReadOnlyList<IProtocolHandlerFactory>>();
-        factories.Should().NotBeEmpty("at least one protocol handler factory should be registered");
+        Assert.That(factories, Is.Not.Empty, "at least one protocol handler factory should be registered");
 
         foreach (IProtocolHandlerFactory handlerFactory in factories)
         {
@@ -75,7 +75,9 @@ public class NetworkModuleTest
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            weakRef.IsAlive.Should().BeFalse(
+            Assert.That(
+                weakRef.IsAlive,
+                Is.False,
                 $"{handlerFactory.ProtocolCode} handler must not be retained by the container after Dispose");
         }
     }
@@ -121,8 +123,7 @@ public class NetworkModuleTest
                 Console.Out.WriteLine($".AddMessageSerializer<{MessageType}, {SerializerTypeInAssembly}>()");
                 continue;
             }
-            // serializersInContainer.TryGetValue(MessageType, out var serializer).Should().BeTrue();
-            serializer.Should().BeOfType(SerializerTypeInAssembly);
+            Assert.That(serializer, Is.TypeOf(SerializerTypeInAssembly));
         }
     }
 
@@ -144,13 +145,15 @@ public class NetworkModuleTest
             })
             .FirstOrDefault(static handler => handler is Eth71ProtocolHandler);
 
-        handler.Should().BeOfType<Eth71ProtocolHandler>();
+        Assert.That(handler, Is.TypeOf<Eth71ProtocolHandler>());
         handler?.Dispose();
     }
 
     [Test]
     public async Task Initialize_network_registers_plugin_capabilities_before_starting_rlpx()
     {
+        SubstitutionContext.Current?.ThreadContext?.DequeueAllArgumentSpecifications();
+
         List<string> callOrder = [];
         INethermindApi api = Substitute.For<INethermindApi>();
         IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
@@ -187,7 +190,7 @@ public class NetworkModuleTest
 
         await initializeNetwork.RunInitPeer();
 
-        callOrder.Should().ContainInOrder("plugin", "rlpx");
+        Assert.That(callOrder, Is.EqualTo(new[] { "plugin", "rlpx" }));
         protocolsManager.DidNotReceive().RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
     }
 
