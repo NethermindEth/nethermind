@@ -109,7 +109,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private bool ShouldPreWarm(IReleaseSpec spec)
         => !_parallelExecutionEnabled || IsBalReadWarmingEnabled(spec);
 
-    private bool IsBalReadWarmingEnabled(IReleaseSpec spec)
+    public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
     public CacheType ClearCaches()

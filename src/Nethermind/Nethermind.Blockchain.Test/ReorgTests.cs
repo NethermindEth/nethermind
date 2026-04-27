@@ -113,8 +113,7 @@ public class ReorgTests
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             blockhashProvider,
-            LimboLogs.Instance,
-            new BlocksConfig());
+            LimboLogs.Instance);
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

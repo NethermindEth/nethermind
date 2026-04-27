@@ -73,7 +73,6 @@ public class BlockProcessorTests
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
-            new BlocksConfig(),
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
@@ -285,6 +284,7 @@ public class BlockProcessorTests
         }
 
         public CacheType ClearCaches() => default;
+        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public void Dispose() { }
     }
 

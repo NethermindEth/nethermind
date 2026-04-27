@@ -224,8 +224,7 @@ namespace Nethermind.AuRa.Test
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 blockhashProvider,
-                LimboLogs.Instance,
-                new BlocksConfig());
+                LimboLogs.Instance);
 
             return (branchProcessor, stateProvider, blockTree);
         }
