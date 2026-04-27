@@ -20,6 +20,25 @@ public class XdcSubnetSealValidatorTests
     private const int Gap = 450;
 
     [Test]
+    public void EpochSwitch_PenaltiesInSnapshotButNotInHeader_HeaderIsStillValid()
+    {
+        (IXdcReleaseSpec _, ISpecProvider specProvider) = CreateSubnetSpec();
+        Address[] candidates = [Address.FromNumber(1)];
+        Address[] penalties = [Address.FromNumber(2)];
+        ISubnetMasternodesCalculator calculator = Substitute.For<ISubnetMasternodesCalculator>();
+        calculator.CalculateNextEpochMasternodes(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>()).Returns((candidates, penalties));
+        XdcSubnetSealValidator validator = CreateValidator(specProvider, calculator, CreateEpochSwitchManager(true));
+        XdcSubnetBlockHeader parent = BuildParentHeader(899);
+        XdcSubnetBlockHeader header = BuildSubnetHeader(parent, 900, 110,
+            b => b.WithValidators(candidates)            
+            .WithAuthor(candidates[0]));
+
+        bool ok = validator.ValidateParams(parent, header, out string? error);
+
+        Assert.That(ok, Is.True);
+    }
+
+    [Test]
     public void NonGapPlusOne_WithNextValidators_Invalid()
     {
         (IXdcReleaseSpec _, ISpecProvider specProvider) = CreateSubnetSpec();

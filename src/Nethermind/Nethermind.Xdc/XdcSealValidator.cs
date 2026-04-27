@@ -10,6 +10,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace Nethermind.Xdc;
@@ -27,7 +28,7 @@ internal class XdcSealValidator(
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false) => ValidateParams(parent, header, out _);
 
-    public virtual bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
+    public virtual bool ValidateParams(BlockHeader parent, BlockHeader header, [NotNullWhen(false)] out string? error)
     {
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
@@ -56,30 +57,10 @@ internal class XdcSealValidator(
                 error = "Vote nonce in checkpoint block non-zero.";
                 return false;
             }
-            if (xdcHeader.Validators is null || xdcHeader.Validators.Length == 0)
-            {
-                error = "Empty validators list on epoch switch block.";
-                return false;
-            }
-            if (xdcHeader.Validators.Length % Address.Size != 0)
-            {
-                error = "Invalid signer list on checkpoint block.";
-                return false;
-            }
+            (masternodes, Address[] penalties) = MasternodesCalculator.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
 
-            //TODO init masternodes by reading from most recent checkpoint
-            (masternodes, Address[] penaltiesAddresses) = MasternodesCalculator.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
-            if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
-            {
-                error = "Validators does not match what's stored in snapshot minus its penalty.";
+            if (!ValidateEpochFields(xdcHeader, masternodes, penalties, out error))
                 return false;
-            }
-
-            if (!xdcHeader.PenaltiesAddress.SequenceEqual(penaltiesAddresses))
-            {
-                error = "Penalties does not match.";
-                return false;
-            }
         }
         else
         {
@@ -98,6 +79,32 @@ internal class XdcSealValidator(
             return false;
         }
 
+        error = null;
+        return true;
+    }
+
+    protected virtual bool ValidateEpochFields(XdcBlockHeader xdcHeader, Address[] masternodes, Address[] penalties, out string? error)
+    {
+        if (xdcHeader.Validators is null || xdcHeader.Validators.Length == 0)
+        {
+            error = "Empty validators list on epoch switch block.";
+            return false;
+        }
+        if (xdcHeader.Validators.Length % Address.Size != 0)
+        {
+            error = "Invalid signer list on checkpoint block.";
+            return false;
+        }
+        if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
+        {
+            error = "Validators does not match what's stored in snapshot minus its penalty.";
+            return false;
+        }
+        if (!xdcHeader.PenaltiesAddress.SequenceEqual(penalties))
+        {
+            error = "Penalties does not match.";
+            return false;
+        }
         error = null;
         return true;
     }

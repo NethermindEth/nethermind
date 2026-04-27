@@ -62,6 +62,27 @@ internal sealed class XdcSubnetSealValidator(
         return true;
     }
 
+    protected override bool ValidateEpochFields(XdcBlockHeader xdcHeader, Address[] masternodes, Address[] penalties, out string? error)
+    {
+        if (xdcHeader.Validators is null || xdcHeader.Validators.Length == 0)
+        {
+            error = "Empty validators list on epoch switch block.";
+            return false;
+        }
+        if (xdcHeader.Validators.Length % Address.Size != 0)
+        {
+            error = "Invalid signer list on checkpoint block.";
+            return false;
+        }
+        if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
+        {
+            error = "Validators does not match what's stored in snapshot minus its penalty.";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
     protected override bool ValidateNonEpochFields(XdcBlockHeader xdcHeader, out string? error)
     {
         if (xdcHeader.Validators is not null && xdcHeader.Validators.Length != 0)
