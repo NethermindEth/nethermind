@@ -29,8 +29,7 @@ public static class BlobCellsHelper
 
         int blobCount = wrapper.Commitments.Length;
         int cellsPerBlob = wrapper.CellMask.Count;
-        if (cellsPerBlob == 0
-            || wrapper.Blobs.Length != blobCount
+        if (wrapper.Blobs.Length != blobCount
             || wrapper.Proofs.Length != blobCount * Ckzg.CellsPerExtBlob
             || wrapper.Cells.Length != blobCount * cellsPerBlob)
         {

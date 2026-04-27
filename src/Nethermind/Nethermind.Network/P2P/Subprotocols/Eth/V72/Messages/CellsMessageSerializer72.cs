@@ -44,6 +44,11 @@ public class CellsMessageSerializer72 : IZeroMessageSerializer<CellsMessage72>
         }
 
         byte[] cellMask = ctx.DecodeByteArraySpan().ToArray();
+        if (cellMask.Length != BlobCellMask.FixedByteLength)
+        {
+            throw new RlpException($"Invalid cell mask length in {nameof(CellsMessage72)}: expected {BlobCellMask.FixedByteLength}, got {cellMask.Length}.");
+        }
+
         if (cellsByTx.Count != hashes.Count)
         {
             throw new RlpException($"Wrong format of {nameof(CellsMessage72)} message. Hashes count: {hashes.Count} Cells count: {cellsByTx.Count}.");

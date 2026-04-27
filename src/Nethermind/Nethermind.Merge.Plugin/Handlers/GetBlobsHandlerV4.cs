@@ -24,33 +24,47 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
 
         int requestedCellCount = request.CellMask.Count;
         BlobCellsAndProofsV1?[] result = new BlobCellsAndProofsV1?[request.BlobVersionedHashes.Length];
+        bool allBlobsAvailable = true;
 
         for (int i = 0; i < request.BlobVersionedHashes.Length; i++)
         {
-            if (txPool.TryGetBlobCellsAndProofsV1(request.BlobVersionedHashes[i], request.CellMask, out BlobCellMask availableMask, out byte[][]? presentCells, out byte[][]? presentProofs))
+            byte[] blobVersionedHash = request.BlobVersionedHashes[i];
+            if (blobVersionedHash is not { Length: Eip4844Constants.BytesPerBlobVersionedHash }
+                || !txPool.TryGetBlobCellsAndProofsV1(blobVersionedHash, request.CellMask, out BlobCellMask availableMask, out byte[][]? presentCells, out byte[][]? presentProofs))
             {
-                byte[]?[] cells = new byte[requestedCellCount][];
-                byte[]?[] proofs = new byte[requestedCellCount][];
-                int requestedIndex = 0;
-                int availableIndex = 0;
-                foreach (int cellIndex in request.CellMask.EnumerateSetBits())
-                {
-                    if (availableMask.Contains(cellIndex))
-                    {
-                        cells[requestedIndex] = presentCells[availableIndex];
-                        proofs[requestedIndex] = presentProofs[availableIndex];
-                        availableIndex++;
-                    }
+                allBlobsAvailable = false;
+                continue;
+            }
 
-                    requestedIndex++;
+            byte[]?[] cells = new byte[requestedCellCount][];
+            byte[]?[] proofs = new byte[requestedCellCount][];
+            int requestedIndex = 0;
+            int availableIndex = 0;
+            foreach (int cellIndex in request.CellMask.EnumerateSetBits())
+            {
+                if (availableMask.Contains(cellIndex))
+                {
+                    cells[requestedIndex] = presentCells[availableIndex];
+                    proofs[requestedIndex] = presentProofs[availableIndex];
+                    availableIndex++;
                 }
 
-                result[i] = new BlobCellsAndProofsV1(cells, proofs);
+                requestedIndex++;
             }
+
+            result[i] = new BlobCellsAndProofsV1(cells, proofs);
         }
 
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
-        Metrics.GetBlobsRequestsSuccessTotal++;
+        if (allBlobsAvailable)
+        {
+            Metrics.GetBlobsRequestsSuccessTotal++;
+        }
+        else
+        {
+            Metrics.GetBlobsRequestsFailureTotal++;
+        }
+
         return ResultWrapper<IEnumerable<BlobCellsAndProofsV1?>?>.Success(result);
     }
 }

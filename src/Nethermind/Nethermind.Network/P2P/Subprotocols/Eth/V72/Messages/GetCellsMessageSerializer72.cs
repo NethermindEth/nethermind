@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -21,6 +22,11 @@ public class GetCellsMessageSerializer72 : IZeroMessageSerializer<GetCellsMessag
         ctx.ReadSequenceLength();
         using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
         byte[] cellMask = ctx.DecodeByteArraySpan().ToArray();
+        if (cellMask.Length != BlobCellMask.FixedByteLength)
+        {
+            throw new RlpException($"Invalid cell mask length in {nameof(GetCellsMessage72)}: expected {BlobCellMask.FixedByteLength}, got {cellMask.Length}.");
+        }
+
         return new GetCellsMessage72(hashes.AsSpan().ToArray(), cellMask);
     }
 

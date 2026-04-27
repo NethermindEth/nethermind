@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using CkzgLib;
@@ -59,7 +59,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                         {
-                            if (wrapper is null || wrapper.Version != requiredVersion || !wrapper.HasFullBlobs())
+                            if (wrapper.Version != requiredVersion || !wrapper.HasFullBlobs())
                             {
                                 break;
                             }

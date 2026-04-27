@@ -316,6 +316,97 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_apply_cells_if_tx_becomes_pending_while_cells_are_buffered()
+    {
+        Transaction tx = BuildBlobTransaction(fullProvider: true);
+
+        BlobCellMask cellMask = BlobCellMask.Full;
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, cellMask, out byte[][] cells), Is.True);
+
+        _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        int pendingLookupCount = 0;
+        _transactionPool.TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                pendingLookupCount++;
+                bool txAvailable = pendingLookupCount > 1;
+                x[1] = txAvailable ? tx : null!;
+                return txAvailable;
+            });
+        _transactionPool.TryMergeBlobCells(tx.Hash!, cellMask, Arg.Any<byte[][]>()).Returns(true);
+
+        using NewPooledTransactionHashesMessage72 announcement = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            cellMask.ToBytes());
+        using CellsMessage72 message = new([tx.Hash!], [cells], cellMask.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(message, Eth72MessageCode.Cells);
+
+        _transactionPool.Received(1).TryMergeBlobCells(tx.Hash!, cellMask, Arg.Is<byte[][]>(m =>
+            m.Length == cells.Length &&
+            m.Zip(cells, static (left, right) => left.SequenceEqual(right)).All(static equal => equal)));
+    }
+
+    [Test]
+    public void should_not_drop_readded_sent_cell_request_when_trimming_stale_queue_entries()
+    {
+        const int maxSentCellRequests = 4096;
+        Transaction tx = BuildBlobTransaction(fullProvider: true);
+
+        BlobCellMask cellMask = BlobCellMask.Full;
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, cellMask, out byte[][] cells), Is.True);
+
+        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+        _transactionPool.TryGetPendingBlobTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                Hash256 hash = x.Arg<Hash256>();
+                x[1] = hash == tx.Hash ? tx : null!;
+                return true;
+            });
+        _transactionPool.TryMergeBlobCells(tx.Hash!, cellMask, Arg.Any<byte[][]>()).Returns(true);
+
+        HandleIncomingStatusMessage();
+
+        using NewPooledTransactionHashesMessage72 firstAnnouncement = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            cellMask.ToBytes());
+        using CellsMessage72 firstCells = new([tx.Hash!], [cells], cellMask.ToBytes());
+        HandleZeroMessage(firstAnnouncement, Eth72MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(firstCells, Eth72MessageCode.Cells);
+
+        for (int i = 0; i < maxSentCellRequests; i++)
+        {
+            using NewPooledTransactionHashesMessage72 announcement = new(
+                [(byte)TxType.Blob],
+                [1024],
+                [HashFromInt(i)],
+                cellMask.ToBytes());
+            HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+        }
+
+        using NewPooledTransactionHashesMessage72 secondAnnouncement = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            cellMask.ToBytes());
+        using CellsMessage72 secondCells = new([tx.Hash!], [cells], cellMask.ToBytes());
+        HandleZeroMessage(secondAnnouncement, Eth72MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(secondCells, Eth72MessageCode.Cells);
+
+        _transactionPool.Received(2).TryMergeBlobCells(tx.Hash!, cellMask, Arg.Any<byte[][]>());
+    }
+
+    [Test]
     public void should_ignore_cells_before_getcells_request_is_sent()
     {
         Transaction tx = BuildBlobTransaction(fullProvider: false);
@@ -461,5 +552,12 @@ public class Eth72ProtocolHandlerTests
         Hash256 sampleHash = Keccak.Compute(input);
         ushort sample = BinaryPrimitives.ReadUInt16BigEndian(sampleHash.Bytes[..2]);
         return sample % 10_000 < 1_500;
+    }
+
+    private static Hash256 HashFromInt(int value)
+    {
+        byte[] bytes = new byte[Hash256.Size];
+        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(28), value);
+        return new Hash256(bytes);
     }
 }
