@@ -285,7 +285,7 @@ public class BlockchainBridgeTests
     [
         (bridge, header, tx) => bridge.Call(header, tx),
         (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
-        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, default, false),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
     ];
 
     [Test, Combinatorial]

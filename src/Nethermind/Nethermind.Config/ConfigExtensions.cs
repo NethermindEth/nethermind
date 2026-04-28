@@ -13,7 +13,7 @@ public static class ConfigExtensions
 {
     private static readonly ConcurrentDictionary<string, bool> PortOptions = new();
 
-    public static string GetCategoryName(Type type)
+    public static string? GetCategoryName(Type type)
     {
         if (type.IsAssignableTo(typeof(INoCategoryConfig)))
             return null;
@@ -35,10 +35,10 @@ public static class ConfigExtensions
     public static T GetDefaultValue<T>(this IConfig config, string propertyName)
     {
         Type type = config.GetType();
-        Type interfaceType = type.GetInterface($"I{type.Name}");
-        PropertyInfo propertyInfo = interfaceType.GetProperty(propertyName);
-        ConfigItemAttribute attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-        string defaultValue = attribute.DefaultValue;
-        return (T)TypeDescriptor.GetConverter(typeof(T)).ConvertFrom(defaultValue);
+        Type interfaceType = type.GetInterface($"I{type.Name}")!;
+        PropertyInfo propertyInfo = interfaceType.GetProperty(propertyName)!;
+        ConfigItemAttribute attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>()!;
+        string? defaultValue = attribute.DefaultValue;
+        return (T)TypeDescriptor.GetConverter(typeof(T)).ConvertFrom(defaultValue!)!;
     }
 }

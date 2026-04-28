@@ -14,6 +14,12 @@ internal class XdcTxGossipPolicy(ISpecProvider provider, IChainHeadInfoProvider 
     {
         IXdcReleaseSpec spec = (IXdcReleaseSpec)provider.GetXdcSpec(chainHeadInfoProvider.HeadNumber);
 
-        return !tx.RequiresSpecialHandling(spec);
+        if (!tx.RequiresSpecialHandling(spec))
+            return true;
+
+        if (tx.IsSignTransaction(spec))
+            return true;
+
+        return false;
     }
 }

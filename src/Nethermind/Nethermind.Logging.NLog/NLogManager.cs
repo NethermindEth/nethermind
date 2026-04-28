@@ -24,7 +24,7 @@ public class NLogManager : ILogManager, IDisposable
     /// </summary>
     public NLogManager() { /* Log in temp dir? */ }
 
-    public NLogManager(string logFileName, string logDirectory = null, string logRules = null)
+    public NLogManager(string logFileName, string? logDirectory = null, string? logRules = null)
     {
         Setup(logFileName, logDirectory, logRules);
         // Required since 'NLog.config' could change during runtime, we need to re-apply the configuration
@@ -33,7 +33,7 @@ public class NLogManager : ILogManager, IDisposable
         Static.LogManager = this;
     }
 
-    private static void Setup(string logFileName, string logDirectory = null, string logRules = null)
+    private static void Setup(string logFileName, string? logDirectory = null, string? logRules = null)
     {
         logDirectory = SetupLogDirectory(logDirectory);
         SetupLogFile(logFileName, logDirectory);
@@ -43,9 +43,9 @@ public class NLogManager : ILogManager, IDisposable
 
     private static void SetupLogFile(string logFileName, string logDirectory)
     {
-        if (LogManager.Configuration?.AllTargets is not null)
+        if (LogManager.Configuration?.AllTargets is { } allTargets)
         {
-            foreach (FileTarget target in LogManager.Configuration?.AllTargets.OfType<FileTarget>())
+            foreach (FileTarget target in allTargets.OfType<FileTarget>())
             {
                 string fileNameToUse = (target.Name == DefaultFileTargetName) ? logFileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
                 target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.GetFullPath(Path.Combine(logDirectory, fileNameToUse)) : fileNameToUse;
@@ -53,7 +53,7 @@ public class NLogManager : ILogManager, IDisposable
         }
     }
 
-    private static string SetupLogDirectory(string logDirectory)
+    private static string SetupLogDirectory(string? logDirectory)
     {
         logDirectory = (string.IsNullOrEmpty(logDirectory) ? DefaultFolder : logDirectory).GetApplicationResourcePath();
         if (!Directory.Exists(logDirectory))
@@ -66,20 +66,22 @@ public class NLogManager : ILogManager, IDisposable
 
     private static readonly ConcurrentDictionary<string, ILogger> s_namedLoggers = new();
     private static readonly Func<string, ILogger> s_namedLoggerBuilder = BuildNamedLogger;
-    private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
+    private readonly EventHandler<LoggingConfigurationChangedEventArgs>? _logManagerOnConfigurationChanged;
 
     private static ILogger BuildLogger(Type type)
         => new(new NLogLogger(type));
     private static ILogger BuildNamedLogger(string loggerName)
         => new(new NLogLogger(loggerName));
 
+#if !ZK_EVM
     public ILogger GetClassLogger<T>() => TypedLogger<T>.Logger;
+#endif
 
     public ILogger GetLogger(string loggerName) => s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder);
 
-    public void SetGlobalVariable(string name, object value) => GlobalDiagnosticsContext.Set(name, value);
+    public void SetGlobalVariable(string name, object? value) => GlobalDiagnosticsContext.Set(name, value);
 
-    private static void SetupLogRules(string logRules)
+    private static void SetupLogRules(string? logRules)
     {
         //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error;',
         if (logRules is not null)

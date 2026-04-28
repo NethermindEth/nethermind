@@ -35,7 +35,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static readonly ulong IterationCountMultiplierEip2565 = 8;
     private static readonly ulong IterationCountMultiplierEip7883 = 16;
 
-    public static readonly ModExpPrecompile Instance = new();
+    public static ModExpPrecompile Instance { get; } = new();
 
     private ModExpPrecompile() { }
 
@@ -75,6 +75,20 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         {
             return long.MaxValue;
         }
+    }
+
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
+    {
+        if (inputData.Length <= LengthsLengths) return inputData;
+
+        (uint baseLength, uint expLength, uint modulusLength) = GetInputLengths(inputData.Span);
+
+        // Header alone determines the output when base/mod overflowed or short-circuit to empty.
+        if (baseLength == uint.MaxValue || modulusLength == uint.MaxValue || (baseLength == 0 && modulusLength == 0))
+            return inputData[..LengthsLengths];
+
+        ulong end = (ulong)LengthsLengths + baseLength + expLength + modulusLength;
+        return end < (ulong)inputData.Length ? inputData[..(int)end] : inputData;
     }
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
