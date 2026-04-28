@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Data;
+using System;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -20,9 +21,9 @@ public sealed class TransitionConfigurationSszHandler(
     public override string HttpMethod => "POST";
     public override string Resource => "transition-configuration";
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
-        TransitionConfigurationV1 tc = SszCodec.DecodeTransitionConfigurationRequest(body);
+        TransitionConfigurationV1 tc = SszCodec.DecodeTransitionConfigurationRequest(body.Span);
         await WriteSszResultAsync(ctx, _handler.Handle(tc), SszCodec.EncodeTransitionConfigurationResponse);
     }
 }

@@ -23,7 +23,7 @@ public sealed class GetPayloadSszHandler<TResult>(
     public override string Resource => "payloads";
     public override int? Version => version;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         if (!TryParsePayloadId(extra, out byte[] id, out string err))
         {

@@ -97,25 +97,29 @@ public sealed class SszMiddleware(
             _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}" +
                           (extra.Length > 0 ? "/" + extra : ""));
 
-        byte[] body;
+        byte[]? rentedBuffer = null;
+        int bodyLength = 0;
         try
         {
-            body = await ReadBodyAsync(ctx);
+            (rentedBuffer, bodyLength) = await ReadBodyAsync(ctx);
+            ReadOnlyMemory<byte> bodyMemory = rentedBuffer is null
+                ? ReadOnlyMemory<byte>.Empty
+                : rentedBuffer.AsMemory(0, bodyLength);
+
+            await handler!.HandleAsync(ctx, version, extra, bodyMemory);
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException ex) when (rentedBuffer is null)
         {
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
-            return;
-        }
-
-        try
-        {
-            await handler!.HandleAsync(ctx, version, extra, body);
         }
         catch (Exception ex)
         {
             if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
+        }
+        finally
+        {
+            if (rentedBuffer is not null) ArrayPool<byte>.Shared.Return(rentedBuffer);
         }
     }
 
@@ -154,28 +158,29 @@ public sealed class SszMiddleware(
     {
         handler = null;
         extra = string.Empty;
-        string methodLower = method.ToLowerInvariant();
+        ReadOnlySpan<char> methodSpan = method.AsSpan();
+        ReadOnlySpan<char> pathSpan = pathSegment.AsSpan();
 
         ISszEndpointHandler? fallback = null;
         string fallbackExtra = string.Empty;
 
         foreach (KeyValuePair<(string Method, string Resource), List<ISszEndpointHandler>> kvp in _routes)
         {
-            if (kvp.Key.Method != methodLower) continue;
+            if (!methodSpan.Equals(kvp.Key.Method.AsSpan(), StringComparison.OrdinalIgnoreCase)) continue;
 
-            string resource = kvp.Key.Resource;
+            ReadOnlySpan<char> resourceSpan = kvp.Key.Resource.AsSpan();
 
             string pathExtra;
-            if (pathSegment.Length == resource.Length &&
-                pathSegment.Equals(resource, StringComparison.Ordinal))
+            if (pathSpan.Length == resourceSpan.Length &&
+                pathSpan.Equals(resourceSpan, StringComparison.Ordinal))
             {
                 pathExtra = string.Empty;
             }
-            else if (pathSegment.Length > resource.Length &&
-                     pathSegment[resource.Length] == '/' &&
-                     pathSegment.StartsWith(resource, StringComparison.Ordinal))
+            else if (pathSpan.Length > resourceSpan.Length &&
+                     pathSpan[resourceSpan.Length] == '/' &&
+                     pathSpan.StartsWith(resourceSpan, StringComparison.Ordinal))
             {
-                pathExtra = pathSegment[(resource.Length + 1)..];
+                pathExtra = pathSpan[(resourceSpan.Length + 1)..].ToString();
             }
             else
             {
@@ -227,7 +232,7 @@ public sealed class SszMiddleware(
         return false;
     }
 
-    private static async Task<byte[]> ReadBodyAsync(HttpContext ctx)
+    private static async Task<(byte[]? buffer, int length)> ReadBodyAsync(HttpContext ctx)
     {
         long? contentLength = ctx.Request.ContentLength;
         if (contentLength > MaxBodySize)
@@ -236,9 +241,10 @@ public sealed class SszMiddleware(
 
         if (contentLength is > 0)
         {
-            byte[] exact = new byte[(int)contentLength];
-            await ctx.Request.Body.ReadExactlyAsync(exact, ctx.RequestAborted);
-            return exact;
+            int len = (int)contentLength;
+            byte[] rent = ArrayPool<byte>.Shared.Rent(len);
+            await ctx.Request.Body.ReadExactlyAsync(rent.AsMemory(0, len), ctx.RequestAborted);
+            return (rent, len);
         }
 
         PipeReader reader = ctx.Request.BodyReader;
@@ -256,24 +262,30 @@ public sealed class SszMiddleware(
                     throw new InvalidOperationException(
                         $"Request body too large: exceeds limit of {MaxBodySize}");
 
-                if (result is null)
-                    result = ArrayPool<byte>.Shared.Rent(Math.Max(needed, 4096));
-                else if (result.Length < needed)
+                if (needed > 0)
                 {
-                    byte[] larger = ArrayPool<byte>.Shared.Rent(needed);
-                    result.AsSpan(0, written).CopyTo(larger);
-                    ArrayPool<byte>.Shared.Return(result);
-                    result = larger;
+                    if (result is null)
+                        result = ArrayPool<byte>.Shared.Rent(Math.Max(needed, 4096));
+                    else if (result.Length < needed)
+                    {
+                        byte[] larger = ArrayPool<byte>.Shared.Rent(needed);
+                        result.AsSpan(0, written).CopyTo(larger);
+                        ArrayPool<byte>.Shared.Return(result);
+                        result = larger;
+                    }
+
+                    seq.CopyTo(result.AsSpan(written));
+                    written += (int)seq.Length;
                 }
 
-                seq.CopyTo(result.AsSpan(written));
-                written += (int)seq.Length;
                 reader.AdvanceTo(seq.End);
 
                 if (rr.IsCompleted) break;
             }
 
-            return result is null ? [] : result.AsSpan(0, written).ToArray();
+            byte[]? owned = result;
+            result = null;
+            return (owned, written);
         }
         finally
         {

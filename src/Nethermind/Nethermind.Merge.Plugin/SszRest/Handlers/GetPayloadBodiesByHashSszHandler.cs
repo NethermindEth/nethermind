@@ -23,9 +23,9 @@ public sealed class GetPayloadBodiesByHashSszHandler<TResult>(
     public override string Resource => "payloads/bodies/by-hash";
     public override int? Version => version;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
-        Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body);
+        Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body.Span);
         await WriteSszResultAsync(ctx, handler.Handle(hashes), encode);
     }
 }

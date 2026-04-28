@@ -18,9 +18,9 @@ public sealed class GetBlobsV1SszHandler(
     public override string Resource => "blobs";
     public override int? Version => 1;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
-        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body);
+        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
         await WriteSszResultAsync(ctx,
             await handler.HandleAsync(hashes),
             (IEnumerable<BlobAndProofV1?> e) =>
@@ -38,9 +38,9 @@ public sealed class GetBlobsV2SszHandler(
     public override string Resource => "blobs";
     public override int? Version => version;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
-        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body);
+        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
         await WriteSszResultAsync(ctx,
             await handler.HandleAsync(new GetBlobsHandlerV2Request(hashes, AllowPartialReturn: allowPartialReturn)),
             (IEnumerable<BlobAndProofV2?>? e) =>

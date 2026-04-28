@@ -26,7 +26,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     public virtual int? Version => null;
 
     /// <inheritdoc/>
-    public abstract Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body);
+    public abstract Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body);
 
     protected static bool TryParsePayloadId(string extra, out byte[] id, out string err)
     {

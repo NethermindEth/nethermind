@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -19,9 +20,9 @@ public sealed class CapabilitiesSszHandler(IHandler<IEnumerable<string>, IEnumer
     public override string HttpMethod => "POST";
     public override string Resource => "capabilities";
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
-        string[] caps = SszCodec.DecodeCapabilitiesRequest(body);
+        string[] caps = SszCodec.DecodeCapabilitiesRequest(body.Span);
         await WriteSszResultAsync(ctx, _handler.Handle(caps),
             result => SszCodec.EncodeCapabilitiesResponse((IReadOnlyList<string>)result));
     }

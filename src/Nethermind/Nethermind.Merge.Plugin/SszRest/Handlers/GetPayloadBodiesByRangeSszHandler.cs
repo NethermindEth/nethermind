@@ -22,9 +22,9 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TResult>(
     public override string Resource => "payloads/bodies/by-range";
     public override int? Version => version;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
-        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body);
+        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body.Span);
         await WriteSszResultAsync(ctx, await handler(start, count), encode);
     }
 }

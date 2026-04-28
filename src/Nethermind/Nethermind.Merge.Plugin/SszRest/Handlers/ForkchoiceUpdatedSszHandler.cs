@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Consensus.Producers;
@@ -20,10 +21,10 @@ public sealed class ForkchoiceUpdatedSszHandler(IForkchoiceUpdatedHandler handle
     public override string HttpMethod => "POST";
     public override string Resource => "forkchoice";
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
         (ForkchoiceStateV1 state, PayloadAttributes? attrs) =
-            SszCodec.DecodeForkchoiceUpdatedRequest(body, version);
+            SszCodec.DecodeForkchoiceUpdatedRequest(body.Span, version);
 
         await WriteSszResultAsync(
             ctx,

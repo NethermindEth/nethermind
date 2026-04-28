@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 
@@ -22,5 +23,5 @@ public interface ISszEndpointHandler
     /// Executes the endpoint logic. Called by <see cref="SszMiddleware"/> after auth
     /// has already been validated and the request body has been read.
     /// </summary>
-    Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body);
+    Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body);
 }

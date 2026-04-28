@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Consensus;
@@ -22,10 +23,10 @@ public sealed class NewPayloadSszHandler(IAsyncHandler<ExecutionPayload, Payload
     public override string HttpMethod => "POST";
     public override string Resource => "payloads";
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body)
+    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
         (ExecutionPayload payload, byte[]?[] _, Hash256? beaconRoot, byte[][]? requests) =
-            SszCodec.DecodeNewPayloadRequest(body, version);
+            SszCodec.DecodeNewPayloadRequest(body.Span, version);
 
         if (version >= EngineApiVersions.NewPayload.V3)
             payload.ParentBeaconBlockRoot = beaconRoot;
