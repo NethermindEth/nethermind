@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
@@ -93,11 +92,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private const int HeadPivotDistance = 500;
     private static TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(10);
     private const int BalSyncChainLength = 15_000;
-    private const int PartialBalSyncChainLength = 120;
-    private const int PartialBalActivationBlock = 40;
-    private const int PartialBalSyncHeadPivotDistance = 20;
+    private const int PartialBalSyncChainLength = 1_000;
+    private const int PartialBalActivationBlock = 400;
+    private const int PartialBalSyncHeadPivotDistance = 500;
     private const int BalSyncBuildProgressInterval = 1_000;
     private const int BalSyncVerificationProgressInterval = 3_000;
+    private static readonly DateTime PostMergeStartTime = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly ulong PostMergeStartTimestamp = (ulong)PostMergeStartTime.Subtract(DateTime.UnixEpoch).TotalSeconds;
 
     private static int _nextPortNumber = 30_000;
     private IContainer _server = null!;
@@ -299,7 +300,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         if (isPostMerge)
         {
             // Activate configured mainnet future EIP
-            ManualTimestamper timestamper = new(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            ManualTimestamper timestamper = new(PostMergeStartTime);
             builder
                 .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
@@ -346,7 +347,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         ArgumentNullException.ThrowIfNull(spec);
         MoveBlockTransitionsToGenesis(spec);
-        spec.Parameters.Eip7928TransitionTimestamp = spec.Genesis.Header.Timestamp + activationBlockNumber;
+        spec.Parameters.Eip7928TransitionTimestamp = PostMergeStartTimestamp + activationBlockNumber;
         spec.Genesis.Header.BlockAccessListHash = null;
     }
 
@@ -403,7 +404,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             {
                 property.SetValue(target, 0L);
             }
-            else if (property.PropertyType == typeof(long?))
+            else if (property.PropertyType == typeof(long?) && property.GetValue(target) is not null)
             {
                 property.SetValue(target, 0L);
             }
@@ -636,15 +637,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         await StartServerAndBuildStorageChain(server, PartialBalSyncChainLength, cancellationToken, "Partial BAL sync server");
 
         IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
-        serverBlockTree.Head!.Number.Should().Be(PartialBalSyncChainLength);
+        Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(PartialBalSyncChainLength));
 
         IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
         Block lastPreActivationBlock = serverBlockTree.FindBlock(PartialBalActivationBlock - 1)!;
         Block firstActivatedBlock = serverBlockTree.FindBlock(PartialBalActivationBlock)!;
-        lastPreActivationBlock.Header.BlockAccessListHash.Should().BeNull();
-        serverBalStore.GetRlp(lastPreActivationBlock.Hash!).Should().BeNull();
-        firstActivatedBlock.Header.BlockAccessListHash.Should().NotBeNull();
-        serverBalStore.GetRlp(firstActivatedBlock.Hash!).Should().NotBeNull();
+        Assert.That(lastPreActivationBlock.Header.BlockAccessListHash, Is.Null);
+        Assert.That(serverBalStore.GetRlp(lastPreActivationBlock.Hash!), Is.Null);
+        Assert.That(firstActivatedBlock.Header.BlockAccessListHash, Is.Not.Null);
+        Assert.That(serverBalStore.GetRlp(firstActivatedBlock.Hash!), Is.Not.Null);
 
         long syncPivotNumber = 0;
         PrivateKey clientKey = TestItem.PrivateKeyF;
@@ -661,11 +662,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             ConfigureLocalNetwork(cfg, AllocatePort());
         }, serverKey);
 
-        syncPivotNumber.Should().BeGreaterThan(PartialBalActivationBlock);
+        Assert.That(syncPivotNumber, Is.GreaterThan(PartialBalActivationBlock));
         TestContext.Progress.WriteLine($"Partial BAL sync test: head {PartialBalSyncChainLength}, pivot {syncPivotNumber}, activation {PartialBalActivationBlock}.");
 
         await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
-        client.Resolve<ISyncPointers>().LowestInsertedAccessListBlockNumber.Should().BeLessThanOrEqualTo(1);
+        Assert.That(client.Resolve<ISyncPointers>().LowestInsertedAccessListBlockNumber, Is.LessThanOrEqualTo(1));
     }
 
     // Post and pre merge have slightly different operation for these.
@@ -691,13 +692,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)
             {
-                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+                Assert.That(acceptTxResult, Is.EqualTo(AcceptTxResult.Accepted));
             }
 
             timestamper.Add(TimeSpan.FromSeconds(1));
             try
             {
-                (await manualBlockProductionTrigger.BuildBlock()).Should().NotBeNull();
+                Assert.That(await manualBlockProductionTrigger.BuildBlock(), Is.Not.Null);
                 await newBlockTask;
             }
             catch (Exception e)
@@ -748,7 +749,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)
             {
-                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+                Assert.That(acceptTxResult, Is.EqualTo(AcceptTxResult.Accepted));
             }
             timestamper.Add(TimeSpan.FromSeconds(1));
 
@@ -760,13 +761,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 ParentBeaconBlockRoot = Hash256.Zero,
                 Timestamp = (ulong)timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
             });
-            payloadId.Should().NotBeNullOrEmpty();
+            Assert.That(payloadId, Is.Not.Null.And.Not.Empty);
 
             IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
-            blockProductionContext.Should().NotBeNull();
-            blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
+            Assert.That(blockProductionContext, Is.Not.Null);
+            Assert.That(blockProductionContext!.CurrentBestBlock, Is.Not.Null);
 
-            (await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!)).Should().Be(AddBlockResult.Added);
+            Assert.That(await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!), Is.EqualTo(AddBlockResult.Added));
 
             await newBlockTask;
         }
@@ -926,7 +927,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 #pragma warning disable CS0162 // Unreachable code detected
             {
                 IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
-                worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken).Should().BeTrue();
+                Assert.That(worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken), Is.True);
             }
 #pragma warning restore CS0162 // Unreachable code detected
         }
@@ -941,8 +942,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 cancellationToken.ThrowIfCancellationRequested();
                 Block clientBlock = blockTree.FindBlock(i)!;
                 TxReceipt[] clientReceipts = receiptStorage.Get(clientBlock);
-                clientBlock.Should().NotBeNull();
-                clientReceipts.Should().NotBeNull();
+                Assert.That(clientBlock, Is.Not.Null);
+                Assert.That(clientReceipts, Is.Not.Null);
 
                 if (CheckBlocksAndReceiptsContent)
 #pragma warning disable CS0162 // Unreachable code detected
@@ -963,12 +964,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             using NettyRlpStream stream1 = _blockDecoder.EncodeToNewNettyStream(block1);
             using NettyRlpStream stream2 = _blockDecoder.EncodeToNewNettyStream(block2);
 
-            stream1.AsSpan().ToArray().Should().BeEquivalentTo(stream2.AsSpan().ToArray());
+            Assert.That(stream1.AsSpan().ToArray(), Is.EqualTo(stream2.AsSpan().ToArray()));
         }
 
         private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>
             // The network encoding is not the same as storage encoding.
-            EncodeReceipts(receipts1).Should().BeEquivalentTo(EncodeReceipts(receipts2));
+            Assert.That(EncodeReceipts(receipts1), Is.EqualTo(EncodeReceipts(receipts2)));
 
         private byte[] EncodeReceipts(TxReceipt[] receipts)
         {
