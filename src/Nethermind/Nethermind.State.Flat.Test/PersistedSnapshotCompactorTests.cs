@@ -302,6 +302,83 @@ public class PersistedSnapshotCompactorTests
         PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, toMerge, true);
     }
 
+    // Config: compactSize=1 (PersistenceManager boundary), minCompactSize=2, maxCompactSize=8.
+    // blockNumber=8 → 8 & -8 = 8. Loop tries 8 → 4 → 2 (each > _compactSize=1).
+    //
+    // presentBlocks: which block-slots are populated (snapshot From=states[b-1], To=states[b]).
+    // expectedFromBlock=0 means no compaction expected.
+    private static IEnumerable<TestCaseData> FallbackCompactionCases()
+    {
+        // Full 8-block range present: compacts at 8. Linked s0→s8.
+        yield return new TestCaseData(new[] { 1, 2, 3, 4, 5, 6, 7, 8 }, true, 0L, 8L)
+            .SetName("Fallback_FullRange_CompactsAt8");
+
+        // Only blocks 5–8 present: falls back to 4. Linked s4→s8.
+        yield return new TestCaseData(new[] { 5, 6, 7, 8 }, true, 4L, 8L)
+            .SetName("Fallback_Half_CompactsAt4");
+
+        // Only blocks 7–8 present: falls back to 2. Linked s6→s8.
+        yield return new TestCaseData(new[] { 7, 8 }, true, 6L, 8L)
+            .SetName("Fallback_Quarter_CompactsAt2");
+
+        // Only 1 block present: no pair available, no compaction.
+        yield return new TestCaseData(new[] { 8 }, false, 0L, 0L)
+            .SetName("Fallback_NoRange_NoCompact");
+    }
+
+    [TestCaseSource(nameof(FallbackCompactionCases))]
+    public void DoCompactSnapshot_FallsBackToSmallerCompactSize(
+        int[] presentBlocks, bool expectCompacted, long expectedFromBlock, long expectedToBlock)
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
+            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig());
+            repo.LoadFromCatalog();
+
+            // compactSize=1 keeps the loop running for sizes 2, 4, 8 (all > 1).
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2, PersistedSnapshotMaxCompactSize = 8 };
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, Nethermind.Logging.LimboLogs.Instance);
+
+            StateId[] states = new StateId[9];
+            states[0] = new StateId(0, Keccak.EmptyTreeHash);
+            for (int i = 1; i <= 8; i++)
+                states[i] = new StateId(i, Keccak.Compute($"{i}"));
+
+            foreach (int block in presentBlocks)
+            {
+                SnapshotContent content = new();
+                content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing));
+            }
+
+            compactor.DoCompactSnapshot(states[8]);
+
+            if (!expectCompacted)
+            {
+                Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? none), Is.False,
+                    "Expected no compacted snapshot");
+                _ = none;
+            }
+            else
+            {
+                Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? compacted), Is.True,
+                    "Expected a compacted snapshot");
+                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(expectedFromBlock));
+                Assert.That(compacted.To.BlockNumber, Is.EqualTo(expectedToBlock));
+                compacted.Dispose();
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
+
     [Test]
     public void ReadRefIdsFromMetadata_ReturnsNull_ForBaseSnapshot()
     {
