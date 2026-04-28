@@ -56,6 +56,12 @@ public abstract class BlockchainTestBase
     /// </summary>
     protected virtual bool? ParallelExecutionOverride => null;
 
+    /// <summary>
+    /// Override to replace the log manager used by internal Nethermind components.
+    /// Null means use the default (TestLogManager at Warn level).
+    /// </summary>
+    protected virtual ILogManager? ComponentLogManagerOverride => null;
+
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
         _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
@@ -127,10 +133,12 @@ public abstract class BlockchainTestBase
             mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(1).TotalMilliseconds;
         }
 
+        ILogManager componentLogManager = ComponentLogManagerOverride ?? _logManager;
+
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)
-            .AddSingleton(_logManager)
+            .AddSingleton(componentLogManager)
             .AddSingleton(rewardCalculator)
             .AddSingleton<IDifficultyCalculator>(difficultyCalculator)
             // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty

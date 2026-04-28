@@ -6,15 +6,15 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
 public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 {
-    // BAL ParallelExecution throws unhandled exceptions from background threads
-    // that crash the process. Disable until BlockAccessListManager is fixed.
     protected override bool? ParallelExecutionOverride => false;
+    protected override ILogManager? ComponentLogManagerOverride => suppressOutput ? new TestLogManager(LogLevel.Error) : null;
 
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader? _testsSource;
