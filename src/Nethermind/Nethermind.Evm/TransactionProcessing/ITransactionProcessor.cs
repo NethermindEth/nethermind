@@ -9,33 +9,10 @@ namespace Nethermind.Evm.TransactionProcessing;
 
 public interface ITransactionProcessor
 {
-    /// <summary>
-    /// Execute transaction, commit state
-    /// </summary>
-    TransactionResult Execute(Transaction transaction, ITxTracer txTracer);
-
-    /// <summary>
-    /// Call transaction, rollback state
-    /// </summary>
-    TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer);
-
-    /// <summary>
-    /// Execute transaction, keep the state uncommitted
-    /// </summary>
-    TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer);
-
-    /// <summary>
-    /// Call transaction, no validations, commit state
-    /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
-    /// </summary>
-    TransactionResult Trace(Transaction transaction, ITxTracer txTracer);
-
-    /// <summary>
-    /// Call transaction, no validations, don't commit state
-    /// Will NOT charge gas from sender account
-    /// </summary>
-    TransactionResult Warmup(Transaction transaction, ITxTracer txTracer);
-
+    TransactionResult Process(
+    Transaction transaction,
+    ITxTracer txTracer,
+    ExecutionOptions options);
 
     void SetBlockExecutionContext(BlockHeader blockHeader);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
@@ -49,6 +26,50 @@ public interface ITransactionProcessor
 
 public static class ITransactionProcessorExtensions
 {
+    public static TransactionResult Execute(
+        this ITransactionProcessor transactionProcessor,
+        Transaction transaction,
+        ITxTracer txTracer)
+        => transactionProcessor.Process(
+            transaction,
+            txTracer,
+            ExecutionOptions.Commit);
+
+    public static TransactionResult CallAndRestore(
+        this ITransactionProcessor transactionProcessor,
+        Transaction transaction,
+        ITxTracer txTracer)
+        => transactionProcessor.Process(
+            transaction,
+            txTracer,
+            ExecutionOptions.CommitAndRestore);
+
+    public static TransactionResult BuildUp(
+        this ITransactionProcessor transactionProcessor,
+        Transaction transaction,
+        ITxTracer txTracer)
+        => transactionProcessor.Process(
+            transaction,
+            txTracer,
+            ExecutionOptions.None);
+
+    public static TransactionResult Trace(
+        this ITransactionProcessor transactionProcessor,
+        Transaction transaction,
+        ITxTracer txTracer)
+        => transactionProcessor.Process(
+            transaction,
+            txTracer,
+            ExecutionOptions.SkipValidationAndCommit);
+
+    public static TransactionResult Warmup(
+        this ITransactionProcessor transactionProcessor,
+        Transaction transaction,
+        ITxTracer txTracer)
+        => transactionProcessor.Process(
+            transaction,
+            txTracer,
+            ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
     public static TransactionResult Execute(this ITransactionProcessor transactionProcessor, Transaction transaction, BlockHeader header, ITxTracer txTracer)
     {
         transactionProcessor.SetBlockExecutionContext(header);
