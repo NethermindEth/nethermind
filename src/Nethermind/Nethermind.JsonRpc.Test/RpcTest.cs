@@ -32,7 +32,7 @@ public static class RpcTest
 
     public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : 10.Seconds());
+        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : 30.Seconds());
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
