@@ -126,7 +126,9 @@ public class TestingRpcModule(
         Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer, cancellationToken);
 
         if (processedBlock is null)
-            return ResultWrapper<ProducedBlock>.Fail("payload processing failed", ErrorCodes.InternalError);
+            return cancellationToken.IsCancellationRequested
+                ? ResultWrapper<ProducedBlock>.Fail("node is shutting down", ErrorCodes.InternalError)
+                : ResultWrapper<ProducedBlock>.Fail("payload processing failed", ErrorCodes.InternalError);
 
         if (txRlps is not null && processedBlock.Transactions.Length != transactions.Length)
         {
@@ -185,8 +187,8 @@ public class TestingRpcModule(
             blockTree.NewHeadBlock -= OnNewHead;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
-        return ResultWrapper<Hash256?>.Success(processedBlock.Hash);
+        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {expectedHash}");
+        return ResultWrapper<Hash256?>.Success(expectedHash);
     }
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)
