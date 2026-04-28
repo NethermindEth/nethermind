@@ -84,14 +84,9 @@ internal static class InputGenerator
 
                 IRlpValueDecoder<Block?> blockDecoder = Rlp.GetValueDecoder<Block?>()!;
                 Rlp.ValueDecoderContext blockContext = new(rlp);
-                block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+                block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None)
+                    ?? throw new RlpException("Block RLP decoded as null");
                 blockContext.Check(rlp.Length);
-
-                if (block is null)
-                {
-                    AnsiConsole.MarkupLine($"[red]Block RLP decoded as null[/]");
-                    return;
-                }
 
                 string blockNumber = EnsureBlockParamIsNumber(blockParam, block);
 
