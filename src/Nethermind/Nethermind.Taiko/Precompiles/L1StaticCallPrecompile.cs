@@ -30,6 +30,7 @@ namespace Nethermind.Taiko.Precompiles;
 public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrecompileGasAware
 {
     public static readonly L1StaticCallPrecompile Instance = new();
+    static L1StaticCallPrecompile IPrecompile<L1StaticCallPrecompile>.Instance => Instance;
 
     private const string L1StaticCallFailed = "l1 static call failed";
 

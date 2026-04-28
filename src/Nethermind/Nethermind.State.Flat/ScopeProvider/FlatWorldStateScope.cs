@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
@@ -156,34 +155,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-
-        commitTask.Add(Task.Factory.StartNew(() =>
-        {
-            // Commit will copy the trie nodes from the tree to the bundle.
-            // Its fine to commit the state tree together with the storage tree at this point as the storage tree
-            // root has been resolved and updated to the state tree within the writebatch.
-            _stateTree.Commit();
-        }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-
-        foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
-        {
-            if (_concurrencyQuota.TryRequestConcurrencyQuota())
-            {
-                commitTask.Add(Task.Factory.StartNew((ctx) =>
-                {
-                    FlatStorageTree st = (FlatStorageTree)ctx!;
-                    st.CommitTree();
-                    _concurrencyQuota.ReturnConcurrencyQuota();
-                }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-            }
-            else
-            {
-                storage.Value.CommitTree();
-            }
-        }
-
-        Task.WaitAll(commitTask.AsSpan());
+        // Storage tree commits already happened during WriteBatch.Dispose() via
+        // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
+        _stateTree.Commit();
 
         _storages.Clear();
 

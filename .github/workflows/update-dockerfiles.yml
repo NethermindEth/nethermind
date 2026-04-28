@@ -31,23 +31,33 @@ jobs:
           sdk_version=$(echo "$manifest" | jq -r '."latest-sdk"')
 
           # Get the digests for the specified tags
-          runtime_chiseled_tag=${runtime_version}-noble-chiseled
+          runtime_chiseled_tag=${runtime_version}-resolute-chiseled
           runtime_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_chiseled_tag} --no-tags | jq -r '.Digest')
 
-          runtime_tag=${runtime_version}-noble
+          runtime_tag=${runtime_version}-resolute
           runtime_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_tag} --no-tags | jq -r '.Digest')
 
-          sdk_tag=${sdk_version}-noble
+          sdk_tag=${sdk_version}-resolute
           sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:${sdk_tag} --no-tags | jq -r '.Digest')
 
           # Update Dockerfiles
-          for file in "Dockerfile" "Dockerfile.chiseled" "scripts/build/Dockerfile"; do
+          dockerfiles=(
+            "Dockerfile"
+            "Dockerfile.chiseled"
+            "Dockerfile.pgo"
+            "scripts/build/Dockerfile"
+          )
+
+          for file in "${dockerfiles[@]}"; do
             sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1${sdk_tag}@${sdk_digest}|" "$file"
           done
 
           runtime_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
 
-          sed -i "s|${runtime_pattern}|\1${runtime_tag}@${runtime_digest}|" Dockerfile
+          for file in "Dockerfile" "Dockerfile.pgo"; do
+            sed -i "s|${runtime_pattern}|\1${runtime_tag}@${runtime_digest}|" "$file"
+          done
+
           sed -i "s|${runtime_pattern}|\1${runtime_chiseled_tag}@${runtime_chiseled_digest}|" Dockerfile.chiseled
 
           # Get the number of modified files
@@ -59,7 +69,7 @@ jobs:
         id: gh-app
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.APP_ID }}
+          client-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Create a pull request

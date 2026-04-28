@@ -364,6 +364,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task FastSync()
     {
+        // After the nodedata satellite protocol was removed, fast sync without snap can no longer
+        // retrieve state on eth >= 67 (no GetNodeData in those versions). The SnapSync test below
+        // covers fast sync with state retrieval via snap.
+        Assert.Ignore("Fast sync without snap is not supported for eth >= 67 after nodedata satellite removal");
+
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyC;
@@ -800,7 +805,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
         {
-            DisconnectFailure = $"{reason.ToString()} {details}";
+            DisconnectFailure = $"{reason} {details}";
             _cts.Cancel();
         }
 

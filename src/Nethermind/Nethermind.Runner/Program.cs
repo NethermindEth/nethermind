@@ -418,7 +418,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
 
-    (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+    (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
