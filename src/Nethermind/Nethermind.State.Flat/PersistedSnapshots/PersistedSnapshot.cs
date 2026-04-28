@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -140,6 +141,28 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public PersistedSnapshotReader.StorageNodeEnumerable StorageNodes => new(this);
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();
+
+    internal void PrefetchColumn(byte[] tag)
+    {
+        Hsst.Hsst outer = new(GetSpan());
+        if (outer.TryGetBound(tag, out int colOff, out int colLen))
+            _reservation.Touch(colOff, colLen);
+    }
+
+    internal static Task PrefetchColumnsAsync(PersistedSnapshotList snapshots, params byte[][] tags) =>
+        Task.Run(() =>
+        {
+            for (int i = 0; i < snapshots.Count; i++)
+                foreach (byte[] tag in tags)
+                    snapshots[i].PrefetchColumn(tag);
+        });
+
+    internal static Task PrefetchColumnsAsync(PersistedSnapshot snapshot, params byte[][] tags) =>
+        Task.Run(() =>
+        {
+            foreach (byte[] tag in tags)
+                snapshot.PrefetchColumn(tag);
+        });
 
     public bool TryAcquire() => TryAcquireLease();
 

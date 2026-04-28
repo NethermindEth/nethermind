@@ -17,6 +17,7 @@ public sealed unsafe class ArenaFile : IDisposable
     private const int MADV_RANDOM = 1;
     private const int MADV_DONTNEED = 4;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
+    private static int _touchSink;
 
     [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
     private static extern int Madvise(void* addr, nuint length, int advice);
@@ -66,6 +67,18 @@ public sealed unsafe class ArenaFile : IDisposable
         FileStream fs = new(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, bufferSize: 1);
         fs.Seek(startOffset, SeekOrigin.Begin);
         return fs;
+    }
+
+    public void Touch(long offset, int size)
+    {
+        if (size <= 0) return;
+        int pageSize = Environment.SystemPageSize;
+        byte* p = _basePtr + offset;
+        int sink = 0;
+        for (int i = 0; i < size; i += pageSize)
+            sink ^= p[i];
+        sink ^= p[size - 1];
+        Volatile.Write(ref _touchSink, sink);
     }
 
     public void AdviseDontNeed(long offset, int size)
