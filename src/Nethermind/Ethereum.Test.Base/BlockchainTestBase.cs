@@ -57,7 +57,7 @@ public abstract class BlockchainTestBase
     /// </summary>
     protected virtual bool? ParallelExecutionOverride => null;
 
-    protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is NamedReleaseSpec { IsPostMerge: true };
+    protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
