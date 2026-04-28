@@ -666,7 +666,8 @@ public static class PersistedSnapshotBuilder
                 if (outer.TryGetBound(tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: inlineValues);
+                ArenaReadahead readahead = new(snapshots[i].Reservation, columnBounds[i].Offset, columnBounds[i].Length);
+                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: inlineValues, readahead: readahead);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
@@ -885,7 +886,8 @@ public static class PersistedSnapshotBuilder
                 if (outer.TryGetBound(tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false);
+                ArenaReadahead readahead = new(snapshots[i].Reservation, columnBounds[i].Offset, columnBounds[i].Length);
+                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false, readahead: readahead);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
@@ -921,7 +923,8 @@ public static class PersistedSnapshotBuilder
                 if (outer.TryGetBound(tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false);
+                ArenaReadahead readahead = new(snapshots[i].Reservation, columnBounds[i].Offset, columnBounds[i].Length);
+                enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false, readahead: readahead);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
