@@ -147,7 +147,27 @@ public sealed class RealTimeTracer : IAsyncDisposable
             // Write cumulative with completionStatus="complete" for initial range.
             // OnBlockCompleted is sync, so track the task and let FinalizePartialAsync await it
             // during shutdown — otherwise a fast shutdown can race this write and drop it.
-            _rangeCompleteFinalizeTask = _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("complete"), "complete");
+            // Acquire _cumulativeWriteLock so we don't collide with an in-flight UpdateCumulativeFileAsync.
+            _rangeCompleteFinalizeTask = FinalizeWithLockAsync("complete");
+        }
+    }
+
+    /// <summary>
+    /// Finalizes the cumulative file under <see cref="_cumulativeWriteLock"/> so it cannot race with
+    /// an in-flight <see cref="UpdateCumulativeFileAsync"/>. Both writers open the file with
+    /// FileShare.None, so without this guard one would throw IOException and the final file may not
+    /// be written.
+    /// </summary>
+    private async Task FinalizeWithLockAsync(string completionStatus)
+    {
+        await _cumulativeWriteLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput(completionStatus), completionStatus).ConfigureAwait(false);
+        }
+        finally
+        {
+            _cumulativeWriteLock.Release();
         }
     }
 
@@ -264,8 +284,9 @@ public sealed class RealTimeTracer : IAsyncDisposable
             }
         }
 
-        // Write final cumulative with partial status
-        await _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("partial"), "partial").ConfigureAwait(false);
+        // Write final cumulative with partial status under the lock so we don't collide with any
+        // still-in-flight UpdateCumulativeFileAsync.
+        await FinalizeWithLockAsync("partial").ConfigureAwait(false);
     }
 
     /// <summary>

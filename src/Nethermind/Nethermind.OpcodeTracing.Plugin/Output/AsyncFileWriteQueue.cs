@@ -11,6 +11,13 @@ namespace Nethermind.OpcodeTracing.Plugin.Output;
 /// </summary>
 public sealed class AsyncFileWriteQueue : IAsyncDisposable
 {
+    /// <summary>
+    /// Threshold above which we start warning about queue backlog. The channel itself is unbounded
+    /// to keep producers fast (block processing must not stall on disk IO), so this is a soft alert
+    /// rather than a hard cap — operators get a heads-up if disk can't keep up.
+    /// </summary>
+    private const int BacklogWarnThreshold = 1000;
+
     private readonly ILogger _logger;
     private readonly PerBlockTraceWriter _perBlockWriter;
     private readonly string _outputDirectory;
@@ -18,6 +25,7 @@ public sealed class AsyncFileWriteQueue : IAsyncDisposable
     private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly Task _processingTask;
     private int _isCompleted;
+    private int _backlogWarned;
 
     /// <summary>
     /// Gets the number of pending writes in the queue.
@@ -60,7 +68,16 @@ public sealed class AsyncFileWriteQueue : IAsyncDisposable
             return false;
         }
 
-        return _writeChannel.Writer.TryWrite(traceOutput);
+        bool enqueued = _writeChannel.Writer.TryWrite(traceOutput);
+
+        // Warn once if disk IO falls behind and the queue starts growing without bound.
+        if (enqueued && _writeChannel.Reader.Count > BacklogWarnThreshold &&
+            Interlocked.Exchange(ref _backlogWarned, 1) == 0 && _logger.IsWarn)
+        {
+            _logger.Warn($"Per-block trace write queue backlog exceeded {BacklogWarnThreshold} entries — disk IO is not keeping up with block processing");
+        }
+
+        return enqueued;
     }
 
     /// <summary>

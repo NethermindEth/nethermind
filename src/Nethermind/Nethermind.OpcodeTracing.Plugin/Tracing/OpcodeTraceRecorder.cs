@@ -353,10 +353,13 @@ public sealed class OpcodeTraceRecorder(
 
                     await executionTracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
 
-                    // Capture skipped blocks for metadata
-                    if (executionTracer.SkippedBlocks.Count > 0)
+                    // Capture skipped blocks for metadata. SkippedBlocks allocates on every access,
+                    // so snapshot once, sort in place.
+                    long[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
+                    if (skippedSnapshot.Length > 0)
                     {
-                        skippedBlocks = executionTracer.SkippedBlocks.OrderBy(b => b).ToArray();
+                        Array.Sort(skippedSnapshot);
+                        skippedBlocks = skippedSnapshot;
                         if (_logger.IsWarn)
                         {
                             _logger.Warn($"RetrospectiveExecution tracing skipped {skippedBlocks.Length} blocks due to unavailable state");

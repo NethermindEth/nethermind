@@ -84,7 +84,7 @@ public sealed record TraceConfiguration
     /// <summary>
     /// Gets the list of warnings generated during configuration resolution.
     /// </summary>
-    public List<string> Warnings { get; init; } = new();
+    public IReadOnlyList<string> Warnings { get; init; } = [];
 
     /// <summary>
     /// Creates a trace configuration from the plugin configuration.

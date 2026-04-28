@@ -32,12 +32,12 @@ public sealed class RetrospectiveExecutionTracer
     private readonly OpcodeCounter _counter;
     private readonly ILogger _logger;
     private readonly int _maxDegreeOfParallelism;
-    private readonly ConcurrentBag<long> _skippedBlocks = new();
+    private readonly ConcurrentQueue<long> _skippedBlocks = new();
 
     /// <summary>
     /// Gets the block numbers that were skipped due to unavailable state.
     /// </summary>
-    public IReadOnlyCollection<long> SkippedBlocks => _skippedBlocks.ToArray();
+    public IReadOnlyCollection<long> SkippedBlocks => _skippedBlocks;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RetrospectiveExecutionTracer"/> class.
@@ -136,7 +136,7 @@ public sealed class RetrospectiveExecutionTracer
             {
                 _logger.Warn($"Block {blockNumber} not found in database");
             }
-            _skippedBlocks.Add(blockNumber);
+            _skippedBlocks.Enqueue(blockNumber);
             progress.UpdateProgress(blockNumber);
             return;
         }
@@ -155,7 +155,7 @@ public sealed class RetrospectiveExecutionTracer
             {
                 _logger.Warn($"State unavailable for block {blockNumber}: {ex.Message}");
             }
-            _skippedBlocks.Add(blockNumber);
+            _skippedBlocks.Enqueue(blockNumber);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -163,7 +163,7 @@ public sealed class RetrospectiveExecutionTracer
             {
                 _logger.Warn($"Failed to process block {blockNumber}: {ex.Message}");
             }
-            _skippedBlocks.Add(blockNumber);
+            _skippedBlocks.Enqueue(blockNumber);
         }
 
         progress.UpdateProgress(blockNumber);
