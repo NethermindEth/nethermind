@@ -3,7 +3,6 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
