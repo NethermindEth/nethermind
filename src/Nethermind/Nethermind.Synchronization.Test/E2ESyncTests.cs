@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -48,6 +47,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using NUnit.Framework.Internal;
@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.Test;
 /// </summary>
 /// <param name="dbMode"></param>
 /// <param name="isPostMerge"></param>
-[Parallelizable(ParallelScope.Children)]
+[NonParallelizable]
 [TestFixtureSource(nameof(CreateTestCases))]
 public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 {
@@ -477,13 +477,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)
             {
-                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+                Assert.That(acceptTxResult, Is.EqualTo(AcceptTxResult.Accepted));
             }
 
             timestamper.Add(TimeSpan.FromSeconds(1));
             try
             {
-                (await manualBlockProductionTrigger.BuildBlock()).Should().NotBeNull();
+                Assert.That(await manualBlockProductionTrigger.BuildBlock(), Is.Not.Null);
                 await newBlockTask;
             }
             catch (Exception e)
@@ -534,7 +534,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)
             {
-                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+                Assert.That(acceptTxResult, Is.EqualTo(AcceptTxResult.Accepted));
             }
             timestamper.Add(TimeSpan.FromSeconds(1));
 
@@ -546,13 +546,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 ParentBeaconBlockRoot = Hash256.Zero,
                 Timestamp = (ulong)timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
             });
-            payloadId.Should().NotBeNullOrEmpty();
+            Assert.That(payloadId, Is.Not.Null.And.Not.Empty);
 
             IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
-            blockProductionContext.Should().NotBeNull();
-            blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
+            Assert.That(blockProductionContext, Is.Not.Null);
+            Assert.That(blockProductionContext!.CurrentBestBlock, Is.Not.Null);
 
-            (await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!)).Should().Be(AddBlockResult.Added);
+            Assert.That(await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!), Is.EqualTo(AddBlockResult.Added));
 
             await newBlockTask;
         }
@@ -586,6 +586,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ITestEnv testEnv,
         IRlpxHost rlpxHost,
         IWorldStateManager worldStateManager,
+        ISyncConfig syncConfig,
+        ISyncFeed<SnapSyncBatch?> snapSyncFeed,
         PseudoNethermindRunner runner,
         ImmediateDisconnectFailure immediateDisconnectFailure,
         BlockProcessorExceptionDetector blockProcessorExceptionDetector)
@@ -710,7 +712,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 #pragma warning disable CS0162 // Unreachable code detected
             {
                 IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
-                worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken).Should().BeTrue();
+                Assert.That(worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken), Is.True);
             }
 #pragma warning restore CS0162 // Unreachable code detected
         }
@@ -725,8 +727,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 cancellationToken.ThrowIfCancellationRequested();
                 Block clientBlock = blockTree.FindBlock(i)!;
                 TxReceipt[] clientReceipts = receiptStorage.Get(clientBlock);
-                clientBlock.Should().NotBeNull();
-                clientReceipts.Should().NotBeNull();
+                Assert.That(clientBlock, Is.Not.Null);
+                Assert.That(clientReceipts, Is.Not.Null);
 
                 if (CheckBlocksAndReceiptsContent)
 #pragma warning disable CS0162 // Unreachable code detected
@@ -747,12 +749,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             using NettyRlpStream stream1 = _blockDecoder.EncodeToNewNettyStream(block1);
             using NettyRlpStream stream2 = _blockDecoder.EncodeToNewNettyStream(block2);
 
-            stream1.AsSpan().ToArray().Should().BeEquivalentTo(stream2.AsSpan().ToArray());
+            Assert.That(stream1.AsSpan().ToArray(), Is.EqualTo(stream2.AsSpan().ToArray()));
         }
 
         private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>
             // The network encoding is not the same as storage encoding.
-            EncodeReceipts(receipts1).Should().BeEquivalentTo(EncodeReceipts(receipts2));
+            Assert.That(EncodeReceipts(receipts1), Is.EqualTo(EncodeReceipts(receipts2)));
 
         private byte[] EncodeReceipts(TxReceipt[] receipts)
         {
@@ -780,6 +782,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     await runner.StartNetwork(token);
                     await ConnectTo(server, token);
                     await testEnv.SyncUntilFinished(server, token);
+                    await WaitForSnapSyncFinished(token);
                     await VerifyHeadWith(server, token);
                     await VerifyAllBlocksAndReceipts(server, token);
                 }, token);
@@ -794,6 +797,43 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Console.Error.WriteLine($"On {head?.ToString(BlockHeader.Format.Short)}");
             bool stateVerified = worldStateManager.VerifyTrie(head!, cancellationToken);
             Assert.That(stateVerified, Is.True);
+        }
+
+        private async Task WaitForSnapSyncFinished(CancellationToken cancellationToken)
+        {
+            // The head can arrive before snap range healing completes; flat trie verification
+            // needs the snap feed to finish before checking the final state.
+            if (!syncConfig.SnapSync || snapSyncFeed.CurrentState == SyncFeedState.Finished)
+            {
+                return;
+            }
+
+            TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Handler(object? _, SyncFeedStateEventArgs e)
+            {
+                if (e.NewState == SyncFeedState.Finished)
+                {
+                    completion.TrySetResult();
+                }
+            }
+
+            snapSyncFeed.StateChanged += Handler;
+            try
+            {
+                if (snapSyncFeed.CurrentState == SyncFeedState.Finished)
+                {
+                    return;
+                }
+
+                await using (cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken)))
+                {
+                    await completion.Task;
+                }
+            }
+            finally
+            {
+                snapSyncFeed.StateChanged -= Handler;
+            }
         }
     }
 
