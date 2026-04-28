@@ -5,6 +5,8 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  push:
+    branches: [feat/evm-enginetest]
   workflow_dispatch:
     inputs:
       branch:
@@ -45,6 +47,11 @@ on:
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
+  TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
+  EEST_VERSION: ${{ inputs.eest_version || 'v5.4.0' }}
+  EEST_ARCHIVE: ${{ inputs.eest_archive || 'fixtures_develop.tar.gz' }}
+  WORKERS: ${{ inputs.workers || '4' }}
+  FILTER: ${{ inputs.filter || '' }}
 
 defaults:
   run:
@@ -52,7 +59,7 @@ defaults:
 
 jobs:
   nethtest:
-    name: nethtest --${{ inputs.test_type }}
+    name: nethtest --${{ inputs.test_type || 'engineTest' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -79,14 +86,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /tmp/eest-fixtures
-          key: eest-${{ inputs.eest_version }}-${{ inputs.eest_archive }}
+          key: eest-${{ env.EEST_VERSION }}-${{ env.EEST_ARCHIVE }}
 
       - name: Download EEST fixtures
         run: |
-          EEST_DIR="/tmp/eest-fixtures/${{ inputs.eest_version }}"
+          EEST_DIR="/tmp/eest-fixtures/$EEST_VERSION"
           if [ ! -d "$EEST_DIR" ]; then
             mkdir -p "$EEST_DIR"
-            ARCHIVE_URL="https://github.com/ethereum/execution-spec-tests/releases/download/${{ inputs.eest_version }}/${{ inputs.eest_archive }}"
+            ARCHIVE_URL="https://github.com/ethereum/execution-spec-tests/releases/download/$EEST_VERSION/$EEST_ARCHIVE"
             echo "Downloading EEST fixtures from $ARCHIVE_URL"
             curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR"
           else
@@ -96,17 +103,17 @@ jobs:
       - name: Resolve fixture path
         id: fixtures
         run: |
-          EEST_DIR="/tmp/eest-fixtures/${{ inputs.eest_version }}"
-          if [ "${{ inputs.test_type }}" = "engineTest" ]; then
+          EEST_DIR="/tmp/eest-fixtures/$EEST_VERSION"
+          if [ "$TEST_TYPE" = "engineTest" ]; then
             FIXTURE_DIR="$(find "$EEST_DIR" -type d -name 'blockchain_test_engine' | head -1)"
-          elif [ "${{ inputs.test_type }}" = "blockTest" ]; then
+          elif [ "$TEST_TYPE" = "blockTest" ]; then
             FIXTURE_DIR="$(find "$EEST_DIR" -type d -name 'blockchain_tests' | head -1)"
-          elif [ "${{ inputs.test_type }}" = "stateTest" ]; then
+          elif [ "$TEST_TYPE" = "stateTest" ]; then
             FIXTURE_DIR="$(find "$EEST_DIR" -type d -name 'state_tests' | head -1)"
           fi
 
           if [ -z "$FIXTURE_DIR" ] || [ ! -d "$FIXTURE_DIR" ]; then
-            echo "::error::Could not find fixture directory for ${{ inputs.test_type }} in $EEST_DIR"
+            echo "::error::Could not find fixture directory for $TEST_TYPE in $EEST_DIR"
             find "$EEST_DIR" -maxdepth 3 -type d | head -30
             exit 1
           fi
@@ -119,16 +126,16 @@ jobs:
         working-directory: src/Nethermind
         run: |
           FILTER_ARG=""
-          if [ -n "${{ inputs.filter }}" ]; then
-            FILTER_ARG="--filter ${{ inputs.filter }}"
+          if [ -n "$FILTER" ]; then
+            FILTER_ARG="--filter $FILTER"
           fi
 
           dotnet run --no-build -c Release \
             --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
-            --${{ inputs.test_type }} \
+            --$TEST_TYPE \
             --input "${{ steps.fixtures.outputs.fixture_dir }}" \
             --jsonout \
-            --workers ${{ inputs.workers }} \
+            --workers $WORKERS \
             --neverTrace \
             $FILTER_ARG \
             | tee /tmp/nethtest-results.json
@@ -149,9 +156,9 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Test type | \`--${{ inputs.test_type }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| EEST version | \`${{ inputs.eest_version }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Workers | ${{ inputs.workers }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Test type | \`--$TEST_TYPE\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| EEST version | \`$EEST_VERSION\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Workers | $WORKERS |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Total | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Passed | $PASSED |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Failed | $FAILED |" >> "$GITHUB_STEP_SUMMARY"
@@ -168,20 +175,20 @@ jobs:
 
           # Local repro command
           FILTER_CMD=""
-          if [ -n "${{ inputs.filter }}" ]; then
-            FILTER_CMD=" --filter '${{ inputs.filter }}'"
+          if [ -n "$FILTER" ]; then
+            FILTER_CMD=" --filter '$FILTER'"
           fi
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Run locally" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo '```bash' >> "$GITHUB_STEP_SUMMARY"
           echo "# 1. Download EEST fixtures (once)" >> "$GITHUB_STEP_SUMMARY"
-          echo "mkdir -p /tmp/eest && curl -fsSL https://github.com/ethereum/execution-spec-tests/releases/download/${{ inputs.eest_version }}/${{ inputs.eest_archive }} | tar -xz -C /tmp/eest" >> "$GITHUB_STEP_SUMMARY"
+          echo "mkdir -p /tmp/eest && curl -fsSL https://github.com/ethereum/execution-spec-tests/releases/download/$EEST_VERSION/$EEST_ARCHIVE | tar -xz -C /tmp/eest" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "# 2. Build and run" >> "$GITHUB_STEP_SUMMARY"
           echo "cd src/Nethermind" >> "$GITHUB_STEP_SUMMARY"
           echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release" >> "$GITHUB_STEP_SUMMARY"
-          echo "dotnet run --no-build -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --${{ inputs.test_type }} --input /tmp/eest/fixtures --jsonout --workers ${{ inputs.workers }} --neverTrace${FILTER_CMD}" >> "$GITHUB_STEP_SUMMARY"
+          echo "dotnet run --no-build -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers $WORKERS --neverTrace${FILTER_CMD}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
           echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED"
@@ -194,6 +201,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: nethtest-results-${{ inputs.test_type }}
+          name: nethtest-results-${{ env.TEST_TYPE }}
           path: /tmp/nethtest-results.json
           retention-days: 30
