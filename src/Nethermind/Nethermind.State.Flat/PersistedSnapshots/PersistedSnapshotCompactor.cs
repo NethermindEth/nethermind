@@ -4,7 +4,7 @@
 using System.Diagnostics;
 using Nethermind.Db;
 using Nethermind.Logging;
-
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Prometheus;
 
@@ -26,6 +26,7 @@ public class PersistedSnapshotCompactor(
     private readonly int _persistedSnapshotMaxCompactSize = config.PersistedSnapshotMaxCompactSize;
     private readonly int _minCompactSize = Math.Max(config.MinCompactSize, 2);
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
+    private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
 
     /// <summary>
     /// Try to compact persisted snapshots using logarithmic compaction.
@@ -96,12 +97,19 @@ public class PersistedSnapshotCompactor(
         SnapshotLocation location;
         ArenaReservation reservation;
         int estimatedSize = 0;
+        long bloomCapacity = 0;
         for (int i = 0; i < snapshots.Count; i++)
+        {
             estimatedSize += snapshots[i].Size;
+            bloomCapacity += snapshots[i].KeyBloomCount;
+        }
+        BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
+            ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
+            : null;
         using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
         {
             long sw = Stopwatch.GetTimestamp();
-            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds);
+            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds, mergedBloom);
 
             for (int i = 0; i < snapshots.Count; i++)
             {
@@ -129,7 +137,7 @@ public class PersistedSnapshotCompactor(
             }
         }
 
-        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedIds, isPersistable);
+        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedIds, isPersistable, mergedBloom);
 
         Metrics.PersistedSnapshotCompactions++;
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;

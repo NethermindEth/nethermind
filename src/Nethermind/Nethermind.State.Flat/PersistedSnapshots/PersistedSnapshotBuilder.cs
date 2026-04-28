@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
 
@@ -47,7 +48,7 @@ public static class PersistedSnapshotBuilder
         return cmp != 0 ? cmp : a.Key.Path.Length.CompareTo(b.Key.Path.Length);
     };
 
-    public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer) where TWriter : IByteBufferWriter
+    public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriter
     {
         // Declare mutable locals populated by the parallel jobs below.
         List<(TreePath Path, TrieNode Node)> stateTop = null!, stateCompact = null!, stateFallback = null!;
@@ -131,7 +132,7 @@ public static class PersistedSnapshotBuilder
             WriteMetadataColumn(ref outer, snapshot);
 
             // Column 0x01: Unified account column (accounts, self-destruct, storage)
-            WriteAccountColumn(ref outer, snapshot, sortedStorages, uniqueAddresses);
+            WriteAccountColumn(ref outer, snapshot, sortedStorages, uniqueAddresses, bloom);
 
             // Column 0x03: State nodes (compact, path length 6-15)
             WriteStateNodesColumnCompact(ref outer, stateCompact);
@@ -192,7 +193,8 @@ public static class PersistedSnapshotBuilder
     private static void WriteAccountColumn<TWriter>(
         ref HsstBuilder<TWriter> outer, Snapshot snapshot,
         ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
-        ArrayPoolList<Address> uniqueAddresses) where TWriter : IByteBufferWriter
+        ArrayPoolList<Address> uniqueAddresses,
+        BloomFilter? bloom = null) where TWriter : IByteBufferWriter
     {
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 2;
@@ -208,6 +210,13 @@ public static class PersistedSnapshotBuilder
 
         foreach (Address address in uniqueAddresses)
         {
+            ulong addrBloomKey = 0;
+            if (bloom is not null)
+            {
+                addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
+                bloom.Add(addrBloomKey);
+            }
+
             // Begin per-address HSST
             ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
             using HsstBuilder<TWriter> perAddr = new(ref perAddrWriter);
@@ -246,6 +255,14 @@ public static class PersistedSnapshotBuilder
                         else
                         {
                             suffixLevel.Add(slotKey.Slice(slotPrefixLength, slotSuffixLength), []);
+                        }
+                        if (bloom is not null)
+                        {
+                            ulong s0 = MemoryMarshal.Read<ulong>(slotKey);
+                            ulong s1 = MemoryMarshal.Read<ulong>(slotKey[8..]);
+                            ulong s2 = MemoryMarshal.Read<ulong>(slotKey[16..]);
+                            ulong s3 = MemoryMarshal.Read<ulong>(slotKey[24..]);
+                            bloom.Add(addrBloomKey ^ s0 ^ s1 ^ s2 ^ s3);
                         }
                         storageIdx++;
                     }
@@ -533,7 +550,7 @@ public static class PersistedSnapshotBuilder
     /// Pre-converts all Full snapshots to Linked so the merge only handles Linked snapshots
     /// (all trie values are already NodeRefs). This eliminates the dual code path in trie merges.
     /// </summary>
-    internal static void NWayMergeSnapshots<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> referencedIds) where TWriter : IByteBufferWriter
+    internal static void NWayMergeSnapshots<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> referencedIds, BloomFilter? bloom = null) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
 
@@ -586,7 +603,7 @@ public static class PersistedSnapshotBuilder
                         NWayMetadataMerge(snapshots, ref valueWriter, referencedIds);
                         break;
                     case 0x01:
-                        NWayMergeAccountColumn(mergeSnapshots, tag, ref valueWriter);
+                        NWayMergeAccountColumn(mergeSnapshots, tag, ref valueWriter, bloom);
                         break;
                     case 0x03:
                         NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
@@ -893,7 +910,7 @@ public static class PersistedSnapshotBuilder
     /// calls <see cref="NWayMergePerAddressHsst"/>. Single source: copy as-is.
     /// </summary>
     internal static void NWayMergeAccountColumn<TWriter>(
-        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer) where TWriter : IByteBufferWriter
+        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
         Hsst.Hsst.MergeEnumerator[] enums = new Hsst.Hsst.MergeEnumerator[n];
@@ -949,14 +966,29 @@ public static class PersistedSnapshotBuilder
                     ReadOnlySpan<byte> colSpan = snapshots[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
                     (int valOff, int valLen) = enums[srcIdx].GetCurrentValueBound(colSpan);
                     builder.Add(minKey, colSpan.Slice(valOff, valLen));
+                    if (bloom is not null)
+                    {
+                        ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
+                        bloom.Add(addrKey);
+                        ReadOnlySpan<byte> perAddrHsst = colSpan.Slice(valOff, valLen);
+                        Hsst.Hsst perAddr = new(perAddrHsst);
+                        if (perAddr.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
+                            AddSlotKeysToBloom(slotSection, addrKey, bloom);
+                    }
                 }
                 else
                 {
                     // M sources share this address: merge per-address HSSTs
                     ref TWriter perAddrWriter = ref builder.BeginValueWrite();
+                    ulong addrKey = 0;
+                    if (bloom is not null)
+                    {
+                        addrKey = MemoryMarshal.Read<ulong>(minKey);
+                        bloom.Add(addrKey);
+                    }
                     NWayMergePerAddressHsst(
                         enums, matchingSources, matchCount, snapshots, columnBounds,
-                        ref perAddrWriter);
+                        ref perAddrWriter, bloom, addrKey);
                     builder.FinishValueWrite(minKey);
                 }
 
@@ -985,7 +1017,7 @@ public static class PersistedSnapshotBuilder
     private static void NWayMergePerAddressHsst<TWriter>(
         Hsst.Hsst.MergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
         PersistedSnapshotList snapshots, (int Offset, int Length)[] columnBounds,
-        ref TWriter writer) where TWriter : IByteBufferWriter
+        ref TWriter writer, BloomFilter? bloom = null, ulong addrBloomKey = 0) where TWriter : IByteBufferWriter
     {
         // Get per-address HSST bounds (absolute offset from snapshot start) for each matching source
         (int Offset, int Length)[] perAddrBounds = new (int, int)[matchCount];
@@ -1012,6 +1044,18 @@ public static class PersistedSnapshotBuilder
         // Sub-tag 0x01: Slots
         // Merge slots only from max(0, destructBarrier)..matchCount-1
         int slotStart = Math.Max(0, destructBarrier);
+
+        if (bloom is not null)
+        {
+            for (int j = slotStart; j < matchCount; j++)
+            {
+                ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan()
+                    .Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                Hsst.Hsst h = new(perAddr);
+                if (h.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
+                    AddSlotKeysToBloom(slotSection, addrBloomKey, bloom);
+            }
+        }
         {
             // Collect sources that have slots in the range
             int slotSourceCount = 0;
@@ -1158,5 +1202,29 @@ public static class PersistedSnapshotBuilder
         builder.Add("version"u8, version);
 
         builder.Build();
+    }
+
+    private static void AddSlotKeysToBloom(ReadOnlySpan<byte> slotSection, ulong addrKey, BloomFilter bloom)
+    {
+        // slotSection is a 2-level HSST: prefix(30 bytes) → inner HSST(suffix(2 bytes) → slot value)
+        Span<byte> fullSlot = stackalloc byte[32];
+        Hsst.Hsst.MergeEnumerator outerEnum = new(slotSection, isInline: false);
+        while (outerEnum.MoveNext(slotSection))
+        {
+            outerEnum.CurrentKey.CopyTo(fullSlot);
+            ReadOnlySpan<byte> innerSection = outerEnum.GetCurrentValue(slotSection);
+            Hsst.Hsst.MergeEnumerator innerEnum = new(innerSection, isInline: true);
+            while (innerEnum.MoveNext(innerSection))
+            {
+                innerEnum.CurrentKey.CopyTo(fullSlot[30..]);
+                ulong s0 = MemoryMarshal.Read<ulong>(fullSlot);
+                ulong s1 = MemoryMarshal.Read<ulong>(fullSlot[8..]);
+                ulong s2 = MemoryMarshal.Read<ulong>(fullSlot[16..]);
+                ulong s3 = MemoryMarshal.Read<ulong>(fullSlot[24..]);
+                bloom.Add(addrKey ^ s0 ^ s1 ^ s2 ^ s3);
+            }
+            innerEnum.Dispose();
+        }
+        outerEnum.Dispose();
     }
 }
