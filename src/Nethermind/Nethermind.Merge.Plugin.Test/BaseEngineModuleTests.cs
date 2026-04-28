@@ -192,7 +192,11 @@ public abstract partial class BaseEngineModuleTests
 
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
-            MergeConfig = mergeConfig ?? new MergeConfig();
+            // Default 7s is too tight under Flat DB CI load — validation races the
+            // timeout and the handler returns SYNCING, breaking tests that assert
+            // VALID/INVALID. Only bump when caller didn't supply a config (callers
+            // that test timeout→SYNCING behavior pass an explicit short timeout).
+            MergeConfig = mergeConfig ?? new MergeConfig { NewPayloadBlockProcessingTimeout = 30_000 };
             MergeConfig.TerminalTotalDifficulty ??= "0";
         }
 
