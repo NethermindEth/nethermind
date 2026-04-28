@@ -345,4 +345,133 @@ public class TestingRpcModuleTests
 
         return txRlps;
     }
+
+    private static (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) CreateCommitTestingModule(
+        AddBlockResult suggestResult = AddBlockResult.Added,
+        bool fireNewHeadEvent = true,
+        bool nullChainHead = false)
+    {
+        BlockHeader chainHeadHeader = new(
+            Keccak.Compute("grandparent"),
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            1,
+            [])
+        {
+            Hash = Keccak.Compute("chainHead"),
+            TotalDifficulty = UInt256.Zero,
+            BaseFeePerGas = UInt256.One,
+            GasUsed = 0,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            Bloom = Bloom.Empty,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+        };
+        Block chainHeadBlock = new(chainHeadHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(chainHeadHeader.GasLimit);
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+
+        IBlockchainProcessor blockchainProcessor = CreateBlockProcessor();
+
+        IBlockProducerEnv blockProducerEnv = Substitute.For<IBlockProducerEnv>();
+        blockProducerEnv.ChainProcessor.Returns(blockchainProcessor);
+
+        IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
+        blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(nullChainHead ? null : chainHeadBlock);
+
+        // Raise NewHeadBlock inside Returns() so the event fires before SuggestBlockAsync
+        // returns — matches the production subscribe-then-suggest ordering the endpoint relies on.
+        if (fireNewHeadEvent && suggestResult == AddBlockResult.Added)
+        {
+            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(callInfo =>
+                {
+                    Block block = callInfo.Arg<Block>();
+                    blockTree.NewHeadBlock += Raise.EventWith(blockTree, new BlockEventArgs(block));
+                    return suggestResult;
+                });
+        }
+        else
+        {
+            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(suggestResult);
+        }
+
+        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, blockTree, LimboLogs.Instance);
+        return (module, blockTree, chainHeadHeader);
+    }
+
+    private static PayloadAttributes CreateMinimalCommitPayloadAttributes(BlockHeader parentHeader) => new()
+    {
+        Timestamp = parentHeader.Timestamp + 12,
+        PrevRandao = Keccak.Compute("randao"),
+        SuggestedFeeRecipient = Address.Zero,
+        Withdrawals =
+        [
+            new Withdrawal { Index = 0, ValidatorIndex = 0, Address = Address.Zero, AmountInGwei = 1 }
+        ],
+        ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
+    };
+
+    [Test]
+    public async Task Testing_commitBlockV1_commits_block_to_chain_head()
+    {
+        (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(suggestResult: AddBlockResult.Added);
+
+        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
+            CreateMinimalCommitPayloadAttributes(chainHeadHeader),
+            Array.Empty<byte[]>(),
+            Array.Empty<byte>());
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        result.Data.Should().NotBeNull();
+
+        await blockTree.Received(1).SuggestBlockAsync(
+            Arg.Is<Block>(b => b.Header.Number == chainHeadHeader.Number + 1),
+            BlockTreeSuggestOptions.ShouldProcess);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_fails_when_chain_head_not_found()
+    {
+        (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(nullChainHead: true);
+
+        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
+            CreateMinimalCommitPayloadAttributes(chainHeadHeader),
+            Array.Empty<byte[]>(),
+            null);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_fails_when_block_commit_fails()
+    {
+        (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(suggestResult: AddBlockResult.InvalidBlock, fireNewHeadEvent: false);
+
+        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
+            CreateMinimalCommitPayloadAttributes(chainHeadHeader),
+            Array.Empty<byte[]>(),
+            null);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+    }
 }

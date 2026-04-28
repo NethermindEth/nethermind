@@ -95,24 +95,11 @@ public class TestingRpcModule(
         return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
     }
 
-    /// <summary>
-    /// Maximum time the endpoint will wait after <see cref="IBlockTree.SuggestBlockAsync"/>
-    /// returns <see cref="AddBlockResult.Added"/> for the block to actually become head
-    /// (i.e. for the BlockchainProcessor to dequeue and process it). Tunable as needed
-    /// for slower hardware or larger blocks; 30 s is comfortable for a 30 M-gas block
-    /// on commodity hardware.
-    /// </summary>
     private static readonly TimeSpan CommitHeadTimeout = TimeSpan.FromSeconds(30);
 
     public async Task<ResultWrapper<Hash256?>> testing_commitBlockV1(
         PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null)
     {
-        // Concurrent callers race on the same chain head and would build two
-        // blocks at the same height. Take a process-wide lock so callers see
-        // strict serialization regardless of the JSON-RPC server's
-        // IsSharable semantics. (Per-tx ordering is the caller's
-        // responsibility; we only guarantee that two simultaneous commits
-        // produce two distinct heights, not the order of those heights.)
         await _commitLock.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -123,9 +110,6 @@ public class TestingRpcModule(
             IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(chainHead.Number + 1, payloadAttributes.Timestamp));
             BlockHeader header = PrepareBlockHeader(chainHead, payloadAttributes, spec, extraData);
 
-            // Use a transient processor so we don't conflict with the main pipeline
-            // (TrieWarmer / prewarmer can hold scopes open). The block is processed
-            // in the transient scope, then committed to the main blockTree below.
             await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
 
             Transaction[] transactions;
@@ -154,12 +138,8 @@ public class TestingRpcModule(
                 return ResultWrapper<Hash256?>.Fail(error, ErrorCodes.InvalidInput);
             }
 
-            // SuggestBlockAsync only enqueues the block on the
-            // BlockchainProcessor's async channel — the head is not advanced
-            // synchronously. Subscribe BEFORE submitting so we don't miss
-            // the NewHeadBlock event for fast paths, and check the current
-            // head AFTER subscribing to cover the case where the block was
-            // already canonical (e.g. duplicate submission).
+            // SuggestBlockAsync only enqueues; subscribe to NewHeadBlock before submitting
+            // so we don't miss the head-advance signal on fast paths.
             Hash256 expectedHash = processedBlock.Hash!;
             TaskCompletionSource<bool> headAdvanced = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -208,11 +188,6 @@ public class TestingRpcModule(
         }
     }
 
-    // Guards testing_commitBlockV1 against concurrent invocation. Two parallel
-    // commits would both see the same blockTree.Head and produce two competing
-    // blocks at the same height; the second would receive AlreadyKnown /
-    // UnknownParent. The lock makes the failure observable as serialization
-    // delay rather than as cryptic AddBlockResult errors.
     private readonly SemaphoreSlim _commitLock = new(1, 1);
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)
