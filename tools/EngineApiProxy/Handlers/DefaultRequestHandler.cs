@@ -26,7 +26,7 @@ public class DefaultRequestHandler(
         catch (Exception ex)
         {
             _logger.Error($"Error handling {request.Method}: {ex.Message}", ex);
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling {request.Method}: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling {request.Method}: {ex.Message}");
         }
     }
 }

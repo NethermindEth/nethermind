@@ -77,7 +77,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         catch (Exception ex)
         {
             _logger.Error($"Error handling forkChoiceUpdated in Merged mode: {ex.Message}", ex);
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
         }
     }
 
@@ -95,7 +95,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         catch (Exception ex)
         {
             _logger.Error($"Error handling forkChoiceUpdated in Lighthouse mode: {ex.Message}", ex);
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
         }
     }
 
@@ -118,7 +118,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         catch (Exception ex)
         {
             _logger.Error($"Error handling forkChoiceUpdated: {ex.Message}", ex);
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
         }
     }
 
@@ -287,7 +287,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         catch (Exception ex)
         {
             _logger.Error($"Error handling merged FCU: {ex.Message}", ex);
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling merged FCU: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling merged FCU: {ex.Message}");
         }
     }
 
@@ -297,52 +297,33 @@ public class ForkChoiceUpdatedHandler : IDisposable
 
         try
         {
-            // For requests with payload attributes, implement deduplication
+            string headBlockHashStr = ExtractHeadBlockHash(request);
+
             if (HasPayloadAttributes(request))
             {
                 _logger.Info("LH mode: got FCU request with payload attributes, processing validation flow");
-                // Create a fingerprint of the request to identify duplicates
                 string requestFingerprint = ComputeRequestFingerprint(request);
+                string fingerprintShort = requestFingerprint[..Math.Min(10, requestFingerprint.Length)];
 
                 // Check if we've seen this exact request recently
-                if (_lhResponseCache.TryGetValue(requestFingerprint, out JsonRpcResponse? cachedResponse))
+                if (_lhResponseCache.TryGetValue(requestFingerprint, out JsonRpcResponse? cachedResponse) &&
+                    _lhCacheTimestamps.TryGetValue(requestFingerprint, out DateTime timestamp))
                 {
-                    if (_lhCacheTimestamps.TryGetValue(requestFingerprint, out DateTime timestamp))
+                    if (DateTime.UtcNow - timestamp < _lhCacheExpiryTime)
                     {
-                        if (DateTime.UtcNow - timestamp < _lhCacheExpiryTime)
-                        {
-                            _logger.Info($"LH mode: Duplicate FCU request detected (fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}...), returning cached response to CL");
-
-                            // Update ID to match the current request
-                            JsonRpcResponse clonedResponse = CloneResponseWithNewId(cachedResponse, request.Id);
-                            return clonedResponse;
-                        }
-                        else
-                        {
-                            // Cache entry expired, remove it
-                            _logger.Debug($"LH mode: Cache entry expired for fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}..., will forward to EL");
-                            _lhResponseCache.TryRemove(requestFingerprint, out _);
-                            _lhCacheTimestamps.TryRemove(requestFingerprint, out _);
-                        }
+                        _logger.Info($"LH mode: Duplicate FCU request detected (fingerprint: {fingerprintShort}...), returning cached response to CL");
+                        return CloneResponseWithNewId(cachedResponse, request.Id);
                     }
+
+                    _logger.Debug($"LH mode: Cache entry expired for fingerprint: {fingerprintShort}..., will forward to EL");
+                    _lhResponseCache.TryRemove(requestFingerprint, out _);
+                    _lhCacheTimestamps.TryRemove(requestFingerprint, out _);
                 }
 
-                _logger.Info($"LH mode: New unique FCU request with payload attributes (fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}...)");
+                _logger.Info($"LH mode: New unique FCU request with payload attributes (fingerprint: {fingerprintShort}...)");
 
-                // Extract the head block hash for tracking
-                string headBlockHashStr = string.Empty;
-                if (request.Params is not null &&
-                    request.Params.Count > 0 &&
-                    request.Params[0] is JsonObject fcState &&
-                    fcState["headBlockHash"] is not null)
-                {
-                    headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
-                }
-
-                // Extract parent beacon block root if available
+                // Pre-emptively store parentBeaconBlockRoot before we have a payloadId
                 string? extractedParentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
-
-                // Store parentBeaconBlockRoot for this head block hash even before we have a payloadId
                 if (!string.IsNullOrEmpty(headBlockHashStr) && !string.IsNullOrEmpty(extractedParentBeaconBlockRoot))
                 {
                     try
@@ -357,102 +338,71 @@ public class ForkChoiceUpdatedHandler : IDisposable
                     }
                 }
 
-                // Forward the original request to EL
                 JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
-                // If response contains payloadId, store it for tracking
-                if (response.Result is JsonObject resultObj &&
-                    resultObj["payloadId"] is not null)
+                if (TrackPayloadIdFromResponse(response, request, headBlockHashStr))
                 {
-                    string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
-
-                    if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
+                    if (_lhResponseCache.Count < 100)
                     {
-                        // Track this payload ID with the hash so it can be found later
-                        Hash256 headBlockHash = new(Bytes.FromHexString(headBlockHashStr));
-
-                        // Extract parent beacon block root if available in request
-                        string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
-                        if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
-                        {
-                            _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId} for head block {headBlockHashStr}");
-                            _payloadTracker.TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot);
-                        }
-                        else
-                        {
-                            _payloadTracker.TrackPayload(headBlockHash, payloadId);
-                        }
-
-                        // Only cache the response if we have less than 100 entries (prevent memory issues)
-                        if (_lhResponseCache.Count < 100)
-                        {
-                            _lhResponseCache[requestFingerprint] = response;
-                            _lhCacheTimestamps[requestFingerprint] = DateTime.UtcNow;
-                            _logger.Debug($"LH mode: Cached response for FCU request (fingerprint: {requestFingerprint[..Math.Min(10, requestFingerprint.Length)]}...)");
-                        }
-                        else
-                        {
-                            _logger.Warn($"LH mode: Cache full (size: {_lhResponseCache.Count}), not caching response");
-                        }
+                        _lhResponseCache[requestFingerprint] = response;
+                        _lhCacheTimestamps[requestFingerprint] = DateTime.UtcNow;
+                        _logger.Debug($"LH mode: Cached response for FCU request (fingerprint: {fingerprintShort}...)");
                     }
                     else
                     {
-                        _logger.Warn("LH validation flow received response but payloadId or headBlockHash is empty");
-                    }
-                }
-                else
-                {
-                    _logger.Warn("LH validation flow received response with no payloadId");
-                }
-
-                return response;
-            }
-            else
-            {
-                // For requests without payload attributes, just forward as usual
-                _logger.Info("LH mode: FCU request without payload attributes, forwarding normally. This usually means the node is not synced yet.");
-
-                // Forward the original request to EL
-                JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
-
-                // Process response normally
-                if (response.Result is JsonObject resultObj &&
-                    resultObj["payloadId"] is not null &&
-                    request.Params is not null &&
-                    request.Params.Count > 0 &&
-                    request.Params[0] is JsonObject fcState &&
-                    fcState["headBlockHash"] is not null)
-                {
-                    string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
-                    string headBlockHashStr = fcState["headBlockHash"]?.ToString() ?? string.Empty;
-
-                    if (!string.IsNullOrEmpty(payloadId) && !string.IsNullOrEmpty(headBlockHashStr))
-                    {
-                        // Track this payload ID with the hash so it can be found later
-                        Hash256 headBlockHash = new(Bytes.FromHexString(headBlockHashStr));
-
-                        // Extract parent beacon block root if available in request
-                        string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
-                        if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
-                        {
-                            _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId} for head block {headBlockHashStr}");
-                            _payloadTracker.TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot);
-                        }
-                        else
-                        {
-                            _payloadTracker.TrackPayload(headBlockHash, payloadId);
-                        }
+                        _logger.Warn($"LH mode: Cache full (size: {_lhResponseCache.Count}), not caching response");
                     }
                 }
 
                 return response;
             }
+
+            // For requests without payload attributes, just forward as usual
+            _logger.Info("LH mode: FCU request without payload attributes, forwarding normally. This usually means the node is not synced yet.");
+
+            JsonRpcResponse plainResponse = await _requestForwarder.ForwardRequestToExecutionClient(request);
+            TrackPayloadIdFromResponse(plainResponse, request, headBlockHashStr);
+            return plainResponse;
         }
         catch (Exception ex)
         {
             _logger.Error($"Error handling LH FCU: {ex.Message}", ex);
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling LH FCU: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling LH FCU: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// If <paramref name="response"/> carries a payloadId, records it in the payload tracker
+    /// (along with the parentBeaconBlockRoot from <paramref name="request"/>, when present).
+    /// Returns true if a payloadId was successfully tracked.
+    /// </summary>
+    private bool TrackPayloadIdFromResponse(JsonRpcResponse response, JsonRpcRequest request, string headBlockHashStr)
+    {
+        if (response.Result is not JsonObject resultObj || resultObj["payloadId"] is null)
+        {
+            _logger.Warn("LH validation flow received response with no payloadId");
+            return false;
+        }
+
+        string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
+        if (string.IsNullOrEmpty(payloadId) || string.IsNullOrEmpty(headBlockHashStr))
+        {
+            _logger.Warn("LH validation flow received response but payloadId or headBlockHash is empty");
+            return false;
+        }
+
+        Hash256 headBlockHash = new(Bytes.FromHexString(headBlockHashStr));
+        string? parentBeaconBlockRoot = ExtractParentBeaconBlockRoot(request);
+        if (!string.IsNullOrEmpty(parentBeaconBlockRoot))
+        {
+            _logger.Info($"Storing parentBeaconBlockRoot {parentBeaconBlockRoot} with payloadId {payloadId} for head block {headBlockHashStr}");
+            _payloadTracker.TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot);
+        }
+        else
+        {
+            _payloadTracker.TrackPayload(headBlockHash, payloadId);
+        }
+        return true;
     }
 
     /// <summary>
@@ -545,30 +495,10 @@ public class ForkChoiceUpdatedHandler : IDisposable
 
     public void Dispose()
     {
-        Dispose(true);
-        GC.SuppressFinalize(this);
-    }
-
-    protected virtual void Dispose(bool disposing)
-    {
-        if (_disposed)
-            return;
-
-        if (disposing)
-        {
-            // Dispose managed resources
-            _cacheCleanupTimer.Dispose();
-
-            // Clear caches
-            _lhResponseCache.Clear();
-            _lhCacheTimestamps.Clear();
-        }
-
+        if (_disposed) return;
         _disposed = true;
-    }
-
-    ~ForkChoiceUpdatedHandler()
-    {
-        Dispose(false);
+        _cacheCleanupTimer.Dispose();
+        _lhResponseCache.Clear();
+        _lhCacheTimestamps.Clear();
     }
 }

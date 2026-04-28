@@ -8,6 +8,9 @@ namespace Nethermind.EngineApiProxy.Models;
 
 public class JsonRpcResponse
 {
+    /// <summary>JSON-RPC 2.0 internal error code (-32603), used for proxy-side failures.</summary>
+    public const int InternalErrorCode = -32603;
+
     [JsonPropertyName("jsonrpc")]
     public string JsonRpc { get; set; } = "2.0";
 

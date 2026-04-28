@@ -71,14 +71,6 @@ public class PayloadTracker(ILogManager logManager)
     }
 
     /// <summary>
-    /// Gets the Payload ID associated with a head block hash
-    /// </summary>
-    /// <param name="headBlockHash">The hash of the head block</param>
-    /// <returns>The associated Payload ID or null if not found</returns>
-    public string? GetPayloadId(Hash256 headBlockHash)
-        => _headBlockToPayloadId.TryGetValue(headBlockHash, out string? payloadId) ? payloadId : null;
-
-    /// <summary>
     /// Tries to get the Payload ID associated with a head block hash
     /// </summary>
     /// <param name="headBlockHash">The hash of the head block</param>
@@ -148,20 +140,6 @@ public class PayloadTracker(ILogManager logManager)
     }
 
     /// <summary>
-    /// Checks if a block hash is being tracked
-    /// </summary>
-    /// <param name="blockHash">The block hash to check</param>
-    /// <returns>True if the block hash is being tracked, false otherwise</returns>
-    public bool IsPayloadTracked(Hash256 blockHash)
-    {
-        if (blockHash is null)
-        {
-            return false;
-        }
-        return _headBlockToPayloadId.ContainsKey(blockHash);
-    }
-
-    /// <summary>
     /// Registers a new payload block from engine_newPayload request
     /// </summary>
     /// <param name="blockHash">The hash of the new block</param>
@@ -179,14 +157,6 @@ public class PayloadTracker(ILogManager logManager)
         LastTrackedBlockHash = blockHash;
         _logger.Debug($"Registered new payload block {blockHash} with parent {parentHash}");
     }
-
-    /// <summary>
-    /// Gets the parent beacon block root associated with a head block hash
-    /// </summary>
-    /// <param name="headBlockHash">The hash of the head block</param>
-    /// <returns>The associated parent beacon block root or null if not found</returns>
-    public string? GetParentBeaconBlockRoot(Hash256 headBlockHash)
-        => _headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out string? parentBeaconBlockRoot) ? parentBeaconBlockRoot : null;
 
     /// <summary>
     /// Associates a parent beacon block root with a head block hash
@@ -221,30 +191,6 @@ public class PayloadTracker(ILogManager logManager)
             return false;
         }
         return _headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out parentBeaconBlockRoot);
-    }
-
-    /// <summary>
-    /// Gets the blob versioned hashes associated with a head block hash
-    /// </summary>
-    /// <param name="headBlockHash">The hash of the head block</param>
-    /// <returns>The associated blob versioned hashes or null if not found</returns>
-    public string[]? GetBlobVersionedHashes(Hash256 headBlockHash)
-        => _headBlockToBlobVersionedHashes.TryGetValue(headBlockHash, out string[]? blobVersionedHashes) ? blobVersionedHashes : null;
-
-    /// <summary>
-    /// Tries to get the blob versioned hashes associated with a head block hash
-    /// </summary>
-    /// <param name="headBlockHash">The hash of the head block</param>
-    /// <param name="blobVersionedHashes">The associated blob versioned hashes if found</param>
-    /// <returns>True if blob versioned hashes were found, false otherwise</returns>
-    public bool TryGetBlobVersionedHashes(Hash256 headBlockHash, out string[]? blobVersionedHashes)
-    {
-        if (headBlockHash is null)
-        {
-            blobVersionedHashes = default;
-            return false;
-        }
-        return _headBlockToBlobVersionedHashes.TryGetValue(headBlockHash, out blobVersionedHashes);
     }
 
     /// <summary>

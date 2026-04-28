@@ -159,13 +159,36 @@ public class MessageQueue(ILogManager logManager)
     }
 
     /// <summary>
-    /// Clears all messages from the queue
+    /// Clears all messages from the queue, cancelling each pending awaiter so that callers
+    /// blocked on <see cref="EnqueueMessage"/> are unblocked instead of hanging forever.
     /// </summary>
     public void Clear()
     {
-        while (_channel.Reader.TryRead(out _)) { }
+        int cancelled = 0;
+        while (_channel.Reader.TryRead(out QueuedMessage? message))
+        {
+            if (message.CompletionTask.TrySetCanceled())
+            {
+                cancelled++;
+            }
+        }
         _messageById.Clear();
-        _logger.Debug("Message queue cleared");
+        _logger.Debug($"Message queue cleared ({cancelled} pending requests cancelled)");
+    }
+
+    /// <summary>
+    /// Marks the queue as completed: no further messages may be enqueued. Drains any messages
+    /// already in the channel and cancels their pending awaiters so they don't hang during
+    /// shutdown. After completion the consumer's <see cref="DequeueNextMessageAsync"/> returns
+    /// null once all queued items have been read.
+    /// </summary>
+    public void Complete()
+    {
+        _channel.Writer.TryComplete();
+        Clear();
+
+        // Wake any consumer currently awaiting the resume signal so it can observe completion.
+        Volatile.Read(ref _resumeSignal).TrySetResult();
     }
 }
 

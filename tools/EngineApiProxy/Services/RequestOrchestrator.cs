@@ -70,16 +70,6 @@ public class RequestOrchestrator(
 
         try
         {
-            if (originalRequest.OriginalHeaders is not null &&
-                originalRequest.OriginalHeaders.TryGetValue("Authorization", out string? authHeader))
-            {
-                _logger.Debug($"Original request contains Authorization header: {authHeader.Substring(0, Math.Min(10, authHeader.Length))}...");
-            }
-            else
-            {
-                _logger.Debug("Original request does not contain Authorization header");
-            }
-
             // For Lighthouse mode, we don't need to do any special processing here as the ForkChoiceUpdatedHandler
             // will directly forward the original request and extract the payloadId from the response
             if (_config.ValidationMode == ValidationMode.Lighthouse)
@@ -135,13 +125,9 @@ public class RequestOrchestrator(
             }
 
             // 3. Clone the request and add payload attributes
+            // (CloneRequest already deep-clones OriginalHeaders so the modified request has its own copy.)
             JsonRpcRequest modifiedRequest = CloneRequest(originalRequest);
             modifiedRequest.Params ??= [];
-
-            // Make sure we explicitly copy the originalRequest headers to ensure auth is preserved
-            modifiedRequest.OriginalHeaders = originalRequest.OriginalHeaders is not null
-                ? new Dictionary<string, string>(originalRequest.OriginalHeaders)
-                : null;
 
             // Ensure the first parameter (fork choice state) exists
             if (modifiedRequest.Params.Count == 0)
@@ -358,7 +344,7 @@ public class RequestOrchestrator(
                 {
                     // If newPayload fails, just log the error but don't stop the process
                     _logger.Warn($"Error in synthetic newPayload validation, continuing: {ex.Message}");
-                    return JsonRpcResponse.CreateErrorResponse(payloadResponse.Id, -32603, $"Error in synthetic newPayload validation: {ex.Message}");
+                    return JsonRpcResponse.CreateErrorResponse(payloadResponse.Id, JsonRpcResponse.InternalErrorCode, $"Error in synthetic newPayload validation: {ex.Message}");
                 }
             }
             else
@@ -480,31 +466,7 @@ public class RequestOrchestrator(
                 Content = httpContent
             };
 
-            bool authHeaderAdded = false;
-
-            // Authorization and any other headers come exclusively from the per-request OriginalHeaders.
-            if (request.OriginalHeaders is not null)
-            {
-                foreach (KeyValuePair<string, string> header in request.OriginalHeaders)
-                {
-                    if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    if (string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (string.IsNullOrEmpty(header.Value)) continue;
-                        requestMessage.Headers.TryAddWithoutValidation("Authorization", header.Value);
-                        authHeaderAdded = true;
-                    }
-                    else
-                    {
-                        requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                    }
-                }
-            }
-
+            bool authHeaderAdded = HttpHeaderForwarder.AttachForwardedHeaders(requestMessage, request.OriginalHeaders);
             if (!authHeaderAdded)
             {
                 _logger.Warn("No Authorization header found in request.OriginalHeaders");
@@ -519,7 +481,7 @@ public class RequestOrchestrator(
                 _logger.Error($"HTTP request failed with status code: {response.StatusCode}, Content: {errorContent}");
 
                 // Return an error response instead of throwing in tests
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: HTTP error: {response.StatusCode}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: HTTP error: {response.StatusCode}");
             }
 
             // Parse response
@@ -557,7 +519,7 @@ public class RequestOrchestrator(
             _logger.Error($"Error sending JSON-RPC request: {ex.Message}", ex);
 
             // Return an error response instead of throwing
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Sending JSON-RPC request: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Sending JSON-RPC request: {ex.Message}");
         }
     }
 

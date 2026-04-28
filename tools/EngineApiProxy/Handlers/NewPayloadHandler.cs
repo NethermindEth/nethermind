@@ -235,10 +235,14 @@ public class NewPayloadHandler(
         }
     }
 
-    private static JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash) => originalRequest.Method switch
+    private static JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash)
     {
-        "engine_newPayloadV3" or "engine_newPayloadV4" => new JsonRpcRequest(
-            "engine_forkchoiceUpdatedV3",
+        string fcuMethod = originalRequest.Method is "engine_newPayloadV3" or "engine_newPayloadV4"
+            ? "engine_forkchoiceUpdatedV3"
+            : "engine_forkchoiceUpdated";
+
+        return new JsonRpcRequest(
+            fcuMethod,
             new JsonArray(
                 new JsonObject
                 {
@@ -248,20 +252,8 @@ public class NewPayloadHandler(
                 }
             ),
             Guid.NewGuid().ToString()
-        ),
-        _ => new JsonRpcRequest(
-            "engine_forkchoiceUpdated",
-            new JsonArray(
-                new JsonObject
-                {
-                    [HeadBlockHashKey] = parentHash,
-                    [FinalizedBlockHashKey] = ZeroHash,
-                    [SafeBlockHashKey] = ZeroHash
-                }
-            ),
-            Guid.NewGuid().ToString()
-        )
-    };
+        );
+    }
 
     private static string ExtractBlockHashFromPayload(JsonRpcRequest request)
     {

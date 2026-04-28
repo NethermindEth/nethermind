@@ -158,6 +158,11 @@ public class ProxyServer
     {
         await _webHost.StopAsync(cancellationToken);
 
+        // Web host has stopped accepting new requests; finalise the queue so the consumer can
+        // drain remaining work and any pending EnqueueMessage awaiters are cancelled rather than
+        // left hanging until ASP.NET drops the connection.
+        _messageQueue.Complete();
+
         // Wait for background processing to finish
         if (_messageProcessingTask is not null)
         {
@@ -301,7 +306,7 @@ public class ProxyServer
         catch (Exception ex)
         {
             _logger.Error($"Error processing request: {ex.Message}", ex);
-            response = JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Engine API Proxy error: {ex.Message}");
+            response = JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Engine API Proxy error: {ex.Message}");
         }
 
         context.Response.ContentType = "application/json";
@@ -339,7 +344,7 @@ public class ProxyServer
         catch (Exception ex)
         {
             _logger.Error($"Error routing request: {ex.Message}", ex);
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Routing request: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Routing request: {ex.Message}");
         }
     }
 

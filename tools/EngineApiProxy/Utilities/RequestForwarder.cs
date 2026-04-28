@@ -41,48 +41,16 @@ public class RequestForwarder(
                 Content = content
             };
 
-            // Copy all original headers from the client request
             if (request.OriginalHeaders is not null)
             {
                 _logger.Debug($"Forwarding {request.OriginalHeaders.Count} original headers from client request");
-
-                // Log the presence of Authorization header in original headers
-                if (request.OriginalHeaders.TryGetValue("Authorization", out string? origAuthHeader))
-                {
-                    _logger.Trace($"Found Authorization header in original request headers: {origAuthHeader.Substring(0, Math.Min(10, origAuthHeader.Length))}...");
-                }
-                else
-                {
-                    _logger.Debug("No Authorization header found in original request headers");
-                }
-
-                // Special handling for Authorization header
-                if (request.OriginalHeaders.TryGetValue("Authorization", out string? authHeader))
-                {
-                    requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
-                    _logger.Debug("Added Authorization header from original request headers");
-                }
-
-                foreach (KeyValuePair<string, string> header in request.OriginalHeaders)
-                {
-                    // Skip content-related headers that will be set by HttpClient
-                    // Also skip Authorization which was handled separately
-                    if (!header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase) &&
-                        !string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
-                    {
-                        requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                        _logger.Trace($"Added header: {header.Key}");
-                    }
-                    else if (!string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _logger.Trace($"Skipped content header: {header.Key}");
-                    }
-                }
             }
             else
             {
                 _logger.Info("No original headers to forward");
             }
+
+            HttpHeaderForwarder.AttachForwardedHeaders(requestMessage, request.OriginalHeaders);
 
             HttpResponseMessage response;
             try
@@ -100,17 +68,17 @@ public class RequestForwarder(
             catch (HttpRequestException ex) when (ex.InnerException is HttpIOException ioEx)
             {
                 _logger.Error($"Network IO error communicating with EL: {ioEx.Message}. This could indicate connection issues or server premature disconnect.");
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Network IO error with EL: {ioEx.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Network IO error with EL: {ioEx.Message}");
             }
             catch (HttpRequestException ex)
             {
                 _logger.Error($"HTTP request error communicating with EL: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: HTTP error with EL: {ex.Message}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: HTTP error with EL: {ex.Message}");
             }
             catch (TaskCanceledException ex)
             {
                 _logger.Error($"Request timed out after {_config.RequestTimeoutSeconds}s: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Request to EL timed out after {_config.RequestTimeoutSeconds}s");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Request to EL timed out after {_config.RequestTimeoutSeconds}s");
             }
 
             string responseBody = await response.Content.ReadAsStringAsync();
@@ -127,13 +95,13 @@ public class RequestForwarder(
             if (!response.IsSuccessStatusCode)
             {
                 _logger.Error($"EL returned error: {response.StatusCode}, {responseBody}");
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: EL error: {response.StatusCode}");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: EL error: {response.StatusCode}");
             }
 
             JsonRpcResponse? jsonRpcResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseBody);
             if (jsonRpcResponse is null)
             {
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, "Proxy error: Invalid response from EL");
+                return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, "Proxy error: Invalid response from EL");
             }
 
             return jsonRpcResponse;
@@ -141,7 +109,7 @@ public class RequestForwarder(
         catch (Exception ex)
         {
             _logger.Error($"Error forwarding request to EL: {ex.Message}", ex);
-            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Communicating with EL: {ex.Message}");
+            return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Communicating with EL: {ex.Message}");
         }
     }
 }
