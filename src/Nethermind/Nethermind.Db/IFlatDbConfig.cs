@@ -66,4 +66,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]
     bool ValidatePersistedSnapshot { get; set; }
+
+    [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter (address/slot/self-destruct). Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "10.0")]
+    double PersistedSnapshotBloomBitsPerKey { get; set; }
 }

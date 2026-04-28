@@ -21,6 +21,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     private readonly SnapshotCatalog _catalog = new(Path.Combine(basePath, "catalog.bin"));
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
+    private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _persistableCompactedSnapshots = new();
@@ -96,6 +97,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         }
 
         PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, entry.Type, reservation, referencedSnapshots);
+        AttachBloom(snapshot);
 
         bool isPersistableSize = IsPersistableSize(entry);
         if (entry.Type == PersistedSnapshotType.Full && !isPersistableSize)
@@ -137,6 +139,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             _catalog.Save();
 
             PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, reservation);
+            AttachBloom(persisted);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
             if (isPersistable)
@@ -160,6 +163,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
 
             PersistedSnapshot[]? referencedSnapshots = ResolveReferencedSnapshots(referencedSnapshotIds);
             PersistedSnapshot snapshot = new(id, from, to, PersistedSnapshotType.Linked, reservation, referencedSnapshots);
+            AttachBloom(snapshot);
             if (isPersistable)
                 _persistableCompactedSnapshots[to] = snapshot;
             else
@@ -385,6 +389,12 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
                 result.Add(kv.Value);
         }
         return result.Count > 0 ? [.. result] : null;
+    }
+
+    private void AttachBloom(PersistedSnapshot snapshot)
+    {
+        if (_bloomBitsPerKey > 0)
+            snapshot.AttachKeyBloom(PersistedSnapshotBloomBuilder.Build(snapshot, _bloomBitsPerKey));
     }
 
     private bool IsPersistableSize(SnapshotCatalog.CatalogEntry entry) =>
