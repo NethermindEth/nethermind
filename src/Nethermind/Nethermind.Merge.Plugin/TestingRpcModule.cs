@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -93,57 +95,125 @@ public class TestingRpcModule(
         return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
     }
 
+    /// <summary>
+    /// Maximum time the endpoint will wait after <see cref="IBlockTree.SuggestBlockAsync"/>
+    /// returns <see cref="AddBlockResult.Added"/> for the block to actually become head
+    /// (i.e. for the BlockchainProcessor to dequeue and process it). Tunable as needed
+    /// for slower hardware or larger blocks; 30 s is comfortable for a 30 M-gas block
+    /// on commodity hardware.
+    /// </summary>
+    private static readonly TimeSpan CommitHeadTimeout = TimeSpan.FromSeconds(30);
+
     public async Task<ResultWrapper<Hash256?>> testing_commitBlockV1(
         PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null)
     {
-        BlockHeader? chainHead = blockTree.Head?.Header;
-        if (chainHead is null)
-            return ResultWrapper<Hash256?>.Fail("chain head not found", MergeErrorCodes.InvalidPayloadAttributes);
-
-        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(chainHead.Number + 1, payloadAttributes.Timestamp));
-        BlockHeader header = PrepareBlockHeader(chainHead, payloadAttributes, spec, extraData);
-
-        // Use a transient processor so we don't conflict with the main pipeline
-        // (TrieWarmer / prewarmer can hold scopes open). The block is processed
-        // in the transient scope, then committed to the main blockTree below.
-        await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
-
-        Transaction[] transactions;
+        // Concurrent callers race on the same chain head and would build two
+        // blocks at the same height. Take a process-wide lock so callers see
+        // strict serialization regardless of the JSON-RPC server's
+        // IsSharable semantics. (Per-tx ordering is the caller's
+        // responsibility; we only guarantee that two simultaneous commits
+        // produce two distinct heights, not the order of those heights.)
+        await _commitLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            transactions = DecodeTransactions(txRlps).ToArray();
+            BlockHeader? chainHead = blockTree.Head?.Header;
+            if (chainHead is null)
+                return ResultWrapper<Hash256?>.Fail("chain head not found", MergeErrorCodes.InvalidPayloadAttributes);
+
+            IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(chainHead.Number + 1, payloadAttributes.Timestamp));
+            BlockHeader header = PrepareBlockHeader(chainHead, payloadAttributes, spec, extraData);
+
+            // Use a transient processor so we don't conflict with the main pipeline
+            // (TrieWarmer / prewarmer can hold scopes open). The block is processed
+            // in the transient scope, then committed to the main blockTree below.
+            await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
+
+            Transaction[] transactions;
+            try
+            {
+                transactions = DecodeTransactions(txRlps).ToArray();
+            }
+            catch (RlpException e)
+            {
+                return ResultWrapper<Hash256?>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
+            }
+
+            header.TxRoot = TxTrie.CalculateRoot(transactions);
+            BlockToProduce block = new(header, transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null);
+
+            FeesTracer feesTracer = new();
+            Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+
+            if (processedBlock is null)
+                return ResultWrapper<Hash256?>.Fail("payload processing failed", ErrorCodes.InternalError);
+
+            if (processedBlock.Transactions.Length != transactions.Length)
+            {
+                string error = $"expected {transactions.Length} transactions but only {processedBlock.Transactions.Length} were included";
+                if (_logger.IsWarn) _logger.Warn($"testing_commitBlockV1 failed: {error}");
+                return ResultWrapper<Hash256?>.Fail(error, ErrorCodes.InvalidInput);
+            }
+
+            // SuggestBlockAsync only enqueues the block on the
+            // BlockchainProcessor's async channel — the head is not advanced
+            // synchronously. Subscribe BEFORE submitting so we don't miss
+            // the NewHeadBlock event for fast paths, and check the current
+            // head AFTER subscribing to cover the case where the block was
+            // already canonical (e.g. duplicate submission).
+            Hash256 expectedHash = processedBlock.Hash!;
+            TaskCompletionSource<bool> headAdvanced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void OnNewHead(object? _, BlockEventArgs args)
+            {
+                if (args.Block.Hash == expectedHash)
+                    headAdvanced.TrySetResult(true);
+            }
+
+            blockTree.NewHeadBlock += OnNewHead;
+            try
+            {
+                if (blockTree.Head?.Hash == expectedHash)
+                    headAdvanced.TrySetResult(true);
+
+                AddBlockResult addBlockResult = await blockTree.SuggestBlockAsync(processedBlock, BlockTreeSuggestOptions.ShouldProcess).ConfigureAwait(false);
+                if (addBlockResult != AddBlockResult.Added)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
+                    return ResultWrapper<Hash256?>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
+                }
+
+                using CancellationTokenSource cts = new(CommitHeadTimeout);
+                try
+                {
+                    await headAdvanced.Task.WaitAsync(cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return ResultWrapper<Hash256?>.Fail(
+                        $"block was suggested but did not become head within {CommitHeadTimeout.TotalSeconds:0}s",
+                        ErrorCodes.InternalError);
+                }
+            }
+            finally
+            {
+                blockTree.NewHeadBlock -= OnNewHead;
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
+            return ResultWrapper<Hash256?>.Success(processedBlock.Hash);
         }
-        catch (RlpException e)
+        finally
         {
-            return ResultWrapper<Hash256?>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
+            _commitLock.Release();
         }
-
-        header.TxRoot = TxTrie.CalculateRoot(transactions);
-        BlockToProduce block = new(header, transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null);
-
-        FeesTracer feesTracer = new();
-        Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
-
-        if (processedBlock is null)
-            return ResultWrapper<Hash256?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
-
-        if (processedBlock.Transactions.Length != transactions.Length)
-        {
-            string error = $"expected {transactions.Length} transactions but only {processedBlock.Transactions.Length} were included";
-            if (_logger.IsWarn) _logger.Warn($"testing_commitBlockV1 failed: {error}");
-            return ResultWrapper<Hash256?>.Fail(error, ErrorCodes.InvalidInput);
-        }
-
-        AddBlockResult addBlockResult = await blockTree.SuggestBlockAsync(processedBlock, BlockTreeSuggestOptions.ShouldProcess);
-        if (addBlockResult != AddBlockResult.Added)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
-            return ResultWrapper<Hash256?>.Fail($"failed to commit block: {addBlockResult}", MergeErrorCodes.UnknownPayload);
-        }
-
-        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
-        return ResultWrapper<Hash256?>.Success(processedBlock.Hash);
     }
+
+    // Guards testing_commitBlockV1 against concurrent invocation. Two parallel
+    // commits would both see the same blockTree.Head and produce two competing
+    // blocks at the same height; the second would receive AlreadyKnown /
+    // UnknownParent. The lock makes the failure observable as serialization
+    // delay rather than as cryptic AddBlockResult errors.
+    private readonly SemaphoreSlim _commitLock = new(1, 1);
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)
     {
