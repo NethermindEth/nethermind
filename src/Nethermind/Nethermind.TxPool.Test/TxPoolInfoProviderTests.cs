@@ -96,6 +96,9 @@ public class TxPoolInfoProviderTests
             "blob-only senders must still be reported by GetInfo");
     }
 
+    // Inputs are always nonce-sorted: TxDistinctSortedPool's group comparer puts
+    // CompareTxByNonce.Instance first (see TxSortedPoolExtensions.GetPoolUniqueTxComparerByNonce),
+    // so per-sender bucket arrays come back sorted. TxPoolInfoProvider relies on that.
     private static IEnumerable<TestCaseData> SenderInfoCases() =>
     [
         new TestCaseData(
@@ -112,11 +115,6 @@ public class TxPoolInfoProviderTests
                 new SenderScenario(AccountNonce: 5, TxNonces: [10, 11],
                     ExpectedPending: [], ExpectedQueued: [10, 11]))
             .SetName("AllNoncesAheadOfAccount_AllQueued"),
-
-        new TestCaseData(
-                new SenderScenario(AccountNonce: 0, TxNonces: [2, 1, 0],
-                    ExpectedPending: [0, 1, 2], ExpectedQueued: []))
-            .SetName("UnorderedInput_SortedByNonceBeforeSplit"),
     ];
 
     [TestCaseSource(nameof(SenderInfoCases))]
