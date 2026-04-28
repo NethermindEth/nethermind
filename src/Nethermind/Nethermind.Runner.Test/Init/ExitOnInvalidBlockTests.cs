@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using NSubstitute;
 using NUnit.Framework;
@@ -34,7 +35,7 @@ public class ExitOnInvalidBlockTests
         IBlockchainProcessor processor = container.Resolve<IMainProcessingContext>().BlockchainProcessor;
         RaiseInvalidBlock(processor);
 
-        processExitSource.Received(expectedExitCalls).Exit(-1);
+        processExitSource.Received(expectedExitCalls).Exit(ExitCodes.InvalidBlock);
     }
 
     private static void RaiseInvalidBlock(IBlockchainProcessor processor)
@@ -42,6 +43,6 @@ public class ExitOnInvalidBlockTests
         FieldInfo field = processor.GetType().GetField(nameof(IBlockchainProcessor.InvalidBlock), BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException($"InvalidBlock event field not found on {processor.GetType().FullName}");
         EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? handler = (EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>?)field.GetValue(processor);
-        handler?.Invoke(processor, new IBlockchainProcessor.InvalidBlockEventArgs());
+        handler?.Invoke(processor, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = Build.A.Block.TestObject });
     }
 }
