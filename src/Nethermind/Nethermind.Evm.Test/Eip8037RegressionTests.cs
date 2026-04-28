@@ -547,6 +547,25 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
 
+    [Test]
+    public void Eip8037_top_level_create_selfdestruct_must_keep_intrinsic_create_state_gas()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.ADDRESS)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareInitTx(Activation, 1_000_000, initCode);
+        block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
+        TestAllTracerWithOutput tracer = CreateTracer();
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState),
+            "The top-level transaction intrinsic CREATE state gas remains in block-state accounting.");
+    }
+
     /// <summary>
     /// A child CALL that runs out of gas during SSTORE must not spill state gas into the
     /// parent frame's reservoir. If it does, the parent can incorrectly complete its own
