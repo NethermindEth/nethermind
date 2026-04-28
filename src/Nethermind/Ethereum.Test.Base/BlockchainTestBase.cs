@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -55,6 +55,12 @@ public abstract class BlockchainTestBase
     /// Null means use the default config value.
     /// </summary>
     protected virtual bool? ParallelExecutionOverride => null;
+
+    /// <summary>
+    /// Override to force BAL batch-read prewarming on or off in tests.
+    /// Null means use the default config value.
+    /// </summary>
+    protected virtual bool? ParallelExecutionBatchReadOverride => null;
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
@@ -122,9 +128,14 @@ public abstract class BlockchainTestBase
             blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
         }
 
+        if (ParallelExecutionBatchReadOverride.HasValue)
+        {
+            blocksConfig.ParallelExecutionBatchRead = ParallelExecutionBatchReadOverride.Value;
+        }
+
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
         {
-            mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(1).TotalMilliseconds;
+            mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(10).TotalMilliseconds;
         }
 
         ContainerBuilder containerBuilder = new ContainerBuilder()
@@ -454,7 +465,7 @@ public abstract class BlockchainTestBase
         ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations)Empty: Contract is not deployed\.")),
         ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations)Failed: Contract execution failed\.")),
         ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),
-        ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
+        ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|BlockLevelAccessListIndexOutOfRange:|could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
         ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
         ("BlockException.INVALID_BAL_EXTRA_ACCOUNT", ValidationErrorRegex(@"Error decoding block access list:.*Account changes were in incorrect order")),

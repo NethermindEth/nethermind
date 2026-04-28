@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -314,7 +314,7 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec);
+            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
@@ -441,6 +441,11 @@ public class BlockValidator(
             {
                 return false;
             }
+
+            if (!ValidateBlockLevelAccessListIndexBounds(block, ref error))
+            {
+                return false;
+            }
         }
 
         error = null;
@@ -452,13 +457,67 @@ public class BlockValidator(
     private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
     {
         BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
-        int maxBalItems = (int)(block.Header.GasLimit / Eip7928Constants.ItemCost);
+        long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
         if (bal.ItemCount > maxBalItems)
         {
             error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(bal.ItemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
+        }
+
+        return true;
+    }
+
+    // EIP-7928: BlockAccessIndex valid range is [0, txCount + 1]
+    // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
+    // Mirrors geth bal-devnet-4 check `txIdx >= blockTxCount + 2`.
+    private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
+    {
+        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
+        uint maxAllowed = (uint)block.Transactions.Length + 1;
+
+        foreach (AccountChanges accountChanges in bal.AccountChanges)
+        {
+            foreach (BalanceChange change in accountChanges.BalanceChanges)
+            {
+                if (change.Index > maxAllowed)
+                {
+                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
+                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+                    return false;
+                }
+            }
+            foreach (NonceChange change in accountChanges.NonceChanges)
+            {
+                if (change.Index > maxAllowed)
+                {
+                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
+                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+                    return false;
+                }
+            }
+            foreach (CodeChange change in accountChanges.CodeChanges)
+            {
+                if (change.Index > maxAllowed)
+                {
+                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
+                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+                    return false;
+                }
+            }
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                foreach (StorageChange change in slotChanges.Changes.Values)
+                {
+                    if (change.Index > maxAllowed)
+                    {
+                        error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
+                        if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+                        return false;
+                    }
+                }
+            }
         }
 
         return true;

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Core
@@ -16,5 +16,7 @@ namespace Nethermind.Core
         public const long SClearBeforeEip3529 = 15000;
         public const long DestroyBeforeEip3529 = 24000;
         public const long DestroyAfterEip3529 = GasCostOf.Free;
+
+        public static long CalculateSSetReversedEip8037(long costPerStateByte) => GasCostOf.CalculateSSetReversalRefund(costPerStateByte);
     }
 }

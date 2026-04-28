@@ -18,6 +18,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
     {
         string testsDirectoryName = TestFixtureDownloader.EnsureDownloaded(
             "PyTests", Constants.ARCHIVE_URL_TEMPLATE, ArchiveVersion, ArchiveName);
+        ArchiveFixtureOverrides.Apply(ArchiveVersion, testsDirectoryName);
 
         TestType testType = TestType.Blockchain;
         foreach (TestType type in Enum.GetValues<TestType>())

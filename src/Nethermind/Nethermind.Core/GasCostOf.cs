@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Core
@@ -70,8 +70,7 @@ namespace Nethermind.Core
         public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
-        // EIP-8037: Two-dimensional gas metering constants.
-        // Devnet-3 keeps CPSB hardcoded and replaces it with dynamic CPSB in devnet-4.
+        // EIP-8037: bal-devnet-4 keeps the static cost_per_state_byte = 1174 from bal-devnet-3.
         public const long CostPerStateByte = 1174;
         public const long SSetRegular = 2_900;
         public const long SSetState = 32 * CostPerStateByte;
@@ -91,5 +90,16 @@ namespace Nethermind.Core
         public const long MinModExpEip2565 = 200; // eip-2565
         public const long MinModExpEip7883 = 500; // eip-7883
 
+        // EIP-8037 in bal-devnet-4 fixes cost_per_state_byte at the static value, ignoring blockGasLimit.
+        // The parameter is retained on call sites that may revisit per-block scaling in a future devnet.
+        public static long CalculateCostPerStateByte(long blockGasLimit) => CostPerStateByte;
+
+        public static long CalculateSSetState(long costPerStateByte) => checked(32 * costPerStateByte);
+        public static long CalculateCreateState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateNewAccountState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateCodeDepositState(long costPerStateByte, int byteCodeLength) => checked(costPerStateByte * byteCodeLength);
+        public static long CalculatePerAuthBaseState(long costPerStateByte) => checked(23 * costPerStateByte);
+        public static long CalculatePerEmptyAccountState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateSSetReversalRefund(long costPerStateByte) => checked(CalculateSSetState(costPerStateByte) + SSetRegular - WarmStateRead);
     }
 }

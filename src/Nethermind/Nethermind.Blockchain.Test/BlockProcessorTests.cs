@@ -337,4 +337,86 @@ public class BlockProcessorTests
             Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
         }
     }
+
+    [Test]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_multi_tx_blocks()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(2, Amsterdam.Instance)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+
+        Assert.That(balManager.ParallelExecutionEnabled, Is.True);
+    }
+
+    [Test]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_single_tx_blocks()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(1, Amsterdam.Instance)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+
+        Assert.That(balManager.ParallelExecutionEnabled, Is.True);
+    }
+
+    [Test]
+    public void IncrementalValidation_rejects_eip8037_tx_when_worst_case_exceeds_ordered_remaining_gas()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(90_000)
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithGasLimit(50_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(firstTx, secondTx)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new(),
+            new()
+        ];
+        gasResults[0].SetResult((80_000, 0, null));
+        gasResults[1].SetResult((21_000, 0, null));
+
+        InvalidTransactionException? exception = Assert.Throws<InvalidTransactionException>(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
+
+        Assert.That(exception!.Reason, Is.EqualTo(TransactionResult.BlockGasLimitExceeded));
+    }
+
+    private static BlockAccessListManager CreateAmsterdamBalManager()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        return new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = true },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+    }
 }
