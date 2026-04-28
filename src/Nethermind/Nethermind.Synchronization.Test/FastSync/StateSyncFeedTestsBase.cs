@@ -78,7 +78,7 @@ public abstract class StateSyncFeedTestsBase(
         return remoteStorageTree;
     }
 
-    protected IContainer PrepareDownloader(RemoteDbContext remote, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
+    protected IContainer PrepareDownloader(RemoteDbContext remote, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10, Action<ContainerBuilder>? configureBuilder = null)
     {
         SyncPeerMock[] syncPeers = new SyncPeerMock[defaultPeerCount];
         for (int i = 0; i < defaultPeerCount; i++)
@@ -94,6 +94,8 @@ public abstract class StateSyncFeedTestsBase(
 
         ContainerBuilder builder = BuildTestContainerBuilder(remote, syncDispatcherAllocateTimeoutMs)
             .AddSingleton<SyncPeerMock[]>(syncPeers);
+
+        configureBuilder?.Invoke(builder);
 
         builder.RegisterBuildCallback((ctx) =>
         {
