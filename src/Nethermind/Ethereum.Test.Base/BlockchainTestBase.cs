@@ -57,22 +57,7 @@ public abstract class BlockchainTestBase
     /// </summary>
     protected virtual bool? ParallelExecutionOverride => null;
 
-    /// <summary>
-    /// Returns <c>true</c> if <paramref name="spec"/> represents a post-merge fork.
-    /// Walks the <see cref="NamedReleaseSpec.Parent"/> chain looking for Paris (the mainnet
-    /// merge fork) or ShanghaiGnosis (Gnosis transitioned to PoS at LondonGnosis → ShanghaiGnosis,
-    /// skipping a Paris-equivalent fork, so its parent chain never reaches Paris).
-    /// </summary>
-    protected static bool IsPostMergeSpec(IReleaseSpec spec)
-    {
-        ArgumentNullException.ThrowIfNull(spec);
-
-        for (NamedReleaseSpec? cur = spec as NamedReleaseSpec; cur is not null; cur = cur.Parent)
-        {
-            if (cur == Paris.Instance || cur == ShanghaiGnosis.Instance) return true;
-        }
-        return false;
-    }
+    protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is NamedReleaseSpec { IsPostMerge: true };
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
