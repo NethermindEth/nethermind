@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using NUnit.Framework;
 using Nethermind.Core;
 using Nethermind.Consensus.Producers;
@@ -19,7 +18,6 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
@@ -53,7 +51,6 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
-            Substitute.For<IPruningConfig>(),
             Substitute.For<ILogManager>()
         );
 
@@ -103,7 +100,6 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
-            Substitute.For<IPruningConfig>(),
             Substitute.For<ILogManager>()
         );
 
@@ -125,55 +121,5 @@ public class TaikoEngineApiTests
         {
             Assert.That(result.Result.Error, Does.Contain("Invalid payload timestamp"));
         }
-    }
-
-    [Test]
-    public async Task ShouldProceedWithReorg_Override_BypassesTooDeepReorgError()
-    {
-        // Taiko overrides ShouldProceedWithReorg to always proceed (return true).
-        // Without the override, FCU to a block whose reorg depth exceeds IPruningConfig.PruningBoundary
-        // would return -38006 Too deep reorg. With the override, it must proceed regardless.
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-
-        const int pruningBoundary = 64;
-        Block headBlock = Build.A.Block.WithNumber(100).TestObject;
-        // reorg depth = 100 - 33 = 67, which exceeds pruningBoundary of 64
-        Block deepAncestor = Build.A.Block.WithNumber(33).TestObject;
-
-        blockTree.FindBlock(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor);
-        blockTree.GetInfo(deepAncestor.Number, deepAncestor.Hash!).Returns(
-            (new BlockInfo(deepAncestor.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
-        blockTree.Head.Returns(headBlock);
-        blockTree.HeadHash.Returns(headBlock.Hash!);
-        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
-        blockTree.IsMainChain(Arg.Any<Hash256>()).Returns(true);
-        blockTree.FindHeader(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor.Header);
-
-        IPruningConfig pruningConfig = Substitute.For<IPruningConfig>();
-        pruningConfig.PruningBoundary.Returns(pruningBoundary);
-
-        TaikoForkchoiceUpdatedHandler handler = new(
-            blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
-            Substitute.For<IPoSSwitcher>(),
-            Substitute.For<IPayloadPreparationService>(),
-            Substitute.For<IBlockProcessingQueue>(),
-            Substitute.For<IBlockCacheService>(),
-            Substitute.For<IInvalidChainTracker>(),
-            Substitute.For<IMergeSyncController>(),
-            Substitute.For<IBeaconPivot>(),
-            Substitute.For<IPeerRefresher>(),
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<ISyncPeerPool>(),
-            new MergeConfig(),
-            pruningConfig,
-            Substitute.For<ILogManager>()
-        );
-
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(
-            new ForkchoiceStateV1(deepAncestor.Hash!, Keccak.Zero, Keccak.Zero), null, 1);
-
-        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        blockTree.Received().UpdateMainChain(Arg.Any<IReadOnlyList<Block>>(), true, true);
     }
 }

@@ -10,7 +10,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -37,9 +36,7 @@ internal class TaikoForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
-    IPruningConfig pruningConfig,
-    ILogManager logManager
-) : ForkchoiceUpdatedHandler(
+    ILogManager logManager) : ForkchoiceUpdatedHandler(
     blockTree,
     manualBlockFinalizationManager,
     poSSwitcher,
@@ -53,7 +50,6 @@ internal class TaikoForkchoiceUpdatedHandler(
     specProvider,
     syncPeerPool,
     mergeConfig,
-    pruningConfig,
     logManager)
 {
     protected override bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,

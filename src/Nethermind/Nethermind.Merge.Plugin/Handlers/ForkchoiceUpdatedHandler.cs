@@ -16,7 +16,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -49,7 +48,6 @@ public class ForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
-    IPruningConfig pruningConfig,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -61,10 +59,6 @@ public class ForkchoiceUpdatedHandler(
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
 
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
-
-    // Spec point 6: implementation-specific limit for -38006. Matches pruning boundary
-    // because the client cannot serve state older than that. See execution-apis/pull/786.
-    private readonly IPruningConfig _pruningConfig = pruningConfig;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState,
         PayloadAttributes? payloadAttributes, int version)
