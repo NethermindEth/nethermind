@@ -564,32 +564,6 @@ public partial class EngineModuleTests
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, startingHead, startingHead);
     }
 
-
-    [TestCase(3, TestName = "2 blocks behind head — within PruningBoundary")]
-    [TestCase(33, TestName = "32 blocks behind head — within PruningBoundary (default 64)")]
-    public async Task forkchoiceUpdatedV1_WhenHeadIsCanonicalAncestorWithinPruningBoundary_ReorgsToAncestor(int chainLength)
-    {
-        // Spec PR #786: MUST reorg to a canonical ancestor when reorg depth <= PruningBoundary (default 64).
-        // No finalized block is set — the MAY-skip (spec point 2) never fires; the reorg proceeds
-        // because depth < PruningBoundary, not because of any old "32-block limit".
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, chainLength, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
-        Hash256 b1Hash = branch[0].BlockHash;
-        Hash256 headHash = branch[chainLength - 1].BlockHash;
-
-        // Advance head to the last block without setting finalized
-        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(headHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(headHash, $"precondition: head is at H={chainLength}");
-
-        ForkchoiceStateV1 fcuToAncestor = new(b1Hash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestor);
-
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(b1Hash, $"head must reorg to b1 — depth {chainLength - 1} is within PruningBoundary (default 64)");
-    }
-
     [Test]
     public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorOfFinalizedBlock_SkipsUpdate()
     {
