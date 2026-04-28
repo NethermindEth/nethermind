@@ -36,4 +36,16 @@ public class Eth72MessageSerializerTests
 
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
     }
+
+    [Test]
+    public void NewPooledTransactionHashesMessageSerializer_should_reject_invalid_non_empty_cell_mask_length()
+    {
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+        using NewPooledTransactionHashesMessage72 message = new([1], [1], [Hash256.Zero], [1, 2]);
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+    }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -25,6 +26,11 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         using ArrayPoolList<int> sizes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeInt(), limit: SizesRlpLimit);
         using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
         byte[] cellMask = ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? ctx.DecodeByteArraySpan().ToArray() : [];
+        if (cellMask.Length != 0 && cellMask.Length != BlobCellMask.FixedByteLength)
+        {
+            throw new RlpException($"Invalid cell mask length in {nameof(NewPooledTransactionHashesMessage72)}: expected 0 or {BlobCellMask.FixedByteLength}, got {cellMask.Length}.");
+        }
+
         return new NewPooledTransactionHashesMessage72(types, sizes.AsSpan().ToArray(), hashes.AsSpan().ToArray(), cellMask);
     }
 

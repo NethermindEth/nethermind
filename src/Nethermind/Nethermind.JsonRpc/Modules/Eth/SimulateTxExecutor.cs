@@ -128,7 +128,7 @@ public class SimulateTxExecutor<TTrace>(
             foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls)
             {
                 blockToSimulate.BlockOverrides ??= new BlockOverride();
-                ulong givenNumber = blockToSimulate.BlockOverrides.Number ?? (ulong)lastBlockNumber + 1;
+                ulong givenNumber = blockToSimulate.BlockOverrides.GetBlockNumber(lastBlockNumber);
 
                 if (givenNumber > long.MaxValue)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);

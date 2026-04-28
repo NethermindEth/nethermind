@@ -208,6 +208,9 @@ namespace Nethermind.TxPool
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
 
+        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
+            _blobTransactions.GetBucketSnapshot(address);
+
         // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 

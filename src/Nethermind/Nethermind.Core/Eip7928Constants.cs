@@ -18,4 +18,9 @@ public static class Eip7928Constants
 
     // max code size in bytes
     public const int MaxCodeSize = 1_000_000;
+
+    /// <summary>
+    /// Gas cost per BAL item for size limit. bal_items <= block_gas_limit / ItemCost.
+    /// </summary>
+    public const int ItemCost = 2000;
 }

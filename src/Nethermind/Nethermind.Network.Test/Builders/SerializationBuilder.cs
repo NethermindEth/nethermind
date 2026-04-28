@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -84,9 +84,6 @@ namespace Nethermind.Network.Test.Builders
                 .With(new NewPooledTransactionHashesMessageSerializer72())
                 .With(new GetCellsMessageSerializer72())
                 .With(new CellsMessageSerializer72());
-
-        public SerializationBuilder WithNodeData() => With(new Network.P2P.Subprotocols.NodeData.Messages.GetNodeDataMessageSerializer())
-                .With(new Network.P2P.Subprotocols.NodeData.Messages.NodeDataMessageSerializer());
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {

@@ -188,6 +188,8 @@ public abstract partial class BaseEngineModuleTests
             return this;
         }
 
+        public bool? ParallelExecutionOverride { get; set; }
+
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
@@ -199,8 +201,17 @@ public abstract partial class BaseEngineModuleTests
         protected override ChainSpec CreateChainSpec() =>
             new() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
 
-        protected override IEnumerable<IConfig> CreateConfigs() =>
-            base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
+        protected override IEnumerable<IConfig> CreateConfigs()
+        {
+            IEnumerable<IConfig> configs = base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
+            if (ParallelExecutionOverride.HasValue)
+            {
+                configs = configs.Select(c => c is IBlocksConfig bc
+                    ? new BlocksConfig { MinGasPrice = bc.MinGasPrice, ParallelExecution = ParallelExecutionOverride.Value }
+                    : c);
+            }
+            return configs;
+        }
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)

@@ -231,23 +231,28 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     public bool TryMergeCells(ValueHash256 hash, BlobCellMask cellMask, byte[][] cells)
     {
-        using McsLock.Disposable lockRelease = Lock.Acquire();
-        if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
-            || blobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
-            || wrapper.Version is not ProofVersion.V1
-            || cellMask.IsEmpty)
+        ShardBlobNetworkWrapper wrapper;
+        using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
-            return false;
-        }
+            if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
+                || blobTx.NetworkWrapper is not ShardBlobNetworkWrapper currentWrapper
+                || currentWrapper.Version is not ProofVersion.V1
+                || cellMask.IsEmpty)
+            {
+                return false;
+            }
 
-        if (wrapper.HasFullBlobs())
-        {
-            return true;
-        }
+            if (currentWrapper.HasFullBlobs())
+            {
+                return true;
+            }
 
-        if (cells.Length != wrapper.Commitments.Length * cellMask.Count)
-        {
-            return false;
+            if (cells.Length != currentWrapper.Commitments.Length * cellMask.Count)
+            {
+                return false;
+            }
+
+            wrapper = currentWrapper;
         }
 
         BlobCellMask mergedMask = wrapper.CellMask | cellMask;
@@ -258,9 +263,18 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             return false;
         }
 
-        blobTx.NetworkWrapper = mergedWrapper;
-        OnBlobTransactionUpdatedNonLocked(blobTx);
-        return true;
+        using (McsLock.Disposable lockRelease = Lock.Acquire())
+        {
+            if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
+                || !ReferenceEquals(blobTx.NetworkWrapper, wrapper))
+            {
+                return false;
+            }
+
+            blobTx.NetworkWrapper = mergedWrapper;
+            OnBlobTransactionUpdatedNonLocked(blobTx);
+            return true;
+        }
     }
 
     protected virtual void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)
