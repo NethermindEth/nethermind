@@ -45,12 +45,12 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
         new ParallelUnbalancedWork(data).Execute();
 
-        // If there are still active threads, wait for them to complete
         if (data.ActiveThreads > 0)
         {
             data.Event.Wait();
         }
 
+        data.ThrowIfFaulted();
         parallelOptions.CancellationToken.ThrowIfCancellationRequested();
     }
 
@@ -138,13 +138,15 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             {
                 if (_data.CancellationToken.IsCancellationRequested) return;
                 _data.Action(i);
-                // Get the next index
                 i = _data.Index.GetNext();
             }
         }
+        catch (Exception ex)
+        {
+            _data.RecordException(ex);
+        }
         finally
         {
-            // Signal that this thread has completed its work
             _data.MarkThreadCompleted();
         }
     }
@@ -182,6 +184,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public SemaphoreSlim Event { get; } = new(initialCount: 0);
         private int _activeThreads = threads;
         public CancellationToken CancellationToken { get; } = token;
+        private volatile Exception? _workerException;
 
         /// <summary>
         /// Gets the exclusive upper bound of the range.
@@ -192,6 +195,20 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Gets the number of active threads.
         /// </summary>
         public int ActiveThreads => Volatile.Read(ref _activeThreads);
+
+        /// <summary>
+        /// Records an exception from a worker thread (first one wins).
+        /// </summary>
+        public void RecordException(Exception ex) => Interlocked.CompareExchange(ref _workerException, ex, null);
+
+        /// <summary>
+        /// Rethrows the captured worker exception if any.
+        /// </summary>
+        public void ThrowIfFaulted()
+        {
+            if (_workerException is not null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(_workerException).Throw();
+        }
 
         /// <summary>
         /// Marks a thread as completed.
@@ -263,15 +280,14 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                 ThreadPool.UnsafeQueueUserWorkItem(new InitProcessor<TLocal>(data), preferLocal: false);
             }
 
-            // Execute work on the current thread
             new InitProcessor<TLocal>(data).Execute();
 
-            // If there are still active threads, wait for them to complete
             if (data.ActiveThreads > 0)
             {
                 data.Event.Wait();
             }
 
+            data.ThrowIfFaulted();
             parallelOptions.CancellationToken.ThrowIfCancellationRequested();
         }
 
@@ -296,6 +312,10 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                     value = _data.Action(i, value);
                     i = _data.Index.GetNext();
                 }
+            }
+            catch (Exception ex)
+            {
+                _data.RecordException(ex);
             }
             finally
             {
