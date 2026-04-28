@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -17,6 +17,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
@@ -34,8 +36,8 @@ internal class QuorumCertificateManager(
     private ILogger _logger = logManager.GetClassLogger<QuorumCertificateManager>();
 
     private ISpecProvider _specProvider { get; } = xdcConfig;
-    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
-    private readonly static VoteDecoder _voteDecoder = new();
+    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
+    private static readonly VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
     public QuorumCertificate LockCertificate => _context.LockQC;
@@ -220,43 +222,45 @@ internal class QuorumCertificateManager(
         return true;
     }
 
-    private ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
+    private static ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
     {
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
         return stream.GetValueHash();
     }
 
-    private int? CountValidSignatures(EpochSwitchInfo epochSwitchInfo, QuorumCertificate qc, out string? error)
+    private static int? CountValidSignatures(EpochSwitchInfo epochSwitchInfo, QuorumCertificate qc, out string? error)
     {
         //Possible optimize here
-        int count = 0;
-        Dictionary<Address, bool> signedBy = epochSwitchInfo.Masternodes.ToDictionary(static a => a, static a => false);
+        Dictionary<Address, int> signedBy = epochSwitchInfo.Masternodes.ToDictionary(static a => a, static _ => 0);
         ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
 
-        foreach (Signature s in qc.Signatures)
+        int count = 0;
+        string? localError = null;
+        Parallel.ForEach(qc.Signatures, (s, state) =>
         {
             Address signer = _ethereumEcdsa.RecoverAddress(s, voteHash);
-            ref bool signed = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
+            ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
-            if (Unsafe.IsNullRef(ref signed))
+            if (Unsafe.IsNullRef(ref signCount))
             {
-                error = "Quorum certificate contains one or more invalid vote signatures";
-                return null;
+                localError = "Quorum certificate contains one or more invalid vote signatures";
+                state.Stop();
+                return;
             }
 
-            if (signed)
+            if (Interlocked.Increment(ref signCount) != 1)
             {
-                error = $"Quorum certificate contains duplicate vote signatures from {signer}";
-                return null;
+                localError = $"Quorum certificate contains duplicate vote signatures from {signer}";
+                state.Stop();
+                return;
             }
 
-            count++;
-            signed = true;
-        }
+            Interlocked.Increment(ref count);
+        });
 
-        error = null;
-        return count;
+        error = localError;
+        return error is null ? count : null;
     }
 
     public void Initialize(XdcBlockHeader current)
