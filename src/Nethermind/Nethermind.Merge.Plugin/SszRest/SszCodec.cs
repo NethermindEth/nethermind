@@ -189,11 +189,11 @@ public static class SszCodec
             ExecutionRequests = ExecutionRequestsToWire(r.ExecutionRequests)
         });
 
-    public static byte[][] DecodeGetBlobsRequest(ReadOnlySpan<byte> buf)
+    public static ReadOnlyMemory<byte>[] DecodeGetBlobsRequest(ReadOnlySpan<byte> buf)
     {
         GetBlobsRequestWire.Decode(buf, out GetBlobsRequestWire wire);
         if (wire.VersionedHashes is null) return [];
-        byte[][] result = new byte[wire.VersionedHashes.Length][];
+        ReadOnlyMemory<byte>[] result = new ReadOnlyMemory<byte>[wire.VersionedHashes.Length];
         for (int i = 0; i < result.Length; i++)
             result[i] = wire.VersionedHashes[i].Bytes.ToArray();
         return result;

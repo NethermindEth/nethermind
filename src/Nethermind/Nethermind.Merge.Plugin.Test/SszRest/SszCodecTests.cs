@@ -128,10 +128,10 @@ public class SszCodecTests
         request[0] = 0x04;
         Buffer.BlockCopy(hash, 0, request, 4, 32);
 
-        byte[][] decoded = SszCodec.DecodeGetBlobsRequest(request);
+        ReadOnlyMemory<byte>[] decoded = SszCodec.DecodeGetBlobsRequest(request);
 
         decoded.Should().HaveCount(1);
-        decoded[0].Should().BeEquivalentTo(hash);
+        decoded[0].Span.ToArray().Should().BeEquivalentTo(hash);
     }
 
     [Test]
