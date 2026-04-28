@@ -74,9 +74,6 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
 
         try
         {
-            // Plugin entry point wires dependencies directly — see OpcodeTracingModule for the DI story.
-            // Resolve container-managed services (e.g. IReadOnlyTxProcessingEnvFactory) here so the
-            // recorder receives them by constructor rather than touching IComponentContext itself.
             OpcodeCounter counter = new();
             TraceOutputWriter outputWriter = new(_api.LogManager);
             IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory = _api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
@@ -119,13 +116,9 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
 
         try
         {
-            // For RealTime mode, attach to block processor
             _traceRecorder.Attach(_api);
 
-            // For Retrospective mode, start the tracing task. Discarded intentionally: the inner
-            // Task.Run inside ExecuteTracingAsync owns its own try/catch and writes partial output on
-            // failure, and the recorder drives shutdown via its own CancellationTokenSource on
-            // DisposeAsync — InitNetworkProtocol must not block here.
+            // Fire-and-forget: ExecuteTracingAsync handles its own errors and shutdown via DisposeAsync.
             _ = _traceRecorder.ExecuteTracingAsync(_api);
 
             return Task.CompletedTask;

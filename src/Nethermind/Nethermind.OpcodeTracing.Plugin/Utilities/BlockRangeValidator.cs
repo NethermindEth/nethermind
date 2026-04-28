@@ -76,10 +76,7 @@ public static class BlockRangeValidator
             return ValidationResult.Warning("Both EndBlock and RecentBlocks specified. This configuration is ambiguous.");
         }
 
-        // Blocks beyond chain tip - both modes handle this gracefully
-        // RealTime: finalizes the cumulative file once EndBlock is reached but keeps tracing past it
-        //           until the node stops (EndBlock is the reporting window, not a hard stop)
-        // Retrospective / RetrospectiveExecution: waits for blocks during sync
+        // EndBlock beyond tip is allowed: RealTime keeps tracing past it; Retrospective waits for sync.
 
         return ValidationResult.Success();
     }

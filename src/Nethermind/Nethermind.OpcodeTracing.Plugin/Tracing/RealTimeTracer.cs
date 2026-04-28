@@ -144,20 +144,11 @@ public sealed class RealTimeTracer : IAsyncDisposable
                 _logger.Info($"RealTime: configured range {_range.StartBlock}-{_range.EndBlock} completed. Continuing to trace new blocks.");
             }
 
-            // Write cumulative with completionStatus="complete" for initial range.
-            // OnBlockCompleted is sync, so track the task and let FinalizePartialAsync await it
-            // during shutdown — otherwise a fast shutdown can race this write and drop it.
-            // Acquire _cumulativeWriteLock so we don't collide with an in-flight UpdateCumulativeFileAsync.
+            // Tracked so a fast shutdown can await the write instead of racing past it.
             _rangeCompleteFinalizeTask = FinalizeWithLockAsync("complete");
         }
     }
 
-    /// <summary>
-    /// Finalizes the cumulative file under <see cref="_cumulativeWriteLock"/> so it cannot race with
-    /// an in-flight <see cref="UpdateCumulativeFileAsync"/>. Both writers open the file with
-    /// FileShare.None, so without this guard one would throw IOException and the final file may not
-    /// be written.
-    /// </summary>
     private async Task FinalizeWithLockAsync(string completionStatus)
     {
         await _cumulativeWriteLock.WaitAsync().ConfigureAwait(false);
@@ -284,8 +275,6 @@ public sealed class RealTimeTracer : IAsyncDisposable
             }
         }
 
-        // Write final cumulative with partial status under the lock so we don't collide with any
-        // still-in-flight UpdateCumulativeFileAsync.
         await FinalizeWithLockAsync("partial").ConfigureAwait(false);
     }
 

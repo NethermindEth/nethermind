@@ -333,10 +333,6 @@ public sealed class OpcodeTraceRecorder(
 
                 if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
                 {
-                    // Use RetrospectiveExecutionTracer for actual EVM execution replay.
-                    // The factory is supplied via constructor (see OpcodeTracingPlugin.Init) rather than
-                    // resolved from the container here — directly resolving from IComponentContext in a
-                    // non-wiring class is the DI anti-pattern we want to avoid.
                     RetrospectiveExecutionTracer executionTracer = new(
                         blockTree,
                         api.SpecProvider!,
@@ -353,8 +349,6 @@ public sealed class OpcodeTraceRecorder(
 
                     await executionTracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
 
-                    // Capture skipped blocks for metadata. SkippedBlocks allocates on every access,
-                    // so snapshot once, sort in place.
                     long[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
                     if (skippedSnapshot.Length > 0)
                     {
