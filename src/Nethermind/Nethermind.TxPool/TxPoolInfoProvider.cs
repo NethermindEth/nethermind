@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
@@ -44,17 +42,9 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         Transaction[] blobs = txPool.GetPendingLightBlobTransactionsBySender(address);
         if (standard.Length == 0 && blobs.Length == 0) return TxPoolSenderInfo.Empty;
 
-        Transaction[] merged = MergeOwned(standard, blobs, out int mergedLength);
-        try
-        {
-            (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued) =
-                SplitByNonce(merged, mergedLength, accountStateProvider.GetNonce(address));
-            return new TxPoolSenderInfo(pending, queued);
-        }
-        finally
-        {
-            ReturnIfPooled(merged, standard, blobs);
-        }
+        (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued) =
+            SplitByNonce(standard, blobs, accountStateProvider.GetNonce(address));
+        return new TxPoolSenderInfo(pending, queued);
     }
 
     public TxPoolCounts GetCounts()
@@ -87,20 +77,13 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions,
         Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions)
     {
-        Transaction[] merged = MergeOwned(standardTransactions, blobTransactions, out int mergedLength);
-        if (mergedLength == 0) return;
+        int total = (standardTransactions?.Length ?? 0) + (blobTransactions?.Length ?? 0);
+        if (total == 0) return;
 
-        try
-        {
-            (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued) =
-                SplitByNonce(merged, mergedLength, accountStateProvider.GetNonce(sender));
-            if (pending.Count != 0) pendingTransactions[sender] = pending;
-            if (queued.Count != 0) queuedTransactions[sender] = queued;
-        }
-        finally
-        {
-            ReturnIfPooled(merged, standardTransactions, blobTransactions);
-        }
+        (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued) =
+            SplitByNonce(standardTransactions, blobTransactions, accountStateProvider.GetNonce(sender));
+        if (pending.Count != 0) pendingTransactions[sender] = pending;
+        if (queued.Count != 0) queuedTransactions[sender] = queued;
     }
 
     private void AddSenderToCounts(
@@ -110,87 +93,69 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         ref int pendingTotal,
         ref int queuedTotal)
     {
-        Transaction[] merged = MergeOwned(standardTransactions, blobTransactions, out int mergedLength);
-        if (mergedLength == 0) return;
+        int total = (standardTransactions?.Length ?? 0) + (blobTransactions?.Length ?? 0);
+        if (total == 0) return;
 
-        try
-        {
-            int senderPending = CountPending(merged, mergedLength, accountStateProvider.GetNonce(sender));
-            pendingTotal += senderPending;
-            queuedTotal += mergedLength - senderPending;
-        }
-        finally
-        {
-            ReturnIfPooled(merged, standardTransactions, blobTransactions);
-        }
+        int senderPending = CountPending(standardTransactions, blobTransactions, accountStateProvider.GetNonce(sender));
+        pendingTotal += senderPending;
+        queuedTotal += total - senderPending;
     }
 
-    // Returns either the existing input array (no allocation) or a pooled buffer that the caller
-    // MUST return. `length` is the logical count regardless — pooled buffers may be oversized.
-    private static Transaction[] MergeOwned(Transaction[]? standardTransactions, Transaction[]? blobTransactions, out int length)
-    {
-        int standardCount = standardTransactions?.Length ?? 0;
-        int blobCount = blobTransactions?.Length ?? 0;
-        length = standardCount + blobCount;
-
-        if (blobCount == 0) return standardTransactions ?? [];
-        if (standardCount == 0) return blobTransactions!;
-
-        Transaction[] merged = SafeArrayPool<Transaction>.Shared.Rent(length);
-        standardTransactions!.AsSpan().CopyTo(merged);
-        blobTransactions!.AsSpan().CopyTo(merged.AsSpan(standardCount));
-        return merged;
-    }
-
-    private static void ReturnIfPooled(Transaction[] merged, Transaction[]? standard, Transaction[]? blobs)
-    {
-        if (merged != standard && merged != blobs)
-            SafeArrayPool<Transaction>.Shared.Return(merged, clearArray: true);
-    }
-
-    // Walks transactions in nonce order: txs whose nonce continues from accountNonce go to
-    // pending, anything beyond a gap goes to queued. Mirrors Geth's pending/queued split.
+    // Streams a two-pointer merge of two nonce-sorted bucket arrays from the standard and
+    // blob pools (TxDistinctSortedPool sorts each bucket by nonce). Pending = txs whose
+    // nonce continues from accountNonce; gap → queued. Mirrors Geth's split.
+    // Note: TxTypeTxFilter prevents a sender from holding both types simultaneously, so
+    // the merge case is rare in practice but the API handles it correctly anyway.
     private static (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued)
-        SplitByNonce(Transaction[] transactions, int length, UInt256 accountNonce)
+        SplitByNonce(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
     {
         Dictionary<ulong, Transaction> pending = new();
         Dictionary<ulong, Transaction> queued = new();
         UInt256 expectedNonce = accountNonce;
 
-        using ArrayPoolListRef<Transaction> sorted = new(length);
-        sorted.AddRange(transactions.AsSpan(0, length));
-        sorted.Sort(NonceComparer.Instance);
-        for (int i = 0; i < length; i++)
+        int i = 0;
+        int j = 0;
+        int n = standard?.Length ?? 0;
+        int m = blobs?.Length ?? 0;
+        while (i < n || j < m)
         {
-            Transaction transaction = sorted[i];
-            ulong transactionNonce = (ulong)transaction.Nonce;
-            if (transaction.Nonce == expectedNonce)
+            Transaction next = j == m || (i < n && standard![i].Nonce <= blobs![j].Nonce)
+                ? standard![i++]
+                : blobs![j++];
+
+            ulong nonce = (ulong)next.Nonce;
+            if (next.Nonce == expectedNonce)
             {
-                pending[transactionNonce] = transaction;
-                expectedNonce = transaction.Nonce + 1;
+                pending[nonce] = next;
+                expectedNonce = next.Nonce + 1;
             }
             else
             {
                 // Indexer (not Add) so a duplicate nonce — should be impossible given
                 // TxTypeTxFilter, but defensive — does not crash the RPC handler.
-                queued[transactionNonce] = transaction;
+                queued[nonce] = next;
             }
         }
 
         return (pending, queued);
     }
 
-    private static int CountPending(Transaction[] transactions, int length, UInt256 accountNonce)
+    private static int CountPending(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
     {
         int pending = 0;
         UInt256 expectedNonce = accountNonce;
 
-        using ArrayPoolListRef<Transaction> sorted = new(length);
-        sorted.AddRange(transactions.AsSpan(0, length));
-        sorted.Sort(NonceComparer.Instance);
-        for (int i = 0; i < length; i++)
+        int i = 0;
+        int j = 0;
+        int n = standard?.Length ?? 0;
+        int m = blobs?.Length ?? 0;
+        while (i < n || j < m)
         {
-            if (sorted[i].Nonce == expectedNonce)
+            Transaction next = j == m || (i < n && standard![i].Nonce <= blobs![j].Nonce)
+                ? standard![i++]
+                : blobs![j++];
+
+            if (next.Nonce == expectedNonce)
             {
                 pending++;
                 expectedNonce += UInt256.One;
@@ -198,11 +163,5 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         }
 
         return pending;
-    }
-
-    private sealed class NonceComparer : IComparer<Transaction>
-    {
-        public static readonly NonceComparer Instance = new();
-        public int Compare(Transaction? x, Transaction? y) => x!.Nonce.CompareTo(y!.Nonce);
     }
 }
