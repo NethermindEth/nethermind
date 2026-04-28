@@ -295,7 +295,7 @@ internal class VotesManager(
             signedBy.TryAdd(signer, 0);
 
         int count = 0;
-        string? localError = null; // concurrent "overwrite" is ok, no need to syncrhonize
+        string? localError = null; // concurrent "overwrite" is ok, no need to synchronize
         Parallel.ForEach(signatures, (s, state) =>
         {
             Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
