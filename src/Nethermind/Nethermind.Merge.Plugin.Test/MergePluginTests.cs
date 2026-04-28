@@ -15,7 +15,6 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Evm.Tracing;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
