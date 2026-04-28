@@ -28,12 +28,12 @@ public class NewPayloadHandler(
     private const string FinalizedBlockHashKey = "finalizedBlockHash";
     private const string SafeBlockHashKey = "safeBlockHash";
 
-    private readonly ProxyConfig _config = config;
-    private readonly ILogger _logger = logManager.GetClassLogger<NewPayloadHandler>();
-    private readonly RequestForwarder _requestForwarder = requestForwarder;
-    private readonly MessageQueue _messageQueue = messageQueue;
-    private readonly PayloadTracker _payloadTracker = payloadTracker;
-    private readonly RequestOrchestrator _requestOrchestrator = requestOrchestrator;
+    private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly ILogger _logger = logManager?.GetClassLogger<NewPayloadHandler>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
+    private readonly MessageQueue _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
+    private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
+    private readonly RequestOrchestrator _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
 
     public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
     {
@@ -197,7 +197,7 @@ public class NewPayloadHandler(
                     _logger.Info($"Found payloadId {payloadId} for parent hash {parentHash}, starting validation");
 
                     // Use the existing FCU validation flow
-                    await _requestOrchestrator.DoValidationForFCU(payloadId, string.Empty);
+                    await _requestOrchestrator.DoValidationForFCU(payloadId, string.Empty, originalHeaders: request.OriginalHeaders);
 
                     _logger.Info($"Validation completed for parent hash {parentHash}, forwarding original request");
                 }

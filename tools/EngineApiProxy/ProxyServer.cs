@@ -197,37 +197,30 @@ public class ProxyServer
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            QueuedMessage? message;
             try
             {
-                if (!_messageQueue.IsEmpty)
-                {
-                    QueuedMessage? message = _messageQueue.DequeueNextMessage();
-                    if (message is not null)
-                    {
-                        try
-                        {
-                            JsonRpcResponse response = await HandleRequest(message.Request);
-                            message.CompletionTask.TrySetResult(response);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Error($"Error processing message {message.Request.Method}: {ex.Message}", ex);
-                            message.CompletionTask.TrySetException(ex);
-                        }
-                    }
-                }
-
-                // Add a short delay to prevent high CPU usage
-                await Task.Delay(10, cancellationToken);
+                message = await _messageQueue.DequeueNextMessageAsync(cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
+
+            if (message is null)
+            {
+                break;
+            }
+
+            try
+            {
+                JsonRpcResponse response = await HandleRequest(message.Request);
+                message.CompletionTask.TrySetResult(response);
+            }
             catch (Exception ex)
             {
-                _logger.Error($"Error processing message queue: {ex.Message}", ex);
-                await Task.Delay(100, cancellationToken);
+                _logger.Error($"Error processing message {message.Request.Method}: {ex.Message}", ex);
+                message.CompletionTask.TrySetException(ex);
             }
         }
     }
@@ -241,7 +234,7 @@ public class ProxyServer
         }
 
         string sourceIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        string sourceHost = context.Request.Headers.TryGetValue("Host", out Microsoft.Extensions.Primitives.StringValues value) ? value.ToString() : "unknown";
+        string sourceHost = context.Request.Headers.TryGetValue("Host", out StringValues value) ? value.ToString() : "unknown";
         string method;
         try
         {
@@ -264,16 +257,8 @@ public class ProxyServer
                 return;
             }
 
-            // Store the original request headers for forwarding
+            // Store the original request headers for per-request forwarding (Authorization included).
             request.OriginalHeaders = context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString());
-
-            // Check if there's an Authorization header and set it on the HttpClient for all future requests
-            if (context.Request.Headers.TryGetValue("Authorization", out StringValues authHeader))
-            {
-                _logger.Trace("Found Authorization header in client request, storing for future internal requests");
-                _httpClient.DefaultRequestHeaders.Remove("Authorization");
-                _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader.ToString());
-            }
 
             _logger.Trace($"Processing request: {request}");
         }
@@ -321,7 +306,7 @@ public class ProxyServer
 
         context.Response.ContentType = "application/json";
         string destinationIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        string destinationHost = context.Request.Headers.TryGetValue("Host", out Microsoft.Extensions.Primitives.StringValues val) ? val.ToString() : "unknown";
+        string destinationHost = context.Request.Headers.TryGetValue("Host", out StringValues val) ? val.ToString() : "unknown";
         _logger.Info($"PR -> CL|{request.Method}|(Destination IP: {destinationIp}, Headers Host: {destinationHost}): {JsonSerializer.Serialize(response)}");
         await context.Response.WriteAsync(JsonSerializer.Serialize(response));
     }
@@ -372,17 +357,17 @@ public class ProxyServer
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
 
-        var errorResponse = new
+        JsonObject errorResponse = new()
         {
-            jsonrpc = "2.0",
-            id = (object?)null,
-            error = new
+            ["jsonrpc"] = "2.0",
+            ["id"] = null,
+            ["error"] = new JsonObject
             {
-                code = statusCode,
-                message = "Proxy error: " + message
+                ["code"] = statusCode,
+                ["message"] = "Proxy error: " + message
             }
         };
 
-        await context.Response.WriteAsync(JsonSerializer.Serialize(errorResponse));
+        await context.Response.WriteAsync(errorResponse.ToJsonString());
     }
 }

@@ -50,7 +50,7 @@ public class RequestOrchestrator(
         if (!string.IsNullOrEmpty(payloadId))
         {
             // Then perform validation if we got a valid payload ID
-            await DoValidationForFCU(payloadId, headBlockHash);
+            await DoValidationForFCU(payloadId, headBlockHash, originalHeaders: originalRequest.OriginalHeaders);
         }
 
         return payloadId;
@@ -70,7 +70,6 @@ public class RequestOrchestrator(
 
         try
         {
-            // Check if Authorization header is present in original request
             if (originalRequest.OriginalHeaders is not null &&
                 originalRequest.OriginalHeaders.TryGetValue("Authorization", out string? authHeader))
             {
@@ -79,17 +78,6 @@ public class RequestOrchestrator(
             else
             {
                 _logger.Debug("Original request does not contain Authorization header");
-            }
-
-            // Check if DefaultRequestHeaders has Authorization
-            if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
-            {
-                string? authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
-                _logger.Debug($"HttpClient DefaultRequestHeaders contains Authorization: {authHeaderValue?.Substring(0, Math.Min(10, authHeaderValue?.Length ?? 0))}...");
-            }
-            else
-            {
-                _logger.Debug("HttpClient DefaultRequestHeaders does not contain Authorization");
             }
 
             // For Lighthouse mode, we don't need to do any special processing here as the ForkChoiceUpdatedHandler
@@ -105,7 +93,7 @@ public class RequestOrchestrator(
             // Original behavior for non-LH modes
             if (!fromCL)
             {
-                JsonObject? blockData = await _blockFetcher.GetBlockByHash(headBlockHash);
+                JsonObject? blockData = await _blockFetcher.GetBlockByHash(headBlockHash, originalRequest.OriginalHeaders);
                 if (blockData is null)
                 {
                     _logger.Warn($"Failed to fetch block data for hash: {headBlockHash}");
@@ -222,7 +210,11 @@ public class RequestOrchestrator(
     /// <param name="payloadId">The payload ID to validate</param>
     /// <param name="parentBeaconBlockRoot">Optional parent beacon block root</param>
     /// <returns>True if validation succeeded</returns>
-    public async Task<bool> DoValidationForFCU(string payloadId, string parentBeaconBlockRoot, bool isApproval = false)
+    public async Task<bool> DoValidationForFCU(
+        string payloadId,
+        string parentBeaconBlockRoot,
+        bool isApproval = false,
+        IReadOnlyDictionary<string, string>? originalHeaders = null)
     {
         _logger.Debug($"Starting validation process for payloadId {payloadId}, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
 
@@ -240,7 +232,7 @@ public class RequestOrchestrator(
             await Task.Delay(500);
 
             // Get the payload and process it, passing along the parentBeaconBlockRoot
-            JsonRpcResponse response = await GetAndProcessPayload(payloadId, headBlock, parentBeaconBlockRoot);
+            JsonRpcResponse response = await GetAndProcessPayload(payloadId, headBlock, parentBeaconBlockRoot, originalHeaders);
 
             // Check if the response indicates success
             if (response.Error is not null)
@@ -254,8 +246,9 @@ public class RequestOrchestrator(
         catch (Exception ex)
         {
             // If the configured getPayload method fails, log it but don't throw an exception
-            if (ex.ToString().Contains($"The method '{_config.GetPayloadMethod}' is not supported") ||
-                (ex.InnerException is not null && ex.InnerException.ToString().Contains($"The method '{_config.GetPayloadMethod}' is not supported")))
+            string notSupportedMessage = $"The method '{_config.GetPayloadMethod}' is not supported";
+            if (ex.Message.Contains(notSupportedMessage) ||
+                (ex.InnerException is not null && ex.InnerException.Message.Contains(notSupportedMessage)))
             {
                 _logger.Warn($"Execution client does not support {_config.GetPayloadMethod}. Skipping payload validation for payloadId: {payloadId}");
                 return false;
@@ -272,7 +265,11 @@ public class RequestOrchestrator(
     /// <param name="payloadId">The payload ID to get</param>
     /// <param name="parentBeaconBlockRoot">The parent beacon block root from the block data</param>
     /// <returns>The get payload response</returns>
-    private async Task<JsonRpcResponse> GetAndProcessPayload(string payloadId, Hash256 headBlock, string? parentBeaconBlockRoot = null)
+    private async Task<JsonRpcResponse> GetAndProcessPayload(
+        string payloadId,
+        Hash256 headBlock,
+        string? parentBeaconBlockRoot = null,
+        IReadOnlyDictionary<string, string>? originalHeaders = null)
     {
         _logger.Info($"Getting payload for payloadId {payloadId}");
 
@@ -295,21 +292,10 @@ public class RequestOrchestrator(
             JsonRpcRequest getPayloadRequest = new(
                 _config.GetPayloadMethod,
                 new JsonArray(payloadId),
-                Guid.NewGuid().ToString());
-
-            // Make sure any authorization headers from HttpClient are included
-            if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
+                Guid.NewGuid().ToString())
             {
-                string? authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
-                if (!string.IsNullOrEmpty(authHeaderValue))
-                {
-                    getPayloadRequest.OriginalHeaders = new Dictionary<string, string>
-                    {
-                        { "Authorization", authHeaderValue }
-                    };
-                    _logger.Debug("Added Authorization header to getPayload request from HttpClient DefaultRequestHeaders");
-                }
-            }
+                OriginalHeaders = CopyAuthHeader(originalHeaders)
+            };
 
             // Send request to get the payload
             JsonRpcResponse payloadResponse = await SendJsonRpcRequest(getPayloadRequest);
@@ -346,20 +332,7 @@ public class RequestOrchestrator(
                     // Create newPayload request from the payload
                     _logger.Info($"Creating newPayload request from payload with parentBeaconBlockRoot: {parentBeaconBlockRoot}");
                     JsonRpcRequest newPayloadRequest = CreateNewPayloadRequest(payload, parentBeaconBlockRoot, blobVersionedHashes);
-
-                    // Copy auth headers to new request too
-                    if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
-                    {
-                        string? authHeaderValue = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
-                        if (!string.IsNullOrEmpty(authHeaderValue))
-                        {
-                            newPayloadRequest.OriginalHeaders = new Dictionary<string, string>
-                            {
-                                { "Authorization", authHeaderValue }
-                            };
-                            _logger.Debug("Added Authorization header to newPayload request from HttpClient DefaultRequestHeaders");
-                        }
-                    }
+                    newPayloadRequest.OriginalHeaders = CopyAuthHeader(originalHeaders);
 
                     // Send newPayload request
                     _logger.Debug($"Sending synthetic newPayload request: {newPayloadRequest}");
@@ -458,7 +431,7 @@ public class RequestOrchestrator(
             }
             else
             {
-                _logger.Debug($"Using provided parentBeaconBlockRoot in engine_newPayloadV5: {parentBeaconBlockRoot}");
+                _logger.Debug($"Using provided parentBeaconBlockRoot in {_config.NewPayloadMethod}: {parentBeaconBlockRoot}");
             }
 
             // Create the parameter array for the newPayload request
@@ -509,36 +482,23 @@ public class RequestOrchestrator(
 
             bool authHeaderAdded = false;
 
-            // First, check if the request already has an Authorization header
-            if (request.OriginalHeaders is not null &&
-                request.OriginalHeaders.TryGetValue("Authorization", out string? requestAuthHeader) &&
-                !string.IsNullOrEmpty(requestAuthHeader))
-            {
-                requestMessage.Headers.TryAddWithoutValidation("Authorization", requestAuthHeader);
-                _logger.Debug($"Added Authorization header from request.OriginalHeaders: {requestAuthHeader.Substring(0, Math.Min(10, requestAuthHeader.Length))}...");
-                authHeaderAdded = true;
-            }
-
-            // Next, try to get the Authorization header from the HttpClient's default headers
-            if (!authHeaderAdded && _httpClient.DefaultRequestHeaders.Contains("Authorization"))
-            {
-                string? httpClientAuthHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
-                if (!string.IsNullOrEmpty(httpClientAuthHeader))
-                {
-                    requestMessage.Headers.TryAddWithoutValidation("Authorization", httpClientAuthHeader);
-                    _logger.Debug($"Added Authorization header from HttpClient.DefaultRequestHeaders: {httpClientAuthHeader.Substring(0, Math.Min(10, httpClientAuthHeader.Length))}...");
-                    authHeaderAdded = true;
-                }
-            }
-
-            // Then, copy any remaining original headers if present
+            // Authorization and any other headers come exclusively from the per-request OriginalHeaders.
             if (request.OriginalHeaders is not null)
             {
                 foreach (KeyValuePair<string, string> header in request.OriginalHeaders)
                 {
-                    // Skip content-related headers and the Authorization header we already added
-                    if (!header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase) &&
-                        !string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
+                    if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (string.IsNullOrEmpty(header.Value)) continue;
+                        requestMessage.Headers.TryAddWithoutValidation("Authorization", header.Value);
+                        authHeaderAdded = true;
+                    }
+                    else
                     {
                         requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
                     }
@@ -547,7 +507,7 @@ public class RequestOrchestrator(
 
             if (!authHeaderAdded)
             {
-                _logger.Warn("No Authorization header found in either request.OriginalHeaders or HttpClient.DefaultRequestHeaders");
+                _logger.Warn("No Authorization header found in request.OriginalHeaders");
             }
 
             // Send request
@@ -599,6 +559,21 @@ public class RequestOrchestrator(
             // Return an error response instead of throwing
             return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error: Sending JSON-RPC request: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Copies the Authorization header from the supplied headers into a new dictionary suitable for
+    /// attaching as <see cref="JsonRpcRequest.OriginalHeaders"/> on a synthetic request. Returns null
+    /// if no Authorization header is present.
+    /// </summary>
+    private static Dictionary<string, string>? CopyAuthHeader(IReadOnlyDictionary<string, string>? source)
+    {
+        if (source is null) return null;
+        if (!source.TryGetValue("Authorization", out string? authHeader) || string.IsNullOrEmpty(authHeader))
+        {
+            return null;
+        }
+        return new Dictionary<string, string> { ["Authorization"] = authHeader };
     }
 
     /// <summary>

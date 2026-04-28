@@ -2,21 +2,42 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Nethermind.Logging;
 
 namespace Nethermind.EngineApiProxy.Models;
 
 /// <summary>
-/// Manages the queuing and processing of intercepted messages in the proxy
+/// Manages the queuing and processing of intercepted messages in the proxy.
+/// Producers enqueue via <see cref="EnqueueMessage"/>; the single consumer awaits
+/// <see cref="DequeueNextMessageAsync"/>, which blocks asynchronously until a message
+/// is available and processing is not paused — no busy-polling.
 /// </summary>
 public class MessageQueue(ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<MessageQueue>();
-    private readonly ConcurrentQueue<QueuedMessage> _messageQueue = new();
+
+    private readonly Channel<QueuedMessage> _channel = Channel.CreateUnbounded<QueuedMessage>(new UnboundedChannelOptions
+    {
+        SingleReader = true,
+        SingleWriter = false
+    });
+
     private readonly ConcurrentDictionary<string, QueuedMessage> _messageById = new();
 
     // 0 = running, 1 = paused — atomically toggled via Interlocked.CompareExchange
     private int _processingPaused;
+
+    // Completed when processing is not paused. Replaced with a fresh uncompleted TCS on pause,
+    // and completed on resume so that any awaiter wakes up.
+    private TaskCompletionSource _resumeSignal = CreateCompletedSignal();
+
+    private static TaskCompletionSource CreateCompletedSignal()
+    {
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        tcs.SetResult();
+        return tcs;
+    }
 
     /// <summary>
     /// Pauses message processing
@@ -25,6 +46,7 @@ public class MessageQueue(ILogManager logManager)
     {
         if (Interlocked.CompareExchange(ref _processingPaused, 1, 0) == 0)
         {
+            Interlocked.Exchange(ref _resumeSignal, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
             _logger.Debug("Message processing paused");
         }
     }
@@ -36,6 +58,7 @@ public class MessageQueue(ILogManager logManager)
     {
         if (Interlocked.CompareExchange(ref _processingPaused, 0, 1) == 1)
         {
+            Volatile.Read(ref _resumeSignal).TrySetResult();
             _logger.Debug("Message processing resumed");
         }
     }
@@ -44,11 +67,6 @@ public class MessageQueue(ILogManager logManager)
     /// Checks if processing is currently paused
     /// </summary>
     public bool IsProcessingPaused => Volatile.Read(ref _processingPaused) == 1;
-
-    /// <summary>
-    /// Checks if the queue is empty
-    /// </summary>
-    public bool IsEmpty => _messageQueue.IsEmpty;
 
     /// <summary>
     /// Enqueues a message for delayed processing
@@ -60,7 +78,7 @@ public class MessageQueue(ILogManager logManager)
         ArgumentNullException.ThrowIfNull(message);
 
         QueuedMessage queuedMessage = new(message);
-        _messageQueue.Enqueue(queuedMessage);
+        _channel.Writer.TryWrite(queuedMessage);
 
         if (message.Id is not null)
         {
@@ -74,26 +92,35 @@ public class MessageQueue(ILogManager logManager)
     }
 
     /// <summary>
-    /// Dequeues the next message from the queue
+    /// Asynchronously dequeues the next message from the queue, waiting if the queue is empty
+    /// or processing is paused. Returns null only when <paramref name="cancellationToken"/> is
+    /// signalled or the channel is completed.
     /// </summary>
-    /// <returns>The next message, or null if queue is empty or processing is paused</returns>
-    public QueuedMessage? DequeueNextMessage()
+    public async ValueTask<QueuedMessage?> DequeueNextMessageAsync(CancellationToken cancellationToken)
     {
-        if (IsProcessingPaused)
+        while (await _channel.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            return null;
-        }
-
-        if (_messageQueue.TryDequeue(out QueuedMessage? message))
-        {
-            if (message.Request.Id is not null)
+            if (IsProcessingPaused)
             {
-                string messageId = message.Request.Id.ToString()!;
-                _messageById.TryRemove(messageId, out _);
+                await Volatile.Read(ref _resumeSignal).Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
-            string? host = message.Request.OriginalHeaders?.FirstOrDefault(h => h.Key == "Host").Value;
-            _logger.Debug($"Dequeued message: {message.Request.Method} with id {message.Request.Id} from {host}");
-            return message;
+
+            if (_channel.Reader.TryRead(out QueuedMessage? message))
+            {
+                if (message.Request.Id is not null)
+                {
+                    string messageId = message.Request.Id.ToString()!;
+                    _messageById.TryRemove(messageId, out _);
+                }
+
+                string? host = null;
+                if (message.Request.OriginalHeaders is not null)
+                {
+                    message.Request.OriginalHeaders.TryGetValue("Host", out host);
+                }
+                _logger.Debug($"Dequeued message: {message.Request.Method} with id {message.Request.Id} from {host}");
+                return message;
+            }
         }
 
         return null;
@@ -136,7 +163,7 @@ public class MessageQueue(ILogManager logManager)
     /// </summary>
     public void Clear()
     {
-        while (_messageQueue.TryDequeue(out _)) { }
+        while (_channel.Reader.TryRead(out _)) { }
         _messageById.Clear();
         _logger.Debug("Message queue cleared");
     }

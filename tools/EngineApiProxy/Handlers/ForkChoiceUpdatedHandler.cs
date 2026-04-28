@@ -88,7 +88,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         try
         {
             bool shouldValidate = ShouldValidateBlock(request);
-            _logger.Info($"---------------(Lighthouse flow - FCU processing - Validation: {!shouldValidate})-----------------");
+            _logger.Info($"---------------(Lighthouse flow - FCU processing - Validation: {shouldValidate})-----------------");
 
             return await ProcessLHFCU(request);
         }
@@ -297,13 +297,8 @@ public class ForkChoiceUpdatedHandler : IDisposable
 
         try
         {
-            // Check if request contains payload attributes
-            bool hasPayloadAttributes = request.Params is not null &&
-                                      request.Params.Count > 1 &&
-                                      request.Params[1] is JsonObject;
-
             // For requests with payload attributes, implement deduplication
-            if (hasPayloadAttributes)
+            if (HasPayloadAttributes(request))
             {
                 _logger.Info("LH mode: got FCU request with payload attributes, processing validation flow");
                 // Create a fingerprint of the request to identify duplicates

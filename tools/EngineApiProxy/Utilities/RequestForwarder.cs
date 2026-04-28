@@ -84,23 +84,18 @@ public class RequestForwarder(
                 _logger.Info("No original headers to forward");
             }
 
-            // Always check the HttpClient's DefaultRequestHeaders for Authorization as a fallback
-            if (!requestMessage.Headers.Contains("Authorization") && _httpClient.DefaultRequestHeaders.Contains("Authorization"))
-            {
-                string? authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
-                if (!string.IsNullOrEmpty(authHeader))
-                {
-                    _logger.Debug("Adding Authorization header from HttpClient DefaultRequestHeaders as fallback");
-                    requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
-                }
-            }
-
             HttpResponseMessage response;
             try
             {
                 _logger.Debug($"Sending request to EL: {request.Method}");
                 response = await _httpClient.SendAsync(requestMessage);
-                _logger.Debug($"Received response from EL: {response.StatusCode}, Content-Encoding: {response.Content.Headers.ContentEncoding.FirstOrDefault() ?? "none"}, Content-Type: {response.Content.Headers.ContentType?.ToString() ?? "unknown"}");
+                string? contentEncoding = null;
+                foreach (string encoding in response.Content.Headers.ContentEncoding)
+                {
+                    contentEncoding = encoding;
+                    break;
+                }
+                _logger.Debug($"Received response from EL: {response.StatusCode}, Content-Encoding: {contentEncoding ?? "none"}, Content-Type: {response.Content.Headers.ContentType?.ToString() ?? "unknown"}");
             }
             catch (HttpRequestException ex) when (ex.InnerException is HttpIOException ioEx)
             {

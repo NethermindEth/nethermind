@@ -33,8 +33,9 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
     /// Fetches block data from the execution client by hash
     /// </summary>
     /// <param name="blockHash">The block hash</param>
+    /// <param name="originalHeaders">Headers from the originating client request, used to forward Authorization</param>
     /// <returns>Block data as a JsonObject</returns>
-    public virtual async Task<JsonObject?> GetBlockByHash(string blockHash)
+    public virtual async Task<JsonObject?> GetBlockByHash(string blockHash, IReadOnlyDictionary<string, string>? originalHeaders = null)
     {
         _logger.Debug($"Fetching block data for hash: {blockHash}");
 
@@ -58,16 +59,14 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
 
             bool authHeaderAdded = false;
 
-            // Copy all authorization headers from the HttpClient
-            if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
+            // Forward Authorization from the originating per-request headers (avoids shared mutable state).
+            if (originalHeaders is not null &&
+                originalHeaders.TryGetValue("Authorization", out string? authHeader) &&
+                !string.IsNullOrEmpty(authHeader))
             {
-                string? authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
-                if (!string.IsNullOrEmpty(authHeader))
-                {
-                    _logger.Debug($"Adding Authorization header to block data fetch request for hash: {blockHash}");
-                    requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
-                    authHeaderAdded = true;
-                }
+                _logger.Debug($"Adding Authorization header to block data fetch request for hash: {blockHash}");
+                requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
+                authHeaderAdded = true;
             }
 
             if (!authHeaderAdded)
@@ -100,78 +99,6 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
         catch (Exception ex)
         {
             _logger.Error($"Error fetching block data: {ex.Message}", ex);
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Fetches the latest block from the execution client
-    /// </summary>
-    /// <returns>Latest block data as a JsonObject</returns>
-    public virtual async Task<JsonObject?> GetLatestBlock()
-    {
-        _logger.Debug("Fetching latest block data");
-
-        try
-        {
-            // Create JSON-RPC request
-            JsonRpcRequest request = new(
-                "eth_getBlockByNumber",
-                ["latest", true], // Include transaction objects
-                Guid.NewGuid().ToString());
-
-            // Send request to EC
-            string requestJson = JsonSerializer.Serialize(request);
-            StringContent httpContent = new(requestJson, Encoding.UTF8, "application/json");
-
-            // Create a request message instead of using PostAsync directly
-            HttpRequestMessage requestMessage = new(HttpMethod.Post, "")
-            {
-                Content = httpContent
-            };
-
-            bool authHeaderAdded = false;
-
-            // Copy all authorization headers from the HttpClient
-            if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
-            {
-                string? authHeader = _httpClient.DefaultRequestHeaders.GetValues("Authorization").FirstOrDefault();
-                if (!string.IsNullOrEmpty(authHeader))
-                {
-                    _logger.Debug("Adding Authorization header to latest block fetch request");
-                    requestMessage.Headers.TryAddWithoutValidation("Authorization", authHeader);
-                    authHeaderAdded = true;
-                }
-            }
-
-            if (!authHeaderAdded)
-            {
-                _logger.Warn("No Authorization header available for latest block fetch request");
-            }
-
-            _logger.Debug($"Sending latest block fetch request with Authorization header: {authHeaderAdded}");
-            HttpResponseMessage response = await _httpClient.SendAsync(requestMessage);
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.Error($"Failed to get latest block data. Status: {response.StatusCode}");
-                return null;
-            }
-
-            string responseJson = await response.Content.ReadAsStringAsync();
-            JsonRpcResponse? jsonResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseJson);
-
-            if (jsonResponse?.Result is JsonObject blockData)
-            {
-                _logger.Debug("Successfully fetched latest block data");
-                return blockData;
-            }
-
-            _logger.Error($"Invalid response format for latest block data: {responseJson}");
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"Error fetching latest block data: {ex.Message}", ex);
             return null;
         }
     }
