@@ -90,8 +90,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     // produces a loud "Error response handling JsonRpc..." WARN line on a known-transient miss.
     private static readonly ResultWrapper<UInt256?> BlockIdNotFound =
         ResultWrapper<UInt256?>.Fail("not found", ErrorCodes.ResourceNotFound, isTemporary: true);
-    private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded =
-        ResultWrapper<UInt256?>.Fail("lookback limit exceeded", ErrorCodes.ResourceNotFound, isTemporary: true);
 
     private readonly ILogger _taikoLogger = logManager.GetClassLogger<TaikoEngineRpcModule>();
 
