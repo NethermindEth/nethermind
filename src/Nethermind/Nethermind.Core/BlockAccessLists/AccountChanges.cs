@@ -357,7 +357,7 @@ public class AccountChanges : IEquatable<AccountChanges>
             {
                 return true;
             }
-            else
+            else if (change.Key >= blockAccessIndex)
             {
                 break;
             }
@@ -374,10 +374,31 @@ public class AccountChanges : IEquatable<AccountChanges>
             {
                 return true;
             }
-            else
+            else if (change.Key >= blockAccessIndex)
             {
                 break;
             }
+        }
+
+        CodeChange? lastCodeChange = null;
+        foreach (KeyValuePair<uint, CodeChange> change in _codeChanges)
+        {
+            if (change.Key == Eip7928Constants.PrestateIndex)
+            {
+                continue;
+            }
+
+            if (change.Key >= blockAccessIndex)
+            {
+                break;
+            }
+
+            lastCodeChange = change.Value;
+        }
+
+        if (lastCodeChange is not null)
+        {
+            return lastCodeChange.Value.Code.Length != 0;
         }
 
         return false;

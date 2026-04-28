@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -176,7 +177,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             GetNonceInternal(address),
             GetBalanceInternal(address),
             Keccak.EmptyTreeHash, // never used
-            _innerWorldState.GetCodeHash(address)) : AccountStruct.TotallyEmpty;
+            GetCodeHashInternal(address)) : AccountStruct.TotallyEmpty;
         return !account.IsTotallyEmpty;
     }
 
@@ -369,6 +370,15 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             // if nonce or balance is changed in this tx must exist
             // could have been created this tx
             return true;
+        }
+
+        if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
+        {
+            IList<CodeChange> codeChanges = accountChanges.CodeChanges;
+            if (codeChanges[codeChanges.Count - 1].Code.Length != 0)
+            {
+                return true;
+            }
         }
 
         return null;
