@@ -20,10 +20,7 @@ internal sealed partial class StateCompositionService
         Hash256 lastRoot = _stateHolder.LastProcessedStateRoot;
         if (lastRoot == Hash256.Zero)
         {
-            // No baseline yet — bootstrap-on-startup couldn't run because the head
-            // was null at init. Trigger a scan now that a head exists. AnalyzeAsync
-            // is serialized by its own scan semaphore, so a duplicate dispatch is
-            // a no-op rather than a race.
+            // Plugin's startup bootstrap couldn't run (head was null at init); fire it now.
             BlockHeader? header = e.Block.Header;
             if (header?.StateRoot is null) return;
             _ = Task.Run(async () =>
@@ -34,9 +31,6 @@ internal sealed partial class StateCompositionService
                 }
                 catch (Exception ex)
                 {
-                    // Guard the log call itself, not the catch: a `when (IsError)`
-                    // filter would let the exception escape into the unobserved-task
-                    // pipeline whenever Error logging is off.
                     if (_logger.IsError)
                         _logger.Error("StateComposition: deferred bootstrap scan failed", ex);
                 }
@@ -149,9 +143,7 @@ internal sealed partial class StateCompositionService
             }
             catch (Exception ex)
             {
-                // Guard the log call itself, not the catch: a `when (IsError)`
-                // filter would let the exception escape into the unobserved-task
-                // pipeline whenever Error logging is off.
+                // Don't lift the IsError check into a `when` filter — it would leak the exception when logging is off.
                 if (_logger.IsError)
                     _logger.Error("StateComposition: auto-rescan failed", ex);
             }

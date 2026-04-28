@@ -98,19 +98,9 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
     public Task InitRpcModules() => Task.CompletedTask;
 
     /// <summary>
-    /// Fire-and-forget the bootstrap scan against the current chain head. This
-    /// is the plugin's startup-time call site for
-    /// <see cref="StateCompositionService.AnalyzeAsync"/>; the two other legal
-    /// callers live inside the service itself
-    /// (<see cref="StateCompositionService.OnNewHeadBlock"/> as the deferred
-    /// bootstrap when this site couldn't run because the head was null at
-    /// init, and the <c>MissingTrieNodeException</c> recovery path in
-    /// <c>RunIncrementalDiff</c>). If the block tree has no head yet (very
-    /// early init) we log a warning here and rely on the deferred bootstrap
-    /// to fire on the first head block instead — operators no longer need to
-    /// restart the node. <see cref="StateCompositionService.AnalyzeAsync"/>
-    /// already serialises via its scan semaphore, so the dispatched task is
-    /// safe regardless of which call site triggered it.
+    /// Fire-and-forget the startup bootstrap scan against the current chain head.
+    /// If the block tree has no head yet, fall through to the deferred bootstrap
+    /// in <see cref="StateCompositionService.OnNewHeadBlock"/> on the first new head.
     /// </summary>
     private static void ScheduleBootstrapScan(
         StateCompositionService service,
@@ -137,9 +127,7 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
             }
             catch (Exception ex)
             {
-                // Guard the log call itself, not the catch: a `when (IsError)`
-                // filter would let the exception escape into the unobserved-task
-                // pipeline whenever Error logging is off.
+                // Don't lift the IsError check into a `when` filter — it would leak the exception when logging is off.
                 if (logger.IsError)
                     logger.Error("StateComposition: bootstrap scan failed", ex);
             }

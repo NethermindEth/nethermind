@@ -85,10 +85,8 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     /// from the <see cref="MissingTrieNodeException"/> handler in
     /// <see cref="RunIncrementalDiff"/>.</description></item>
     /// <item><description>Deferred bootstrap: <see cref="OnNewHeadBlock"/> dispatches a
-    /// scan when no baseline exists yet (the plugin's startup bootstrap couldn't run
-    /// because <c>blockTree.Head</c> was null at <see cref="StateCompositionPlugin.Init"/>
-    /// time, e.g. a fresh chain whose head is driven by <c>testing_commitBlockV1</c>
-    /// or any non-CL forkchoice mechanism).</description></item>
+    /// scan when no baseline exists (covers fresh chains where <c>blockTree.Head</c> was
+    /// null at <see cref="StateCompositionPlugin.Init"/> time).</description></item>
     /// </list>
     /// Fail-fast / queued via <see cref="_scanLock"/> so back-to-back triggers collapse into one scan.
     /// </summary>
