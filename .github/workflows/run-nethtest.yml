@@ -130,7 +130,7 @@ jobs:
             FILTER_ARG="--filter $FILTER"
           fi
 
-          dotnet run --no-build -c Release \
+          dotnet run --no-build --no-launch-profile -c Release \
             --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
             --$TEST_TYPE \
             --input "${{ steps.fixtures.outputs.fixture_dir }}" \
@@ -188,7 +188,7 @@ jobs:
           echo "# 2. Build and run" >> "$GITHUB_STEP_SUMMARY"
           echo "cd src/Nethermind" >> "$GITHUB_STEP_SUMMARY"
           echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release" >> "$GITHUB_STEP_SUMMARY"
-          echo "dotnet run --no-build -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers $WORKERS --neverTrace${FILTER_CMD}" >> "$GITHUB_STEP_SUMMARY"
+          echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers $WORKERS --neverTrace${FILTER_CMD}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
           echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED"
