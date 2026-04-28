@@ -18,11 +18,12 @@ public sealed class AsyncFileWriteQueue : IAsyncDisposable
     private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly Task _processingTask;
     private int _isCompleted;
+    private int _pendingWrites;
 
     /// <summary>
     /// Gets the number of pending writes in the queue.
     /// </summary>
-    public int PendingWrites => _writeChannel.Reader.Count;
+    public int PendingWrites => Volatile.Read(ref _pendingWrites);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AsyncFileWriteQueue"/> class.
@@ -60,7 +61,13 @@ public sealed class AsyncFileWriteQueue : IAsyncDisposable
             return false;
         }
 
-        return _writeChannel.Writer.TryWrite(traceOutput);
+        bool written = _writeChannel.Writer.TryWrite(traceOutput);
+        if (written)
+        {
+            Interlocked.Increment(ref _pendingWrites);
+        }
+
+        return written;
     }
 
     /// <summary>
@@ -78,11 +85,14 @@ public sealed class AsyncFileWriteQueue : IAsyncDisposable
                 }
                 catch (Exception ex)
                 {
-                    // Log error but continue processing other items
                     if (_logger.IsError)
                     {
                         _logger.Error($"Error writing per-block trace for block {traceOutput.Metadata.BlockNumber}: {ex.Message}", ex);
                     }
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _pendingWrites);
                 }
             }
         }
