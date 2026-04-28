@@ -35,8 +35,5 @@ public static class WorldStateExtensions
         => worldState.IncrementNonce(address, delta, out _);
 
     public static void IncrementNonce(this IWorldState worldState, Address address)
-        => worldState.IncrementNonce(address, UInt256.One);
-
-    public static void AddAccountRead(this IWorldState worldState, Address address)
-        => (worldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+        => worldState.IncrementNonce(address, UInt256.One, out _);
 }

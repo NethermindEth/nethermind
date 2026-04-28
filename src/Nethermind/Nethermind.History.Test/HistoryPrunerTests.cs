@@ -21,6 +21,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
@@ -91,19 +92,8 @@ public class HistoryPrunerTests
     {
         const int blocks = 100;
 
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
-
         List<Hash256> blockHashes = [];
-        blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        for (int i = 0; i < blocks; i++)
-        {
-            await testBlockchain.AddBlock();
-            blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        }
-
-        Block head = testBlockchain.BlockTree.Head;
-        Assert.That(head, Is.Not.Null);
-        testBlockchain.BlockTree.SyncPivot = (syncPivot, Hash256.Zero);
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: syncPivot, blockHashes: blockHashes);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
@@ -137,19 +127,9 @@ public class HistoryPrunerTests
             RetentionEpochs = 2,
             PruningInterval = 0
         };
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
         List<Hash256> blockHashes = [];
-        blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        for (int i = 0; i < blocks; i++)
-        {
-            await testBlockchain.AddBlock();
-            blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        }
-
-        Block head = testBlockchain.BlockTree.Head;
-        Assert.That(head, Is.Not.Null);
-        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
@@ -171,15 +151,8 @@ public class HistoryPrunerTests
             Pruning = PruningModes.Disabled,
             PruningInterval = 0
         };
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
-
         List<Hash256> blockHashes = [];
-        blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        for (int i = 0; i < blocks; i++)
-        {
-            await testBlockchain.AddBlock();
-            blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        }
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, blockHashes: blockHashes);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.TryPruneHistory(CancellationToken.None);
@@ -226,6 +199,53 @@ public class HistoryPrunerTests
             Assert.Throws<HistoryPruner.HistoryPrunerException>(action);
         else
             Assert.DoesNotThrow(action);
+    }
+
+    [TestCase(5u)]
+    [TestCase(0u)]
+    public async Task SchedulePruneHistory_passes_configured_timeout_to_scheduler(uint pruningTimeoutSeconds)
+    {
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 100000,
+            PruningTimeoutSeconds = pruningTimeoutSeconds,
+            PruningInterval = 0
+        };
+
+        CapturingScheduler scheduler = new();
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
+
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.SchedulePruneHistory();
+
+        await scheduler.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        TimeSpan? expected = pruningTimeoutSeconds == 0 ? null : TimeSpan.FromSeconds(pruningTimeoutSeconds);
+        Assert.That(scheduler.CapturedTimeout, Is.EqualTo(expected));
+    }
+
+    // Pointer = max(genesis block number, persisted DB value) — persisted value wins when above genesis
+    [Test]
+    public async Task Delete_pointer_is_not_reset_on_restart()
+    {
+        const int blocks = 100;
+        const long storedPointer = 50;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 2,
+            PruningInterval = 0
+        };
+
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(storedPointer).Bytes);
+
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(storedPointer));
     }
 
     private static void CheckGenesisPreserved(BasicTestBlockchain testBlockchain, Hash256 genesisHash)
@@ -281,7 +301,39 @@ public class HistoryPrunerTests
         }
     }
 
-    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig)
+    private static async Task<BasicTestBlockchain> CreateBlockchainWithBlocks(
+        IHistoryConfig historyConfig,
+        int blocks,
+        long? syncPivot = null,
+        List<Hash256> blockHashes = null,
+        IBackgroundTaskScheduler scheduler = null)
+    {
+        BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
+        blockHashes?.Add(bc.BlockTree.Head!.Hash!);
+        for (int i = 0; i < blocks; i++)
+        {
+            await bc.AddBlock();
+            blockHashes?.Add(bc.BlockTree.Head!.Hash!);
+        }
+        if (syncPivot is { } pivot)
+            bc.BlockTree.SyncPivot = (pivot, Hash256.Zero);
+        return bc;
+    }
+
+    private sealed class CapturingScheduler : IBackgroundTaskScheduler
+    {
+        public TimeSpan? CapturedTimeout { get; private set; }
+        public TaskCompletionSource Invoked { get; } = new();
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string source = null)
+        {
+            CapturedTimeout = timeout;
+            Invoked.TrySetResult();
+            return true;
+        }
+    }
+
+    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null)
     {
         // n.b. in prod MinHistoryRetentionEpochs should be 82125, however not feasible to test this
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
@@ -289,11 +341,17 @@ public class HistoryPrunerTests
         // prevent pruner being triggered by empty queue
         IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
 
-        return containerBuilder => containerBuilder
+        return containerBuilder =>
+        {
+            containerBuilder
             .AddSingleton(specProvider)
             .AddSingleton(blockProcessingQueue)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig)
             .AddSingleton(SyncConfig);
+
+            if (scheduler is not null)
+                containerBuilder.AddSingleton(scheduler);
+        };
     }
 }

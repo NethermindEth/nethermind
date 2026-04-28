@@ -14,8 +14,8 @@ public class BalanceChangeDecoder : IndexedChangeDecoder<BalanceChange>
         => new(ctx.DecodeUShort(), ctx.DecodeUInt256());
 
     protected override void EncodeValue(RlpStream stream, BalanceChange item)
-        => stream.Encode(item.PostBalance);
+        => stream.Encode(item.Value);
 
     protected override int GetValueLength(BalanceChange item)
-        => Rlp.LengthOf(item.PostBalance);
+        => Rlp.LengthOf(item.Value);
 }

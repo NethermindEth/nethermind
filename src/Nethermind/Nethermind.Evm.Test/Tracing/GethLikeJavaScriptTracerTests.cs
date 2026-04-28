@@ -373,14 +373,14 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     private static byte[] MStore() => Prepare.EvmCode
-            .PushData(SampleHexData1.PadLeft(64, '0'))
-            .PushData(0)
-            .Op(Instruction.MSTORE)
-            .PushData(SampleHexData2.PadLeft(64, '0'))
-            .PushData(32)
-            .Op(Instruction.MSTORE)
-            .Op(Instruction.STOP)
-            .Done;
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .Op(Instruction.STOP)
+                .Done;
 
     private static byte[] SStore_double() => Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))

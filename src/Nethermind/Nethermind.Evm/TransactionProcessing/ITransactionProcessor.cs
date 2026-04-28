@@ -31,12 +31,6 @@ public interface ITransactionProcessor
     TransactionResult Trace(Transaction transaction, ITxTracer txTracer);
 
     /// <summary>
-    /// Execute transaction skipping all validations including gas and balance checks.
-    /// Used by eth_simulateV1 with validation:false to allow zero-balance senders.
-    /// </summary>
-    TransactionResult Simulate(Transaction transaction, ITxTracer txTracer);
-
-    /// <summary>
     /// Call transaction, no validations, don't commit state
     /// Will NOT charge gas from sender account
     /// </summary>
