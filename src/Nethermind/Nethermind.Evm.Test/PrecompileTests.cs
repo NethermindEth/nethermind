@@ -50,21 +50,12 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     {
         if (this is not TTests) throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(TTests)}");
 
-        IPrecompile precompile = Instance;
-        long gas = precompile.BaseGasCost(DefaultSpec) + precompile.DataGasCost(testCase.Input, DefaultSpec);
-        Result<byte[]> result = precompile.Run(testCase.Input, DefaultSpec);
-        (byte[]? output, bool success) = result;
+        byte[] input = testCase.Input;
+        RunTest(input, testCase);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(success, Is.EqualTo(testCase.ExpectedError is null));
-            Assert.That(output, Is.EquivalentTo(testCase.Expected ?? []));
-
-            if (testCase.Gas is not null)
-            {
-                Assert.That(gas, Is.EqualTo(testCase.Gas));
-            }
-        }
+        ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(input);
+        if (!normalized.Span.SequenceEqual(input))
+            RunTest(normalized, testCase, "normalized input should produce same output");
     }
 
     protected void RunTest(string input, string output, bool status)
@@ -87,6 +78,25 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
             Assert.That(result.IsSuccess, Is.EqualTo(status), reason);
             Assert.That(result.Data, Is.EqualTo(output), reason);
         }
+    }
+
+    private static void RunTest(ReadOnlyMemory<byte> input, TestCase testCase, string? reason = null)
+    {
+        long gas = Instance.BaseGasCost(DefaultSpec) + Instance.DataGasCost(input, DefaultSpec);
+
+        Result<byte[]> result = Instance.Run(input, DefaultSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.EqualTo(testCase.ExpectedError is null), reason);
+            Assert.That(result.Data, Is.EquivalentTo(testCase.Expected ?? []), reason);
+
+            if (testCase.Gas is not null)
+            {
+                Assert.That(gas, Is.EqualTo(testCase.Gas), reason);
+            }
+        }
+
     }
 
     protected static void RunEffectiveInputTest(string input, string? trailing = null, IReleaseSpec? spec = null) =>
