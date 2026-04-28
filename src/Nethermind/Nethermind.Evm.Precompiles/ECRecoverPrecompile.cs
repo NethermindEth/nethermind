@@ -28,7 +28,7 @@ public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     // RunInternal zero-pads short inputs to InputLength, so trailing zeros are insignificant.
     // Trimming them normalizes e.g. a 64-byte input and its 128-byte zero-padded equivalent to the same key.
-    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData)
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
     {
         ReadOnlyMemory<byte> clamped = inputData.Length > InputLength ? inputData[..InputLength] : inputData;
         int end = clamped.Span.LastIndexOfAnyExcept((byte)0);

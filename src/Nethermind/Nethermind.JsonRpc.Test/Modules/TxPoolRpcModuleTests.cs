@@ -71,69 +71,29 @@ public class TxPoolRpcModuleTests
     [Test]
     public void TxPoolStatus_WhenPoolHasTransactions_ReturnsPendingAndQueuedCounts()
     {
-        Transaction txA = Build.A.Transaction.WithType(TxType.Legacy).TestObject;
-        Transaction txB = Build.A.Transaction.WithType(TxType.Legacy).TestObject;
-
         ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
-        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
-            pending: new()
-            {
-                {
-                    new AddressAsKey(TestItem.AddressA), new Dictionary<ulong, Transaction>
-                    {
-                        { 1, txA }, { 2, txB }
-                    }
-                }
-            },
-            queued: new()
-            {
-                {
-                    new AddressAsKey(TestItem.AddressB), new Dictionary<ulong, Transaction>
-                    {
-                        { 5, txA }
-                    }
-                }
-            }
-        ));
+        txPoolInfoProvider.GetCounts().Returns(new TxPoolCounts(Pending: 2, Queued: 1));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
 
         TxPoolStatus status = txPoolRpcModule.txpool_status().Data;
 
-        status.Pending.Should().Be(2ul, "AddressA has 2 pending transactions");
-        status.Queued.Should().Be(1ul, "AddressB has 1 queued transaction");
+        status.Pending.Should().Be(2ul, "the count provider reported 2 pending");
+        status.Queued.Should().Be(1ul, "the count provider reported 1 queued");
     }
 
     [Test]
     public void TxPoolContentFrom_WhenAddressIsInPool_ReturnsOnlyMatchingTransactions()
     {
-        // AddressA has nonces 1 and 2 in pending; AddressB has nonce 3.
-        // Querying for AddressA must return only its 2 transactions and an empty queued map.
         const ulong SomeChainId = 1ul;
         Transaction txA = Build.A.Transaction.WithType(TxType.Legacy).WithChainId(null).TestObject;
         Transaction txB = Build.A.Transaction.WithType(TxType.Legacy).WithChainId(null).TestObject;
-        Transaction txC = Build.A.Transaction.WithType(TxType.Legacy).WithChainId(null).TestObject;
 
         ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
-        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
-            pending: new()
-            {
-                {
-                    new AddressAsKey(TestItem.AddressA), new Dictionary<ulong, Transaction>
-                    {
-                        { 1, txA }, { 2, txB }
-                    }
-                },
-                {
-                    new AddressAsKey(TestItem.AddressB), new Dictionary<ulong, Transaction>
-                    {
-                        { 3, txC }
-                    }
-                }
-            },
-            queued: new()
-        ));
+        txPoolInfoProvider.GetSenderInfo(TestItem.AddressA).Returns(new TxPoolSenderInfo(
+            pending: new Dictionary<ulong, Transaction> { { 1, txA }, { 2, txB } },
+            queued: new Dictionary<ulong, Transaction>()));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(SomeChainId);
@@ -152,10 +112,7 @@ public class TxPoolRpcModuleTests
     public void TxPoolContentFrom_WhenAddressNotInPool_ReturnsEmptyPendingAndQueued()
     {
         ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
-        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
-            pending: new(),
-            queued: new()
-        ));
+        txPoolInfoProvider.GetSenderInfo(TestItem.AddressA).Returns(TxPoolSenderInfo.Empty);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
@@ -171,30 +128,8 @@ public class TxPoolRpcModuleTests
     [Test]
     public async Task TxPoolStatus_WhenPoolHasTransactions_SerializesCountsAsHexStrings()
     {
-        Transaction txA = Build.A.Transaction.WithType(TxType.Legacy).TestObject;
-        Transaction txB = Build.A.Transaction.WithType(TxType.Legacy).TestObject;
-
         ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
-        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
-            pending: new()
-            {
-                {
-                    new AddressAsKey(TestItem.AddressA), new Dictionary<ulong, Transaction>
-                    {
-                        { 1, txA }, { 2, txB }
-                    }
-                }
-            },
-            queued: new()
-            {
-                {
-                    new AddressAsKey(TestItem.AddressB), new Dictionary<ulong, Transaction>
-                    {
-                        { 5, txA }
-                    }
-                }
-            }
-        ));
+        txPoolInfoProvider.GetCounts().Returns(new TxPoolCounts(Pending: 2, Queued: 1));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
@@ -286,18 +221,9 @@ public class TxPoolRpcModuleTests
             .TestObject;
 
         ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
-        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
-            pending: new()
-            {
-                {
-                    new AddressAsKey(TestItem.AddressA), new Dictionary<ulong, Transaction>
-                    {
-                        { 806, tx }
-                    }
-                }
-            },
-            queued: new()
-        ));
+        txPoolInfoProvider.GetSenderInfo(TestItem.AddressA).Returns(new TxPoolSenderInfo(
+            pending: new Dictionary<ulong, Transaction> { { 806, tx } },
+            queued: new Dictionary<ulong, Transaction>()));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
@@ -313,7 +239,7 @@ public class TxPoolRpcModuleTests
     public async Task TxPoolContentFrom_WhenAddressNotInPool_SerializesEmptyPendingAndQueued()
     {
         ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
-        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(pending: new(), queued: new()));
+        txPoolInfoProvider.GetSenderInfo(TestItem.AddressA).Returns(TxPoolSenderInfo.Empty);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);

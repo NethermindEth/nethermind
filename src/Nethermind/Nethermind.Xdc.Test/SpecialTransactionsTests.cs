@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -247,6 +247,7 @@ internal class SpecialTransactionsTests
 
         Transaction txSign = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignerContract, blockChain.Signer.Address);
         await blockChain.Signer.Sign(txSign);
+        txSign.Hash = txSign.CalculateHash();
 
         TransactionResult? result = null;
 
@@ -359,6 +360,7 @@ internal class SpecialTransactionsTests
         tx.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
         await blockChain.Signer.Sign(tx);
+        tx.Hash = tx.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
 
@@ -406,6 +408,7 @@ internal class SpecialTransactionsTests
         txWithSmallerNonce.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
         await blockChain.Signer.Sign(txWithSmallerNonce);
+        txWithSmallerNonce.Hash = txWithSmallerNonce.CalculateHash();
 
         TransactionResult? result = null;
 
@@ -462,6 +465,7 @@ internal class SpecialTransactionsTests
         txWithBiggerNonce.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
         await blockChain.Signer.Sign(txWithBiggerNonce);
+        txWithBiggerNonce.Hash = txWithBiggerNonce.CalculateHash();
 
         TransactionResult? result = null;
 
@@ -518,6 +522,7 @@ internal class SpecialTransactionsTests
         validNonceTx.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
         await blockChain.Signer.Sign(validNonceTx);
+        validNonceTx.Hash = validNonceTx.CalculateHash();
 
         TransactionResult? result = null;
 
@@ -560,6 +565,7 @@ internal class SpecialTransactionsTests
             blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(txTooHigh);
+        txTooHigh.Hash = txTooHigh.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(txTooHigh, TxHandlingOptions.PersistentBroadcast);
 
@@ -593,6 +599,7 @@ internal class SpecialTransactionsTests
             blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(txTooLow);
+        txTooLow.Hash = txTooLow.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(txTooLow, TxHandlingOptions.PersistentBroadcast);
 
@@ -632,6 +639,7 @@ internal class SpecialTransactionsTests
                 blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
+        tx.Hash = tx.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
 
@@ -671,6 +679,7 @@ internal class SpecialTransactionsTests
             NullLogManager.Instance
         );
         await signer.Sign(tx);
+        tx.Hash = tx.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
 
@@ -714,6 +723,7 @@ internal class SpecialTransactionsTests
         Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignerContract, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
+        tx.Hash = tx.CalculateHash();
 
         BlockReceiptsTracer receiptsTracer = new();
 
