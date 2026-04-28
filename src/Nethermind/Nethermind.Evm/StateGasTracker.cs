@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 
@@ -48,146 +49,122 @@ internal sealed class StateGasTracker
         bool beforeIsZero,
         bool afterIsZero)
     {
-        if (beforeIsZero == afterIsZero)
-        {
-            return;
-        }
+        if (beforeIsZero == afterIsZero) return;
 
-        _changes.Add(new StorageStateChange(
-            storageCell,
-            transactionEntryIsZero,
-            beforeIsZero,
-            afterIsZero));
+        StateChangeFlags flags = StateChangeFlags.None;
+        if (transactionEntryIsZero) flags |= StateChangeFlags.TxEntryIsZero;
+        if (beforeIsZero) flags |= StateChangeFlags.BeforeIsZero;
+        if (afterIsZero) flags |= StateChangeFlags.AfterIsZero;
+
+        _changes.Add(new StateChange
+        {
+            Kind = StateChangeKind.Storage,
+            StorageCell = storageCell,
+            Flags = flags,
+        });
     }
 
     public void RecordAccountCreated(Address address)
-        => _changes.Add(new AccountCreatedStateChange(address));
+        => _changes.Add(new StateChange { Kind = StateChangeKind.AccountCreated, Address = address });
 
     public void RecordCodeDeposit(Address address, int codeLength)
     {
-        if (codeLength <= 0)
-        {
-            return;
-        }
+        if (codeLength <= 0) return;
 
-        _changes.Add(new CodeDepositStateChange(address, codeLength));
+        _changes.Add(new StateChange
+        {
+            Kind = StateChangeKind.CodeDeposit,
+            Address = address,
+            CodeLength = codeLength,
+        });
     }
 
     public bool ApplyFrameStateGas<TGasPolicy>(int snapshot, ref TGasPolicy gas, long stateGasFloor)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         snapshot = int.Max(0, snapshot);
-        if (snapshot >= _changes.Count)
+        if (snapshot >= _changes.Count) return true;
+
+        Dictionary<StorageCell, FrameStorageFlags> storageAgg = new(StorageCell.EqualityComparer);
+        HashSet<AddressAsKey> accountAgg = new(AddressAsKey.EqualityComparer);
+        Dictionary<AddressAsKey, int> codeAgg = new(AddressAsKey.EqualityComparer);
+        List<int> accountedIndices = [];
+
+        Span<StateChange> changesSpan = CollectionsMarshal.AsSpan(_changes);
+        for (int i = snapshot; i < changesSpan.Length; i++)
         {
-            return true;
-        }
+            ref StateChange change = ref changesSpan[i];
+            if (change.Accounted) continue;
+            accountedIndices.Add(i);
 
-        Dictionary<StorageCell, FrameStorageChange> storageChanges = new(StorageCell.EqualityComparer);
-        Dictionary<AddressAsKey, FrameAccountChange> accountChanges = new(AddressAsKey.EqualityComparer);
-        Dictionary<AddressAsKey, FrameCodeDepositChange> codeDepositChanges = new(AddressAsKey.EqualityComparer);
-
-        for (int i = snapshot; i < _changes.Count; i++)
-        {
-            StateChange change = _changes[i];
-            if (change.Accounted)
+            switch (change.Kind)
             {
-                continue;
-            }
-
-            switch (change)
-            {
-                case StorageStateChange storageChange:
-                    if (!storageChanges.TryGetValue(storageChange.StorageCell, out FrameStorageChange? frameStorageChange))
+                case StateChangeKind.Storage:
+                    ref FrameStorageFlags slot = ref CollectionsMarshal.GetValueRefOrAddDefault(storageAgg, change.StorageCell, out bool exists);
+                    if (!exists)
                     {
-                        frameStorageChange = new(storageChange);
-                        storageChanges.Add(storageChange.StorageCell, frameStorageChange);
+                        FrameStorageFlags init = FrameStorageFlags.None;
+                        if (change.TxEntryIsZero) init |= FrameStorageFlags.TxEntryIsZero;
+                        if (change.BeforeIsZero) init |= FrameStorageFlags.EntryIsZero;
+                        if (change.AfterIsZero) init |= FrameStorageFlags.ExitIsZero;
+                        slot = init;
+                    }
+                    else if (change.AfterIsZero)
+                    {
+                        slot |= FrameStorageFlags.ExitIsZero;
                     }
                     else
                     {
-                        frameStorageChange.ExitIsZero = storageChange.AfterIsZero;
+                        slot &= ~FrameStorageFlags.ExitIsZero;
                     }
-                    frameStorageChange.Changes.Add(storageChange);
                     break;
-                case AccountCreatedStateChange accountChange:
-                    AddressAsKey accountKey = accountChange.Address;
-                    if (!accountChanges.TryGetValue(accountKey, out FrameAccountChange? frameAccountChange))
-                    {
-                        frameAccountChange = new(accountChange.Address);
-                        accountChanges.Add(accountKey, frameAccountChange);
-                    }
-                    frameAccountChange.Changes.Add(accountChange);
+                case StateChangeKind.AccountCreated:
+                    accountAgg.Add(change.Address!);
                     break;
-                case CodeDepositStateChange codeDepositChange:
-                    AddressAsKey codeKey = codeDepositChange.Address;
-                    if (!codeDepositChanges.TryGetValue(codeKey, out FrameCodeDepositChange? frameCodeDepositChange))
-                    {
-                        frameCodeDepositChange = new(codeDepositChange.Address);
-                        codeDepositChanges.Add(codeKey, frameCodeDepositChange);
-                    }
-                    frameCodeDepositChange.CodeLength = codeDepositChange.CodeLength;
-                    frameCodeDepositChange.Changes.Add(codeDepositChange);
+                case StateChangeKind.CodeDeposit:
+                    codeAgg[change.Address!] = change.CodeLength;
                     break;
             }
         }
+
+        if (accountedIndices.Count == 0) return true;
 
         long stateGasCharge = 0;
         long stateGasRefund = 0;
         List<AccountingAction> actions = [];
-        List<StateChange> accountedChanges = [];
 
-        foreach (FrameStorageChange storageChange in storageChanges.Values)
+        foreach ((StorageCell cell, FrameStorageFlags slot) in storageAgg)
         {
-            accountedChanges.AddRange(storageChange.Changes);
+            bool entryIsZero = (slot & FrameStorageFlags.EntryIsZero) != 0;
+            bool exitIsZero = (slot & FrameStorageFlags.ExitIsZero) != 0;
+            if (entryIsZero == exitIsZero) continue;
 
-            if (storageChange.EntryIsZero == storageChange.ExitIsZero)
-            {
-                continue;
-            }
-
-            if (!storageChange.ExitIsZero && storageChange.TransactionEntryIsZero && !_createdStorageSlots.Contains(storageChange.StorageCell))
+            bool txEntryIsZero = (slot & FrameStorageFlags.TxEntryIsZero) != 0;
+            bool isCreated = _createdStorageSlots.Contains(cell);
+            if (!exitIsZero && txEntryIsZero && !isCreated)
             {
                 stateGasCharge = checked(stateGasCharge + TGasPolicy.GetStorageSetStateCost(in gas));
-                actions.Add(AccountingAction.ChargeStorage(storageChange.StorageCell));
+                actions.Add(AccountingAction.ChargeStorage(cell));
             }
-            else if (storageChange.ExitIsZero &&
-                     !storageChange.EntryIsZero &&
-                     storageChange.TransactionEntryIsZero &&
-                     _createdStorageSlots.Contains(storageChange.StorageCell))
+            else if (exitIsZero && !entryIsZero && txEntryIsZero && isCreated)
             {
                 stateGasRefund = checked(stateGasRefund + TGasPolicy.GetStorageSetStateCost(in gas));
-                actions.Add(AccountingAction.RefundStorage(storageChange.StorageCell));
+                actions.Add(AccountingAction.RefundStorage(cell));
             }
         }
 
-        foreach (FrameAccountChange accountChange in accountChanges.Values)
+        foreach (AddressAsKey addr in accountAgg)
         {
-            accountedChanges.AddRange(accountChange.Changes);
-
-            if (_createdAccounts.Contains(accountChange.Address))
-            {
-                continue;
-            }
-
+            if (_createdAccounts.Contains(addr)) continue;
             stateGasCharge = checked(stateGasCharge + TGasPolicy.GetNewAccountStateCost(in gas));
-            actions.Add(AccountingAction.ChargeAccount(accountChange.Address));
+            actions.Add(AccountingAction.ChargeAccount(addr));
         }
 
-        foreach (FrameCodeDepositChange codeDepositChange in codeDepositChanges.Values)
+        foreach ((AddressAsKey addr, int len) in codeAgg)
         {
-            accountedChanges.AddRange(codeDepositChange.Changes);
-
-            if (_createdCodeLengths.ContainsKey(codeDepositChange.Address))
-            {
-                continue;
-            }
-
-            stateGasCharge = checked(stateGasCharge + TGasPolicy.GetCodeDepositStateCost(in gas, codeDepositChange.CodeLength));
-            actions.Add(AccountingAction.ChargeCodeDeposit(codeDepositChange.Address, codeDepositChange.CodeLength));
-        }
-
-        if (accountedChanges.Count == 0)
-        {
-            return true;
+            if (_createdCodeLengths.ContainsKey(addr)) continue;
+            stateGasCharge = checked(stateGasCharge + TGasPolicy.GetCodeDepositStateCost(in gas, len));
+            actions.Add(AccountingAction.ChargeCodeDeposit(addr, len));
         }
 
         TGasPolicy gasAfterFrameAccounting = gas;
@@ -203,13 +180,13 @@ internal sealed class StateGasTracker
 
         gas = gasAfterFrameAccounting;
 
-        for (int i = 0; i < accountedChanges.Count; i++)
+        for (int i = 0; i < accountedIndices.Count; i++)
         {
-            accountedChanges[i].Accounted = true;
+            changesSpan[accountedIndices[i]].Accounted = true;
         }
 
         Apply(actions);
-        _accountingEvents.Push(new(_changes.Count, actions, accountedChanges));
+        _accountingEvents.Push(new(_changes.Count, actions, accountedIndices));
         return true;
     }
 
@@ -217,10 +194,7 @@ internal sealed class StateGasTracker
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         AddressAsKey account = address;
-        if (!_createdAccounts.Contains(account))
-        {
-            return 0;
-        }
+        if (!_createdAccounts.Contains(account)) return 0;
 
         long refund = TGasPolicy.GetNewAccountStateCost(in gas);
         if (_createdCodeLengths.TryGetValue(account, out int codeLength))
@@ -228,11 +202,12 @@ internal sealed class StateGasTracker
             refund = checked(refund + TGasPolicy.GetCodeDepositStateCost(in gas, codeLength));
         }
 
+        long storageSetCost = TGasPolicy.GetStorageSetStateCost(in gas);
         foreach (StorageCell storageCell in _createdStorageSlots)
         {
             if (storageCell.Address == address)
             {
-                refund = checked(refund + TGasPolicy.GetStorageSetStateCost(in gas));
+                refund = checked(refund + storageSetCost);
             }
         }
 
@@ -264,14 +239,17 @@ internal sealed class StateGasTracker
 
     private void Undo(AccountingEvent accountingEvent)
     {
-        for (int i = accountingEvent.AccountedChanges.Count - 1; i >= 0; i--)
+        Span<StateChange> changesSpan = CollectionsMarshal.AsSpan(_changes);
+        List<int> indices = accountingEvent.AccountedIndices;
+        for (int i = indices.Count - 1; i >= 0; i--)
         {
-            accountingEvent.AccountedChanges[i].Accounted = false;
+            changesSpan[indices[i]].Accounted = false;
         }
 
-        for (int i = accountingEvent.Actions.Count - 1; i >= 0; i--)
+        List<AccountingAction> actions = accountingEvent.Actions;
+        for (int i = actions.Count - 1; i >= 0; i--)
         {
-            AccountingAction action = accountingEvent.Actions[i];
+            AccountingAction action = actions[i];
             switch (action.Kind)
             {
                 case AccountingActionKind.ChargeStorage:
@@ -290,60 +268,54 @@ internal sealed class StateGasTracker
         }
     }
 
-    private abstract class StateChange
+    private enum StateChangeKind : byte
     {
-        public bool Accounted { get; set; }
+        Storage,
+        AccountCreated,
+        CodeDeposit,
     }
 
-    private sealed class StorageStateChange(
-        StorageCell storageCell,
-        bool transactionEntryIsZero,
-        bool beforeIsZero,
-        bool afterIsZero) : StateChange
+    [Flags]
+    private enum StateChangeFlags : byte
     {
-        public StorageCell StorageCell { get; } = storageCell;
-        public bool TransactionEntryIsZero { get; } = transactionEntryIsZero;
-        public bool BeforeIsZero { get; } = beforeIsZero;
-        public bool AfterIsZero { get; } = afterIsZero;
+        None = 0,
+        TxEntryIsZero = 1 << 0,
+        BeforeIsZero = 1 << 1,
+        AfterIsZero = 1 << 2,
+        Accounted = 1 << 3,
     }
 
-    private sealed class AccountCreatedStateChange(Address address) : StateChange
+    private struct StateChange
     {
-        public Address Address { get; } = address;
+        public StateChangeKind Kind;
+        public StateChangeFlags Flags;
+        public StorageCell StorageCell;
+        public Address? Address;
+        public int CodeLength;
+
+        public readonly bool TxEntryIsZero => (Flags & StateChangeFlags.TxEntryIsZero) != 0;
+        public readonly bool BeforeIsZero => (Flags & StateChangeFlags.BeforeIsZero) != 0;
+        public readonly bool AfterIsZero => (Flags & StateChangeFlags.AfterIsZero) != 0;
+        public bool Accounted
+        {
+            readonly get => (Flags & StateChangeFlags.Accounted) != 0;
+            set => Flags = value ? Flags | StateChangeFlags.Accounted : Flags & ~StateChangeFlags.Accounted;
+        }
     }
 
-    private sealed class CodeDepositStateChange(Address address, int codeLength) : StateChange
+    [Flags]
+    private enum FrameStorageFlags : byte
     {
-        public Address Address { get; } = address;
-        public int CodeLength { get; } = codeLength;
-    }
-
-    private sealed class FrameStorageChange(StorageStateChange firstChange)
-    {
-        public StorageCell StorageCell { get; } = firstChange.StorageCell;
-        public bool TransactionEntryIsZero { get; } = firstChange.TransactionEntryIsZero;
-        public bool EntryIsZero { get; } = firstChange.BeforeIsZero;
-        public bool ExitIsZero { get; set; } = firstChange.AfterIsZero;
-        public List<StateChange> Changes { get; } = [firstChange];
-    }
-
-    private sealed class FrameAccountChange(Address address)
-    {
-        public Address Address { get; } = address;
-        public List<StateChange> Changes { get; } = [];
-    }
-
-    private sealed class FrameCodeDepositChange(Address address)
-    {
-        public Address Address { get; } = address;
-        public int CodeLength { get; set; }
-        public List<StateChange> Changes { get; } = [];
+        None = 0,
+        TxEntryIsZero = 1 << 0,
+        EntryIsZero = 1 << 1,
+        ExitIsZero = 1 << 2,
     }
 
     private readonly record struct AccountingEvent(
         int ChangeCount,
         List<AccountingAction> Actions,
-        List<StateChange> AccountedChanges);
+        List<int> AccountedIndices);
 
     private readonly record struct AccountingAction(
         AccountingActionKind Kind,
@@ -357,18 +329,18 @@ internal sealed class StateGasTracker
         public static AccountingAction RefundStorage(StorageCell storageCell) =>
             new(AccountingActionKind.RefundStorage, storageCell, default, 0);
 
-        public static AccountingAction ChargeAccount(Address address) =>
+        public static AccountingAction ChargeAccount(AddressAsKey address) =>
             new(AccountingActionKind.ChargeAccount, default, address, 0);
 
-        public static AccountingAction ChargeCodeDeposit(Address address, int codeLength) =>
+        public static AccountingAction ChargeCodeDeposit(AddressAsKey address, int codeLength) =>
             new(AccountingActionKind.ChargeCodeDeposit, default, address, codeLength);
     }
 
-    private enum AccountingActionKind
+    private enum AccountingActionKind : byte
     {
         ChargeStorage,
         RefundStorage,
         ChargeAccount,
-        ChargeCodeDeposit
+        ChargeCodeDeposit,
     }
 }
