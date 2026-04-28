@@ -250,7 +250,11 @@ public class SyncDispatcherTests
         }
     }
 
-    [Test, CancelAfter(15_000)]
+    // [NonParallelizable]: this test relies on the dispatcher's Task.Run reaching HandleResponse
+    // promptly. Under the class-level [Parallelizable(ParallelScope.All)] it competes with the rest
+    // of the suite for thread-pool capacity, and on slow CI the 1st HandleResponse can take >15s
+    // to fire — exhausting the budget before we even reach the assertion window.
+    [Test, NonParallelizable, CancelAfter(30_000)]
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose(CancellationToken cancellationToken)
     {
         TestSyncFeed syncFeed = new(isMultiFeed: true);
