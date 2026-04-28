@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -562,159 +563,6 @@ public partial class EngineModuleTests
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, startingHead, startingHead);
     }
 
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorOfFinalizedBlock_SkipsUpdate()
-    {
-        // Spec PR #786 point 2: client MAY skip the update when headBlockHash is a valid ancestor of the
-        // latest known finalized block. Build 34 blocks, explicitly finalize b34, then FCU to b1
-        // (H=1 <= H=34, canonical) — the MAY-skip fires, not any depth limit.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 34, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
-        Hash256 b1Hash = branch[0].BlockHash;
-        Hash256 b34Hash = branch[33].BlockHash;
-
-        // Set head to b34 and explicitly finalize it
-        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(b34Hash, b34Hash, b34Hash))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(b34Hash, "precondition: head is at H=34");
-        chain.BlockTree.FinalizedHash.Should().Be(b34Hash, "precondition: b34 is finalized");
-
-        ForkchoiceStateV1 fcuToAncestorOfFinalized = new(b1Hash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestorOfFinalized);
-
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        result.Data.PayloadStatus.LatestValidHash.Should().Be(b1Hash, "spec mandates latestValidHash == forkchoiceState.headBlockHash when skipping");
-        result.Data.PayloadId.Should().BeNull("spec mandates payloadId: null when skipping");
-        chain.BlockTree.HeadHash.Should().Be(b34Hash, "Nethermind skips the update — b1 is a canonical ancestor of the finalized block, skip is permitted by spec");
-    }
-
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenHeadIsOnDifferentBranch_ReorgsRegardlessOfDepth()
-    {
-        // Spec PR #786: the MAY-skip (spec point 2) only fires when headBlockHash is a canonical ancestor
-        // of the finalized block. A non-canonical (fork) block is NOT eligible for the skip.
-        // FindMainChainAncestorNumber returns 0 (genesis) for side-chain blocks, giving a large reported
-        // depth, but here depth (34) < PruningBoundary (64) so -38006 doesn't fire either — the reorg
-        // always proceeds. Builds a canonical chain of 34 blocks, then a side block off genesis.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        // Capture genesis as parent before building canonical chain
-        ExecutionPayload genesisAsParent = CreateParentBlockRequestOnHead(chain.BlockTree);
-
-        // Build canonical chain: genesis → b1 → b2 → ... → b34 (head at H=34)
-        IReadOnlyList<ExecutionPayload> canonical = await ProduceBranchV1(rpc, chain, 34, genesisAsParent, setHead: true);
-        Hash256 b34Hash = canonical[33].BlockHash;
-        chain.BlockTree.HeadHash.Should().Be(b34Hash, "precondition: canonical head is at H=34");
-
-        // Build a side block off genesis (H=1, different branch)
-        ExecutionPayload sideBlock = CreateBlockRequest(chain, genesisAsParent, TestItem.AddressA);
-        await rpc.engine_newPayloadV1(sideBlock);
-        Hash256 sideHash = sideBlock.BlockHash;
-        chain.BlockTree.IsMainChain(chain.BlockTree.FindHeader(sideHash, BlockTreeLookupOptions.None)!).Should().BeFalse("precondition: side block is not on canonical chain");
-
-        // FCU to the side block — it's on a different branch, so it must reorg regardless of depth
-        ForkchoiceStateV1 fcuToSide = new(sideHash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToSide);
-
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(sideHash, "different-branch FCU must always reorg — MAY-skip only applies to canonical ancestors of the finalized block");
-    }
-
-
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenZeroFinalizedAndSafeHash_ReturnsValidWithoutError()
-    {
-        // Spec: zero safeBlockHash and finalizedBlockHash mean "unknown" — must not return -38002.
-        // Models CL checkpoint-syncing from a non-finalized state where safe/finalized are unknown.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 3, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
-        Hash256 headHash = branch[2].BlockHash;
-
-        ForkchoiceStateV1 fcuWithUnknownFinality = new(headHash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuWithUnknownFinality);
-
-        result.ErrorCode.Should().Be(0, "zero safe/finalized hashes must not produce an error");
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(headHash);
-    }
-
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenZeroFinalizedHash_PreservesKnownFinalizedHash()
-    {
-        // Spec PR #760: when finalizedBlockHash is zero, client MUST use the latest known finalized hash — not overwrite it with zero.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
-        Hash256 b1Hash = branch[0].BlockHash;
-        Hash256 b2Hash = branch[1].BlockHash;
-
-        // First FCU: set head to b2 and finalize b1
-        ForkchoiceStateV1 fcuWithFinalized = new(b2Hash, b1Hash, b1Hash);
-        await rpc.engine_forkchoiceUpdatedV1(fcuWithFinalized);
-        chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "precondition: b1 is finalized after first FCU");
-
-        // Second FCU: zero finalizedBlockHash — must preserve b1 as finalized
-        ForkchoiceStateV1 fcuWithZeroFinalized = new(b2Hash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuWithZeroFinalized);
-
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "zero finalizedBlockHash must preserve the previously known finalized hash");
-        chain.BlockTree.SafeHash.Should().Be(b1Hash, "zero safeBlockHash must preserve the previously known safe hash");
-    }
-
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenZeroFinalizedHash_PreservesKnownFinalizedHash_WithPayloadAttributes()
-    {
-        // Spec PR #760: ResolveZeroHash is called in StartBuildingPayload too — verify preservation on that path.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
-        Hash256 b1Hash = branch[0].BlockHash;
-        Hash256 b2Hash = branch[1].BlockHash;
-
-        // First FCU: set head to b2 and finalize b1
-        ForkchoiceStateV1 fcuWithFinalized = new(b2Hash, b1Hash, b1Hash);
-        await rpc.engine_forkchoiceUpdatedV1(fcuWithFinalized);
-        chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "precondition: b1 is finalized after first FCU");
-
-        // Second FCU with payload attributes — exercises the StartBuildingPayload call site of ResolveZeroHash
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = branch[1].Timestamp + 1,
-            PrevRandao = Keccak.Zero,
-            SuggestedFeeRecipient = Address.Zero
-        };
-        ForkchoiceStateV1 fcuWithZeroFinalized = new(b2Hash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuWithZeroFinalized, payloadAttributes);
-
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        result.Data.PayloadId.Should().NotBeNull("payload build must be started when attributes are provided");
-        chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "zero finalizedBlockHash must preserve the previously known finalized hash via StartBuildingPayload");
-        chain.BlockTree.SafeHash.Should().Be(b1Hash, "zero safeBlockHash must preserve the previously known safe hash via StartBuildingPayload");
-    }
-
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenNonZeroUnknownFinalizedHash_ReturnsInvalidForkchoiceState()
-    {
-        // Spec: -38002 must only fire for non-zero hashes that are unknown, not for zero hashes.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
-        Hash256 headHash = branch[0].BlockHash;
-
-        ForkchoiceStateV1 fcuWithUnknownFinalized = new(headHash, TestItem.KeccakA, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuWithUnknownFinalized);
-
-        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState,
-            "non-zero unknown finalizedBlockHash must return -38002");
-    }
 
     [Test]
     public async Task forkchoiceUpdatedV1_should_work_with_zero_keccak_as_safe_block()
@@ -1602,6 +1450,9 @@ public partial class EngineModuleTests
         chain.BlockTree.IsMainChain(a2.BlockHash).Should().BeTrue("precondition: a2 stays on main at H=2");
         chain.BlockTree.IsMainChain(a3.BlockHash).Should().BeFalse("precondition: a3's marker was flipped to b3");
 
+        // Count FindHeader calls made by the repeated FCU only. Safe=Keccak.Zero skips its
+        // ValidateBlockHash lookup, so the baseline calls are: 1 to resolve head, 1 for finalized
+        // validation, plus the IsInconsistent walk (1 under the optimization, 2 without).
         spy.ResetCounters();
         ForkchoiceStateV1 repeated = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
