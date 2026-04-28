@@ -35,6 +35,7 @@ public class HomesteadToEIP150 : BlockchainTestFixture<HomesteadToEIP150>;
 
 public class MergeToShanghai : LegacyBlockchainTestFixture<MergeToShanghai>;
 
+[TestFixture]
 public class ForkClassificationTests : BlockchainTestBase
 {
     private static IEnumerable<TestCaseData> PostMergeClassificationCases()
