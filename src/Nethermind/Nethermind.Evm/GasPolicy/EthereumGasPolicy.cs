@@ -258,9 +258,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (!TIsSlotCreation.IsActive) return UpdateGas(ref gas, spec.GasCosts.SStoreResetCost);
         return TEip8037.IsActive switch
         {
-            // EIP-8037: charge the regular component first so an OOG halt does not
-            // spill state gas into gas_left and then restore it to the parent frame.
-            true => TryConsumeStateAndRegularGas(ref gas, GetStorageSetStateCost(in gas), GasCostOf.SSetRegular),
+            true => UpdateGas(ref gas, GasCostOf.SSetRegular),
             false => UpdateGas(ref gas, GasCostOf.SSet),
         };
     }
@@ -309,7 +307,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
     {
-        true => ConsumeStateGas(ref gas, GetNewAccountStateCost(in gas)),
+        true => true,
         false => UpdateGas(ref gas, GasCostOf.NewAccount)
     };
 

@@ -142,14 +142,10 @@ public static partial class EvmInstructions
         if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
-        if (TEip8037.IsActive && !TGasPolicy.ConsumeStateGas(ref gas, TGasPolicy.GetCreateStateCost(in gas)))
-            goto OutOfGas;
-
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
-            RefundCreateStateGas(ref gas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
         }
@@ -159,7 +155,6 @@ public static partial class EvmInstructions
         UInt256 maxNonce = ulong.MaxValue;
         if (accountNonce >= maxNonce)
         {
-            RefundCreateStateGas(ref gas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
         }
@@ -203,13 +198,12 @@ public static partial class EvmInstructions
         // Collision behaves as an immediate exceptional halt — burned callGas counts as block_regular.
         if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
         {
-            RefundCreateStateGas(ref gas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
         }
 
         // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
+        if (accountExists && state.IsDeadAccount(contractAddress))
         {
             // Note: Seems to be needed on block 21827914 for some reason
             state.ClearStorage(contractAddress);
@@ -250,14 +244,5 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void RefundCreateStateGas(ref TGasPolicy gasState)
-        {
-            if (TEip8037.IsActive)
-            {
-                vm.CreditStateGasRefund(ref gasState, TGasPolicy.GetCreateStateCost(in gasState));
-            }
-        }
     }
 }

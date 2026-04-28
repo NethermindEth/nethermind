@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -25,6 +26,9 @@ public struct StackAccessTracker() : IDisposable
     private int _storageKeysSnapshots;
     private int _destroyListSnapshots;
     private int _logsSnapshots;
+    private int _stateGasSnapshot;
+
+    public readonly int StateGasSnapshot => _stateGasSnapshot;
 
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
@@ -61,6 +65,7 @@ public struct StackAccessTracker() : IDisposable
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
         _logsSnapshots = _trackingState.Logs.TakeSnapshot();
+        _stateGasSnapshot = _trackingState.StateGas.TakeSnapshot();
     }
 
     public readonly void Restore()
@@ -69,7 +74,29 @@ public struct StackAccessTracker() : IDisposable
         _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
+        _trackingState.StateGas.Restore(_stateGasSnapshot);
     }
+
+    public readonly void RecordStorageChange(
+        in StorageCell storageCell,
+        bool transactionEntryIsZero,
+        bool beforeIsZero,
+        bool afterIsZero)
+        => _trackingState.StateGas.RecordStorageChange(in storageCell, transactionEntryIsZero, beforeIsZero, afterIsZero);
+
+    public readonly void RecordAccountCreated(Address address)
+        => _trackingState.StateGas.RecordAccountCreated(address);
+
+    public readonly void RecordCodeDeposit(Address address, int codeLength)
+        => _trackingState.StateGas.RecordCodeDeposit(address, codeLength);
+
+    public readonly bool ApplyFrameStateGas<TGasPolicy>(int snapshot, ref TGasPolicy gas, long stateGasFloor)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => _trackingState.StateGas.ApplyFrameStateGas(snapshot, ref gas, stateGasFloor);
+
+    public readonly long GetSelfDestructStateRefund<TGasPolicy>(in TGasPolicy gas, Address address)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => _trackingState.StateGas.GetSelfDestructStateRefund(in gas, address);
 
     public void Dispose()
     {
@@ -94,6 +121,7 @@ public struct StackAccessTracker() : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = new();
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public StateGasTracker StateGas { get; } = new();
 
         private void Clear()
         {
@@ -102,6 +130,7 @@ public struct StackAccessTracker() : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            StateGas.Clear();
         }
     }
 }

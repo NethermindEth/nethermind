@@ -300,7 +300,11 @@ public static partial class EvmInstructions
         static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
-            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+            bool wasCreated = state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+            if (spec.IsEip8037Enabled && wasCreated)
+            {
+                vm.VmState.AccessTracker.RecordAccountCreated(target);
+            }
             Metrics.IncrementEmptyCalls();
 
             vm.ReturnData = null;

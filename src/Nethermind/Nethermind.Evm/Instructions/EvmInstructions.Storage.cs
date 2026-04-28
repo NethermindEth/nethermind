@@ -567,7 +567,6 @@ public static partial class EvmInstructions
 
                     if (TEip8037.IsActive && originalIsZero)
                     {
-                        vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost(in gas));
                         refundFromReversal = GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
                     }
 
@@ -575,6 +574,11 @@ public static partial class EvmInstructions
                     if (vm.TxTracer.IsTracingRefunds)
                         vm.TxTracer.ReportRefund(refundFromReversal);
                 }
+            }
+
+            if (TEip8037.IsActive)
+            {
+                vmState.AccessTracker.RecordStorageChange(in storageCell, originalIsZero, currentIsZero, newIsZero);
             }
         }
 

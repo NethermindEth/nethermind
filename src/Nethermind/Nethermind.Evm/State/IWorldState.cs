@@ -143,6 +143,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public void AddAccountRead(Address address) { }
 
+    public void MarkAccountForRemovalIfEmptyOnRestore(Address address) { }
+
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
     // See https://eips.ethereum.org/EIPS/eip-7610

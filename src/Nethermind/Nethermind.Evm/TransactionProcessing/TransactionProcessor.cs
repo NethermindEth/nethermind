@@ -9,7 +9,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
@@ -933,7 +932,7 @@ namespace Nethermind.Evm.TransactionProcessing
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-            if (spec.ChargeForTopLevelCreate)
+            if (spec.ChargeForTopLevelCreate && !spec.IsEip8037Enabled)
             {
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
             }
@@ -1019,16 +1018,31 @@ namespace Nethermind.Evm.TransactionProcessing
             byte[] code)
         {
             long remainingGas = TGasPolicy.GetRemainingGas(in unspentGas);
-            bool hasEnoughGas = remainingGas >= regularDepositCost && remainingGas + TGasPolicy.GetStateReservoir(in unspentGas) >= stateDepositCost;
+            bool eip8037Enabled = spec.IsEip8037Enabled;
+            bool hasEnoughGas = eip8037Enabled
+                ? remainingGas >= regularDepositCost
+                : remainingGas >= regularDepositCost && remainingGas + TGasPolicy.GetStateReservoir(in unspentGas) >= stateDepositCost;
 
             if (!hasEnoughGas)
                 return !spec.ChargeForTopLevelCreate;
 
             TGasPolicy gasAfterCodeDeposit = unspentGas;
-            if (!TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost))
+            bool chargedCodeDeposit = eip8037Enabled
+                ? TGasPolicy.UpdateGas(ref gasAfterCodeDeposit, regularDepositCost)
+                : TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost);
+            if (!chargedCodeDeposit)
                 return false;
 
             _codeInfoRepository.InsertCode(code, codeOwner, spec);
+
+            if (eip8037Enabled)
+            {
+                accessedItems.RecordCodeDeposit(codeOwner, code.Length);
+                if (!accessedItems.ApplyFrameStateGas(accessedItems.StateGasSnapshot, ref gasAfterCodeDeposit, TGasPolicy.GetStateGasUsed(in gasAfterCodeDeposit)))
+                {
+                    return false;
+                }
+            }
 
             unspentGas = gasAfterCodeDeposit;
             return true;
@@ -1076,53 +1090,17 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!spec.IsEip8037Enabled || substate.ShouldRevert || substate.IsError)
                 return 0;
 
-            BlockAccessList? generatedBlockAccessList = WorldState is IBlockAccessListSource blockAccessListSource
-                ? blockAccessListSource.GeneratedBlockAccessList
-                : null;
-
             long selfDestructStateRefund = 0;
             foreach (Address toBeDestroyed in substate.DestroyList)
             {
                 if (!accessedItems.CreateList.Contains(toBeDestroyed))
                     continue;
 
-                selfDestructStateRefund = checked(selfDestructStateRefund + TGasPolicy.GetNewAccountStateCost(in gasAfterExecution));
-                selfDestructStateRefund = checked(selfDestructStateRefund + TGasPolicy.GetCodeDepositStateCost(in gasAfterExecution, WorldState.GetCode(toBeDestroyed)?.Length ?? 0));
-                selfDestructStateRefund = checked(selfDestructStateRefund + GetCreatedStorageStateRefund(in gasAfterExecution, generatedBlockAccessList, in accessedItems, toBeDestroyed));
+                selfDestructStateRefund = checked(
+                    selfDestructStateRefund + accessedItems.GetSelfDestructStateRefund(in gasAfterExecution, toBeDestroyed));
             }
 
             return selfDestructStateRefund;
-        }
-
-        private long GetCreatedStorageStateRefund(
-            in TGasPolicy gasAfterExecution,
-            BlockAccessList? generatedBlockAccessList,
-            in StackAccessTracker accessedItems,
-            Address address)
-        {
-            int createdSlots = 0;
-            if (generatedBlockAccessList?.GetAccountChanges(address) is { } accountChanges)
-            {
-                foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-                {
-                    if (slotChanges.Changes.Count > 0 && !slotChanges.Changes.Values[^1].Value.IsZero)
-                    {
-                        createdSlots++;
-                    }
-                }
-            }
-            else
-            {
-                foreach (StorageCell storageCell in accessedItems.AccessedStorageCells)
-                {
-                    if (storageCell.Address == address && !WorldState.Get(in storageCell).IsZero())
-                    {
-                        createdSlots++;
-                    }
-                }
-            }
-
-            return checked((long)createdSlots * TGasPolicy.GetStorageSetStateCost(in gasAfterExecution));
         }
 
         protected bool PrepareDeployment(Address contractAddress)

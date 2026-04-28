@@ -54,14 +54,15 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        bool? currentlyExists = AccountExistsCurrent(address);
         UInt256? currentBalance = GetBalanceCurrent(address);
         bool res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
-        res = currentlyExists ?? res;
 
         UInt256 newBalance = oldBalance + balanceChange;
-        _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        if (!res || !balanceChange.IsZero)
+        {
+            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
 
         return res;
     }
@@ -189,6 +190,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
     }
 
+    public void MarkAccountForRemovalIfEmptyOnRestore(Address address)
+        => _generatingBlockAccessList.MarkAccountForRemovalIfEmptyOnRestore(address);
+
     public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
 
@@ -220,6 +224,13 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         AddAccountRead(address);
         return AccountExistsInternal(address);
+    }
+
+    public bool IsNonZeroAccount(Address address, out bool accountExists)
+    {
+        accountExists = AccountExistsInternal(address);
+        return accountExists &&
+            (GetCodeHashInternal(address) != Keccak.OfAnEmptyString || !GetNonceInternal(address).IsZero || !_innerWorldState.IsStorageEmpty(address));
     }
 
     public bool IsContract(Address address)
