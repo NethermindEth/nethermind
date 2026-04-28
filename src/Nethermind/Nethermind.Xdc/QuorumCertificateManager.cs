@@ -12,13 +12,7 @@ using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
@@ -27,7 +21,7 @@ internal class QuorumCertificateManager(
     IBlockTree blockTree,
     ISpecProvider xdcConfig,
     IEpochSwitchManager epochSwitchManager,
-    ILogManager logManager) : IQuorumCertificateManager
+    ILogManager logManager) : CertificateManagerBase, IQuorumCertificateManager
 {
     private IXdcConsensusContext _context { get; } = context;
     private readonly IBlockTree _blockTree = blockTree;
@@ -36,7 +30,6 @@ internal class QuorumCertificateManager(
     private ILogger _logger = logManager.GetClassLogger<QuorumCertificateManager>();
 
     private ISpecProvider _specProvider { get; } = xdcConfig;
-    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private static readonly VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
@@ -179,14 +172,16 @@ internal class QuorumCertificateManager(
 
         if (qcRound > 0)
         {
-            if (CountValidSignatures(epochSwitchInfo, qc, out error) is not {} signCount)
+            (Address[] masternodes, Signature[] signatures) = (epochSwitchInfo.Masternodes, qc.Signatures);
+            ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
+            if (CountValidSignatures(masternodes, signatures, voteHash, out error) is not {} signCount)
             {
                 return false;
             }
 
             if (signCount < required)
             {
-                error = $"Number of votes ({signCount}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
+                error = $"Number of votes ({signCount}/{masternodes.Length}) does not meet threshold of {certificateThreshold}";
                 return false;
             }
         }
@@ -227,40 +222,6 @@ internal class QuorumCertificateManager(
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
         return stream.GetValueHash();
-    }
-
-    private static int? CountValidSignatures(EpochSwitchInfo epochSwitchInfo, QuorumCertificate qc, out string? error)
-    {
-        //Possible optimize here
-        Dictionary<Address, int> signedBy = epochSwitchInfo.Masternodes.ToDictionary(static a => a, static _ => 0);
-        ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
-
-        int count = 0;
-        string? localError = null;
-        Parallel.ForEach(qc.Signatures, (s, state) =>
-        {
-            Address signer = _ethereumEcdsa.RecoverAddress(s, voteHash);
-            ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
-
-            if (Unsafe.IsNullRef(ref signCount))
-            {
-                localError = "Quorum certificate contains one or more invalid vote signatures";
-                state.Stop();
-                return;
-            }
-
-            if (Interlocked.Increment(ref signCount) != 1)
-            {
-                localError = $"Quorum certificate contains duplicate vote signatures from {signer}";
-                state.Stop();
-                return;
-            }
-
-            Interlocked.Increment(ref count);
-        });
-
-        error = localError;
-        return error is null ? count : null;
     }
 
     public void Initialize(XdcBlockHeader current)

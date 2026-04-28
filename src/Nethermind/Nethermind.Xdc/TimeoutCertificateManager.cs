@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -22,9 +22,8 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-public class TimeoutCertificateManager : ITimeoutCertificateManager
+public class TimeoutCertificateManager : CertificateManagerBase, ITimeoutCertificateManager
 {
-    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private readonly IXdcConsensusContext _consensusContext;
     private readonly ITimeoutTimer _timeoutTimer;
@@ -119,7 +118,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
     }
 
-    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string errorMessage)
+    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string? errorMessage)
     {
         ArgumentNullException.ThrowIfNull(timeoutCertificate);
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
@@ -136,9 +135,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = "Empty master node list from snapshot";
             return false;
         }
-        HashSet<Address> nextEpochCandidates = new(snapshot.NextEpochCandidates);
-
-        HashSet<Signature> signatures = new(timeoutCertificate.Signatures);
         XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
@@ -147,27 +143,17 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCertificate.Round}";
             return false;
         }
-        if (signatures.Count < epochInfo.Masternodes.Length * spec.CertificateThreshold)
+
+        (Address[] candidates, Signature[] signatures) = (snapshot.NextEpochCandidates, timeoutCertificate.Signatures);
+        ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
+        if (CountValidSignatures(candidates, signatures, timeoutMsgHash, out errorMessage) is not { } signCount)
         {
-            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
             return false;
         }
 
-        ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
-        bool allValid = true;
-        Parallel.ForEach(signatures,
-            (signature, state) =>
-            {
-                Address signer = _ethereumEcdsa.RecoverAddress(signature, in timeoutMsgHash);
-                if (!nextEpochCandidates.Contains(signer))
-                {
-                    allValid = false;
-                    state.Stop();
-                }
-            });
-        if (!allValid)
+        if (signCount < epochInfo.Masternodes.Length * spec.CertificateThreshold)
         {
-            errorMessage = "One or more invalid signatures";
+            errorMessage = $"Number of unique signers {signCount} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
             return false;
         }
 
