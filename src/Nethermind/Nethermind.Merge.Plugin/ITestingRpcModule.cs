@@ -18,4 +18,10 @@ public interface ITestingRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null);
+
+    [JsonRpcMethod(
+        Description = "Build a block from provided transactions on top of the current chain head and commit it as the new head. Returns the committed block hash.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<Hash256?>> testing_commitBlockV1(PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null);
 }

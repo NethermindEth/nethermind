@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -245,7 +246,8 @@ public class TestingRpcModuleTests
         IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
         blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
 
-        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, LimboLogs.Instance);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, blockTree, LimboLogs.Instance);
         return (module, parentHash, parentHeader);
     }
 

@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -29,6 +30,7 @@ public class TestingRpcModule(
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
+    IBlockTree blockTree,
     ILogManager logManager)
     : ITestingRpcModule
 {
@@ -89,6 +91,58 @@ public class TestingRpcModule(
         }
 
         return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
+    }
+
+    public async Task<ResultWrapper<Hash256?>> testing_commitBlockV1(
+        PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null)
+    {
+        BlockHeader? chainHead = blockTree.Head?.Header;
+        if (chainHead is null)
+            return ResultWrapper<Hash256?>.Fail("chain head not found", MergeErrorCodes.InvalidPayloadAttributes);
+
+        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(chainHead.Number + 1, payloadAttributes.Timestamp));
+        BlockHeader header = PrepareBlockHeader(chainHead, payloadAttributes, spec, extraData);
+
+        // Use a transient processor so we don't conflict with the main pipeline
+        // (TrieWarmer / prewarmer can hold scopes open). The block is processed
+        // in the transient scope, then committed to the main blockTree below.
+        await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
+
+        Transaction[] transactions;
+        try
+        {
+            transactions = DecodeTransactions(txRlps).ToArray();
+        }
+        catch (RlpException e)
+        {
+            return ResultWrapper<Hash256?>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
+        }
+
+        header.TxRoot = TxTrie.CalculateRoot(transactions);
+        BlockToProduce block = new(header, transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null);
+
+        FeesTracer feesTracer = new();
+        Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+
+        if (processedBlock is null)
+            return ResultWrapper<Hash256?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
+
+        if (processedBlock.Transactions.Length != transactions.Length)
+        {
+            string error = $"expected {transactions.Length} transactions but only {processedBlock.Transactions.Length} were included";
+            if (_logger.IsWarn) _logger.Warn($"testing_commitBlockV1 failed: {error}");
+            return ResultWrapper<Hash256?>.Fail(error, ErrorCodes.InvalidInput);
+        }
+
+        AddBlockResult addBlockResult = await blockTree.SuggestBlockAsync(processedBlock, BlockTreeSuggestOptions.ShouldProcess);
+        if (addBlockResult != AddBlockResult.Added)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
+            return ResultWrapper<Hash256?>.Fail($"failed to commit block: {addBlockResult}", MergeErrorCodes.UnknownPayload);
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
+        return ResultWrapper<Hash256?>.Success(processedBlock.Hash);
     }
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)
