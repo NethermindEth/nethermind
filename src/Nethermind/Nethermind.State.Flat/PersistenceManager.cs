@@ -584,8 +584,12 @@ public class PersistenceManager(
     {
         long sw = Stopwatch.GetTimestamp();
 
+        // Prefetch account column (covers SelfDestructs, Accounts, Storages).
+        Task prefetchTask = PersistedSnapshot.PrefetchColumnsAsync(snapshot, PersistedSnapshot.AccountColumnTag);
+
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
+            prefetchTask.Wait();
             foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
             {
                 if (kv.Value) continue;
@@ -597,17 +601,31 @@ public class PersistenceManager(
                 batch.SetAccount(kv.Key, kv.Value);
             }
 
+            // Start prefetch for state node columns while storages are being drained.
+            prefetchTask = PersistedSnapshot.PrefetchColumnsAsync(snapshot,
+                PersistedSnapshot.StateNodeTag,
+                PersistedSnapshot.StateTopNodesTag,
+                PersistedSnapshot.StateNodeFallbackTag);
+
             foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
             {
                 ((Address addr, UInt256 slot), SlotValue? value) = kv;
                 batch.SetStorage(addr, slot, value);
             }
 
+            prefetchTask.Wait();
+
+            // Start prefetch for storage node columns while state nodes are being drained.
+            prefetchTask = PersistedSnapshot.PrefetchColumnsAsync(snapshot,
+                PersistedSnapshot.StorageNodeTag,
+                PersistedSnapshot.StorageNodeFallbackTag);
+
             foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
             {
                 batch.SetStateTrieNode(kv.Key, kv.Value);
             }
 
+            prefetchTask.Wait();
             foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
             {
                 ((Hash256AsKey address, TreePath path), TrieNode node) = kv;

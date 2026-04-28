@@ -197,6 +197,12 @@ public sealed class ArenaManager : IArenaManager
         }
     }
 
+    public void Touch(ArenaReservation reservation, int subOffset, int size)
+    {
+        if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena))
+            arena.Touch(reservation.Offset + subOffset, size);
+    }
+
     private ArenaFile GetOrCreateArena(int requiredSize)
     {
         // Scan only mutable arenas; remove any that can't fit (they become permanently read-only)
