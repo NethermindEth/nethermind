@@ -35,15 +35,7 @@ namespace Nethermind.Synchronization.StateSync
             Task<IByteArrayList>? task = null;
             HashList? hashList = null;
             GetTrieNodesRequest? getTrieNodesRequest = null;
-            // Use GetNodeData if possible, starting with the dedicated NodeData protocol
-            if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
-            {
-                if (Logger.IsTrace) Logger.Trace($"Requested NodeData via NodeDataProtocol from peer {peer}");
-                hashList = HashList.Rent(batch.RequestedNodes);
-                task = nodeDataHandler.GetNodeData(hashList, cancellationToken);
-            }
-            // If the NodeData protocol is not supported, try eth66
-            else if (ProtocolSupportsNodeData(peer))
+            if (ProtocolSupportsNodeData(peer))
             {
                 if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
                 hashList = HashList.Rent(batch.RequestedNodes);
