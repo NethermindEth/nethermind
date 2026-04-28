@@ -130,6 +130,7 @@ jobs:
             FILTER_ARG="--filter $FILTER"
           fi
 
+          set +e
           dotnet run --no-build --no-launch-profile -c Release \
             --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
             --$TEST_TYPE \
@@ -138,7 +139,21 @@ jobs:
             --workers $WORKERS \
             --neverTrace \
             $FILTER_ARG \
-            | tee /tmp/nethtest-results.json
+            > /tmp/nethtest-results.json 2> /tmp/nethtest-stderr.log
+          rc=$?
+          set -e
+
+          echo "Exit code: $rc"
+          if [ $rc -ne 0 ]; then
+            echo "::warning::nethtest exited with code $rc"
+            echo "--- stderr (last 50 lines) ---"
+            tail -50 /tmp/nethtest-stderr.log
+          fi
+          if [ ! -s /tmp/nethtest-results.json ]; then
+            echo "::error::nethtest produced no output"
+            tail -100 /tmp/nethtest-stderr.log
+            exit 1
+          fi
 
       - name: Parse results
         if: always()
