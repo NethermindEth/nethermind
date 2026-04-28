@@ -178,11 +178,12 @@ public class Eth71ProtocolHandlerTests
         byte[] bal2 = [0xc2, 0x01, 0x02];
 
         BlockAccessListsMessage? response = null;
+        GetBlockAccessListsMessage? sentRequest = null;
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage>())).Do(call =>
         {
-            GetBlockAccessListsMessage sent = (GetBlockAccessListsMessage)call[0];
-            response = new BlockAccessListsMessage(sent.RequestId, new ArrayPoolList<byte[]?>(2) { bal1, bal2 });
+            sentRequest = (GetBlockAccessListsMessage)call[0];
+            response = new BlockAccessListsMessage(sentRequest.RequestId, new ArrayPoolList<byte[]?>(2) { bal1, bal2 });
         });
 
         HandleIncomingStatusMessage();
@@ -196,6 +197,7 @@ public class Eth71ProtocolHandlerTests
         Assert.That(result, Has.Count.EqualTo(2));
         Assert.That(result[0], Is.EqualTo(bal1));
         Assert.That(result[1], Is.EqualTo(bal2));
+        Assert.Throws<ObjectDisposedException>(() => _ = sentRequest!.Hashes[0]);
         response?.Dispose();
     }
 

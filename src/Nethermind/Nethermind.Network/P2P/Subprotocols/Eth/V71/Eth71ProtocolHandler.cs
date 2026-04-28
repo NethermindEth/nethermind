@@ -85,7 +85,8 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
 
     private Task<BlockAccessListsMessage> Handle(GetBlockAccessListsMessage request, CancellationToken cancellationToken)
     {
-        IOwnedReadOnlyList<Hash256> hashes = request.Hashes;
+        using GetBlockAccessListsMessage req = request;
+        IOwnedReadOnlyList<Hash256> hashes = req.Hashes;
         ArrayPoolList<byte[]?> results = new(hashes.Count);
         long totalSize = 0;
 
@@ -106,7 +107,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
             }
         }
 
-        return Task.FromResult(new BlockAccessListsMessage(request.RequestId, results));
+        return Task.FromResult(new BlockAccessListsMessage(req.RequestId, results));
     }
 
     public async Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
@@ -124,10 +125,17 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
 
         GetBlockAccessListsMessage request = new(hashList);
         Request<GetBlockAccessListsMessage, BlockAccessListsMessage> req = new(request);
-        _balRequests.Send(req);
 
-        BlockAccessListsMessage response = await HandleResponse(req, TransferSpeedType.BlockAccessLists, static _ => nameof(GetBlockAccessListsMessage), token);
-        return response.BlockAccessLists;
+        try
+        {
+            _balRequests.Send(req);
+            BlockAccessListsMessage response = await HandleResponse(req, TransferSpeedType.BlockAccessLists, static _ => nameof(GetBlockAccessListsMessage), token);
+            return response.BlockAccessLists;
+        }
+        finally
+        {
+            request.Dispose();
+        }
     }
 
     Task<IOwnedReadOnlyList<byte[]?>> ISyncPeer.GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)

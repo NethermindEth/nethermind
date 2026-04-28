@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -542,6 +542,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
             // fast blocks access lists can run if there are peers until it is done
             // fast blocks access lists can run in parallel with full sync when receipts are finished
+            // this follows the same post-state-sync phase as bodies and receipts to keep heavy fast-block payload downloads
+            // out of the initial state sync phase
             bool result = fastBlockAccessListsNotFinished && fastReceiptsFinished && notInStateSync && stateSyncFinished;
 
             if (_logger.IsTrace)
