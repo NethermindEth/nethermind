@@ -3,161 +3,81 @@
 
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.OpcodeTracing.Plugin.Test;
 
 public class AsyncFileWriteQueueTests
 {
+    private string _tempDir = null!;
+    private AsyncFileWriteQueue _queue = null!;
+
     private static PerBlockTraceOutput CreateTrace(long blockNumber) => new()
     {
         Metadata = new PerBlockMetadata { BlockNumber = blockNumber },
         OpcodeCounts = new Dictionary<byte, long> { [0x00] = 1 }
     };
 
-    [Test]
-    public void Enqueue_returns_true_for_valid_item()
+    [SetUp]
+    public void Setup()
     {
-        PerBlockTraceWriter writer = new(LimboLogs.Instance);
-        AsyncFileWriteQueue queue = new(Path.GetTempPath(), writer, LimboLogs.Instance);
+        _tempDir = Path.Combine(Path.GetTempPath(), $"nethermind-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_tempDir);
+        _queue = new AsyncFileWriteQueue(_tempDir, new PerBlockTraceWriter(LimboLogs.Instance), LimboLogs.Instance);
+    }
 
-        bool result = queue.Enqueue(CreateTrace(1));
-
-        Assert.That(result, Is.True);
+    [TearDown]
+    public async Task TearDown()
+    {
+        try { await _queue.DisposeAsync(); } catch (ObjectDisposedException) { }
+        if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, true);
     }
 
     [Test]
-    public void Enqueue_returns_false_for_null()
+    public void Enqueue_returns_true_for_valid_item_and_false_for_null()
     {
-        PerBlockTraceWriter writer = new(LimboLogs.Instance);
-        AsyncFileWriteQueue queue = new(Path.GetTempPath(), writer, LimboLogs.Instance);
-
-        bool result = queue.Enqueue(null!);
-
-        Assert.That(result, Is.False);
+        Assert.That(_queue.Enqueue(CreateTrace(1)), Is.True);
+        Assert.That(_queue.Enqueue(null!), Is.False);
     }
 
     [Test]
-    public void PendingWrites_increments_on_enqueue()
+    public void Null_enqueue_does_not_increment_PendingWrites()
     {
-        PerBlockTraceWriter writer = new(LimboLogs.Instance);
-        AsyncFileWriteQueue queue = new(Path.GetTempPath(), writer, LimboLogs.Instance);
+        _queue.Enqueue(null!);
 
-        queue.Enqueue(CreateTrace(1));
-        queue.Enqueue(CreateTrace(2));
-        queue.Enqueue(CreateTrace(3));
-
-        Assert.That(queue.PendingWrites, Is.GreaterThanOrEqualTo(1));
+        Assert.That(_queue.PendingWrites, Is.EqualTo(0));
     }
 
-    [Test]
-    public async Task PendingWrites_decrements_after_processing()
+    [TestCase(1)]
+    [TestCase(50)]
+    public async Task PendingWrites_reaches_zero_after_flush(int count)
     {
-        string tempDir = Path.Combine(Path.GetTempPath(), $"nethermind-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            PerBlockTraceWriter writer = new(LimboLogs.Instance);
-            await using AsyncFileWriteQueue queue = new(tempDir, writer, LimboLogs.Instance);
+        for (int i = 0; i < count; i++) _queue.Enqueue(CreateTrace(i));
 
-            queue.Enqueue(CreateTrace(1));
-            queue.Enqueue(CreateTrace(2));
+        bool flushed = await _queue.FlushAsync(TimeSpan.FromSeconds(10));
 
-            bool flushed = await queue.FlushAsync(TimeSpan.FromSeconds(5));
-
-            Assert.That(flushed, Is.True);
-            Assert.That(queue.PendingWrites, Is.EqualTo(0));
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Test]
-    public async Task PendingWrites_tracks_correctly_across_many_enqueues()
-    {
-        string tempDir = Path.Combine(Path.GetTempPath(), $"nethermind-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            PerBlockTraceWriter writer = new(LimboLogs.Instance);
-            await using AsyncFileWriteQueue queue = new(tempDir, writer, LimboLogs.Instance);
-
-            for (int i = 0; i < 50; i++)
-            {
-                queue.Enqueue(CreateTrace(i));
-            }
-
-            bool flushed = await queue.FlushAsync(TimeSpan.FromSeconds(10));
-
-            Assert.That(flushed, Is.True);
-            Assert.That(queue.PendingWrites, Is.EqualTo(0));
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
+        Assert.That(flushed, Is.True);
+        Assert.That(_queue.PendingWrites, Is.EqualTo(0));
     }
 
     [Test]
     public async Task Enqueue_returns_false_after_flush()
     {
-        string tempDir = Path.Combine(Path.GetTempPath(), $"nethermind-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            PerBlockTraceWriter writer = new(LimboLogs.Instance);
-            await using AsyncFileWriteQueue queue = new(tempDir, writer, LimboLogs.Instance);
+        await _queue.FlushAsync(TimeSpan.FromSeconds(5));
 
-            await queue.FlushAsync(TimeSpan.FromSeconds(5));
-
-            bool result = queue.Enqueue(CreateTrace(99));
-
-            Assert.That(result, Is.False);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
+        Assert.That(_queue.Enqueue(CreateTrace(99)), Is.False);
     }
 
     [Test]
-    public async Task DisposeAsync_completes_pending_writes()
+    public async Task Dispose_writes_all_pending_items_to_disk()
     {
-        string tempDir = Path.Combine(Path.GetTempPath(), $"nethermind-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            PerBlockTraceWriter writer = new(LimboLogs.Instance);
-            AsyncFileWriteQueue queue = new(tempDir, writer, LimboLogs.Instance);
+        _queue.Enqueue(CreateTrace(1));
+        _queue.Enqueue(CreateTrace(2));
+        _queue.Enqueue(CreateTrace(3));
 
-            queue.Enqueue(CreateTrace(1));
-            queue.Enqueue(CreateTrace(2));
-            queue.Enqueue(CreateTrace(3));
+        await _queue.DisposeAsync();
 
-            await queue.DisposeAsync();
-
-            Assert.That(queue.PendingWrites, Is.EqualTo(0));
-
-            string[] files = Directory.GetFiles(tempDir, "*.json");
-            Assert.That(files.Length, Is.EqualTo(3));
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Test]
-    public void PendingWrites_does_not_increment_for_null_enqueue()
-    {
-        PerBlockTraceWriter writer = new(LimboLogs.Instance);
-        AsyncFileWriteQueue queue = new(Path.GetTempPath(), writer, LimboLogs.Instance);
-
-        queue.Enqueue(null!);
-
-        Assert.That(queue.PendingWrites, Is.EqualTo(0));
+        Assert.That(_queue.PendingWrites, Is.EqualTo(0));
+        Assert.That(Directory.GetFiles(_tempDir, "*.json"), Has.Length.EqualTo(3));
     }
 }
