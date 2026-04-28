@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -27,8 +28,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        ILogManager? logManager,
+        bool parallel = false)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
 
     /// <summary>
@@ -64,6 +66,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
+        private readonly bool _parallel;
         private long _blockCumulativeRegularGas;
         private long _blockCumulativeReceiptGas;
 
@@ -112,7 +115,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IWorldState? worldState,
             IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            bool parallel = false)
         {
             ArgumentNullException.ThrowIfNull(logManager);
             ArgumentNullException.ThrowIfNull(specProvider);
@@ -130,6 +134,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
+            _parallel = parallel;
         }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -171,7 +176,12 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
-                _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+                if (_systemTransactionProcessor is null)
+                {
+                    Interlocked.CompareExchange(ref _systemTransactionProcessor,
+                        new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager),
+                        null);
+                }
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
             }
 
@@ -249,7 +259,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            }
+
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
                 _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
@@ -490,10 +504,11 @@ namespace Nethermind.Evm.TransactionProcessing
             long minGasRequired = spec.IsEip8037Enabled
                 ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
                 : TGasPolicy.GetRemainingGas(in minimal);
-            return ValidateGas(tx, header, spec, minGasRequired);
+
+            return ValidateGas(tx, header, spec, minGasRequired, validate);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired, bool validate)
         {
             if (tx.GasLimit < minGasRequired)
             {
@@ -501,19 +516,24 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            long gasUsedForAllowance = spec switch
+            if (validate)
             {
-                { IsEip8037Enabled: true } => _blockCumulativeRegularGas,
-                { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
-                _ => header.GasUsed,
-            };
+                long gasUsedForAllowance = _parallel ? 0 : spec switch
+                {
+                    { IsEip8037Enabled: true } => _blockCumulativeRegularGas,
+                    { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
+                    _ => header.GasUsed,
+                };
 
-            long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
-            if (tx.GasLimit > maxTransactionGasLimit)
-            {
-                string limitDescription = $"{header.GasLimit} - {gasUsedForAllowance}";
-                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
-                return TransactionResult.BlockGasLimitExceeded;
+                long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
+                if (tx.GasLimit > maxTransactionGasLimit)
+                {
+                    string limitDescription = _parallel
+                        ? $"{header.GasLimit}"
+                        : $"{header.GasLimit} - {gasUsedForAllowance}";
+                    TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
+                    return TransactionResult.BlockGasLimitExceeded;
+                }
             }
 
             return TransactionResult.Ok;
@@ -599,7 +619,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                return TransactionResult.MinerPremiumNegative;
+                string errorDetail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas} (supplied gas {tx.GasLimit})";
+                return TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, errorDetail);
             }
 
             UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
@@ -841,7 +862,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.Restore(snapshot);
             gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, static (s, st) => s - st);
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !_parallel)
             {
                 header.GasUsed += gasConsumed.EffectiveBlockGas;
             }
@@ -1093,6 +1114,8 @@ namespace Nethermind.Evm.TransactionProcessing
         public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? description = null) =>
             new(evmException: evmExceptionType, errorDescription: description ?? "");
 
+        public static TransactionResult WithDetail(ErrorType errorType, string detail) => new(errorType, errorDescription: detail);
+
         public static readonly TransactionResult Ok = new();
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
         public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "gas limit below intrinsic gas");
@@ -1115,6 +1138,7 @@ namespace Nethermind.Evm.TransactionProcessing
             InsufficientMaxFeePerGasForSenderBalance,
             InsufficientSenderBalance,
             MalformedTransaction,
+            MaxFeePerGasBelowBaseFee,
             MinerPremiumNegative,
             NonceOverflow,
             SenderHasDeployedCode,

@@ -93,6 +93,11 @@ namespace Nethermind.JsonRpc
         public const int BlockTimestampNotIncreased = -38021;
 
         /// <summary>
+        /// MovePrecompileToAddress referenced itself in replacement
+        /// </summary>
+        public const int MovePrecompileSelfReference = -38022;
+
+        /// <summary>
         /// Invalid RPC simulate call containing too many blocks
         /// </summary>
         public const int InvalidInputTooManyBlocks = -38026;

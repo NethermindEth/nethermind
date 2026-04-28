@@ -60,8 +60,7 @@ public static class XdcSort
                 return;
             }
             maxDepth--;
-            int mlo, mhi;
-            DoPivot_func(data, a, b, out mlo, out mhi);
+            DoPivot_func(data, a, b, out int mlo, out int mhi);
             if (mlo - a < b - mhi)
             {
                 QuickSort_func(data, a, mlo, maxDepth);

@@ -63,7 +63,7 @@ public class BlockAccessListDecoderTests
     public void Can_decode_then_encode_slot_change()
     {
         StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-        SlotChanges expected = new(0, new SortedList<ushort, StorageChange> { { 0, parentHashStorageChange } });
+        SlotChanges expected = new(0, new SortedList<int, StorageChange> { { 0, parentHashStorageChange } });
 
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
 
@@ -129,22 +129,22 @@ public class BlockAccessListDecoderTests
     {
         StorageChange storageChange = new()
         {
-            BlockAccessIndex = 10,
-            NewValue = 0xcad
+            Index = 10,
+            Value = 0xcad
         };
         byte[] storageChangeBytes = Rlp.Encode(storageChange, RlpBehaviors.None).Bytes;
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        SortedList<ushort, StorageChange> storageChanges = new() { { 10, storageChange } };
+        SortedList<int, StorageChange> storageChanges = new() { { 10, storageChange } };
         SlotChanges slotChanges = new(0xbad, storageChanges);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
 
-        StorageRead storageRead = new(0xbababa);
-        byte[] storageReadBytes = Rlp.Encode(storageRead, RlpBehaviors.None).Bytes;
-        StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
+        UInt256 storageRead = 0xbababa;
+        byte[] storageReadBytes = Rlp.Encode(storageRead).Bytes;
+        UInt256 storageReadDecoded = Rlp.Decode<UInt256>(storageReadBytes, RlpBehaviors.None);
         Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
 
         BalanceChange balanceChange = new(10, 0);
@@ -166,7 +166,7 @@ public class BlockAccessListDecoderTests
 
         AccountChanges accountChanges = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithStorageChanges(slotChanges.Slot, storageChange)
+            .WithStorageChanges(slotChanges.Key, storageChange)
             .WithStorageReads(0xbababa, 0xcacaca)
             .WithBalanceChanges([balanceChange, balanceChange2])
             .WithNonceChanges([nonceChange, nonceChange2])
@@ -234,10 +234,10 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_storage_reads_throws()
     {
-        SortedSet<StorageRead> storageReads = new(DescendingComparer<StorageRead>())
+        SortedSet<UInt256> storageReads = new(DescendingComparer<UInt256>())
         {
-            new(UInt256.One),
-            new(new UInt256(2))
+            UInt256.One,
+            new UInt256(2)
         };
         AccountChanges accountChanges = new(
             TestItem.AddressA,
@@ -257,7 +257,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_balance_changes_throws()
     {
-        SortedList<ushort, BalanceChange> balanceChanges = new(DescendingComparer<ushort>())
+        SortedList<int, BalanceChange> balanceChanges = new(DescendingComparer<int>())
         {
             { 1, new(1, UInt256.One) },
             { 2, new(2, UInt256.Zero) }
@@ -280,7 +280,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_nonce_changes_throws()
     {
-        SortedList<ushort, NonceChange> nonceChanges = new(DescendingComparer<ushort>())
+        SortedList<int, NonceChange> nonceChanges = new(DescendingComparer<int>())
         {
             { 1, new(1, 1) },
             { 2, new(2, 2) }
@@ -303,7 +303,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_code_changes_throws()
     {
-        SortedList<ushort, CodeChange> codeChanges = new(DescendingComparer<ushort>())
+        SortedList<int, CodeChange> codeChanges = new(DescendingComparer<int>())
         {
             { 1, new(1, [0x01]) },
             { 2, new(2, [0x02]) }
@@ -326,7 +326,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_slot_changes_with_unsorted_storage_changes_throws()
     {
-        SortedList<ushort, StorageChange> storageChanges = new(DescendingComparer<ushort>())
+        SortedList<int, StorageChange> storageChanges = new(DescendingComparer<int>())
         {
             { 1, new(1, UInt256.One) },
             { 2, new(2, UInt256.Zero) }

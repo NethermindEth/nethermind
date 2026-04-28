@@ -47,12 +47,12 @@ public class DbMonitoringModule : Module
     {
         private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
         private readonly int _intervalSec;
-        private readonly HyperClockCacheWrapper _sharedBlockCache;
+        private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
 
         private ILogger _logger;
 
-        public DbTracker(IMonitoringService monitoringService, IMetricsConfig metricsConfig, HyperClockCacheWrapper sharedBlockCache, ILogManager logManager)
+        public DbTracker(IMonitoringService monitoringService, IMetricsConfig metricsConfig, Lazy<HyperClockCacheWrapper> sharedBlockCache, ILogManager logManager)
         {
             _intervalSec = metricsConfig.DbMetricIntervalSeconds;
             _logger = logManager.GetClassLogger<DbTracker>();
@@ -94,7 +94,7 @@ public class DbMonitoringModule : Module
                     Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
                 }
 
-                Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.GetUsage();
+                Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
 
                 _lastDbMetricsUpdate = Environment.TickCount64;
             }

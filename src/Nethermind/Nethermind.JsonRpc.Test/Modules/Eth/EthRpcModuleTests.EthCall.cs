@@ -22,6 +22,8 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Int256;
+using Nethermind.Core.Specs;
+using Nethermind.Blockchain;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
@@ -174,7 +176,7 @@ public partial class EthRpcModuleTests
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "{\"blockHash\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937\"}");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937 could not be found\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"block not found: 0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937\"},\"id\":67}"));
     }
 
     [Test]
@@ -289,6 +291,23 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_with_coinbase_opcode_should_return_block_override_fee_recipient()
+    {
+        using Context ctx = await Context.Create();
+
+        string dataStr = CoinbaseReturnCode.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{dataStr}\"}}");
+        object? blockOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"feeRecipient\":\"{TestItem.AddressC}\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        JToken.Parse(serialized).Value<string>("result")!
+            .Should().Be($"0x{new string('0', 24)}{TestItem.AddressC.Bytes.ToHexString()}");
     }
 
     [Test]
@@ -455,15 +474,10 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_uses_block_gas_limit_when_not_specified()
+    public async Task Eth_call_uses_gas_cap_when_not_specified()
     {
         using Context ctx = await Context.Create();
-
-        // Get the current block's gas limit
-        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
-        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
-        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
-        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+        ctx.Test.RpcConfig.GasCap = 5_000_000;
 
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
@@ -477,7 +491,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_uses_specified_gas_limit()
     {
         using Context ctx = await Context.Create();
-        await TestEthCallOutOfGas(ctx, 30000000, 30000000);
+        await TestEthCallOutOfGas(ctx, 30000000);
     }
 
     [Test]
@@ -485,7 +499,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.GasCap = 50000000;
-        await TestEthCallOutOfGas(ctx, 300000000, 50000000);
+        await TestEthCallOutOfGas(ctx, 300000000);
     }
 
     /// <summary>
@@ -518,6 +532,45 @@ public partial class EthRpcModuleTests
         // Without gas cap, gas available would be ~79K (100K - 21K intrinsic)
         gasAvailable.Should().BeLessThan(gasCap);
         gasAvailable.Should().BeGreaterThan(0);
+    }
+
+    /// <summary>
+    /// Regression test for: when no gas is specified, Nethermind must default to gasCap, not the block gas
+    /// limit. On chains where gasCap &gt; blockGasLimit (e.g. Gnosis: gasCap=600M, blockGasLimit=17M),
+    /// calls that need more gas than the block limit were silently under-executing and returning wrong values.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+
+        string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
+        string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
+        string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
+        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+
+        long gasCap = blockGasLimit * 10;
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns the gas available at the start of execution as a uint256.
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
+
+        // No gas field — should default to gasCap, not blockGasLimit.
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            """{"to":"0xc200000000000000000000000000000000000000"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        string result = JToken.Parse(serialized).Value<string>("result")!;
+        UInt256 gasAvailable = Bytes.FromHexString(result).ToUInt256();
+
+        // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
+        // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
+        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
+            "gas available ({0}) should reflect gasCap ({1}), not block gas limit ({2})",
+            gasAvailable, gasCap, blockGasLimit);
     }
 
     [Test]
@@ -738,7 +791,7 @@ public partial class EthRpcModuleTests
         JToken.Parse(serialized)["error"]!["code"]!.Value<int>().Should().Be(-32602);
     }
 
-    private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
+    private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
@@ -746,6 +799,106 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"Block gas limit exceeded\"}},\"id\":67}}");
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\",\"data\":\"0x\"}},\"id\":67}}");
     }
+
+    // Each test uses a state override to inject one-opcode contract code at the target address,
+    // then verifies the returned value matches what was supplied in blockOverride.
+    [TestCase(
+        "NUMBER opcode returns overridden block number",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4360005260206000f3"}}""",
+        """{"number":"0x89543F"}""",
+        "0x000000000000000000000000000000000000000000000000000000000089543f"
+    )]
+    [TestCase(
+        "TIMESTAMP opcode returns overridden timestamp",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4260005260206000f3"}}""",
+        """{"time":"0x68E0F100"}""",
+        "0x0000000000000000000000000000000000000000000000000000000068e0f100"
+    )]
+    [TestCase(
+        "GASLIMIT opcode returns overridden gas limit",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4560005260206000f3"}}""",
+        """{"gasLimit":"0x7E1200"}""",
+        "0x00000000000000000000000000000000000000000000000000000000007e1200"
+    )]
+    [TestCase(
+        "COINBASE opcode returns overridden fee recipient",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4160005260206000f3"}}""",
+        """{"feeRecipient":"0x1111111111111111111111111111111111111111"}""",
+        "0x0000000000000000000000001111111111111111111111111111111111111111"
+    )]
+    public async Task Eth_call_with_block_override(string name, string txJson, string stateOverrideJson, string blockOverrideJson, string expectedResult)
+    {
+        object? transaction = JsonSerializer.Deserialize<object>(txJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson);
+
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        JToken.Parse(serialized)["result"]!.Value<string>().Should().Be(expectedResult);
+    }
+
+    [Test]
+    public async Task Eth_call_feeless_with_positive_blockOverride_baseFeePerGas_succeeds()
+    {
+        // Scenario: caller sends no fee fields (fee-less call) but blockOverride.baseFeePerGas > 0.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"0xc200000000000000000000000000000000000000\"}}");
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x100"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        JToken.Parse(serialized)["error"].Should().BeNull(because:
+            "fee-less call must succeed even when blockOverride.baseFeePerGas > 0");
+    }
+
+    [Test]
+    public async Task Eth_call_blobBaseFeePerGas_override_test()
+    {
+        ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
+        ulong? excessBlobGas = 1ul;
+
+        Block[] blocks = [
+            Build.A.Block.WithNumber(0).WithExcessBlobGas(excessBlobGas).TestObject,
+        ];
+
+        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+
+        using TestRpcBlockchain test = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockTree)
+            .Build(specProvider);
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""");
+
+        object? transaction = JsonSerializer.Deserialize<object>(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000"}""");
+
+        object? blockOverride = JsonSerializer.Deserialize<object>(
+        """{"blobBaseFee":"0x02"}""");
+
+        string withOverride = await test.TestEthRpc(
+            "eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        JToken parsed = JToken.Parse(withOverride);
+
+        parsed["error"]?.Should().BeNull("opcode must be valid under Cancun");
+
+        string? resultHex = parsed["result"]?.Value<string>();
+        resultHex.Should().NotBeNull();
+
+        UInt256 overriddenFee = Bytes.FromHexString(resultHex!).ToUInt256();
+        overriddenFee.Should().Be((UInt256)0x02);
+    }
+
 }

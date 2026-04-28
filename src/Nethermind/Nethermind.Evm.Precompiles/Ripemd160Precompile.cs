@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
 {
-    public static readonly Ripemd160Precompile Instance = new();
+    public static Ripemd160Precompile Instance { get; } = new();
 
     // missing in .NET Core
     //        private static RIPEMD160 _ripemd;

@@ -35,10 +35,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.AuRa.Test;
 
-public class AuRaMergeEngineModuleTests : EngineModuleTests
+[TestFixture(true)]
+[TestFixture(false)]
+public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(parallel)
 {
     protected override MergeTestBlockchain CreateBaseBlockchain(IMergeConfig? mergeConfig = null)
-        => new MergeAuRaTestBlockchain(mergeConfig);
+    {
+        MergeTestBlockchain bc = new MergeAuRaTestBlockchain(mergeConfig);
+        bc.ParallelExecutionOverride = Parallel;
+        return bc;
+    }
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
     private const string _auraWithdrawalContractAddress = "0xbabe2bed00000000000000000000000000000003";
@@ -78,9 +84,15 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, customWithdrawalContractAddress);
 
     [TestCase("0x14d7d22cfaa851f3b79a790d6f961f0cc4da2e714cd15b16bce8468f25152911", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16", false, false)]
-    public override Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline)
-        => NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
+    public override async Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline)
+        => await NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
 
+    [TestCase(
+        "0x0f125b68c09e5dc3b57cc47e93189d431fbb2d02d0aceb001eda8938ae933e21",
+        "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f",
+        "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43",
+        "0xcf205144eb1991b718be9c4694f22d6b0937740c17e2d811c8fc3c999d596fcf",
+        _auraWithdrawalContractAddress)]
     [TestCase("0x0f125b68c09e5dc3b57cc47e93189d431fbb2d02d0aceb001eda8938ae933e21", "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f", "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43", "0xcf205144eb1991b718be9c4694f22d6b0937740c17e2d811c8fc3c999d596fcf", _auraWithdrawalContractAddress)]
     public override Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? customWithdrawalContractAddress)
         => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, customWithdrawalContractAddress);
@@ -92,9 +104,22 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task NewPayloadV5_rejects_invalid_BAL_early(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline, BalErrorKind errorKind) =>
         NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, GetExpectedBalError(errorKind), errorKind, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
 
+    [Test]
     [TestCase(_auraWithdrawalContractAddress)]
     public override async Task GetPayloadV6_builds_block_with_BAL(string? customWithdrawalContractAddress) =>
         await base.GetPayloadV6_builds_block_with_BAL(customWithdrawalContractAddress);
+
+    [Test]
+    public override async Task GetPayloadBodiesHashV2_returns_correctly()
+        => await base.GetPayloadBodiesHashV2_returns_correctly();
+
+    [Test]
+    public override async Task GetPayloadBodiesByRangeV2_returns_correctly()
+        => await base.GetPayloadBodiesByRangeV2_returns_correctly();
+
+    [Test]
+    public override async Task Can_build_and_process_multiple_blocks_V6()
+        => await base.Can_build_and_process_multiple_blocks_V6();
 
     [TestCase("0xa66ec67b117f57388da53271f00c22a68e6c297b564f67c5904e6f2662881875", "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926")]
     [Parallelizable(ParallelScope.None)]
@@ -152,7 +177,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     api.NonceManager = Substitute.For<INonceManager>();
                     return api;
                 })
-
                 .AddModule(new AuRaMergeModule())
                 .AddSingleton<NethermindApi.Dependencies>()
                 .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
@@ -161,6 +185,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 .AddScoped<WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, WithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
                 .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
+                .AddScoped<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>()
 
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))

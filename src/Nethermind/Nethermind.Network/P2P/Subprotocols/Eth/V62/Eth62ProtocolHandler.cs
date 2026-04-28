@@ -96,7 +96,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             });
         }
 
-        public override void HandleMessage(ZeroPacket message)
+        protected sealed override void BeforeHandleMessage(ZeroPacket message) => ThrowIfStatusWasNotReceived(message.PacketType);
+
+        protected override void HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -120,13 +122,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return true;
             }
 
-            int packetType = message.PacketType;
-            if (!_statusReceived && packetType != Eth62MessageCode.Status)
-            {
-                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
-            }
-
-            switch (packetType)
+            switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:
                     {
@@ -187,6 +183,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         HandleInBackground<NewBlockMessage>(message, Handle);
                     }
                     break;
+            }
+        }
+
+        protected void ThrowIfStatusWasNotReceived(int packetType)
+        {
+            if (!_statusReceived && packetType != Eth62MessageCode.Status)
+            {
+                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
         }
 
