@@ -97,7 +97,9 @@ namespace Nethermind.Synchronization.Test
         [TestCaseSource(nameof(ContextCases))]
         public void TryAllocate_then_Free_round_trip(AllocationContexts contexts)
         {
-            PeerInfo peer = NewPeer();
+            // Explicit single-slot allowances keep the round-trip mechanic tight: one alloc fills,
+            // one free clears.
+            PeerInfo peer = NewPeer(AllocationAllowances.Single);
 
             peer.IsAllocated(contexts).Should().BeFalse();
             peer.TryAllocate(contexts).Should().BeTrue();
@@ -191,7 +193,8 @@ namespace Nethermind.Synchronization.Test
         public void TryAllocate_rolls_back_on_partial_failure()
         {
             // Take Bodies first; then Blocks (= Bodies | Receipts) must fail without leaking the Receipts slot.
-            PeerInfo peer = NewPeer();
+            // Single-slot allowances make the rollback observable: Bodies sits at 0, Receipts must end at 1.
+            PeerInfo peer = NewPeer(AllocationAllowances.Single);
             peer.TryAllocate(AllocationContexts.Bodies).Should().BeTrue();
 
             peer.TryAllocate(AllocationContexts.Blocks).Should().BeFalse();

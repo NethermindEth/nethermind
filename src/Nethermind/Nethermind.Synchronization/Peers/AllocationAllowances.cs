@@ -22,7 +22,19 @@ namespace Nethermind.Synchronization.Peers
         public byte Snap = snap;
         public byte ForwardHeader = forwardHeader;
 
-        public static AllocationAllowances Default { get; } = new(1, 1, 1, 1, 1, 1);
+        /// <summary>
+        /// Minimal allowance — one slot per context. Useful for tests that exercise the binary
+        /// alloc/full mechanic.
+        /// </summary>
+        public static AllocationAllowances Single { get; } = new(1, 1, 1, 1, 1, 1);
+
+        /// <summary>
+        /// Production default: Headers pinned to 1 (they reliably hang under higher allowances),
+        /// every other context at <c>ISyncConfig.AllocationSlots</c>'s default of 2. Mirrors what
+        /// <c>SyncPeerPool</c> builds for the typical config; used as the fallback for the
+        /// parameterless <c>PeerInfo</c> ctor.
+        /// </summary>
+        public static AllocationAllowances Default { get; } = new(headers: 1, bodies: 2, receipts: 2, state: 2, snap: 2, forwardHeader: 2);
 
         public byte this[AllocationContexts context]
         {
