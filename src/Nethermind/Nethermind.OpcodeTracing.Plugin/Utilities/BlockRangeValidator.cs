@@ -77,8 +77,9 @@ public static class BlockRangeValidator
         }
 
         // Blocks beyond chain tip - both modes handle this gracefully
-        // RealTime: traces new blocks until EndBlock, then stops
-        // Retrospective: waits for blocks during sync
+        // RealTime: finalizes the cumulative file once EndBlock is reached but keeps tracing past it
+        //           until the node stops (EndBlock is the reporting window, not a hard stop)
+        // Retrospective / RetrospectiveExecution: waits for blocks during sync
 
         return ValidationResult.Success();
     }

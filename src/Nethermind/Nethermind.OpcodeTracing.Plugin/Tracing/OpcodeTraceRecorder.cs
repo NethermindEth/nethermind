@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
@@ -22,6 +20,7 @@ public sealed class OpcodeTraceRecorder(
     IOpcodeTracingConfig config,
     OpcodeCounter counter,
     TraceOutputWriter outputWriter,
+    IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
     string sessionId,
     ILogManager logManager) : IDisposable, IAsyncDisposable
 {
@@ -29,6 +28,7 @@ public sealed class OpcodeTraceRecorder(
     private readonly ILogger _logger = logManager?.GetClassLogger<OpcodeTraceRecorder>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly OpcodeCounter _counter = counter ?? throw new ArgumentNullException(nameof(counter));
     private readonly TraceOutputWriter _outputWriter = outputWriter ?? throw new ArgumentNullException(nameof(outputWriter));
+    private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory = txProcessingEnvFactory ?? throw new ArgumentNullException(nameof(txProcessingEnvFactory));
     private readonly string _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
 
     private TraceConfiguration? _traceConfig;
@@ -333,14 +333,14 @@ public sealed class OpcodeTraceRecorder(
 
                 if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
                 {
-                    // Use RetrospectiveExecutionTracer for actual EVM execution replay
-                    // Pass factory so each parallel block gets its own isolated processing environment
-                    IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory = api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
-
+                    // Use RetrospectiveExecutionTracer for actual EVM execution replay.
+                    // The factory is supplied via constructor (see OpcodeTracingPlugin.Init) rather than
+                    // resolved from the container here — directly resolving from IComponentContext in a
+                    // non-wiring class is the DI anti-pattern we want to avoid.
                     RetrospectiveExecutionTracer executionTracer = new(
                         blockTree,
                         api.SpecProvider!,
-                        txProcessingEnvFactory,
+                        _txProcessingEnvFactory,
                         api.EthereumEcdsa!,
                         _counter,
                         _traceConfig.MaxDegreeOfParallelism,

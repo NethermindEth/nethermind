@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Tracing;
@@ -73,9 +75,12 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
         try
         {
             // Plugin entry point wires dependencies directly — see OpcodeTracingModule for the DI story.
+            // Resolve container-managed services (e.g. IReadOnlyTxProcessingEnvFactory) here so the
+            // recorder receives them by constructor rather than touching IComponentContext itself.
             OpcodeCounter counter = new();
             TraceOutputWriter outputWriter = new(_api.LogManager);
-            _traceRecorder = new OpcodeTraceRecorder(_config!, counter, outputWriter, _sessionId!, _api.LogManager);
+            IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory = _api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
+            _traceRecorder = new OpcodeTraceRecorder(_config!, counter, outputWriter, txProcessingEnvFactory, _sessionId!, _api.LogManager);
 
             await _traceRecorder.PrepareAsync(_api).ConfigureAwait(false);
 
@@ -117,7 +122,10 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
             // For RealTime mode, attach to block processor
             _traceRecorder.Attach(_api);
 
-            // For Retrospective mode, start the tracing task
+            // For Retrospective mode, start the tracing task. Discarded intentionally: the inner
+            // Task.Run inside ExecuteTracingAsync owns its own try/catch and writes partial output on
+            // failure, and the recorder drives shutdown via its own CancellationTokenSource on
+            // DisposeAsync — InitNetworkProtocol must not block here.
             _ = _traceRecorder.ExecuteTracingAsync(_api);
 
             return Task.CompletedTask;
