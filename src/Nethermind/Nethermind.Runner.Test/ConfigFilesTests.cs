@@ -1,11 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -210,7 +209,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("^spaceneth", "nethermind_db")]
     [TestCase("spaceneth", "spaceneth_db")]
-    public void Base_db_path_is_set(string configWildcard, string startWith) => Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
+    public void Base_db_path_is_set(string configWildcard, string startWith) => Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => Assert.That(p, Does.StartWith(startWith), cf));
 
     [TestCase("*", "static-nodes.json")]
     public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath) => Test<IInitConfig, string>(configWildcard, static c => c.StaticNodesPath, staticNodesPath);
@@ -237,7 +236,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Test<IInitConfig, bool>(configWildcard, static c => c.EnableUnsecuredDevWallet, false);
         }
 
-        Test<IInitConfig, string>(configWildcard, static c => c.LogFileName, static (cf, p) => p.Should().Be(cf.Replace("json", "log"), cf));
+        Test<IInitConfig, string>(configWildcard, static c => c.LogFileName, static (cf, p) => Assert.That(p, Is.EqualTo(cf.Replace("json", "log")), cf));
     }
 
     [TestCase("*")]
@@ -264,7 +263,108 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IBloomConfig, bool>(configWildcard, c => c.Index, index);
         Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
         Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
-        Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => p.Should().BeEquivalentTo(levels ?? new BloomConfig().IndexLevelBucketSizes));
+        Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => Assert.That(p, Is.EqualTo(levels ?? new BloomConfig().IndexLevelBucketSizes), cf));
+    }
+
+    [Test]
+    public void All_config_files_can_be_loaded_without_duplicate_modules()
+    {
+        foreach (string configFile in AllConfigFiles())
+        {
+            Assert.That(() => GetConfigProvider(configFile), Throws.Nothing, configFile);
+        }
+    }
+
+    [Test]
+    public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
+    {
+        int archiveConfigs = 0;
+        foreach (string configFile in AllConfigFiles())
+        {
+            if (!IsArchiveConfig(configFile))
+            {
+                continue;
+            }
+
+            archiveConfigs++;
+            IPruningConfig pruningConfig = GetConfigFromFile<IPruningConfig>(configFile);
+            Assert.That(pruningConfig.Mode, Is.EqualTo(PruningMode.None), configFile);
+        }
+
+        Assert.That(archiveConfigs, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void Xdc_configs_have_unique_log_files()
+    {
+        string[] configFiles = ["xdc.json", "xdc-testnet.json", "xdc-archive.json"];
+        HashSet<string> logFileNames = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string configFile in configFiles)
+        {
+            IInitConfig initConfig = GetConfigFromFile<IInitConfig>(configFile);
+            Assert.That(logFileNames.Add(initConfig.LogFileName), Is.True, $"{configFile}: {initConfig.LogFileName}");
+        }
+    }
+
+    [Test]
+    public void Explicit_log_file_names_match_config_file_names()
+    {
+        foreach (string configFile in AllConfigFiles())
+        {
+            if (configFile == "none.json")
+            {
+                continue;
+            }
+
+            IInitConfig initConfig = GetConfigFromFile<IInitConfig>(configFile);
+            string expectedLogFileName = Path.ChangeExtension(configFile, ".log");
+
+            Assert.That(initConfig.LogFileName, Is.EqualTo(expectedLogFileName), configFile);
+        }
+    }
+
+    [Test]
+    public void Poacore_validator_uses_separate_database_path()
+    {
+        IInitConfig regularConfig = GetConfigFromFile<IInitConfig>("poacore.json");
+        IInitConfig validatorConfig = GetConfigFromFile<IInitConfig>("poacore_validator.json");
+
+        Assert.That(validatorConfig.BaseDbPath, Is.EqualTo("nethermind_db/poacore_validator"));
+        Assert.That(validatorConfig.BaseDbPath, Is.Not.EqualTo(regularConfig.BaseDbPath));
+    }
+
+    [Test]
+    public void Persistent_database_paths_are_unique()
+    {
+        HashSet<string> databasePaths = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string configFile in AllConfigFiles())
+        {
+            ConfigProvider configProvider = GetConfigProvider(configFile);
+            object configuredBaseDbPath = configProvider.GetRawValue("InitConfig", nameof(InitConfig.BaseDbPath));
+            if (configuredBaseDbPath is null)
+            {
+                continue;
+            }
+
+            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            if (initConfig.DiagnosticMode == DiagnosticMode.MemDb)
+            {
+                continue;
+            }
+
+            Assert.That(databasePaths.Add(initConfig.BaseDbPath), Is.True, $"{configFile}: {initConfig.BaseDbPath}");
+        }
+    }
+
+    [Test]
+    public void Chiado_archive_uses_regular_chiado_genesis_hash()
+    {
+        IInitConfig regularConfig = GetConfigFromFile<IInitConfig>("chiado.json");
+        IInitConfig archiveConfig = GetConfigFromFile<IInitConfig>("chiado_archive.json");
+
+        Assert.That(archiveConfig.GenesisHash, Is.Not.Null);
+        Assert.That(archiveConfig.GenesisHash, Is.EqualTo(regularConfig.GenesisHash));
     }
 
     [TestCase("*")]
@@ -358,4 +458,30 @@ public class ConfigFilesTests : ConfigFileTestsBase
             minIndex = str.IndexOf(searchString, minIndex + searchString.Length);
         }
     }
+
+    private static IEnumerable<string> AllConfigFiles()
+    {
+        string[] configPaths = Directory.GetFiles(ConfigDirectory, "*.json");
+        Array.Sort(configPaths, StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < configPaths.Length; i++)
+        {
+            yield return Path.GetFileName(configPaths[i]);
+        }
+    }
+
+    private static T GetConfigFromFile<T>(string configFile) where T : IConfig => GetConfigProvider(configFile).GetConfig<T>();
+
+    private static ConfigProvider GetConfigProvider(string configFile)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource(Path.Combine(ConfigDirectory, configFile)));
+        return configProvider;
+    }
+
+    private static bool IsArchiveConfig(string configFile) =>
+        configFile.Contains("_archive", StringComparison.OrdinalIgnoreCase) ||
+        configFile.Contains("-archive", StringComparison.OrdinalIgnoreCase);
+
+    private static string ConfigDirectory => Path.Combine(TestContext.CurrentContext.TestDirectory, "configs");
 }

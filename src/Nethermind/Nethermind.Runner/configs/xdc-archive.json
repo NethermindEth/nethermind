@@ -3,7 +3,7 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc.json",
     "BaseDbPath": "nethermind_db/xdc-archive",
-    "LogFileName": "xdc.log",
+    "LogFileName": "xdc-archive.log",
     "StateDbKeyScheme": "Hash",
     "AutoDump": "Geth"
   },
@@ -14,6 +14,9 @@
   },
   "JsonRpc": {
     "Enabled": false
+  },
+  "Pruning": {
+    "Mode": "None"
   },
   "Merge": {
     "Enabled": false

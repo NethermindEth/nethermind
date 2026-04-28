@@ -3,7 +3,7 @@
   "Init": {
     "ChainSpecPath": "chainspec/poacore.json",
     "GenesisHash": "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634",
-    "BaseDbPath": "nethermind_db/poacore",
+    "BaseDbPath": "nethermind_db/poacore_validator",
     "LogFileName": "poacore_validator.log",
     "MemoryHint": 768000000
   },
