@@ -37,6 +37,8 @@ namespace Nethermind.TxPool
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
 
+        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) => [];
+
         public void AddPeer(ITxPoolPeer peer) { }
 
         public void RemovePeer(PublicKey nodeId) { }

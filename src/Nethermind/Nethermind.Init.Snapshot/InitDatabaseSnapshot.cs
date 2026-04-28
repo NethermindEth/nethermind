@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Net;
 using System.Security.Cryptography;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Core.Extensions;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -12,11 +13,14 @@ using Nethermind.Logging;
 namespace Nethermind.Init.Snapshot;
 
 /// <summary>
-/// Extends <see cref="InitDatabase"/> to optionally bootstrap the database from a
-/// remote snapshot before the node starts. The download is resumable and idempotent:
-/// a checkpoint file tracks progress so that restarts skip already-completed stages.
+/// Optionally bootstraps the database from a remote snapshot before the node starts.
+/// The download is resumable and idempotent: a checkpoint file tracks progress so that
+/// restarts skip already-completed stages.
 /// </summary>
-public class InitDatabaseSnapshot(INethermindApi api) : InitDatabase
+[RunnerStepDependencies(
+    dependencies: [],
+    dependents: [typeof(InitializeBlockTree), typeof(DatabaseMigrations), typeof(StartLogIndex)])]
+public class InitDatabaseSnapshot(INethermindApi api) : IStep
 {
     private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
@@ -26,12 +30,10 @@ public class InitDatabaseSnapshot(INethermindApi api) : InitDatabase
 
     private readonly ILogger _logger = api.LogManager.GetClassLogger<InitDatabaseSnapshot>();
 
-    public override async Task Execute(CancellationToken cancellationToken)
+    public async Task Execute(CancellationToken cancellationToken)
     {
         if (!IsInMemoryOrReadOnlyMode())
             await InitDbFromSnapshotAsync(cancellationToken).ConfigureAwait(false);
-
-        await base.Execute(cancellationToken).ConfigureAwait(false);
     }
 
     private bool IsInMemoryOrReadOnlyMode() =>
