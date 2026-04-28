@@ -34,8 +34,10 @@ public class TestingRpcModule(
     IBlockFinder blockFinder,
     IBlockTree blockTree,
     ILogManager logManager)
-    : ITestingRpcModule
+    : ITestingRpcModule, IDisposable
 {
+    public void Dispose() => _commitLock.Dispose();
+
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
 
     public async Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
