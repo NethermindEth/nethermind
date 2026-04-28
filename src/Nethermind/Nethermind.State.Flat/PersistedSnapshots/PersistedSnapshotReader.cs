@@ -257,10 +257,10 @@ public static class PersistedSnapshotReader
 
     // --- Enumerables and enumerators ---
 
-    public readonly ref struct SelfDestructEnumerable(ReadOnlySpan<byte> data)
+    public readonly ref struct SelfDestructEnumerable(PersistedSnapshot snapshot)
     {
-        private readonly ReadOnlySpan<byte> _data = data;
-        public readonly SelfDestructEnumerator GetEnumerator() => new(_data);
+        private readonly PersistedSnapshot _snapshot = snapshot;
+        public readonly SelfDestructEnumerator GetEnumerator() => new(_snapshot);
     }
 
     public ref struct SelfDestructEnumerator : IDisposable
@@ -268,9 +268,10 @@ public static class PersistedSnapshotReader
         private readonly KeyValuePair<AddressAsKey, bool>[] _entries;
         private int _index;
 
-        public SelfDestructEnumerator(ReadOnlySpan<byte> snapshotData)
+        public SelfDestructEnumerator(PersistedSnapshot snapshot)
         {
             _index = -1;
+            ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
             Hsst.Hsst outer = new(snapshotData);
             if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
             {
@@ -279,8 +280,9 @@ public static class PersistedSnapshotReader
             }
 
             List<KeyValuePair<AddressAsKey, bool>> list = [];
+            Hsst.IHsstReadahead? readahead = snapshot.CreateColumnReadahead(PersistedSnapshot.AccountColumnTag);
             Hsst.Hsst addressLevel = new(column);
-            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator();
+            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator(readahead);
             while (addrEnum.MoveNext())
             {
                 Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
@@ -301,10 +303,10 @@ public static class PersistedSnapshotReader
         public readonly void Dispose() { }
     }
 
-    public readonly ref struct AccountEnumerable(ReadOnlySpan<byte> data)
+    public readonly ref struct AccountEnumerable(PersistedSnapshot snapshot)
     {
-        private readonly ReadOnlySpan<byte> _data = data;
-        public readonly AccountEnumerator GetEnumerator() => new(_data);
+        private readonly PersistedSnapshot _snapshot = snapshot;
+        public readonly AccountEnumerator GetEnumerator() => new(_snapshot);
     }
 
     public ref struct AccountEnumerator : IDisposable
@@ -312,9 +314,10 @@ public static class PersistedSnapshotReader
         private readonly KeyValuePair<AddressAsKey, Account?>[] _entries;
         private int _index;
 
-        public AccountEnumerator(ReadOnlySpan<byte> snapshotData)
+        public AccountEnumerator(PersistedSnapshot snapshot)
         {
             _index = -1;
+            ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
             Hsst.Hsst outer = new(snapshotData);
             if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
             {
@@ -323,8 +326,9 @@ public static class PersistedSnapshotReader
             }
 
             List<KeyValuePair<AddressAsKey, Account?>> list = [];
+            Hsst.IHsstReadahead? readahead = snapshot.CreateColumnReadahead(PersistedSnapshot.AccountColumnTag);
             Hsst.Hsst addressLevel = new(column);
-            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator();
+            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator(readahead);
             while (addrEnum.MoveNext())
             {
                 Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
@@ -347,10 +351,10 @@ public static class PersistedSnapshotReader
         public readonly void Dispose() { }
     }
 
-    public readonly ref struct StorageEnumerable(ReadOnlySpan<byte> data)
+    public readonly ref struct StorageEnumerable(PersistedSnapshot snapshot)
     {
-        private readonly ReadOnlySpan<byte> _data = data;
-        public readonly StorageEnumerator GetEnumerator() => new(_data);
+        private readonly PersistedSnapshot _snapshot = snapshot;
+        public readonly StorageEnumerator GetEnumerator() => new(_snapshot);
     }
 
     public ref struct StorageEnumerator : IDisposable
@@ -358,9 +362,10 @@ public static class PersistedSnapshotReader
         private readonly KeyValuePair<(AddressAsKey, UInt256), SlotValue?>[] _entries;
         private int _index;
 
-        public StorageEnumerator(ReadOnlySpan<byte> snapshotData)
+        public StorageEnumerator(PersistedSnapshot snapshot)
         {
             _index = -1;
+            ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
             Hsst.Hsst outer = new(snapshotData);
             if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
             {
@@ -369,8 +374,9 @@ public static class PersistedSnapshotReader
             }
 
             List<KeyValuePair<(AddressAsKey, UInt256), SlotValue?>> list = [];
+            Hsst.IHsstReadahead? readahead = snapshot.CreateColumnReadahead(PersistedSnapshot.AccountColumnTag);
             Hsst.Hsst addressLevel = new(column);
-            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator();
+            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator(readahead);
             while (addrEnum.MoveNext())
             {
                 Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
@@ -432,7 +438,7 @@ public static class PersistedSnapshotReader
             if (outer.TryGet(PersistedSnapshot.StateTopNodesTag, out ReadOnlySpan<byte> topColumn))
             {
                 Hsst.Hsst hsst = new(topColumn);
-                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
+                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator(snapshot.CreateColumnReadahead(PersistedSnapshot.StateTopNodesTag));
                 while (e.MoveNext())
                 {
                     Hsst.Hsst.KeyValueEntry entry = e.Current;
@@ -447,7 +453,7 @@ public static class PersistedSnapshotReader
             if (outer.TryGet(PersistedSnapshot.StateNodeTag, out ReadOnlySpan<byte> compactColumn))
             {
                 Hsst.Hsst hsst = new(compactColumn);
-                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
+                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator(snapshot.CreateColumnReadahead(PersistedSnapshot.StateNodeTag));
                 while (e.MoveNext())
                 {
                     Hsst.Hsst.KeyValueEntry entry = e.Current;
@@ -462,7 +468,7 @@ public static class PersistedSnapshotReader
             if (outer.TryGet(PersistedSnapshot.StateNodeFallbackTag, out ReadOnlySpan<byte> fallbackColumn))
             {
                 Hsst.Hsst hsst = new(fallbackColumn);
-                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
+                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator(snapshot.CreateColumnReadahead(PersistedSnapshot.StateNodeFallbackTag));
                 while (e.MoveNext())
                 {
                     Hsst.Hsst.KeyValueEntry entry = e.Current;
@@ -502,14 +508,15 @@ public static class PersistedSnapshotReader
             // Column 0x07: StorageNode (path ≤15, compact 8-byte key)
             if (outer.TryGet(PersistedSnapshot.StorageNodeTag, out ReadOnlySpan<byte> nodeColumn))
             {
+                Hsst.IHsstReadahead? storageNodeReadahead = snapshot.CreateColumnReadahead(PersistedSnapshot.StorageNodeTag);
                 Hsst.Hsst hashLevel = new(nodeColumn);
-                using Hsst.Hsst.Enumerator hashEnum = hashLevel.GetEnumerator();
+                using Hsst.Hsst.Enumerator hashEnum = hashLevel.GetEnumerator(storageNodeReadahead);
                 while (hashEnum.MoveNext())
                 {
                     Hsst.Hsst.KeyValueEntry hashEntry = hashEnum.Current;
                     Hash256 addressHash = DecodeAddressHash(hashEntry.Key);
                     Hsst.Hsst innerHsst = new(hashEntry.Value);
-                    using Hsst.Hsst.Enumerator pathEnum = innerHsst.GetEnumerator();
+                    using Hsst.Hsst.Enumerator pathEnum = innerHsst.GetEnumerator(storageNodeReadahead);
                     while (pathEnum.MoveNext())
                     {
                         Hsst.Hsst.KeyValueEntry pathEntry = pathEnum.Current;
@@ -524,14 +531,15 @@ public static class PersistedSnapshotReader
             // Column 0x08: StorageNodeFallback (path ≥16, 33-byte key)
             if (outer.TryGet(PersistedSnapshot.StorageNodeFallbackTag, out ReadOnlySpan<byte> fallbackColumn))
             {
+                Hsst.IHsstReadahead? storageFallbackReadahead = snapshot.CreateColumnReadahead(PersistedSnapshot.StorageNodeFallbackTag);
                 Hsst.Hsst hashLevel = new(fallbackColumn);
-                using Hsst.Hsst.Enumerator hashEnum = hashLevel.GetEnumerator();
+                using Hsst.Hsst.Enumerator hashEnum = hashLevel.GetEnumerator(storageFallbackReadahead);
                 while (hashEnum.MoveNext())
                 {
                     Hsst.Hsst.KeyValueEntry hashEntry = hashEnum.Current;
                     Hash256 addressHash = DecodeAddressHash(hashEntry.Key);
                     Hsst.Hsst innerHsst = new(hashEntry.Value);
-                    using Hsst.Hsst.Enumerator pathEnum = innerHsst.GetEnumerator();
+                    using Hsst.Hsst.Enumerator pathEnum = innerHsst.GetEnumerator(storageFallbackReadahead);
                     while (pathEnum.MoveNext())
                     {
                         Hsst.Hsst.KeyValueEntry pathEntry = pathEnum.Current;
