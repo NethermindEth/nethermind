@@ -67,11 +67,17 @@ public class PrecompileCachedCodeInfoRepository(
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            ReadOnlyMemory<byte> effectiveInput = precompile.GetEffectiveInput(inputData);
+            ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
             PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput);
             if (!cache.TryGetValue(key, out Result<byte[]> result))
             {
                 result = precompile.Run(inputData, releaseSpec);
+
+                // no need to spend memory on caching invalid-length inputs
+                // it's fast to check and is the first verification done by a precompile
+                if (result is { IsError: true, Error: Errors.InvalidInputLength })
+                    return result;
+
                 // we need to rebuild the key with data copy as the data can be changed by VM processing
                 // effective-input bounds are expected to remain the same
                 key = new(address, effectiveInput.ToArray());

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -26,6 +27,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     }
     private const string TestFilesDirectory = "PrecompileVectors";
 
+    private static readonly IReleaseSpec DefaultSpec = Prague.Instance;
     protected static readonly TPrecompile Instance = TPrecompile.Instance;
     protected static readonly IEqualityComparer<Result<byte[]>> ResultComparer = new ResultEqComparer();
 
@@ -48,33 +50,69 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     {
         if (this is not TTests) throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(TTests)}");
 
-        IPrecompile precompile = Instance;
-        long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
-        Result<byte[]> result = precompile.Run(testCase.Input, Prague.Instance);
-        (byte[]? output, bool success) = result;
+        byte[] input = testCase.Input;
+        RunTest(input, testCase);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(success, Is.EqualTo(testCase.ExpectedError is null));
-            Assert.That(output, Is.EquivalentTo(testCase.Expected ?? []));
-
-            if (testCase.Gas is not null)
-            {
-                Assert.That(gas, Is.EqualTo(testCase.Gas));
-            }
-        }
+        ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(input);
+        if (!normalized.Span.SequenceEqual(input))
+            RunTest(normalized, testCase, "normalized input should produce same output");
     }
 
     protected void RunTest(string input, string output, bool status)
     {
         byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Instance.Run(inputData, Prague.Instance);
+        byte[] outputData = Convert.FromHexString(output);
+        RunTest(inputData, outputData, status);
+
+        ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(inputData);
+        if (!normalized.Span.SequenceEqual(inputData))
+            RunTest(normalized, outputData, status, "normalized input should produce same output");
+    }
+
+    private static void RunTest(ReadOnlyMemory<byte> input, byte[] output, bool status, string? reason = null)
+    {
+        Result<byte[]> result = Instance.Run(input, DefaultSpec);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
+            Assert.That(result.IsSuccess, Is.EqualTo(status), reason);
+            Assert.That(result.Data, Is.EqualTo(output), reason);
         }
+    }
+
+    private static void RunTest(ReadOnlyMemory<byte> input, TestCase testCase, string? reason = null)
+    {
+        long gas = Instance.BaseGasCost(DefaultSpec) + Instance.DataGasCost(input, DefaultSpec);
+
+        Result<byte[]> result = Instance.Run(input, DefaultSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.EqualTo(testCase.ExpectedError is null), reason);
+            Assert.That(result.Data, Is.EquivalentTo(testCase.Expected ?? []), reason);
+
+            if (testCase.Gas is not null)
+            {
+                Assert.That(gas, Is.EqualTo(testCase.Gas), reason);
+            }
+        }
+
+    }
+
+    protected static void RunEffectiveInputTest(string input, string? trailing = null, IReleaseSpec? spec = null) =>
+        RunEffectiveInputTest(Instance, input, trailing, spec);
+
+    protected static void RunEffectiveInputTest(IPrecompile precompile, string input, string? trailing = null, IReleaseSpec? spec = null)
+    {
+        spec ??= DefaultSpec;
+        ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
+        ReadOnlyMemory<byte> effInput = precompile.NormalizeInput(fullInput);
+
+        Assert.That(effInput.Span.SequenceEqual(fullInput.Span), Is.False);
+        Assert.That(
+            precompile.Run(effInput, spec),
+            Is.EqualTo(precompile.Run(fullInput, spec)).Using(ResultComparer)
+        );
     }
 
     private static string EnsureSafeName(string name) =>
@@ -89,6 +127,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         public bool Equals(Result<byte[]> x, Result<byte[]> y)
         {
             if (x.ResultType != y.ResultType) return false;
+            if (x.Error != y.Error) return false;
             if (x.Data is null && y.Data is null) return true;
             if (x.Data is null || y.Data is null) return false;
             return x.Data.AsSpan().SequenceEqual(y.Data);
@@ -98,6 +137,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         {
             HashCode hash = new();
             hash.Add(obj.ResultType);
+            hash.Add(obj.Error);
             if (obj.Data is not null)
                 hash.AddBytes(obj.Data);
             return hash.ToHashCode();
