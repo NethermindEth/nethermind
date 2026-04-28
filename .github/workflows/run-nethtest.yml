@@ -36,7 +36,7 @@ on:
       workers:
         description: Parallel workers
         required: false
-        default: '4'
+        default: '2'
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -50,7 +50,7 @@ env:
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
   EEST_VERSION: ${{ inputs.eest_version || 'bal@v5.6.0' }}
   EEST_ARCHIVE: ${{ inputs.eest_archive || 'fixtures_bal.tar.gz' }}
-  WORKERS: ${{ inputs.workers || '4' }}
+  WORKERS: ${{ inputs.workers || '2' }}
   FILTER: ${{ inputs.filter || '' }}
 
 defaults:
@@ -225,6 +225,12 @@ jobs:
 
           touch /tmp/nethtest-results.json /tmp/nethtest-stderr.log
 
+          # Named pipe to tee stderr to both console and log file
+          STDERR_PIPE=$(mktemp -u)
+          mkfifo "$STDERR_PIPE"
+          tee /tmp/nethtest-stderr.log < "$STDERR_PIPE" >&2 &
+          TEE_PID=$!
+
           set +e
           dotnet run --no-build --no-launch-profile -c Release \
             --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
@@ -235,8 +241,10 @@ jobs:
             --neverTrace \
             $FILTER_ARG \
             > /tmp/nethtest-results.json \
-            2> /tmp/nethtest-stderr.log
+            2> "$STDERR_PIPE"
           rc=$?
+          wait $TEE_PID 2>/dev/null || true
+          rm -f "$STDERR_PIPE"
           set -e
 
           echo "Exit code: $rc"
