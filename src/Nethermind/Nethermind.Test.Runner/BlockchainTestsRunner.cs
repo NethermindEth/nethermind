@@ -102,14 +102,22 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
             {
                 test.ChainId = chainId;
 
-                EthereumTestResult result = await RunTest(test, tracer: tracer);
-                testResults.Add(result);
-                if (!jsonOutput && !suppressOutput)
+                try
                 {
-                    if (result.Pass)
-                        WriteGreen("PASS");
-                    else
-                        WriteRed("FAIL");
+                    EthereumTestResult result = await RunTest(test, tracer: tracer);
+                    testResults.Add(result);
+                    if (!jsonOutput && !suppressOutput)
+                    {
+                        if (result.Pass)
+                            WriteGreen("PASS");
+                        else
+                            WriteRed("FAIL");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    testResults.Add(new EthereumTestResult(test.Name, test.ForkName, ex.Message));
+                    if (!jsonOutput && !suppressOutput) WriteRed($"EXCEPTION: {ex.Message}");
                 }
             }
         }

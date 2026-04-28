@@ -178,12 +178,19 @@ jobs:
 
           if [ "$FAILED" -gt 0 ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "### Failed tests" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Failures by error type" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
+              | head -30 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "<details><summary>Failed test names (first 100)</summary>" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            jq -r '.[] | select(.pass == false) | "\(.name) — \(.error // "no error message")"' /tmp/nethtest-results.json \
-              | head -100 >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name)"' /tmp/nethtest-results.json \
+              | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "</details>" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # Local repro command
