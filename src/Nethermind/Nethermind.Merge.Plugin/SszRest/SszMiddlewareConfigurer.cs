@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.DependencyInjection;
@@ -71,17 +72,28 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
                     encoder));
         }
 
-        void AddGetPayloadBodiesByHash<TResult>(int version, Func<IEnumerable<TResult?>, (byte[] buffer, int length)> encoder) where TResult : class =>
+        void AddGetPayloadBodiesByHash<TResult>(
+            int version,
+            Func<IReadOnlyList<TResult?>, (byte[] buffer, int length)> encoder)
+            where TResult : class =>
             services.AddSingleton<ISszEndpointHandler>(
                 _ => new GetPayloadBodiesByHashSszHandler<TResult>(version,
                     ctx.Resolve<IHandler<IReadOnlyList<Hash256>, IEnumerable<TResult?>>>(),
-                    encoder));
+                    (IEnumerable<TResult?> e) => encoder(e as IReadOnlyList<TResult?> ?? e.ToList())));
 
-        void AddGetPayloadBodiesByRange<TResult>(int version, Func<long, long, Task<ResultWrapper<IEnumerable<TResult?>>>> rangeHandle, Func<IEnumerable<TResult?>, (byte[] buffer, int length)> encoder) where TResult : class =>
+        void AddGetPayloadBodiesByRange<TResult>(
+            int version,
+            Func<long, long, Task<ResultWrapper<IEnumerable<TResult?>>>> rangeHandle,
+            Func<IReadOnlyList<TResult?>, (byte[] buffer, int length)> encoder)
+            where TResult : class =>
             services.AddSingleton<ISszEndpointHandler>(
-                _ => new GetPayloadBodiesByRangeSszHandler<TResult>(version, rangeHandle, encoder));
+                _ => new GetPayloadBodiesByRangeSszHandler<TResult>(version, rangeHandle,
+                    (IEnumerable<TResult?> e) => encoder(e as IReadOnlyList<TResult?> ?? e.ToList())));
 
-        void AddGetBlobsV2(int version, bool allowPartialReturn, Func<IEnumerable<BlobAndProofV2?>, (byte[] buffer, int length)> encoder) =>
+        void AddGetBlobsV2(
+            int version,
+            bool allowPartialReturn,
+            Func<IReadOnlyList<BlobAndProofV2?>, (byte[] buffer, int length)> encoder) =>
             services.AddSingleton<ISszEndpointHandler>(
                 _ => new GetBlobsV2SszHandler(version,
                     allowPartialReturn,

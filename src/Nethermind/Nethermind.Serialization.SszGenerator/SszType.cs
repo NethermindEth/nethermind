@@ -106,7 +106,7 @@ class SszType
             StaticLength = 20,
             IsRefType = true,
             CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
-            CustomDecodeTemplate = "{1} = new Address({0}.ToArray());",
+            CustomDecodeTemplate = "{1} = new Address({0});",
         });
 
         BasicTypes.Add(new SszType
@@ -117,7 +117,7 @@ class SszType
             StaticLength = 256,
             IsRefType = true,
             CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
-            CustomDecodeTemplate = "{1} = new Bloom({0}.ToArray());",
+            CustomDecodeTemplate = "{1} = new Bloom({0});",
         });
     }
 

@@ -472,14 +472,14 @@ internal static class SszCodecHelpers
     private static string RefTypeMerkleizeVector(SszProperty property, string expression, string rootName)
     {
         int itemSize = property.Type.StaticLength;
-        return $@"{{ var __items = {expression} ?? Array.Empty<{property.Type.Name}>(); byte[] __bytes = new byte[__items.Length * {itemSize}]; for (int __i = 0; __i < __items.Length; __i++) {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", $"__bytes.AsSpan(__i * {itemSize}, {itemSize})").Replace("{1}", "__items[__i]")} }} Merkle.Merkleize(out {rootName}, __bytes, {property.Length}); }}";
+        return $@"{{ var __items = {expression} ?? Array.Empty<{property.Type.Name}>(); int __byteLen = __items.Length * {itemSize}; byte[] __bytes = System.Buffers.ArrayPool<byte>.Shared.Rent(__byteLen); try {{ for (int __i = 0; __i < __items.Length; __i++) {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", $"__bytes.AsSpan(__i * {itemSize}, {itemSize})").Replace("{1}", "__items[__i]")} }} Merkle.Merkleize(out {rootName}, __bytes.AsSpan(0, __byteLen), {property.Length}); }} finally {{ System.Buffers.ArrayPool<byte>.Shared.Return(__bytes); }} }}";
     }
 
     private static string RefTypeMerkleizeList(SszProperty property, string expression, string rootName)
     {
         int itemSize = property.Type.StaticLength;
         ulong chunkCount = (ulong)Math.Ceiling((double)property.Limit!.Value * itemSize / 32);
-        return $@"{{ var __items = {expression} ?? Array.Empty<{property.Type.Name}>(); byte[] __bytes = new byte[__items.Length * {itemSize}]; for (int __i = 0; __i < __items.Length; __i++) {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", $"__bytes.AsSpan(__i * {itemSize}, {itemSize})").Replace("{1}", "__items[__i]")} }} Merkle.Merkleize(out {rootName}, __bytes, {chunkCount}); Merkle.MixIn(ref {rootName}, __items.Length); }}";
+        return $@"{{ var __items = {expression} ?? Array.Empty<{property.Type.Name}>(); int __byteLen = __items.Length * {itemSize}; byte[] __bytes = System.Buffers.ArrayPool<byte>.Shared.Rent(__byteLen); try {{ for (int __i = 0; __i < __items.Length; __i++) {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", $"__bytes.AsSpan(__i * {itemSize}, {itemSize})").Replace("{1}", "__items[__i]")} }} Merkle.Merkleize(out {rootName}, __bytes.AsSpan(0, __byteLen), {chunkCount}); Merkle.MixIn(ref {rootName}, __items.Length); }} finally {{ System.Buffers.ArrayPool<byte>.Shared.Return(__bytes); }} }}";
     }
 
     private static string MerkleizeFeedStatement(SszProperty property, string expression) => property.Kind switch

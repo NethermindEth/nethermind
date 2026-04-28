@@ -4,9 +4,8 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.IO;
+using System.IO.Pipelines;
 using System.Net.Mime;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -36,9 +35,7 @@ public sealed class SszMiddleware(
     private readonly CancellationToken _processExitToken = processExitSource.ProcessExit;
 
     // Path: /engine/v{N}/{resource}[/{extra}]
-    private static readonly Regex PathRegex = new(
-        @"^/engine/v(?<version>\d+)/(?<resource>[a-z][a-z\-]*(?:/[a-z][a-z\-]*)*)(?:/(?<extra>[^/]+))?$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private const string EnginePrefix = "/engine/v";
 
     private const int MaxBodySize = 0x1000000;
     private readonly Dictionary<(string Method, string Resource), List<ISszEndpointHandler>> _routes = BuildRoutes(handlers);
@@ -83,22 +80,22 @@ public sealed class SszMiddleware(
             return;
         }
 
-        if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out string resource, out string extra))
+        if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out string pathSegment))
         {
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound, "Unknown SSZ endpoint");
             return;
         }
 
-        if (_logger.IsTrace)
-            _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{resource}" +
-                          (extra.Length > 0 ? "/" + extra : ""));
-
-        if (!TryResolveHandler(ctx.Request.Method, resource, version, out ISszEndpointHandler? handler))
+        if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out string extra))
         {
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{resource}");
+                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment}");
             return;
         }
+
+        if (_logger.IsTrace)
+            _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}" +
+                          (extra.Length > 0 ? "/" + extra : ""));
 
         byte[] body;
         try
@@ -122,43 +119,94 @@ public sealed class SszMiddleware(
         }
     }
 
-    private static bool TryRoute(string path, out int version, out string resource, out string extra)
+    private static bool TryRoute(string path, out int version, out string pathSegment)
     {
         version = 0;
-        resource = string.Empty;
-        extra = string.Empty;
+        pathSegment = string.Empty;
 
-        Match match = PathRegex.Match(path);
-        if (!match.Success) return false;
-        if (!int.TryParse(match.Groups["version"].Value, out version)) return false;
+        ReadOnlySpan<char> span = path.AsSpan();
+        if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            return false;
 
-        resource = match.Groups["resource"].Value.ToLowerInvariant();
-        extra = match.Groups["extra"].Value;
+        span = span[EnginePrefix.Length..];
+
+        int slashPos = span.IndexOf('/');
+        if (slashPos <= 0) return false;
+
+        if (!int.TryParse(span[..slashPos], out version))
+            return false;
+
+        span = span[(slashPos + 1)..];
+        if (span.IsEmpty) return false;
+
+        foreach (char c in span)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c != '-' && c != '/')
+                return false;
+        }
+
+        pathSegment = span.ToString().ToLowerInvariant();
         return true;
     }
 
-    private bool TryResolveHandler(string method, string resource, int version, out ISszEndpointHandler? handler)
+    private bool TryResolveHandler(string method, string pathSegment, int version,
+        out ISszEndpointHandler? handler, out string extra)
     {
-        if (!_routes.TryGetValue((method.ToLowerInvariant(), resource), out List<ISszEndpointHandler>? candidates))
-        {
-            handler = null;
-            return false;
-        }
+        handler = null;
+        extra = string.Empty;
+        string methodLower = method.ToLowerInvariant();
+
         ISszEndpointHandler? fallback = null;
+        string fallbackExtra = string.Empty;
 
-        foreach (ISszEndpointHandler candidate in candidates)
+        foreach (KeyValuePair<(string Method, string Resource), List<ISszEndpointHandler>> kvp in _routes)
         {
-            if (candidate.Version == version)
+            if (kvp.Key.Method != methodLower) continue;
+
+            string resource = kvp.Key.Resource;
+
+            string pathExtra;
+            if (pathSegment.Length == resource.Length &&
+                pathSegment.Equals(resource, StringComparison.Ordinal))
             {
-                handler = candidate;
-                return true;
+                pathExtra = string.Empty;
             }
-            if (candidate.Version is null)
-                fallback = candidate;
+            else if (pathSegment.Length > resource.Length &&
+                     pathSegment[resource.Length] == '/' &&
+                     pathSegment.StartsWith(resource, StringComparison.Ordinal))
+            {
+                pathExtra = pathSegment[(resource.Length + 1)..];
+            }
+            else
+            {
+                continue;
+            }
+
+            foreach (ISszEndpointHandler candidate in kvp.Value)
+            {
+                if (candidate.Version == version)
+                {
+                    handler = candidate;
+                    extra = pathExtra;
+                    return true;
+                }
+
+                if (candidate.Version is null)
+                {
+                    fallback = candidate;
+                    fallbackExtra = pathExtra;
+                }
+            }
         }
 
-        handler = fallback;
-        return handler is not null;
+        if (fallback is not null)
+        {
+            handler = fallback;
+            extra = fallbackExtra;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool IsSszRequest(HttpContext ctx)
@@ -181,26 +229,57 @@ public sealed class SszMiddleware(
 
     private static async Task<byte[]> ReadBodyAsync(HttpContext ctx)
     {
-        if (ctx.Request.ContentLength > MaxBodySize)
+        long? contentLength = ctx.Request.ContentLength;
+        if (contentLength > MaxBodySize)
             throw new InvalidOperationException(
-                $"Request body too large: {ctx.Request.ContentLength} bytes exceeds limit of {MaxBodySize}");
+                $"Request body too large: {contentLength} bytes exceeds limit of {MaxBodySize}");
 
-        using MemoryStream ms = new();
-        byte[] rent = ArrayPool<byte>.Shared.Rent(81920);
+        if (contentLength is > 0)
+        {
+            byte[] exact = new byte[(int)contentLength];
+            await ctx.Request.Body.ReadExactlyAsync(exact, ctx.RequestAborted);
+            return exact;
+        }
+
+        PipeReader reader = ctx.Request.BodyReader;
+        byte[]? result = null;
+        int written = 0;
         try
         {
-            int read;
-            while ((read = await ctx.Request.Body.ReadAsync(rent, ctx.RequestAborted)) > 0)
+            while (true)
             {
-                if (ms.Length + read > MaxBodySize)
+                ReadResult rr = await reader.ReadAsync(ctx.RequestAborted);
+                ReadOnlySequence<byte> seq = rr.Buffer;
+
+                int needed = written + (int)seq.Length;
+                if (needed > MaxBodySize)
                     throw new InvalidOperationException(
                         $"Request body too large: exceeds limit of {MaxBodySize}");
-                ms.Write(rent, 0, read);
-            }
-        }
-        finally { ArrayPool<byte>.Shared.Return(rent); }
 
-        return ms.ToArray();
+                if (result is null)
+                    result = ArrayPool<byte>.Shared.Rent(Math.Max(needed, 4096));
+                else if (result.Length < needed)
+                {
+                    byte[] larger = ArrayPool<byte>.Shared.Rent(needed);
+                    result.AsSpan(0, written).CopyTo(larger);
+                    ArrayPool<byte>.Shared.Return(result);
+                    result = larger;
+                }
+
+                seq.CopyTo(result.AsSpan(written));
+                written += (int)seq.Length;
+                reader.AdvanceTo(seq.End);
+
+                if (rr.IsCompleted) break;
+            }
+
+            return result is null ? [] : result.AsSpan(0, written).ToArray();
+        }
+        finally
+        {
+            if (result is not null) ArrayPool<byte>.Shared.Return(result);
+            await reader.CompleteAsync();
+        }
     }
 }
 

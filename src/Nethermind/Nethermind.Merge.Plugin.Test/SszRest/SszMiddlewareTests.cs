@@ -113,11 +113,15 @@ public class SszMiddlewareTests
             new GetBlobsV2SszHandler(2, allowPartialReturn: false, _getBlobsV2, SszCodec.EncodeGetBlobsV2Response),
             new GetBlobsV2SszHandler(3, allowPartialReturn: true,  _getBlobsV2, SszCodec.EncodeGetBlobsV3Response),
 
-            new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByHashV1, SszCodec.EncodePayloadBodiesV1Response),
-            new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByHashV2, SszCodec.EncodePayloadBodiesV2Response),
+            new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByHashV1,
+                bodies => SszCodec.EncodePayloadBodiesV1Response((IReadOnlyList<ExecutionPayloadBodyV1Result?>)bodies)),
+            new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByHashV2,
+                bodies => SszCodec.EncodePayloadBodiesV2Response((IReadOnlyList<ExecutionPayloadBodyV2Result?>)bodies)),
 
-            new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByRangeV1.Handle, SszCodec.EncodePayloadBodiesV1Response),
-            new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByRangeV2.Handle, SszCodec.EncodePayloadBodiesV2Response),
+            new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByRangeV1.Handle,
+                bodies => SszCodec.EncodePayloadBodiesV1Response((IReadOnlyList<ExecutionPayloadBodyV1Result?>)bodies)),
+            new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByRangeV2.Handle,
+                bodies => SszCodec.EncodePayloadBodiesV2Response((IReadOnlyList<ExecutionPayloadBodyV2Result?>)bodies)),
 
             new ClientVersionSszHandler(),
             new CapabilitiesSszHandler(_capabilities),
@@ -143,6 +147,7 @@ public class SszMiddlewareTests
         ctx.Response.Body = new MemoryStream();
         return ctx;
     }
+
     private static DefaultHttpContext MakePostContext(string path, byte[] body, int port = AuthenticatedPort)
     {
         DefaultHttpContext ctx = MakeBaseContext("POST", path, port);

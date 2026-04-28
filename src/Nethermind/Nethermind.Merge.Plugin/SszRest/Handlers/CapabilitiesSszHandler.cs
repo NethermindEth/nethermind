@@ -22,6 +22,7 @@ public sealed class CapabilitiesSszHandler(IHandler<IEnumerable<string>, IEnumer
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body)
     {
         string[] caps = SszCodec.DecodeCapabilitiesRequest(body);
-        await WriteSszResultAsync(ctx, _handler.Handle(caps), SszCodec.EncodeCapabilitiesResponse);
+        await WriteSszResultAsync(ctx, _handler.Handle(caps),
+            result => SszCodec.EncodeCapabilitiesResponse((IReadOnlyList<string>)result));
     }
 }

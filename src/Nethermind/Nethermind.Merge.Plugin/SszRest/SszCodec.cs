@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -52,9 +53,15 @@ public static class SszCodec
         {
             string hex = resp.PayloadId.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
                 ? resp.PayloadId[2..] : resp.PayloadId;
-            byte[] raw = Convert.FromHexString(hex);
+
             byte[] padded = new byte[8];
-            raw.AsSpan(0, Math.Min(8, raw.Length)).CopyTo(padded);
+            try
+            {
+                byte[] decoded = Convert.FromHexString(hex);
+                decoded.AsSpan(0, Math.Min(decoded.Length, 8)).CopyTo(padded);
+            }
+            catch (FormatException) { }
+
             pidList = [new SszBytes8 { Bytes = padded }];
         }
 
@@ -146,7 +153,7 @@ public static class SszCodec
     public static (byte[] buffer, int length) EncodeGetPayloadV3Response(GetPayloadV3Result? r)
         => EncodePooled(new GetPayloadResponseV3Wire
         {
-            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = BlobsBundleToV1Wire(r.BlobsBundle),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder
@@ -155,7 +162,7 @@ public static class SszCodec
     public static (byte[] buffer, int length) EncodeGetPayloadV4Response(GetPayloadV4Result? r)
         => EncodePooled(new GetPayloadResponseV4Wire
         {
-            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = BlobsBundleToV1Wire(r.BlobsBundle),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -165,7 +172,7 @@ public static class SszCodec
     public static (byte[] buffer, int length) EncodeGetPayloadV5Response(GetPayloadV5Result? r)
         => EncodePooled(new GetPayloadResponseV5Wire
         {
-            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = BlobsBundleToV2Wire(r.BlobsBundle),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -175,7 +182,7 @@ public static class SszCodec
     public static (byte[] buffer, int length) EncodeGetPayloadV6Response(GetPayloadV6Result? r)
         => EncodePooled(new GetPayloadResponseV6Wire
         {
-            ExecutionPayload = ExecutionPayloadV4Ssz.Wrap((ExecutionPayloadV4)r!.ExecutionPayload),
+            ExecutionPayload = ExecutionPayloadV4Ssz.Wrap(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = BlobsBundleToV2Wire(r.BlobsBundle),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -192,32 +199,44 @@ public static class SszCodec
         return result;
     }
 
-    public static (byte[] buffer, int length) EncodeGetBlobsV1Response(IEnumerable<BlobAndProofV1?> blobs)
+    public static (byte[] buffer, int length) EncodeGetBlobsV1Response(IReadOnlyList<BlobAndProofV1?> blobs)
     {
-        List<BlobAndProofV1Wire> list = [];
-        foreach (BlobAndProofV1? b in blobs)
-            if (b is not null) list.Add(new() { Blob = b.Blob, Proof = b.Proof });
-        return EncodePooled(new GetBlobsV1ResponseWire { BlobsAndProofs = list.ToArray() });
-    }
-
-    public static (byte[] buffer, int length) EncodeGetBlobsV2Response(IEnumerable<BlobAndProofV2?> blobs)
-    {
-        List<BlobAndProofV2Wire> list = [];
-        foreach (BlobAndProofV2? b in blobs)
-            if (b is not null) list.Add(new() { Blob = b.Blob, Proofs = KzgProofsToWire(b.Proofs) });
-        return EncodePooled(new GetBlobsV2ResponseWire { BlobsAndProofs = list.ToArray() });
-    }
-
-    public static (byte[] buffer, int length) EncodeGetBlobsV3Response(IEnumerable<BlobAndProofV2?> blobs)
-    {
-        List<NullableBlobAndProofV2Wire> list = [];
-        foreach (BlobAndProofV2? b in blobs)
+        int count = blobs.Count;
+        BlobAndProofV1Wire[] arr = new BlobAndProofV1Wire[count];
+        int filled = 0;
+        for (int i = 0; i < count; i++)
         {
-            list.Add(b is null
-                ? new() { BlobAndProof = [] }
-                : new() { BlobAndProof = [new() { Blob = b.Blob, Proofs = KzgProofsToWire(b.Proofs) }] });
+            BlobAndProofV1? b = blobs[i];
+            if (b is not null) arr[filled++] = new() { Blob = b.Blob, Proof = b.Proof };
         }
-        return EncodePooled(new GetBlobsV3ResponseWire { BlobsAndProofs = list.ToArray() });
+        return EncodePooled(new GetBlobsV1ResponseWire { BlobsAndProofs = arr[..filled] });
+    }
+
+    public static (byte[] buffer, int length) EncodeGetBlobsV2Response(IReadOnlyList<BlobAndProofV2?> blobs)
+    {
+        int count = blobs.Count;
+        BlobAndProofV2Wire[] arr = new BlobAndProofV2Wire[count];
+        int filled = 0;
+        for (int i = 0; i < count; i++)
+        {
+            BlobAndProofV2? b = blobs[i];
+            if (b is not null) arr[filled++] = new() { Blob = b.Blob, Proofs = KzgProofsToWire(b.Proofs) };
+        }
+        return EncodePooled(new GetBlobsV2ResponseWire { BlobsAndProofs = arr[..filled] });
+    }
+
+    public static (byte[] buffer, int length) EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs)
+    {
+        int count = blobs.Count;
+        NullableBlobAndProofV2Wire[] arr = new NullableBlobAndProofV2Wire[count];
+        for (int i = 0; i < count; i++)
+        {
+            BlobAndProofV2? b = blobs[i];
+            arr[i] = b is null
+                ? new() { BlobAndProof = [] }
+                : new() { BlobAndProof = [new() { Blob = b.Blob, Proofs = KzgProofsToWire(b.Proofs) }] };
+        }
+        return EncodePooled(new GetBlobsV3ResponseWire { BlobsAndProofs = arr });
     }
 
     public static Hash256[] DecodeGetPayloadBodiesByHashRequest(ReadOnlySpan<byte> buf)
@@ -232,42 +251,46 @@ public static class SszCodec
         return ((long)wire.Start, (long)wire.Count);
     }
 
-    public static (byte[] buffer, int length) EncodePayloadBodiesV1Response(IEnumerable<ExecutionPayloadBodyV1Result?> bodies)
+    public static (byte[] buffer, int length) EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies)
     {
-        List<NullablePayloadBodyV1Wire> list = [];
-        foreach (ExecutionPayloadBodyV1Result? b in bodies)
+        int count = bodies.Count;
+        NullablePayloadBodyV1Wire[] arr = new NullablePayloadBodyV1Wire[count];
+        for (int i = 0; i < count; i++)
         {
-            if (b is null) { list.Add(new() { Body = [] }); continue; }
-            list.Add(new()
+            ExecutionPayloadBodyV1Result? b = bodies[i];
+            if (b is null) { arr[i] = new() { Body = [] }; continue; }
+            arr[i] = new()
             {
                 Body = [new()
                 {
-                    Transactions = TxsToWire(b.Transactions is byte[][] txArr ? txArr : [.. b.Transactions]),
-                    Withdrawals = WithdrawalsToWire(b.Withdrawals is null ? null : [.. b.Withdrawals])
+                    Transactions = TxsToWire((byte[][])b.Transactions),
+                    Withdrawals = WithdrawalsToWire((Withdrawal[]?)b.Withdrawals)
                 }]
-            });
+            };
         }
-        return EncodePooled(new PayloadBodiesV1ResponseWire { PayloadBodies = list.ToArray() });
+        return EncodePooled(new PayloadBodiesV1ResponseWire { PayloadBodies = arr });
     }
 
-    public static (byte[] buffer, int length) EncodePayloadBodiesV2Response(IEnumerable<ExecutionPayloadBodyV2Result?> bodies)
+    public static (byte[] buffer, int length) EncodePayloadBodiesV2Response(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies)
     {
-        List<NullablePayloadBodyV2Wire> list = [];
-        foreach (ExecutionPayloadBodyV2Result? b in bodies)
+        int count = bodies.Count;
+        NullablePayloadBodyV2Wire[] arr = new NullablePayloadBodyV2Wire[count];
+        for (int i = 0; i < count; i++)
         {
-            if (b is null) { list.Add(new() { Body = [] }); continue; }
-            list.Add(new()
+            ExecutionPayloadBodyV2Result? b = bodies[i];
+            if (b is null) { arr[i] = new() { Body = [] }; continue; }
+            arr[i] = new()
             {
                 Body = [new()
                 {
-                    Transactions = TxsToWire(b.Transactions is byte[][] txArr2 ? txArr2 : [.. b.Transactions]),
-                    Withdrawals = WithdrawalsToWire(b.Withdrawals is null ? null : [.. b.Withdrawals]),
+                    Transactions = TxsToWire((byte[][])b.Transactions),
+                    Withdrawals = WithdrawalsToWire((Withdrawal[]?)b.Withdrawals),
                     BlockAccessList = b.BlockAccessList is not null
                         ? [new SszTransaction { Data = b.BlockAccessList }] : []
                 }]
-            });
+            };
         }
-        return EncodePooled(new PayloadBodiesV2ResponseWire { PayloadBodies = list.ToArray() });
+        return EncodePooled(new PayloadBodiesV2ResponseWire { PayloadBodies = arr });
     }
 
     public static TransitionConfigurationV1 DecodeTransitionConfigurationRequest(ReadOnlySpan<byte> buf)
@@ -293,12 +316,13 @@ public static class SszCodec
             }
         });
 
-    public static (byte[] buffer, int length) EncodeCapabilitiesResponse(IEnumerable<string> caps)
+    public static (byte[] buffer, int length) EncodeCapabilitiesResponse(IReadOnlyList<string> caps)
     {
-        List<SszCapabilityName> list = [];
-        foreach (string c in caps)
-            list.Add(new() { Name = Encoding.UTF8.GetBytes(c) });
-        return EncodePooled(new ExchangeCapabilitiesResponseWire { Capabilities = list.ToArray() });
+        int count = caps.Count;
+        SszCapabilityName[] arr = new SszCapabilityName[count];
+        for (int i = 0; i < count; i++)
+            arr[i] = new() { Name = Encoding.UTF8.GetBytes(caps[i]) };
+        return EncodePooled(new ExchangeCapabilitiesResponseWire { Capabilities = arr });
     }
 
     public static string[] DecodeCapabilitiesRequest(ReadOnlySpan<byte> buf)
@@ -425,7 +449,13 @@ public static class SszCodec
     {
         if (hashes is null || hashes.Length == 0) return [];
         byte[]?[] result = new byte[]?[hashes.Length];
-        for (int i = 0; i < result.Length; i++) result[i] = hashes[i].Bytes.ToArray();
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            byte[] bytes = new byte[32];
+            ValueHash256 vh = hashes[i].ValueHash256;
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref vh, 1)).CopyTo(bytes);
+            result[i] = bytes;
+        }
         return result;
     }
 
