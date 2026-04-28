@@ -117,10 +117,10 @@ public abstract class BlockchainTestBase
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarmStateOnBlockProcessing = false;
-        // BAL parallel execution throws unhandled exceptions from background threads
-        // that crash the process. Disable until the BlockAccessListManager is fixed.
-        blocksConfig.ParallelExecution = ParallelExecutionOverride ?? false;
-        blocksConfig.ParallelExecutionBatchRead = false;
+        if (ParallelExecutionOverride.HasValue)
+        {
+            blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
+        }
 
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
         {
