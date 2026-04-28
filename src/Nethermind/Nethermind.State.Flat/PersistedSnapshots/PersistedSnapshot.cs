@@ -135,11 +135,22 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     // --- Snapshot-matching enumerable properties ---
 
-    public PersistedSnapshotReader.SelfDestructEnumerable SelfDestructedStorageAddresses => new(GetSpan());
-    public PersistedSnapshotReader.AccountEnumerable Accounts => new(GetSpan());
-    public PersistedSnapshotReader.StorageEnumerable Storages => new(GetSpan());
+    public PersistedSnapshotReader.SelfDestructEnumerable SelfDestructedStorageAddresses => new(this);
+    public PersistedSnapshotReader.AccountEnumerable Accounts => new(this);
+    public PersistedSnapshotReader.StorageEnumerable Storages => new(this);
     public PersistedSnapshotReader.StateNodeEnumerable StateNodes => new(this);
     public PersistedSnapshotReader.StorageNodeEnumerable StorageNodes => new(this);
+
+    internal Hsst.IHsstReadahead? CreateColumnReadahead(ReadOnlySpan<byte> tag)
+    {
+        Hsst.Hsst outer = new(GetSpan());
+        if (!outer.TryGetBound(tag, out int columnOffset, out int columnLength))
+            return null;
+        return new ArenaReadahead(_reservation, columnOffset, columnLength);
+    }
+
+    internal Hsst.IHsstReadahead CreateColumnReadahead(int columnOffset, int columnLength)
+        => new ArenaReadahead(_reservation, columnOffset, columnLength);
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();
 
