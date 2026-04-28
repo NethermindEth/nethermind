@@ -84,8 +84,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 {
     private const int MaxBatchLookupBlocks = 192 * 1024;
 
-    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
     private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded = ResultWrapper<UInt256?>.Fail("lookback limit exceeded");
+
+    private readonly ILogger _taikoLogger = logManager.GetClassLogger<TaikoEngineRpcModule>();
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
 
@@ -391,13 +392,16 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                return TaikoExtendedEthModule.L1OriginNotFound;
+                if (_taikoLogger.IsWarn) _taikoLogger.Warn($"taikoAuth_lastL1OriginByBatchID: no block found for batch {batchId}");
+                return TaikoExtendedEthModule.L1OriginByBatchIdNullResult;
             }
         }
 
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
+        if (origin is null && _taikoLogger.IsWarn)
+            _taikoLogger.Warn($"taikoAuth_lastL1OriginByBatchID: block {blockId} found for batch {batchId} but no L1 origin entry");
 
-        return origin is null ? TaikoExtendedEthModule.L1OriginNotFound : ResultWrapper<L1Origin?>.Success(origin);
+        return origin is null ? TaikoExtendedEthModule.L1OriginByBatchIdNullResult : ResultWrapper<L1Origin?>.Success(origin);
     }
 
     public Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId)
@@ -408,7 +412,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                return BlockIdNotFound;
+                if (_taikoLogger.IsWarn) _taikoLogger.Warn($"taikoAuth_lastBlockIDByBatchID: no block found for batch {batchId}");
+                return TaikoExtendedEthModule.BlockIdByBatchIdNullResult;
             }
         }
 

@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
@@ -15,10 +16,25 @@ namespace Nethermind.Taiko.Rpc;
 public class TaikoExtendedEthModule(
     ISyncConfig syncConfig,
     IL1OriginStore l1OriginStore,
-    IBlockFinder blockFinder) : ITaikoExtendedEthRpcModule
+    IBlockFinder blockFinder,
+    ILogManager logManager) : ITaikoExtendedEthRpcModule
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<TaikoExtendedEthModule>();
+
     internal static readonly ResultWrapper<L1Origin?> L1OriginNotFound = ResultWrapper<L1Origin?>.Fail("not found");
-    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
+
+    /// <summary>
+    /// Cached "not found" responses for the batch-ID lookups. Per alethia-reth and the Go
+    /// taiko-client expectations, missing batch entries are reported as a successful JSON-RPC
+    /// response with a null result (rather than a -32603 error), so a freshly-started node that
+    /// has not yet seen any L1 batches does not flood the logs with errors during normal
+    /// driver polling.
+    /// </summary>
+    internal static readonly ResultWrapper<L1Origin?> L1OriginByBatchIdNullResult = ResultWrapper<L1Origin?>.Success(null);
+    /// <summary>
+    /// Cached null-result for <c>taiko_lastBlockIDByBatchID</c>. See <see cref="L1OriginByBatchIdNullResult"/>.
+    /// </summary>
+    internal static readonly ResultWrapper<UInt256?> BlockIdByBatchIdNullResult = ResultWrapper<UInt256?>.Success(null);
 
     /// <summary>
     /// Maximum number of blocks to scan backwards when the batch→block index is missing.
@@ -60,13 +76,16 @@ public class TaikoExtendedEthModule(
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                return L1OriginNotFound;
+                if (_logger.IsWarn) _logger.Warn($"taiko_lastL1OriginByBatchID: no block found for batch {batchId}");
+                return L1OriginByBatchIdNullResult;
             }
         }
 
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
+        if (origin is null && _logger.IsWarn)
+            _logger.Warn($"taiko_lastL1OriginByBatchID: block {blockId} found for batch {batchId} but no L1 origin entry");
 
-        return origin is null ? L1OriginNotFound : ResultWrapper<L1Origin?>.Success(origin);
+        return origin is null ? L1OriginByBatchIdNullResult : ResultWrapper<L1Origin?>.Success(origin);
     }
 
     public Task<ResultWrapper<UInt256?>> taiko_lastBlockIDByBatchID(UInt256 batchId)
@@ -77,7 +96,8 @@ public class TaikoExtendedEthModule(
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                return BlockIdNotFound;
+                if (_logger.IsWarn) _logger.Warn($"taiko_lastBlockIDByBatchID: no block found for batch {batchId}");
+                return BlockIdByBatchIdNullResult;
             }
         }
 

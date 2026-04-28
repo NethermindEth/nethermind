@@ -8,6 +8,7 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
@@ -142,12 +143,15 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     ///     them when present; we only copy them across when non-null.</description></item>
     ///   <item><description><see cref="ExecutionPayload.ParentBeaconBlockRoot"/> is
     ///     <c>[JsonIgnore]</c> on the base type and therefore always arrives <c>null</c>.
-    ///     Pin it to <see cref="Keccak.Zero"/> whenever EIP-4788 is active at the block's
-    ///     timestamp (Taiko L2 has no beacon chain root).</description></item>
+    ///     Pin it to <see cref="Keccak.Zero"/> only from Unzen onwards (Taiko L2 has no
+    ///     beacon chain root, but pre-Unzen Shasta blocks must leave the field absent so
+    ///     the canonical-chain hash matches what the driver expects).</description></item>
     ///   <item><description><c>RequestsHash</c> is not a payload field at all. Pin it to
-    ///     <see cref="ExecutionRequestExtensions.EmptyRequestsHash"/> whenever EIP-7685 is
-    ///     active (Taiko L2 has no execution-layer requests).</description></item>
+    ///     <see cref="ExecutionRequestExtensions.EmptyRequestsHash"/> only from Unzen
+    ///     onwards for the same reason.</description></item>
     /// </list>
+    /// Gating these on Unzen (rather than the underlying EIP-4788 / EIP-7685 timestamps)
+    /// matches alethia-reth's <c>normalize_parent_beacon_block_root</c>.
     /// The spec provider is attached by <see cref="Rpc.TaikoEngineRpcModule"/> before the
     /// request is dispatched to the base handler.
     /// </summary>
@@ -158,13 +162,9 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
 
         IReleaseSpec? spec = _specProvider?.GetSpec(new ForkActivation(header.Number, header.Timestamp));
 
-        if (spec?.IsEip4788Enabled == true)
+        if (spec is ITaikoReleaseSpec { IsUnzenEnabled: true })
         {
             header.ParentBeaconBlockRoot ??= Keccak.Zero;
-        }
-
-        if (spec?.RequestsEnabled == true)
-        {
             header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
         }
     }
