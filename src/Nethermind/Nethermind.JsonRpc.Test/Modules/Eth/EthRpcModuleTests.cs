@@ -1456,7 +1456,7 @@ public partial class EthRpcModuleTests
 
         // Contract: PUSH1 1, SLOAD, POP, PUSH1 2, SLOAD, POP, STOP — touches 2 cold storage slots.
         // optimize=true → AL = {0xc200...: [slot1, slot2]} (sender excluded, it has no storage).
-        // Pass 1 (cold, no AL): 21000 + 2×2100 + 10 ops ≈ 25,210 gas — fits in 0x6A50 (27,216).
+        // Pass 1 (cold, no AL): 21000 + 12 + 4200 + 4 = 25,216 gas — fits in 0x6A50 (27,216).
         // Pass 2 (warm + AL intrinsic 6200): intrinsic=27,200, 16 gas remain for execution → OOG on SLOAD.
         const string contractAddr = "0xc200000000000000000000000000000000000000";
         object stateOverride = JsonSerializer.Deserialize<object>(
@@ -1470,7 +1470,7 @@ public partial class EthRpcModuleTests
         JToken result = JToken.Parse(serialized)["result"]!;
         result["error"]!.Value<string>().Should().Be("out of gas");
         long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
-        gasUsed.Should().BeLessOrEqualTo(0x6A50);
+        gasUsed.Should().Be(0x6A50);
         result["accessList"]!.ToArray().Should().NotBeEmpty();
     }
 
@@ -1511,7 +1511,7 @@ public partial class EthRpcModuleTests
         JToken result = JToken.Parse(serialized)["result"]!;
         result["error"]!.Value<string>().Should().Be("revert");
         long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
-        gasUsed.Should().BeGreaterThan(0);
+        gasUsed.Should().Be(77496);
         // AL must contain the newly created contract address with storage key 0x81.
         JToken[] accessList = result["accessList"]!.ToArray();
         accessList.Should().HaveCount(1);

@@ -167,47 +167,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
-                IReleaseSpec spec = GetSpec(header);
-
-                (UInt256 gasUsed, string? error) = GetResultGas(tx, result, spec);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: gasUsed,
-                    error);
+                    gasUsed: (UInt256)result.GasSpent,
+                    result.Error);
 
                 return result.InputError
                     ? ResultWrapper<AccessListResultForRpc?>.Fail(result.Error!, ErrorCodes.InvalidInput)
                     : ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
-            }
-
-            private static (UInt256 gas, string? error) GetResultGas(Transaction transaction, CallOutput result, IReleaseSpec spec)
-            {
-                long gas = result.GasSpent;
-                long operationGas = result.OperationGas;
-                if (result.AccessList is not null)
-                {
-                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
-                    transaction.AccessList = result.AccessList;
-                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
-                    long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
-                    if (gas > operationGas)
-                    {
-                        if (gas - operationGas < updatedAccessListCost) gas = operationGas + updatedAccessListCost;
-                    }
-                    else
-                    {
-                        gas += updatedAccessListCost;
-                    }
-                }
-
-                // The access list intrinsic cost may push the adjusted gas over the caller's budget
-                // even though the discovery simulation (which ran without the list) succeeded.
-                // Cap at the gas limit and propagate out-of-gas, matching Geth behaviour.
-                if (result.Error is null && gas > transaction.GasLimit)
-                    return ((UInt256)transaction.GasLimit, "out of gas");
-
-                return ((UInt256)gas, result.Error);
             }
         }
     }

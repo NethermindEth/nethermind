@@ -36,6 +36,7 @@ using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
@@ -220,29 +221,67 @@ namespace Nethermind.Facade
 
         public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            AccessTxTracer accessTxTracer = optimize
-                ? new(tx.SenderAddress,
-                    tx.GetRecipient(tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : 0), header.GasBeneficiary)
-                : new(header.GasBeneficiary);
-
-            CallOutputTracer callOutputTracer = new();
-
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
             components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
-            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
-                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
-
-            return new CallOutput
+            // Convergence loop: mirrors Geth's AccessList() — run with the current AL, discover touched
+            // slots, repeat until the AL stabilises. Gas and error come from the final (warm) run,
+            // so cold-read overcounting is eliminated and OOG due to AL intrinsic cost is surfaced.
+            AccessList? prevAl = null;
+            while (true)
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error),
-                GasSpent = accessTxTracer.GasSpent,
-                OperationGas = callOutputTracer.OperationGas,
-                OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted,
-                AccessList = accessTxTracer.AccessList,
-            };
+                cancellationToken.ThrowIfCancellationRequested();
+
+                tx.AccessList = prevAl;
+                AccessTxTracer accessTracer = optimize
+                    ? new(tx.SenderAddress,
+                        tx.GetRecipient(tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : 0),
+                        header.GasBeneficiary)
+                    : new(header.GasBeneficiary);
+                CallOutputTracer outputTracer = new();
+
+                TransactionResult result = TryCallAndRestore(components, header, tx, false,
+                    new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken));
+
+                // TransactionExecuted is false only for input validation errors (insufficient balance,
+                // nonce mismatch, gas below intrinsic, etc.). EVM errors (OOG, revert) keep it true.
+                if (!result.TransactionExecuted)
+                {
+                    return new CallOutput
+                    {
+                        Error = ConstructError(result, outputTracer.Error),
+                        GasSpent = outputTracer.GasSpent,
+                        OperationGas = outputTracer.OperationGas,
+                        OutputData = outputTracer.ReturnValue,
+                        InputError = true,
+                        AccessList = accessTracer.AccessList,
+                    };
+                }
+
+                AccessList? nextAl = accessTracer.AccessList;
+                if (AccessListsEqual(prevAl, nextAl))
+                {
+                    return new CallOutput
+                    {
+                        Error = ConstructError(result, outputTracer.Error),
+                        GasSpent = outputTracer.GasSpent,
+                        OperationGas = outputTracer.OperationGas,
+                        OutputData = outputTracer.ReturnValue,
+                        InputError = false,
+                        AccessList = nextAl,
+                    };
+                }
+
+                prevAl = nextAl;
+            }
+        }
+
+        private static bool AccessListsEqual(AccessList? a, AccessList? b)
+        {
+            (int addrs, int keys) aCount = a?.Count ?? (0, 0);
+            (int addrs, int keys) bCount = b?.Count ?? (0, 0);
+            return aCount == bCount;
         }
 
         private TransactionResult TryCallAndRestore(
