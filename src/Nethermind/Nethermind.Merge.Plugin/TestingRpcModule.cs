@@ -117,7 +117,7 @@ public class TestingRpcModule(
         {
             BlockHeader? chainHead = blockTree.Head?.Header;
             if (chainHead is null)
-                return ResultWrapper<Hash256?>.Fail("chain head not found", MergeErrorCodes.InvalidPayloadAttributes);
+                return ResultWrapper<Hash256?>.Fail("chain head not found", ErrorCodes.InternalError);
 
             IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(chainHead.Number + 1, payloadAttributes.Timestamp));
             BlockHeader header = PrepareBlockHeader(chainHead, payloadAttributes, spec, extraData);

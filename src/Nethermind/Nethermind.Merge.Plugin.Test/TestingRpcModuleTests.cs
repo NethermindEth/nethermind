@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -439,11 +440,13 @@ public class TestingRpcModuleTests
             Array.Empty<byte>());
 
         result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().NotBeNull();
 
-        await blockTree.Received(1).SuggestBlockAsync(
-            Arg.Is<Block>(b => b.Header.Number == chainHeadHeader.Number + 1),
-            BlockTreeSuggestOptions.ShouldProcess);
+        Block suggested = (Block)blockTree.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlockAsync))
+            .GetArguments()[0]!;
+        suggested.Header.Number.Should().Be(chainHeadHeader.Number + 1);
+        suggested.Hash.Should().NotBeNull();
+        result.Data.Should().Be(suggested.Hash!);
     }
 
     [Test]
@@ -458,7 +461,7 @@ public class TestingRpcModuleTests
             null);
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
+        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
     [Test]
