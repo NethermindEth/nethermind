@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -482,6 +483,18 @@ public class DebugRpcModule(
             }).ToList()
         };
 
+        // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
+        // Pre-compute the block number each bundle targets so we can drop fillers from the result and
+        // keep a 1:1 mapping to the input bundles.
+        HashSet<long> bundleBlockNumbers = new(bundles.Length);
+        long lastBlockNumber = header.Number;
+        foreach (TransactionBundle bundle in bundles)
+        {
+            long number = (long)bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
+            bundleBlockNumbers.Add(number);
+            lastBlockNumber = number;
+        }
+
         BlockParameter concreteBlockParameter = new(header.Number);
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -503,7 +516,9 @@ public class DebugRpcModule(
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
         }
 
-        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data.Select(blockResult => blockResult.Traces);
+        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data
+            .Where(blockResult => blockResult.Number is long n && bundleBlockNumbers.Contains(n))
+            .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
     }
