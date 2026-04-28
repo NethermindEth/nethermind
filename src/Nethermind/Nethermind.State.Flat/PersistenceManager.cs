@@ -47,13 +47,27 @@ public class PersistenceManager(
     private readonly Lock _persistenceLock = new();
 
     private readonly Channel<ArrayPoolList<StateId>> _compactPersistedJobs = Channel.CreateBounded<ArrayPoolList<StateId>>(16);
+    private readonly Channel<StateId> _boundaryCompactJobs = Channel.CreateBounded<StateId>(16);
     private readonly CancellationTokenSource _cancelTokenSource = new();
     private Task? _compactPersistedTask;
+    private Task[]? _boundaryCompactorTasks;
+
+    private const int BoundaryCompactorWorkerCount = 4;
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;
 
-    private Task EnsureCompactorStarted() =>
+    private Task EnsureCompactorStarted()
+    {
         _compactPersistedTask ??= RunPersistedCompactor(_cancelTokenSource.Token);
+        if (_boundaryCompactorTasks is null)
+        {
+            Task[] tasks = new Task[BoundaryCompactorWorkerCount];
+            for (int i = 0; i < BoundaryCompactorWorkerCount; i++)
+                tasks[i] = RunBoundaryCompactor(_cancelTokenSource.Token);
+            _boundaryCompactorTasks = tasks;
+        }
+        return _compactPersistedTask;
+    }
 
     private readonly Histogram _persistedSnapshotConvertTime =
         Prometheus.Metrics.CreateHistogram("persisted_snapshot_convert_time", "persisted_snapshot_convert_time", "size");
@@ -89,10 +103,19 @@ public class PersistenceManager(
     {
         if (batch.Count == 0) return;
 
-        // Group states by compact size, ascending
+        // Offload the last state (boundary block — highest compactSize, heaviest merge) to the
+        // parallel boundary channel so the next batch can start before this compaction finishes.
+        StateId lastState = batch[^1];
+        long lastBlock = lastState.BlockNumber;
+        int lastCompactSize = lastBlock == 0 ? 0 : (int)Math.Min(lastBlock & -lastBlock, _persistedSnapshotMaxCompactSize);
+        bool offloadLast = lastCompactSize >= _minCompactSize && lastCompactSize != _compactSize;
+        int processCount = offloadLast ? batch.Count - 1 : batch.Count;
+
+        // Group remaining states by compact size, ascending
         SortedDictionary<int, List<StateId>> buckets = new();
-        foreach (StateId s in batch)
+        for (int i = 0; i < processCount; i++)
         {
+            StateId s = batch[i];
             long b = s.BlockNumber;
             if (b == 0) continue;
             int compactSize = (int)Math.Min(b & -b, _persistedSnapshotMaxCompactSize);
@@ -104,14 +127,39 @@ public class PersistenceManager(
 
         foreach (List<StateId> bucket in buckets.Values)
             Parallel.ForEach(bucket, state => _persistedSnapshotCompactor.DoCompactSnapshot(state));
+
+        if (offloadLast)
+            _boundaryCompactJobs.Writer.WriteAsync(lastState).AsTask().Wait();
+    }
+
+    private async Task RunBoundaryCompactor(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (StateId state in _boundaryCompactJobs.Reader.ReadAllAsync(cancellationToken))
+            {
+                try
+                {
+                    _persistedSnapshotCompactor.DoCompactSnapshot(state);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error compacting boundary persisted snapshot {state}. {ex}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     public async ValueTask DisposeAsync()
     {
         _cancelTokenSource.Cancel();
         _compactPersistedJobs.Writer.Complete();
+        _boundaryCompactJobs.Writer.Complete();
         if (_compactPersistedTask is not null)
             await _compactPersistedTask;
+        if (_boundaryCompactorTasks is not null)
+            await Task.WhenAll(_boundaryCompactorTasks);
         _cancelTokenSource.Dispose();
     }
 
