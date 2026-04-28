@@ -24,17 +24,23 @@ public class TaikoExtendedEthModule(
     internal static readonly ResultWrapper<L1Origin?> L1OriginNotFound = ResultWrapper<L1Origin?>.Fail("not found");
 
     /// <summary>
-    /// Cached "not found" responses for the batch-ID lookups. Per alethia-reth and the Go
-    /// taiko-client expectations, missing batch entries are reported as a successful JSON-RPC
-    /// response with a null result (rather than a -32603 error), so a freshly-started node that
-    /// has not yet seen any L1 batches does not flood the logs with errors during normal
-    /// driver polling.
+    /// Cached null-result for <c>taiko_lastL1OriginByBatchID</c>. Per alethia-reth and the Go
+    /// taiko-client expectations, a missing L1 origin for a known batch is reported as a
+    /// successful JSON-RPC response with a null result (rather than a -32603 error), so a
+    /// freshly-started node that has not yet seen any L1 batches does not flood the logs
+    /// with errors during normal driver polling.
     /// </summary>
     internal static readonly ResultWrapper<L1Origin?> L1OriginByBatchIdNullResult = ResultWrapper<L1Origin?>.Success(null);
+
     /// <summary>
-    /// Cached null-result for <c>taiko_lastBlockIDByBatchID</c>. See <see cref="L1OriginByBatchIdNullResult"/>.
+    /// Cached "not found" response for <c>taiko_lastBlockIDByBatchID</c>. Unlike
+    /// <see cref="L1OriginByBatchIdNullResult"/>, this RPC keeps the historical error
+    /// contract: the Go taiko-client driver's <c>tryLastFinalizedCheckpoint</c> only guards
+    /// against <c>err != nil</c> and would dereference a nil <c>blockID</c> (resolving to
+    /// the latest header) if we returned a successful null, producing a stale
+    /// <c>safeCheckpoint</c> and ultimately an inconsistent FCU during ancient-block import.
     /// </summary>
-    internal static readonly ResultWrapper<UInt256?> BlockIdByBatchIdNullResult = ResultWrapper<UInt256?>.Success(null);
+    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
 
     /// <summary>
     /// Maximum number of blocks to scan backwards when the batch→block index is missing.
@@ -97,7 +103,7 @@ public class TaikoExtendedEthModule(
             if (blockId is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"taiko_lastBlockIDByBatchID: no block found for batch {batchId}");
-                return BlockIdByBatchIdNullResult;
+                return BlockIdNotFound;
             }
         }
 

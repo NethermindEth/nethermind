@@ -84,6 +84,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 {
     private const int MaxBatchLookupBlocks = 192 * 1024;
 
+    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
     private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded = ResultWrapper<UInt256?>.Fail("lookback limit exceeded");
 
     private readonly ILogger _taikoLogger = logManager.GetClassLogger<TaikoEngineRpcModule>();
@@ -413,7 +414,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             if (blockId is null)
             {
                 if (_taikoLogger.IsWarn) _taikoLogger.Warn($"taikoAuth_lastBlockIDByBatchID: no block found for batch {batchId}");
-                return TaikoExtendedEthModule.BlockIdByBatchIdNullResult;
+                return BlockIdNotFound;
             }
         }
 
