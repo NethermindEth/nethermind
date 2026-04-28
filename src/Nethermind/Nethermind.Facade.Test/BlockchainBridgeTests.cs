@@ -499,7 +499,7 @@ public class BlockchainBridgeTests
         };
         yield return new TestCaseData(
             descriptiveTx,
-            TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"),
+            TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail($"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"),
             $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"
         ).SetName("Descriptive");
     }

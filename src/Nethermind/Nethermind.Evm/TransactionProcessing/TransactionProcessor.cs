@@ -513,7 +513,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.GasLimit < minGasRequired)
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return TransactionResult.WithDetail(TransactionResult.ErrorType.GasLimitBelowIntrinsicGas,
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
                     $"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
             }
 
@@ -621,7 +621,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                 string errorDetail = $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}";
-                return TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, errorDetail);
+                return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
             }
 
             UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
@@ -674,14 +674,14 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         private static TransactionResult InsufficientFundsForTransfer(Transaction tx, UInt256 senderBalance) =>
-            TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance,
+            TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
                 $"insufficient funds for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
 
         private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 gasPrice)
         {
             UInt256.MultiplyOverflow((UInt256)tx.GasLimit, gasPrice, out UInt256 gasCost);
             UInt256.AddOverflow(gasCost, tx.Value, out UInt256 want);
-            return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance,
+            return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
                 $"insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
         }
 
@@ -695,9 +695,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 // Geth core/state_transition.go ErrNonceTooHigh / ErrNonceTooLow.
                 string sender = tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown";
                 return tx.Nonce > nonce
-                    ? TransactionResult.WithDetail(TransactionResult.ErrorType.TransactionNonceTooHigh,
+                    ? TransactionResult.ErrorType.TransactionNonceTooHigh.WithDetail(
                         $"nonce too high: address {sender}, tx: {tx.Nonce} state: {nonce}")
-                    : TransactionResult.WithDetail(TransactionResult.ErrorType.TransactionNonceTooLow,
+                    : TransactionResult.ErrorType.TransactionNonceTooLow.WithDetail(
                         $"nonce too low: address {sender}, tx: {tx.Nonce} state: {nonce}");
             }
 
@@ -1166,5 +1166,11 @@ namespace Nethermind.Evm.TransactionProcessing
             TransactionNonceTooHigh,
             TransactionNonceTooLow,
         }
+    }
+
+    public static class TransactionResultExtensions
+    {
+        public static TransactionResult WithDetail(this TransactionResult.ErrorType errorType, string detail) =>
+            TransactionResult.WithDetail(errorType, detail);
     }
 }

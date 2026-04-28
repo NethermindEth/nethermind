@@ -100,7 +100,7 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        GethLikeTxTrace transactionTrace;
+        GethLikeTxTrace? transactionTrace;
         try
         {
             transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
