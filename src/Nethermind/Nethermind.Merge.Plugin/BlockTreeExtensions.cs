@@ -11,6 +11,7 @@ public static class BlockTreeExtensions
     public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, BlockHeader header) =>
         header.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(header);
 
-    public static bool IsOnMainChainBehindHead(this IBlockTree blockTree, BlockHeader header) =>
-        header.Number < (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(header);
+    public static bool IsOnMainChainBehindFinalized(this IBlockTree blockTree, BlockHeader header) =>
+        header.Number < (blockTree.FindFinalizedHeader()?.Number ?? 0) && blockTree.IsMainChain(header);
+
 }
