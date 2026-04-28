@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -137,7 +136,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         if (blobCount == 0) return standardTransactions ?? [];
         if (standardCount == 0) return blobTransactions!;
 
-        Transaction[] merged = ArrayPool<Transaction>.Shared.Rent(length);
+        Transaction[] merged = SafeArrayPool<Transaction>.Shared.Rent(length);
         standardTransactions!.AsSpan().CopyTo(merged);
         blobTransactions!.AsSpan().CopyTo(merged.AsSpan(standardCount));
         return merged;
@@ -146,7 +145,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     private static void ReturnIfPooled(Transaction[] merged, Transaction[]? standard, Transaction[]? blobs)
     {
         if (merged != standard && merged != blobs)
-            ArrayPool<Transaction>.Shared.Return(merged, clearArray: true);
+            SafeArrayPool<Transaction>.Shared.Return(merged, clearArray: true);
     }
 
     // Walks transactions in nonce order: txs whose nonce continues from accountNonce go to
@@ -158,7 +157,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         Dictionary<ulong, Transaction> queued = new();
         UInt256 expectedNonce = accountNonce;
 
-        using ArrayPoolList<Transaction> sorted = new(length);
+        using ArrayPoolListRef<Transaction> sorted = new(length);
         sorted.AddRange(transactions.AsSpan(0, length));
         sorted.Sort(NonceComparer.Instance);
         for (int i = 0; i < length; i++)
@@ -186,7 +185,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         int pending = 0;
         UInt256 expectedNonce = accountNonce;
 
-        using ArrayPoolList<Transaction> sorted = new(length);
+        using ArrayPoolListRef<Transaction> sorted = new(length);
         sorted.AddRange(transactions.AsSpan(0, length));
         sorted.Sort(NonceComparer.Instance);
         for (int i = 0; i < length; i++)
