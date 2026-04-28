@@ -22,6 +22,8 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Int256;
+using Nethermind.Core.Specs;
+using Nethermind.Blockchain;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
@@ -289,6 +291,23 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_with_coinbase_opcode_should_return_block_override_fee_recipient()
+    {
+        using Context ctx = await Context.Create();
+
+        string dataStr = CoinbaseReturnCode.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{dataStr}\"}}");
+        object? blockOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"feeRecipient\":\"{TestItem.AddressC}\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        JToken.Parse(serialized).Value<string>("result")!
+            .Should().Be($"0x{new string('0', 24)}{TestItem.AddressC.Bytes.ToHexString()}");
     }
 
     [Test]
@@ -782,4 +801,104 @@ public partial class EthRpcModuleTests
         JToken.Parse(serialized).Should().BeEquivalentTo(
             $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\",\"data\":\"0x\"}},\"id\":67}}");
     }
+
+    // Each test uses a state override to inject one-opcode contract code at the target address,
+    // then verifies the returned value matches what was supplied in blockOverride.
+    [TestCase(
+        "NUMBER opcode returns overridden block number",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4360005260206000f3"}}""",
+        """{"number":"0x89543F"}""",
+        "0x000000000000000000000000000000000000000000000000000000000089543f"
+    )]
+    [TestCase(
+        "TIMESTAMP opcode returns overridden timestamp",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4260005260206000f3"}}""",
+        """{"time":"0x68E0F100"}""",
+        "0x0000000000000000000000000000000000000000000000000000000068e0f100"
+    )]
+    [TestCase(
+        "GASLIMIT opcode returns overridden gas limit",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4560005260206000f3"}}""",
+        """{"gasLimit":"0x7E1200"}""",
+        "0x00000000000000000000000000000000000000000000000000000000007e1200"
+    )]
+    [TestCase(
+        "COINBASE opcode returns overridden fee recipient",
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4160005260206000f3"}}""",
+        """{"feeRecipient":"0x1111111111111111111111111111111111111111"}""",
+        "0x0000000000000000000000001111111111111111111111111111111111111111"
+    )]
+    public async Task Eth_call_with_block_override(string name, string txJson, string stateOverrideJson, string blockOverrideJson, string expectedResult)
+    {
+        object? transaction = JsonSerializer.Deserialize<object>(txJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson);
+
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        JToken.Parse(serialized)["result"]!.Value<string>().Should().Be(expectedResult);
+    }
+
+    [Test]
+    public async Task Eth_call_feeless_with_positive_blockOverride_baseFeePerGas_succeeds()
+    {
+        // Scenario: caller sends no fee fields (fee-less call) but blockOverride.baseFeePerGas > 0.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"0xc200000000000000000000000000000000000000\"}}");
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x100"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        JToken.Parse(serialized)["error"].Should().BeNull(because:
+            "fee-less call must succeed even when blockOverride.baseFeePerGas > 0");
+    }
+
+    [Test]
+    public async Task Eth_call_blobBaseFeePerGas_override_test()
+    {
+        ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
+        ulong? excessBlobGas = 1ul;
+
+        Block[] blocks = [
+            Build.A.Block.WithNumber(0).WithExcessBlobGas(excessBlobGas).TestObject,
+        ];
+
+        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+
+        using TestRpcBlockchain test = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockTree)
+            .Build(specProvider);
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""");
+
+        object? transaction = JsonSerializer.Deserialize<object>(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000"}""");
+
+        object? blockOverride = JsonSerializer.Deserialize<object>(
+        """{"blobBaseFee":"0x02"}""");
+
+        string withOverride = await test.TestEthRpc(
+            "eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        JToken parsed = JToken.Parse(withOverride);
+
+        parsed["error"]?.Should().BeNull("opcode must be valid under Cancun");
+
+        string? resultHex = parsed["result"]?.Value<string>();
+        resultHex.Should().NotBeNull();
+
+        UInt256 overriddenFee = Bytes.FromHexString(resultHex!).ToUInt256();
+        overriddenFee.Should().Be((UInt256)0x02);
+    }
+
 }
