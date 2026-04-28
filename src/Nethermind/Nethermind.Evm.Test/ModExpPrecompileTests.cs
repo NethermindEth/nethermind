@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -31,8 +29,8 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         "11223344",
         TestName = "expLength=uint.MaxValue overflow path"
     )]
-    public void GetEffectiveInput_SameOutput(string input, string trailing) =>
-        AssertEffectiveInputPreservesOutput(Instance, Prague.Instance, input, trailing);
+    public void NormalizedInput_SameOutput(string input, string trailing) =>
+        RunEffectiveInputTest(Instance, input, trailing, Prague.Instance);
 
 #pragma warning disable 618 // ModExpPrecompilePreEip2565 is Obsolete
     [TestCase(
@@ -55,21 +53,51 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         "11223344",
         TestName = "pre2565: expLength>int.MaxValue overflow-safe SafeSlice"
     )]
-    public void GetEffectiveInput_SameOutput_PreEip2565(string input, string trailing) =>
-        AssertEffectiveInputPreservesOutput(ModExpPrecompilePreEip2565.Instance, Byzantium.Instance, input, trailing);
+    [TestCase(
+        "0100000000000000000000000000000000000000000000000000000000000000"
+        + "0000000000000000000000000000000000000000000000000000000000000001"
+        + "0000000000000000000000000000000000000000000000000000000000000001",
+        "aabbcc",
+        TestName = "pre2565: baseLen byte[0] non-zero saturates ReadCappedLength"
+    )]
+    [TestCase(
+        "0000000000000000000000000000000000000000000000000000000000000001"
+        + "0100000000000000000000000000000000000000000000000000000000000000"
+        + "0000000000000000000000000000000000000000000000000000000000000001",
+        "aabbcc",
+        TestName = "pre2565: expLen byte[0] non-zero saturates ReadCappedLength"
+    )]
+    [TestCase(
+        "000000000000000000000000000000000000000000000000000000007fffffff"
+        + "0000000000000000000000000000000000000000000000000000000000000001"
+        + "0000000000000000000000000000000000000000000000000000000000000001",
+        "aabbcc",
+        TestName = "pre2565: baseLen=0x7FFFFFFF exact int.MaxValue boundary"
+    )]
+    [TestCase(
+        "0000000000000000000000000000000000000000000000000000000000000001"
+        + "000000000000000000000000000000000000000000000000000000007fffffff"
+        + "0000000000000000000000000000000000000000000000000000000000000001",
+        "aabbcc",
+        TestName = "pre2565: expLen=0x7FFFFFFF exact int.MaxValue boundary"
+    )]
+    [TestCase(
+        "0000000000000000000000000000000000000000000000000000000080000000"
+        + "0000000000000000000000000000000000000000000000000000000000000001"
+        + "0000000000000000000000000000000000000000000000000000000000000001",
+        "aabbcc",
+        TestName = "pre2565: baseLen=0x80000000 uint high bit set saturates ReadCappedLength"
+    )]
+    [TestCase(
+        "0000000000000000000000000000000000000000000000000000000000000001"
+        + "00000000000000000000000000000000000000000000000000000001ffffffff"
+        + "0000000000000000000000000000000000000000000000000000000000000001",
+        "aabbcc",
+        TestName = "pre2565: expLen byte[27] non-zero saturates ReadCappedLength (last upper byte)"
+    )]
+    public void NormalizedInput_SameOutput_PreEip2565(string input, string trailing) =>
+        RunEffectiveInputTest(ModExpPrecompilePreEip2565.Instance, input, trailing, Byzantium.Instance);
 #pragma warning restore 618
-
-    private static void AssertEffectiveInputPreservesOutput(IPrecompile precompile, IReleaseSpec spec, string input, string trailing)
-    {
-        ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
-        ReadOnlyMemory<byte> effInput = precompile.GetEffectiveInput(fullInput);
-
-        Assert.That(effInput.Length, Is.LessThan(fullInput.Length));
-        Assert.That(
-            precompile.Run(effInput, spec),
-            Is.EqualTo(precompile.Run(fullInput, spec)).Using(ResultComparer)
-        );
-    }
 
     // Data from https://github.com/ethereum/go-ethereum/blob/master/core/vm/testdata/precompiles/modexp.json
     [TestCase(
@@ -157,7 +185,7 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         "5a0eb2bdf0ac1cae8e586689fa16cd4b07dfdedaec8a110ea1fdb059dd5253231b6132987598dfc6e11f86780428982d50cf68f67ae452622c3b336b537ef3298ca645e8f89ee39a26758206a5a3f6409afc709582f95274b57b71fae5c6b74619ae6f089a5393c5b79235d9caf699d23d88fb873f78379690ad8405e34c19f5257d596580c7a6a7206a3712825afe630c76b31cdb4a23e7f0632e10f14f4e282c81a66451a26f8df2a352b5b9f607a7198449d1b926e27036810368e691a74b91c61afa73d9d3b99453e7c8b50fd4f09c039a2f2feb5c419206694c31b92df1d9586140cb3417b38d0c503c7b508cc2ed12e813a1c795e9829eb39ee78eeaf360a169b491a1d4e419574e712402de9d48d54c1ae5e03739b7156615e8267e1fb0a897f067afd11fb33f6e24182d7aaaaa18fe5bc1982f20d6b871e5a398f0f6f718181d31ec225cfa9a0a70124ed9a70031bdf0c1c7829f708b6e17d50419ef361cf77d99c85f44607186c8d683106b8bd38a49b5d0fb503b397a83388c5678dcfcc737499d84512690701ed621a6f0172aecf037184ddf0f2453e4053024018e5ab2e30d6d5363b56e8b41509317c99042f517247474ab3abc848e00a07f69c254f46f2a05cf6ed84e5cc906a518fdcfdf2c61ce731f24c5264f1a25fc04934dc28aec112134dd523f70115074ca34e3807aa4cb925147f3a0ce152d323bd8c675ace446d0fd1ae30c4b57f0eb2c23884bc18f0964c0114796c5b6d080c3d89175665fbf63a6381a6a9da39ad070b645c8bb1779506da14439a9f5b5d481954764ea114fac688930bc68534d403cff4210673b6a6ff7ae416b7cd41404c3d3f282fcd193b86d0f54d0006c2a503b40d5c3930da980565b8f9630e9493a79d1c03e74e5f93ac8e4dc1a901ec5e3b3e57049124c7b72ea345aa359e782285d9e6a5c144a378111dd02c40855ff9c2be9b48425cb0b2fd62dc8678fd151121cf26a65e917d65d8e0dacfae108eb5508b601fb8ffa370be1f9a8b749a2d12eeab81f41079de87e2d777994fa4d28188c579ad327f9957fb7bdecec5c680844dd43cb57cf87aeb763c003e65011f73f8c63442df39a92b946a6bd968a1c1e4d5fa7d88476a68bd8e20e5b70a99259c7d3f85fb1b65cd2e93972e6264e74ebf289b8b6979b9b68a85cd5b360c1987f87235c3c845d62489e33acf85d53fa3561fe3a3aee18924588d9c6eba4edb7a4d106b31173e42929f6f0c48c80ce6a72d54eca7c0fe870068b7a7c89c63cdda593f5b32d3cb4ea8a32c39f00ab449155757172d66763ed9527019d6de6c9f2416aa6203f4d11c9ebee1e1d3845099e55504446448027212616167eb36035726daa7698b075286f5379cd3e93cb3e0cf4f9cb8d017facbb5550ed32d5ec5400ae57e47e2bf78d1eaeff9480cc765ceff39db500",
         true
     )]
-    public void TestRegular(string input, string output, bool status) => Test(input, output, status);
+    public void TestRegular(string input, string output, bool status) => RunTest(input, output, status);
 
     // Data from https://github.com/ethereum/go-ethereum/blob/master/core/vm/testdata/precompiles/modexp_eip2565.json
     [TestCase(
@@ -395,7 +423,7 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         "200f14de1d474710c1c979920452e0ffc2ac6f618afba5",
         true
     )]
-    public void TestEip2565(string input, string output, bool status) => Test(input, output, status);
+    public void TestEip2565(string input, string output, bool status) => RunTest(input, output, status);
 
     // Data from https://github.com/ethereum/go-ethereum/blob/master/core/vm/testdata/precompiles/modexp_eip7883.json
     [TestCase(
@@ -623,7 +651,5 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         "200f14de1d474710c1c979920452e0ffc2ac6f618afba5",
         true
     )]
-    public void TestEip7883(string input, string output, bool status) => Test(input, output, status);
-
-    private void Test(string input, string output, bool status) => RunTest(input, output, status);
+    public void TestEip7883(string input, string output, bool status) => RunTest(input, output, status);
 }

@@ -419,7 +419,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
-    public void CachedPrecompile_WithGetEffectiveInputOverride_DeduplicatesOversizedInputs()
+    public void CachedPrecompile_WithNormalizeInputOverride_DeduplicatesOversizedInputs()
     {
         // Precompile that only uses the first 4 bytes of input.
         int runCount = 0;
@@ -457,6 +457,49 @@ public class PrecompileCachedCodeInfoRepositoryTests
         }
     }
 
+    [Test]
+    public void CachedPrecompile_DoesNotCache_InvalidLengthResults()
+    {
+        int runCount = 0;
+        FixedLengthTestPrecompile precompile = new(validLength: 4, onRun: () => runCount++);
+        Address precompileAddress = Address.FromNumber(100);
+
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [precompileAddress] = new(precompile)
+        }.ToFrozenDictionary();
+
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(precompiles);
+
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+
+        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+
+        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+
+        byte[] input1 = [1, 2, 3];          // length 3, not 4
+        byte[] input2 = [1, 2, 3, 4, 5];    // length 5, not 4
+        byte[] input3 = [1, 2, 3, 4, 5, 6]; // length 6, not 4
+
+        Result<byte[]> result1 = codeInfo.Precompile!.Run(input1, Prague.Instance);
+        Result<byte[]> result2 = codeInfo.Precompile.Run(input2, Prague.Instance);
+        Result<byte[]> result3 = codeInfo.Precompile.Run(input3, Prague.Instance);
+        Result<byte[]> result1Again = codeInfo.Precompile.Run(input1, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result1, Is.False, "invalid-length input must fail");
+            Assert.That((bool)result2, Is.False);
+            Assert.That((bool)result3, Is.False);
+            Assert.That((bool)result1Again, Is.False);
+            Assert.That(runCount, Is.EqualTo(4), "each call must re-run; invalid-length results must not be cached");
+            Assert.That(cache, Is.Empty, "cache must remain empty for invalid-length results");
+        }
+    }
+
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
     {
         public bool SupportsCaching => supportsCaching;
@@ -476,7 +519,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         public bool SupportsCaching => true;
 
-        public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData) =>
+        public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
             inputData.Length > effectiveLength ? inputData[..effectiveLength] : inputData;
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
@@ -489,6 +532,23 @@ public class PrecompileCachedCodeInfoRepositoryTests
             return inputData.Length > effectiveLength
                 ? inputData[..effectiveLength].ToArray()
                 : inputData.ToArray();
+        }
+    }
+
+    private class FixedLengthTestPrecompile(int validLength, Action? onRun = null) : IPrecompile
+    {
+        public bool SupportsCaching => true;
+
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+
+        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            onRun?.Invoke();
+            if (inputData.Length != validLength)
+                return Errors.InvalidInputLength;
+            return inputData.ToArray();
         }
     }
 }
