@@ -93,11 +93,20 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "1024", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "2048", HiddenFromDocs = true)]
     int BackgroundTaskMaxNumber { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]
     bool InRunnerTest { get; set; }
+
+    [ConfigItem(Description = "Whether to repair canonical-chain markers on startup after a canonical mismatch.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool HealCanonicalChain { get; set; }
+
+    [ConfigItem(
+        Description = $"The number of blocks to walk back from the head when the `{nameof(HealCanonicalChain)}` is set to `true`.",
+        DefaultValue = "8192",
+        HiddenFromDocs = true)]
+    long HealCanonicalChainDepth { get; set; }
 }
 
 public enum DiagnosticMode

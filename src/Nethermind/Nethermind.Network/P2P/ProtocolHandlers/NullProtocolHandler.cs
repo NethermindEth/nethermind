@@ -10,42 +10,18 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public class NullProtocolHandler : IProtocolHandler
     {
-        private NullProtocolHandler()
-        {
-        }
-
+        private NullProtocolHandler() { }
         public static IProtocolHandler Instance { get; } = new NullProtocolHandler();
-
-        public void Dispose()
-        {
-        }
-
+        public void Dispose() { }
         public string Name => "nul.0";
         public byte ProtocolVersion => 0;
         public string ProtocolCode => "nul";
         public int MessageIdSpaceSize => 0;
-        public void Init()
-        {
-        }
-
-        public void HandleMessage(Packet message)
-        {
-        }
-
-        public void DisconnectProtocol(DisconnectReason disconnectReason, string details)
-        {
-        }
-
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized
-        {
-            add { }
-            remove { }
-        }
-
-        public event EventHandler<ProtocolEventArgs> SubprotocolRequested
-        {
-            add { }
-            remove { }
-        }
+        public void Init() { }
+        public void HandleMessage(Packet message) { }
+        public void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
+        public void RegisterWith(ISession session, IProtocolRegistrar registrar) { }
+        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized { add { } remove { } }
+        public event EventHandler<ProtocolEventArgs> SubprotocolRequested { add { } remove { } }
     }
 }

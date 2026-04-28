@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="ConcurrentHashSet" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>

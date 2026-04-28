@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -11,8 +12,11 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
 {
     protected override Timeout DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
@@ -21,9 +25,7 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            if (decoderContext.PeekNextRlpLength() != Signature.Size)
-                throw new RlpException($"Invalid signature length in '{nameof(Timeout)}'");
-            signature = new(decoderContext.DecodeByteArray());
+            signature = decoderContext.DecodeSignature();
         }
 
         ulong gapNumber = decoderContext.DecodeULong();
@@ -36,37 +38,10 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         return new Timeout(round, signature, gapNumber);
     }
 
-    protected override Timeout DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-            return null;
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        ulong round = rlpStream.DecodeULong();
-
-        Signature signature = null;
-        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
-        {
-            if (rlpStream.PeekNextRlpLength() != Signature.Size)
-                throw new RlpException($"Invalid signature length in {nameof(Timeout)}");
-            signature = new(rlpStream.DecodeByteArray());
-        }
-
-        ulong gapNumber = rlpStream.DecodeUlong();
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(endPosition);
-        }
-
-        return new Timeout(round, signature, gapNumber);
-    }
-
     public Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
@@ -92,17 +67,18 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
             if (item.Signature is null)
                 stream.EncodeNullObject();
             else
-                stream.Encode(item.Signature.BytesWithRecovery);
+            {
+                Span<byte> sigBuffer = stackalloc byte[Signature.Size];
+                item.Signature.WriteBytesWithRecoveryTo(sigBuffer);
+                stream.Encode(sigBuffer);
+            }
         }
 
         stream.Encode(item.GapNumber);
     }
 
-    public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
-    private int GetContentLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public int GetContentLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return 0;

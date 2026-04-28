@@ -15,7 +15,7 @@ public class ChiadoSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x646e0e4c;
     public const ulong CancunTimestamp = 0x65ba8e4c;
     public const ulong PragueTimestamp = 0x67c96e4c;
-    public const ulong OsakaTimestamp = ulong.MaxValue - 1;
+    public const ulong OsakaTimestamp = 0x69b7ce4c;
 
     public static readonly Address FeeCollector = new("0x1559000000000000000000000000000000000000");
 
@@ -53,7 +53,13 @@ public class ChiadoSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Chiado;
     public ulong ChainId => BlockchainIds.Chiado;
     public string SealEngine => SealEngineType.AuRa;
-    public ForkActivation[] TransitionActivations { get; }
+    public ForkActivation[] TransitionActivations { get; } =
+    [
+        (0, ShanghaiTimestamp),
+        (0, CancunTimestamp),
+        (0, PragueTimestamp),
+        (0, OsakaTimestamp),
+    ];
 
     public static ChiadoSpecProvider Instance { get; } = new();
 }

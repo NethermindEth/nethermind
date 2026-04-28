@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
-using System.Linq;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
@@ -14,14 +11,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
+using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.State;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Healing;
 using Nethermind.Trie;
@@ -31,18 +27,14 @@ namespace Nethermind.Init;
 
 public class PruningTrieStateFactory(
     ISyncConfig syncConfig,
-    IInitConfig initConfig,
-    IPruningConfig pruningConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
-    IFileSystem fileSystem,
-    ITimerFactory timerFactory,
     MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
-    INodeStorageFactory nodeStorageFactory,
     INodeStorage mainNodeStorage,
     IProcessExitSource processExit,
-    ChainSpec chainSpec,
     IDisposableStack disposeStack,
+    IFullPrunerFactory fullPrunerFactory,
+    CompositePruningTrigger compositePruningTrigger,
     Lazy<IPathRecovery> pathRecovery,
     ILogManager logManager,
     NodeStorageCache? nodeStorageCache = null
@@ -52,8 +44,6 @@ public class PruningTrieStateFactory(
 
     public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
-        CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
-
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
 
         ITrieStore mainWorldTrieStore = trieStore;
@@ -90,14 +80,11 @@ public class PruningTrieStateFactory(
 
         disposeStack.Push(mainWorldTrieStore);
 
-        InitializeFullPruning(
-            dbProvider.StateDb,
-            stateManager.GlobalStateReader,
-            mainNodeStorage,
-            nodeStorageFactory,
-            trieStore,
-            compositePruningTrigger
-        );
+        FullPruner? fullPruner = fullPrunerFactory.Create(stateManager.GlobalStateReader, trieStore);
+        if (fullPruner is not null)
+        {
+            disposeStack.Push(fullPruner);
+        }
 
         VerifyTrieStarter verifyTrieStarter = new(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
@@ -111,57 +98,6 @@ public class PruningTrieStateFactory(
         );
 
         return (stateManager, adminRpcModule);
-    }
-
-    private void InitializeFullPruning(IDb stateDb,
-        IStateReader stateReader,
-        INodeStorage mainNodeStorage,
-        INodeStorageFactory nodeStorageFactory,
-        IPruningTrieStore trieStore,
-        CompositePruningTrigger compositePruningTrigger)
-    {
-        IPruningTrigger? CreateAutomaticTrigger(string dbPath)
-        {
-            long threshold = pruningConfig.FullPruningThresholdMb.MB();
-
-            switch (pruningConfig.FullPruningTrigger)
-            {
-                case FullPruningTrigger.StateDbSize:
-                    if (_logger.IsInfo) _logger.Info($"Full pruning will activate when the database size reaches {threshold.SizeToString(true)} (={threshold.SizeToString()}).");
-                    return new PathSizePruningTrigger(dbPath, threshold, timerFactory, fileSystem);
-                case FullPruningTrigger.VolumeFreeSpace:
-                    if (_logger.IsInfo) _logger.Info($"Full pruning will activate when disk free space drops below {threshold.SizeToString(true)} (={threshold.SizeToString()}).");
-                    return new DiskFreeSpacePruningTrigger(dbPath, threshold, timerFactory, fileSystem);
-                default:
-                    return null;
-            }
-        }
-
-        if (pruningConfig.Mode.IsFull() && stateDb is IFullPruningDb fullPruningDb)
-        {
-            string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
-            IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(pruningDbPath);
-            if (pruningTrigger is not null)
-            {
-                compositePruningTrigger.Add(pruningTrigger);
-            }
-
-            IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-            FullPruner pruner = new(
-                fullPruningDb,
-                nodeStorageFactory,
-                mainNodeStorage,
-                compositePruningTrigger,
-                pruningConfig,
-                blockTree!,
-                stateReader,
-                processExit!,
-                ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
-                drive,
-                trieStore,
-                logManager);
-            disposeStack.Push(pruner);
-        }
     }
 }
 
@@ -177,6 +113,7 @@ public class MainPruningTrieStoreFactory
         IFinalizedStateProvider finalizedStateProvider,
         IBlockTree blockTree,
         IDbConfig dbConfig,
+        ILogIndexConfig logIndexConfig,
         IHardwareInfo hardwareInfo,
         ILogManager logManager
     )
@@ -187,6 +124,9 @@ public class MainPruningTrieStoreFactory
 
         if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < syncConfig.SnapServingMaxDepth)
         {
+            // use PruningBoundary for log-index MaxReorgDepth before it's overwritten
+            logIndexConfig.MaxReorgDepth ??= pruningConfig.PruningBoundary;
+
             if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than {syncConfig.SnapServingMaxDepth}. Setting to {syncConfig.SnapServingMaxDepth}.");
             pruningConfig.PruningBoundary = syncConfig.SnapServingMaxDepth;
         }
@@ -209,8 +149,8 @@ public class MainPruningTrieStoreFactory
         }
 
         IPruningStrategy pruningStrategy = Prune
-            .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
-            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
+            .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB)
+            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB - pruningConfig.DirtyCacheMb.MB)
             .WhenLastPersistedBlockIsTooOld(pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
             .UnlessLastPersistedBlockIsTooNew(pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
 
@@ -305,9 +245,6 @@ public class MainPruningTrieStoreFactory
             }
         }
 
-        public Hash256? GetFinalizedStateRootAt(long blockNumber)
-        {
-            return finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
-        }
+        public Hash256? GetFinalizedStateRootAt(long blockNumber) => finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
     }
 }

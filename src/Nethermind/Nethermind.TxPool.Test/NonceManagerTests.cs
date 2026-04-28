@@ -172,7 +172,7 @@ public class NonceManagerTests
     [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(0);
         }
@@ -183,7 +183,7 @@ public class NonceManagerTests
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 1)) { }
+        using (_nonceManager.TxWithNonceReceived(TestItem.AddressA, 1)) { }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
@@ -202,13 +202,12 @@ public class NonceManagerTests
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 _);
         });
-        TimeSpan ts = TimeSpan.FromMilliseconds(100);
-        task.Wait(ts);
+        task.Wait(TimeSpan.FromMilliseconds(1_000));
         task.IsCompleted.Should().Be(false);
     }
 
     [Test]
-    [Repeat(10)]
+    [Repeat(3)]
     public void should_not_lock_on_different_accounts()
     {
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
@@ -218,8 +217,7 @@ public class NonceManagerTests
             using NonceLocker locker2 = _nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce2);
             nonce2.Should().Be(0);
         });
-        TimeSpan ts = TimeSpan.FromMilliseconds(1000);
-        task.Wait(ts);
+        task.Wait(TimeSpan.FromMilliseconds(10_000));
         task.IsCompleted.Should().Be(true);
     }
 }

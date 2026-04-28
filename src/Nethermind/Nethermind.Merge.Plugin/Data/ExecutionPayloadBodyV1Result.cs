@@ -15,7 +15,7 @@ public class ExecutionPayloadBodyV1Result
     {
         ArgumentNullException.ThrowIfNull(transactions);
 
-        var t = new byte[transactions.Count][];
+        byte[][] t = new byte[transactions.Count][];
 
         for (int i = 0, count = t.Length; i < count; i++)
         {

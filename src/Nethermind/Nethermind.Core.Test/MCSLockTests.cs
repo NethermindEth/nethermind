@@ -15,15 +15,12 @@ public class MCSLockTests
     private McsLock mcsLock;
 
     [SetUp]
-    public void Setup()
-    {
-        mcsLock = new McsLock();
-    }
+    public void Setup() => mcsLock = new McsLock();
 
     [Test]
     public void SingleThreadAcquireRelease()
     {
-        using (var handle = mcsLock.Acquire())
+        using (McsLock.Disposable handle = mcsLock.Acquire())
         {
             Thread.Sleep(10);
         }
@@ -36,13 +33,13 @@ public class MCSLockTests
     {
         int counter = 0;
         int numberOfThreads = 10;
-        var threads = new List<Thread>();
+        List<Thread> threads = new();
 
         for (int i = 0; i < numberOfThreads; i++)
         {
-            var thread = new Thread(() =>
+            Thread thread = new(() =>
             {
-                using var handle = mcsLock.Acquire();
+                using McsLock.Disposable handle = mcsLock.Acquire();
 
                 counter++;
             });
@@ -63,15 +60,15 @@ public class MCSLockTests
     public void LockFairnessTest()
     {
         int numberOfThreads = 10;
-        var executionOrder = new List<int>();
-        var threads = new List<Thread>();
+        List<int> executionOrder = new();
+        List<Thread> threads = new();
 
         for (int i = 0; i < numberOfThreads; i++)
         {
             int threadId = i;
-            var thread = new Thread(() =>
+            Thread thread = new(() =>
             {
-                using var handle = mcsLock.Acquire();
+                using McsLock.Disposable handle = mcsLock.Acquire();
                 executionOrder.Add(threadId);
                 Thread.Sleep(15); // Ensure the order is maintained
             });
@@ -85,7 +82,7 @@ public class MCSLockTests
             thread.Join();
         }
 
-        var expectedOrder = Enumerable.Range(0, numberOfThreads).ToList();
+        List<int> expectedOrder = Enumerable.Range(0, numberOfThreads).ToList();
         Assert.That(expectedOrder, Is.EqualTo(executionOrder), "Threads did not acquire lock in the order they were started.");
     }
 }

@@ -13,12 +13,7 @@ namespace Nethermind.Core.Threading;
 /// </summary>
 public class ParallelUnbalancedWork : IThreadPoolWorkItem
 {
-    public static readonly ParallelOptions DefaultOptions = new()
-    {
-        // default to the number of processors
-        MaxDegreeOfParallelism = Environment.ProcessorCount
-    };
-
+    public static readonly ParallelOptions DefaultOptions = new() { MaxDegreeOfParallelism = Cpu.RuntimeInformation.ProcessorCount };
     private readonly Data _data;
 
     /// <summary>
@@ -129,10 +124,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// Initializes a new instance of the <see cref="ParallelUnbalancedWork"/> class.
     /// </summary>
     /// <param name="data">The shared data for the parallel work.</param>
-    private ParallelUnbalancedWork(Data data)
-    {
-        _data = data;
-    }
+    private ParallelUnbalancedWork(Data data) => _data = data;
 
     /// <summary>
     /// Executes the parallel work item.
@@ -207,7 +199,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// <returns>The number of remaining active threads.</returns>
         public int MarkThreadCompleted()
         {
-            var remaining = Interlocked.Decrement(ref _activeThreads);
+            int remaining = Interlocked.Decrement(ref _activeThreads);
 
             if (remaining == 0)
             {
@@ -258,12 +250,12 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             Action<TLocal>? @finally = null)
         {
             // Determine the number of threads to use
-            var threads = parallelOptions.MaxDegreeOfParallelism > 0
+            int threads = parallelOptions.MaxDegreeOfParallelism > 0
                 ? parallelOptions.MaxDegreeOfParallelism
                 : Environment.ProcessorCount;
 
             // Create shared data with thread-local initializers and finalizers
-            var data = new Data<TLocal>(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
+            Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
 
             // Queue work items to the thread pool for all threads except the current one
             for (int i = 0; i < threads - 1; i++)
@@ -340,10 +332,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             /// Finalizes the thread-local data.
             /// </summary>
             /// <param name="value">The thread-local data to finalize.</param>
-            public void Finally(TValue value)
-            {
-                @finally?.Invoke(value);
-            }
+            public void Finally(TValue value) => @finally?.Invoke(value);
         }
     }
 }

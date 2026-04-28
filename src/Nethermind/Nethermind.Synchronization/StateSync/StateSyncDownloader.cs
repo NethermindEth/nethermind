@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -19,14 +20,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDownloader : ISyncDownloader<StateSyncBatch>
+    public class StateSyncDownloader(ILogManager logManager) : ISyncDownloader<StateSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public StateSyncDownloader(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<StateSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
@@ -36,18 +32,10 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
-            Task<IOwnedReadOnlyList<byte[]>> task = null;
+            Task<IByteArrayList>? task = null;
             HashList? hashList = null;
             GetTrieNodesRequest? getTrieNodesRequest = null;
-            // Use GetNodeData if possible, starting with the dedicated NodeData protocol
-            if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
-            {
-                if (Logger.IsTrace) Logger.Trace($"Requested NodeData via NodeDataProtocol from peer {peer}");
-                hashList = HashList.Rent(batch.RequestedNodes);
-                task = nodeDataHandler.GetNodeData(hashList, cancellationToken);
-            }
-            // If the NodeData protocol is not supported, try eth66
-            else if (peer.ProtocolVersion < EthVersions.Eth67)
+            if (ProtocolSupportsNodeData(peer))
             {
                 if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
                 hashList = HashList.Rent(batch.RequestedNodes);
@@ -78,15 +66,19 @@ namespace Nethermind.Synchronization.StateSync
             try
             {
                 batch.Responses = await task;
-
-                if (hashList is not null) HashList.Return(hashList);
-                getTrieNodesRequest?.Dispose();
             }
             catch (Exception e)
             {
-                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
+                Logger.TraceError("Error after dispatching the state sync request", e);
+            }
+            finally
+            {
+                if (hashList is not null) HashList.Return(hashList);
+                getTrieNodesRequest?.Dispose();
             }
         }
+
+        protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
 
         /// <summary>
         /// SNAP protocol allows grouping of storage requests by account path.
@@ -103,7 +95,7 @@ namespace Nethermind.Synchronization.StateSync
             {
                 if (item.Address is not null)
                 {
-                    if (!itemsGroupedByAccount.TryGetValue(item.Address, out var storagePaths))
+                    if (!itemsGroupedByAccount.TryGetValue(item.Address, out List<(TreePath path, StateSyncItem syncItem)> storagePaths))
                     {
                         storagePaths = new List<(TreePath, StateSyncItem)>();
                         itemsGroupedByAccount[item.Address] = storagePaths;
@@ -117,50 +109,45 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            ArrayPoolList<PathGroup> accountAndStoragePath = new ArrayPoolList<PathGroup>(
-                accountTreePaths.Count + itemsGroupedByAccount.Count,
-                accountTreePaths.Count + itemsGroupedByAccount.Count);
-            request.AccountAndStoragePaths = accountAndStoragePath;
+            using DeferredRlpItemList.Builder builder = new();
+            DeferredRlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
 
             int requestedNodeIndex = 0;
-            int accountPathIndex = 0;
-            for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
+            for (int i = 0; i < accountTreePaths.Count; i++)
             {
-                (TreePath path, StateSyncItem syncItem) = accountTreePaths[accountPathIndex];
-                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(path) } };
+                (TreePath path, StateSyncItem syncItem) = accountTreePaths[i];
+                using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                groupWriter.WriteValue(Nibbles.EncodePath(path));
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
                 batch.RequestedNodes[requestedNodeIndex] = syncItem;
-
                 requestedNodeIndex++;
             }
 
-            foreach (var kvp in itemsGroupedByAccount)
+            foreach (KeyValuePair<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> kvp in itemsGroupedByAccount)
             {
-                byte[][] group = new byte[kvp.Value.Count + 1][];
-                group[0] = kvp.Key?.Value.Bytes.ToArray();
+                using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
+                groupWriter.WriteValue(kvp.Key?.Value.Bytes.ToArray());
 
-                for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
+                for (int groupIndex = 0; groupIndex < kvp.Value.Count; groupIndex++)
                 {
-                    (TreePath path, StateSyncItem syncItem) = kvp.Value[groupIndex - 1];
-                    group[groupIndex] = Nibbles.EncodePath(path);
+                    (TreePath path, StateSyncItem syncItem) = kvp.Value[groupIndex];
+                    groupWriter.WriteValue(Nibbles.EncodePath(path));
 
                     // We validate the order of the response later and it has to be the same as RequestedNodes
                     batch.RequestedNodes[requestedNodeIndex] = syncItem;
-
                     requestedNodeIndex++;
                 }
-
-                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = group };
-
-                accountPathIndex++;
             }
+
+            rootWriter.Dispose();
 
             if (batch.RequestedNodes.Count != requestedNodeIndex)
             {
                 Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Count} <> requestedNodeIndex:{requestedNodeIndex}");
             }
 
+            request.AccountAndStoragePaths = new RlpPathGroupList(builder.ToRlpItemList());
             return request;
         }
 
@@ -187,15 +174,9 @@ namespace Nethermind.Synchronization.StateSync
                 Volatile.Write(ref s_cache, hashList);
             }
 
-            public void Initialize(IList<StateSyncItem> items)
-            {
-                _items = items;
-            }
+            public void Initialize(IList<StateSyncItem> items) => _items = items;
 
-            public void Reset()
-            {
-                _items = null;
-            }
+            public void Reset() => _items = null;
 
             public Hash256 this[int index] => _items[index].Hash;
 
@@ -219,10 +200,7 @@ namespace Nethermind.Synchronization.StateSync
         {
             private readonly HashList _innerList;
 
-            internal KeccakToValueKeccakList(HashList innerList)
-            {
-                _innerList = innerList;
-            }
+            internal KeccakToValueKeccakList(HashList innerList) => _innerList = innerList;
 
             public IEnumerator<ValueHash256> GetEnumerator()
             {
@@ -232,10 +210,7 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return GetEnumerator();
-            }
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
             public int Count => _innerList.Count;
 

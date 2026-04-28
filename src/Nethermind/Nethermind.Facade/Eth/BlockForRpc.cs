@@ -12,6 +12,7 @@ using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Facade.Eth;
 
@@ -64,10 +65,15 @@ public class BlockForRpc
                 ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
 
-            // Set TD only if network is not merged
+            if (spec.IsEip7843Enabled)
+            {
+                SlotNumber = block.SlotNumber;
+            }
+
+            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
             if (specProvider.MergeBlockNumber is null)
             {
-                TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
+                TotalDifficulty = block.TotalDifficulty;
             }
         }
 
@@ -90,6 +96,8 @@ public class BlockForRpc
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
         RequestsHash = block.Header.RequestsHash;
+        BlockAccessListHash = block.Header.BlockAccessListHash;
+        BlockAccessList = block.BlockAccessList;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -100,14 +108,16 @@ public class BlockForRpc
     public long GasUsed { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public Hash256 Hash { get; set; }
+    public Hash256? Hash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
-    public Address Miner { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public Address? Miner { get; set; }
     public Hash256? MixHash { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -147,12 +157,21 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? RequestsHash { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? BlockAccessListHash { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BlockAccessList? BlockAccessList { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ulong? SlotNumber { get; set; }
+
     private static object[] GetTransactionHashes(Transaction[] transactions)
     {
         if (transactions.Length == 0) return Array.Empty<Hash256>();
 
         Hash256[] hashes = new Hash256[transactions.Length];
-        for (var i = 0; i < transactions.Length; i++)
+        for (int i = 0; i < transactions.Length; i++)
         {
             hashes[i] = transactions[i].Hash;
         }
@@ -165,7 +184,7 @@ public class BlockForRpc
         if (transactions.Length == 0) return Array.Empty<TransactionForRpc>();
 
         TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
-        for (var i = 0; i < transactions.Length; i++)
+        for (int i = 0; i < transactions.Length; i++)
         {
             TransactionForRpcContext extraData = new(
                 chainId: chainId,
@@ -185,7 +204,7 @@ public class BlockForRpc
         if (headers.Length == 0) return Array.Empty<Hash256>();
 
         Hash256[] hashes = new Hash256[headers.Length];
-        for (var i = 0; i < headers.Length; i++)
+        for (int i = 0; i < headers.Length; i++)
         {
             hashes[i] = headers[i].Hash;
         }

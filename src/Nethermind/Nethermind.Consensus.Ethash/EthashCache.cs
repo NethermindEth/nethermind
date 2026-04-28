@@ -29,10 +29,7 @@ namespace Nethermind.Consensus.Ethash
             private uint Item14;
             private uint Item15;
 
-            public Span<uint> AsUInts()
-            {
-                return MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref this, 1));
-            }
+            public Span<uint> AsUInts() => MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref this, 1));
 
             public static Bucket Xor(Bucket a, Bucket b)
             {
@@ -100,7 +97,7 @@ namespace Nethermind.Consensus.Ethash
             Data[i % n].AsUInts().CopyTo(mixInts);
 
             mixInts[0] = i ^ mixInts[0];
-            mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
+            Keccak512.ComputeUIntsToUInts(mixInts, mixInts);
 
             for (uint j = 0; j < Ethash.DataSetParents; j++)
             {
@@ -108,7 +105,7 @@ namespace Nethermind.Consensus.Ethash
                 Ethash.Fnv(mixInts, MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref Data[cacheIndex % n], 1)));
             }
 
-            mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
+            Keccak512.ComputeUIntsToUInts(mixInts, mixInts);
             return mixInts;
         }
 
@@ -123,7 +120,7 @@ namespace Nethermind.Consensus.Ethash
 
             isDisposed = true;
 
-            var data = Data;
+            Bucket[] data = Data;
             Data = null;
             _arrayPool.Return(data);
         }

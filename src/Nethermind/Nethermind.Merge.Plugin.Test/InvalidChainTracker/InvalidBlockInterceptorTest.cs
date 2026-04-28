@@ -31,8 +31,8 @@ public class InvalidBlockInterceptorTest
         _baseValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out _)
             .Returns(f =>
             {
-                var blockHeader = f.Arg<BlockHeader>();
-                var blockBody = f.Arg<BlockBody>();
+                BlockHeader blockHeader = f.Arg<BlockHeader>();
+                BlockBody blockBody = f.Arg<BlockBody>();
                 return BlockValidator.ValidateTxRootMatchesTxs(blockHeader, blockBody, out _) &&
                        BlockValidator.ValidateUnclesHashMatches(blockHeader, blockBody, out _) &&
                        BlockValidator.ValidateWithdrawalsHashMatches(blockHeader, blockBody, out _);

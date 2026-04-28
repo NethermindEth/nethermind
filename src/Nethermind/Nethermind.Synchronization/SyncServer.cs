@@ -25,6 +25,7 @@ using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -90,7 +91,7 @@ namespace Nethermind.Synchronization
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SyncServer>() ?? throw new ArgumentNullException(nameof(logManager));
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
@@ -368,49 +369,54 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public TxReceipt[] GetReceipts(Hash256? blockHash)
-        {
-            return blockHash is not null ? _receiptFinder.Get(blockHash) : [];
-        }
+        public TxReceipt[] GetReceipts(Hash256? blockHash) => blockHash is not null ? _receiptFinder.Get(blockHash) : [];
 
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
-        {
-            return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
-        }
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
-        public IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
-            ArrayPoolList<byte[]?> values = new ArrayPoolList<byte[]>(keys.Count);
+            using DeferredRlpItemList.Builder builder = new(keys.Count);
+            DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+            int count = 0;
+
             for (int i = 0; i < keys.Count; i++)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    return values;
-                }
+                if (cancellationToken.IsCancellationRequested) break;
 
-                values.Add(null);
-                if ((includedTypes & NodeDataType.State) == NodeDataType.State)
+                bool found = false;
+                if ((includedTypes & NodeDataType.State) == NodeDataType.State && _stateDb is not null)
                 {
-                    if (_stateDb is null)
+                    Span<byte> value = _stateDb.GetSpan(keys[i].Bytes);
+                    if (!value.IsNullOrEmpty())
                     {
-                        values[i] = null;
-                    }
-                    else
-                    {
-                        values[i] = _stateDb[keys[i].Bytes];
+                        writer.WriteValue(value);
+                        _stateDb.DangerousReleaseMemory(value);
+                        found = true;
                     }
                 }
 
-                if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                if (!found && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    values[i] = _codeDb[keys[i].Bytes];
+                    Span<byte> value = _codeDb.GetSpan(keys[i].Bytes);
+                    writer.WriteValue(value);
+                    _codeDb.DangerousReleaseMemory(value);
+                    found = true;
                 }
+
+                if (!found)
+                    writer.WriteValue([]);
+                count++;
             }
 
-            return values;
+            writer.Dispose();
+            return count == 0
+                ? EmptyByteArrayList.Instance
+                : new RlpByteArrayList(builder.ToRlpItemList());
         }
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+
+        public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
         public Hash256? FindHash(long number)
         {
@@ -495,7 +501,7 @@ namespace Nethermind.Synchronization
             }
 
             using ArrayPoolList<PeerInfo> allPeers = _pool.AllPeers.ToPooledList(_pool.PeerCount);
-            var counter = 0;
+            int counter = 0;
 
             ParallelUnbalancedWork.For(0, allPeers.Count,
                 (i) =>
@@ -547,7 +553,7 @@ namespace Nethermind.Synchronization
 
         public void StopNotifyingPeersAboutNewBlocks()
         {
-            if (_gossipStopped == false)
+            if (!_gossipStopped)
             {
                 _blockTree.NewHeadBlock -= OnNewHeadBlock;
                 _pool.NotifyPeerBlock -= OnNotifyPeerBlock;

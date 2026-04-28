@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -13,31 +12,68 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
 internal class XdcTransactionProcessor(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider? specProvider,
-        IWorldState? worldState,
-        IVirtualMachine? virtualMachine,
-        ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager) : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+    ISpecProvider? specProvider,
+    IWorldState? worldState,
+    IVirtualMachine? virtualMachine,
+    ICodeInfoRepository? codeInfoRepository,
+    ILogManager? logManager,
+    IMasternodeVotingContract masternodeVotingContract) : EthereumTransactionProcessorBase(
+        blobBaseFeeCalculator,
+        specProvider,
+        worldState,
+        virtualMachine,
+        codeInfoRepository,
+        logManager)
 {
+    private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
+    protected override void PayFees(
+        Transaction tx,
+        BlockHeader header,
+        IReleaseSpec spec,
+        ITxTracer tracer,
+        in TransactionSubstate substate,
+        long spentGas,
+        in UInt256 premiumPerGas,
+        in UInt256 blobBaseFee,
+        int statusCode)
     {
-        if (tx.IsSpecialTransaction((IXdcReleaseSpec)spec)) return;
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
 
-        base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+        if (tx.IsSpecialTransaction(xdcSpec)) return;
+
+        if (!xdcSpec.IsTipTrc21FeeEnabled)
+        {
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+            return;
+        }
+
+        Address owner = _masternodeVotingContract.GetCandidateOwner(WorldState, header.GasBeneficiary!);
+
+        if (owner is null || owner == Address.Zero)
+            return;
+
+        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
+        UInt256 fee = effectiveGasPrice * (ulong)spentGas;
+
+        WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
+
+        if (tracer.IsTracingFees)
+            tracer.ReportFees(fee, UInt256.Zero);
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
-        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec))
+        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec) || tx.IsSpecialTransaction((XdcReleaseSpec)spec))
         {
             premiumPerGas = 0;
             senderReservedGasPayment = 0;
@@ -49,7 +85,7 @@ internal class XdcTransactionProcessor(
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
-        var xdcSpec = spec as XdcReleaseSpec;
+        XdcReleaseSpec xdcSpec = spec as XdcReleaseSpec;
         Address target = tx.To;
         Address sender = tx.SenderAddress;
 
@@ -65,10 +101,7 @@ internal class XdcTransactionProcessor(
         return base.ValidateSender(tx, header, spec, tracer, opts);
     }
 
-    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender)
-    {
-        return spec.BlackListedAddresses.Contains(sender);
-    }
+    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender) => spec.BlackListedAddresses.Contains(sender);
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -76,21 +109,19 @@ internal class XdcTransactionProcessor(
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
         if (tx.RequiresSpecialHandling(spec))
-        {
             return ExecuteSpecialTransaction(tx, tracer, opts);
-        }
 
         return base.Execute(tx, tracer, opts);
     }
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
-        var xdcSpec = (IXdcReleaseSpec)spec;
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
         if (tx.RequiresSpecialHandling(xdcSpec))
         {
             if (tx.IsSignTransaction(xdcSpec))
             {
-                var nonce = WorldState.GetNonce(tx.SenderAddress);
+                UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
 
                 if (nonce < tx.Nonce)
                 {
@@ -110,14 +141,14 @@ internal class XdcTransactionProcessor(
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec _, long minGasRequired, bool validate)
     {
-        var spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
+        IXdcReleaseSpec spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
         if (tx.RequiresSpecialHandling(spec))
         {
             return TransactionResult.Ok;
         }
-        return base.ValidateGas(tx, header, minGasRequired);
+        return base.ValidateGas(tx, header, spec, minGasRequired, validate);
     }
 
     protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
@@ -138,15 +169,10 @@ internal class XdcTransactionProcessor(
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
-    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
-    {
-        if (tx.RequiresSpecialHandling((IXdcReleaseSpec)spec))
-        {
-            return new IntrinsicGas<EthereumGasPolicy>();
-        }
-
-        return base.CalculateIntrinsicGas(tx, spec);
-    }
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
+        tx.RequiresSpecialHandling((IXdcReleaseSpec)spec)
+            ? new IntrinsicGas<EthereumGasPolicy>()
+            : base.CalculateIntrinsicGas(tx, spec);
 
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -155,14 +181,14 @@ internal class XdcTransactionProcessor(
 
         bool restore = opts.HasFlag(ExecutionOptions.Restore);
 
-        // maybe a better approach would be adding an XdcGasPolicy 
+        // maybe a better approach would be adding an XdcGasPolicy
         TransactionResult result;
         _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))
             || !(result = IncrementNonce(tx, header, spec, tracer, opts))
-            || !(result = ValidateStatic(tx, header, spec, opts, intrinsicGas)))
+            || !(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas)))
         {
             if (restore)
             {
@@ -188,7 +214,7 @@ internal class XdcTransactionProcessor(
                 stateRoot = WorldState.StateRoot;
             }
 
-            var log = new LogEntry(tx.To, [], []);
+            LogEntry log = new(tx.To, [], []);
             tracer.MarkAsSuccess(tx.To, 0, [], [log], stateRoot);
         }
 

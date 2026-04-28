@@ -13,7 +13,7 @@ namespace Nethermind.KeyStore
 
         public BasePasswordProvider OrReadFromConsole(string message)
         {
-            ConsoleUtils consoleUtils = new ConsoleUtils(new ConsoleWrapper());
+            ConsoleUtils consoleUtils = new(new ConsoleWrapper());
             AlternativeProvider = new ConsolePasswordProvider(consoleUtils) { Message = message };
             return this;
         }

@@ -40,10 +40,7 @@ namespace Nethermind.Blockchain.Data
 
         public event EventHandler Changed;
 
-        public void Dispose()
-        {
-            _timer?.Dispose();
-        }
+        public void Dispose() => _timer?.Dispose();
 
         private void SetupWatcher(string filePath)
         {
@@ -122,7 +119,7 @@ namespace Nethermind.Blockchain.Data
 
             if (_fileSystem.File.Exists(FilePath))
             {
-                var lastWriteTime = _fileSystem.File.GetLastWriteTime(FilePath);
+                DateTime lastWriteTime = _fileSystem.File.GetLastWriteTime(FilePath);
                 if (lastWriteTime > _lastChange)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} updated on {lastWriteTime:hh:mm:ss:ffff} after last read {_lastChange:hh:mm:ss:ffff}.");

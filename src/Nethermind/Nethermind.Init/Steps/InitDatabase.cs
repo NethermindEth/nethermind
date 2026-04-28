@@ -16,9 +16,6 @@ namespace Nethermind.Init.Steps
         {
         }
 
-        public virtual Task Execute(CancellationToken _)
-        {
-            return Task.CompletedTask;
-        }
+        public virtual Task Execute(CancellationToken _) => Task.CompletedTask;
     }
 }

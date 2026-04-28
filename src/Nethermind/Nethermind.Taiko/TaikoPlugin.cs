@@ -16,7 +16,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
@@ -37,6 +37,7 @@ using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.Tdx;
+using Nethermind.Taiko.Precompiles;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
@@ -61,46 +62,67 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
-        InitializeL1SloadIfEnabled();
+        InitializeL1Precompiles();
 
         return Task.CompletedTask;
     }
 
-    private void InitializeL1SloadIfEnabled()
+    private void InitializeL1Precompiles()
     {
         ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
 
-        var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
+        if (_api.SpecProvider.GetFinalSpec() is not TaikoReleaseSpec taikoSpec)
+            throw new InvalidOperationException("TaikoPlugin requires TaikoChainSpecBasedSpecProvider");
 
-        if (!taikoSpec.IsRip7728Enabled)
+        ILogManager logManager = _api.Context.Resolve<ILogManager>();
+        ILogger logger = logManager.GetClassLogger<TaikoPlugin>();
+
+        bool sloadEnabled = taikoSpec.IsRip7728Enabled;
+        bool staticCallEnabled = taikoSpec.IsL1StaticCallEnabled;
+
+        if (logger.IsInfo) logger.Info($"L1SLOAD (RIP-7728): {(sloadEnabled ? "enabled" : "disabled")}");
+        if (logger.IsInfo) logger.Info($"L1STATICCALL: {(staticCallEnabled ? "enabled" : "disabled")}");
+
+        if (!sloadEnabled && !staticCallEnabled)
             return;
 
         ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
 
         if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
-            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1SLOAD precompile");
+            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1 precompiles");
 
-        var storageProvider = new JsonRpcL1StorageProvider(
-            surgeConfig.L1EthApiEndpoint,
+        if (logger.IsInfo) logger.Info($"L1 precompiles: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
+
+        // Single RPC client shared by both L1 precompile providers. Process-lifetime scope.
+        IJsonRpcClient l1RpcClient = new BasicJsonRpcClient(
+            new Uri(surgeConfig.L1EthApiEndpoint),
             _api.Context.Resolve<IJsonSerializer>(),
-            _api.Context.Resolve<ILogManager>());
+            logManager,
+            L1PrecompileConstants.L1RpcTimeout);
+        _api.DisposeStack.Push((IDisposable)l1RpcClient);
 
-        L1SloadPrecompile.L1StorageProvider = storageProvider;
+        if (sloadEnabled)
+        {
+            L1SloadPrecompile.L1StorageProvider = new JsonRpcL1StorageProvider(l1RpcClient, logManager);
+            L1SloadPrecompile.Logger = logManager.GetClassLogger<L1SloadPrecompile>();
+            if (logger.IsInfo) logger.Info("L1SLOAD: precompile initialized");
+        }
+
+        if (staticCallEnabled)
+        {
+            L1StaticCallPrecompile.L1CallProvider = new JsonRpcL1CallProvider(l1RpcClient, logManager);
+            L1StaticCallPrecompile.Logger = logManager.GetClassLogger<L1StaticCallPrecompile>();
+            if (logger.IsInfo) logger.Info("L1STATICCALL: precompile initialized");
+        }
     }
 
     public bool MustInitialize => true;
 
     // IConsensusPlugin
 
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
-    {
-        throw new NotSupportedException();
-    }
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _) => throw new NotSupportedException();
 
-    public IBlockProducer InitBlockProducer()
-    {
-        throw new NotSupportedException();
-    }
+    public IBlockProducer InitBlockProducer() => throw new NotSupportedException();
 
     public string SealEngineType => Core.SealEngineType.Taiko;
 
@@ -119,6 +141,8 @@ public class TaikoModule : Module
             .AddSingleton<NethermindApi, TaikoNethermindApi>()
             .AddModule(new BaseMergePluginModule())
 
+            .AddSingleton<IPrecompileProvider, TaikoPrecompileProvider>()
+            .AddScoped<IVirtualMachine, TaikoEthereumVirtualMachine>()
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
@@ -127,7 +151,7 @@ public class TaikoModule : Module
             .AddStep(typeof(InitializeBlockchainTaiko))
 
             // L1 origin store
-            .AddSingleton<IRlpStreamDecoder<L1Origin>, L1OriginDecoder>()
+            .AddSingleton<RlpValueDecoder<L1Origin>, L1OriginDecoder>()
             .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
@@ -152,8 +176,9 @@ public class TaikoModule : Module
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
-            .AddSingleton<IRlpStreamDecoder<Transaction>>((_) => Rlp.GetStreamDecoder<Transaction>()!)
-            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, IRlpStreamDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
+            .AddSingleton<IRlpStreamEncoder<Transaction>>((_) => Rlp.GetStreamEncoder<Transaction>()!)
+            .AddSingleton<IRlpValueDecoder<Transaction>>((_) => Rlp.GetValueDecoder<Transaction>()!)
+            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, IRlpValueDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
             .AddSingleton<IHealthHintService, IBlocksConfig>(blocksConfig =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
 
@@ -161,7 +186,7 @@ public class TaikoModule : Module
             .AddDecorator<IGasPriceOracle>((ctx, defaultGasPriceOracle) =>
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
-                var taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
+                TaikoReleaseSpec taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
 
                 if (!taikoSpec.UseSurgeGasPriceOracle)
                     return defaultGasPriceOracle;
@@ -178,7 +203,7 @@ public class TaikoModule : Module
                     throw new ArgumentException("TaikoInboxAddress must be provided in the Surge configuration to compute the gas price");
                 }
 
-                var l1RpcClient = new BasicJsonRpcClient(
+                BasicJsonRpcClient l1RpcClient = new(
                     new Uri(surgeConfig.L1EthApiEndpoint),
                     ctx.Resolve<IJsonSerializer>(),
                     ctx.Resolve<ILogManager>());
@@ -203,7 +228,7 @@ public class TaikoModule : Module
             // Need to set the rlp globally
             .OnBuild(ctx =>
             {
-                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<IRlpStreamDecoder<L1Origin>>());
+                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<RlpValueDecoder<L1Origin>>());
             })
             ;
     }
@@ -211,10 +236,10 @@ public class TaikoModule : Module
     private static IPayloadPreparationService CreatePayloadPreparationService(
         IBlockProducerEnvFactory blockProducerEnvFactory,
         L1OriginStore l1OriginStore,
-        IRlpStreamDecoder<Transaction> txDecoder,
+        IRlpValueDecoder<Transaction> txDecoder,
         ILogManager logManager)
     {
-        IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+        IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.CreatePersistent();
 
         TaikoPayloadPreparationService payloadPreparationService = new(
             blockProducerEnv.ChainProcessor,
@@ -228,18 +253,12 @@ public class TaikoModule : Module
 
     private class TaikoBlockValidationModule : Module, IBlockValidationModule
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
-        }
+        protected override void Load(ContainerBuilder builder) => builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
     }
 
     private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
-        }
+        protected override void Load(ContainerBuilder builder) => builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
     }
 
 }

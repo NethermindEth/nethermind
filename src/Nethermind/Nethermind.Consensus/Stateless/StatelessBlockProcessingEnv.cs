@@ -10,6 +10,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -35,14 +37,13 @@ public class StatelessBlockProcessingEnv(
     private IWorldState? _worldState;
     public IWorldState WorldState
     {
-        get => _worldState ??= new WorldState(
-            new TrieStoreScopeProvider(new RawTrieStore(witness.NodeStorage),
-                witness.CodeDb, logManager), logManager);
+        get => _worldState ??= new WorldState(new TrieStoreScopeProvider(new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager), logManager);
     }
 
     private IBlockProcessor GetProcessor()
     {
-        StatelessBlockTree statelessBlockTree = new(witness.DecodedHeaders);
+        using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
+        StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -64,7 +65,8 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new ExecutionRequestsProcessor(txProcessor)
+            new ExecutionRequestsProcessor(txProcessor),
+            NullBlockAccessListManager.Instance
         );
     }
 

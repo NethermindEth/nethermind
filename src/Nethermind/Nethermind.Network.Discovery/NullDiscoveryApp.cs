@@ -17,15 +17,9 @@ public class NullDiscoveryApp : IDiscoveryApp
     {
     }
 
-    public Task StartAsync()
-    {
-        return Task.CompletedTask;
-    }
+    public Task StartAsync() => Task.CompletedTask;
 
-    public Task StopAsync()
-    {
-        return Task.CompletedTask;
-    }
+    public Task StopAsync() => Task.CompletedTask;
 
     public void AddNodeToDiscovery(Node node)
     {
@@ -37,10 +31,7 @@ public class NullDiscoveryApp : IDiscoveryApp
         remove { }
     }
 
-    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
-    {
-        return AsyncEnumerable.Empty<Node>();
-    }
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken) => AsyncEnumerable.Empty<Node>();
 
     public event EventHandler<NodeEventArgs>? NodeRemoved
     {

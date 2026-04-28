@@ -4,11 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -21,46 +20,29 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class TrieStoreScopeProvider : IWorldStateScopeProvider
+public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager) : IWorldStateScopeProvider
 {
-    private readonly ITrieStore _trieStore;
-    private readonly ILogManager _logManager;
+    private readonly ITrieStore _trieStore = trieStore;
+    private readonly ILogManager _logManager = logManager;
     protected StateTree _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
+    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
 
-    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager)
-    {
-        _trieStore = trieStore;
-        _logManager = logManager;
-        _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb);
+    protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
-        _backingStateTree = CreateStateTree();
-    }
-
-    protected virtual StateTree CreateStateTree()
-    {
-        return new StateTree(_trieStore.GetTrieStore(null), _logManager);
-    }
-
-    public bool HasRoot(BlockHeader? baseBlock)
-    {
-        return _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
-    }
+    public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
-        var trieStoreCloser = _trieStore.BeginScope(baseBlock);
+        IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
+        _backingStateTree ??= CreateStateTree();
         _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
         return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
     }
 
-    protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot)
-    {
-        return new StorageTree(_trieStore.GetTrieStore(address), storageRoot, _logManager);
-    }
+    protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
 
-    private class TrieStoreWorldStateBackendScope : IWorldStateScopeProvider.IScope
+    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
     {
         public void Dispose()
         {
@@ -83,42 +65,27 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             return account;
         }
 
-        public void HintGet(Address address, Account? account)
-        {
-            _loadedAccounts.TryAdd(address, account);
-        }
+        public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
-        internal StateTree _backingStateTree;
+        internal StateTree _backingStateTree = backingStateTree;
         private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
         private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = new();
-        private readonly TrieStoreScopeProvider _scopeProvider;
-        private readonly IWorldStateScopeProvider.ICodeDb _codeDb1;
-        private readonly IDisposable _trieStoreCloser;
-        private readonly ILogManager _logManager;
+        private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
+        private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
+        private readonly IDisposable _trieStoreCloser = trieStoreCloser;
+        private readonly ILogManager _logManager = logManager;
 
-        public TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager)
-        {
-            _backingStateTree = backingStateTree;
-            _logManager = logManager;
-            _scopeProvider = scopeProvider;
-            _codeDb1 = codeDb;
-            _trieStoreCloser = trieStoreCloser;
-        }
-
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
-        {
-            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<WorldStateWriteBatch>());
-        }
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber) => new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
 
         public void Commit(long blockNumber)
         {
-            using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
+            using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
             // may make it worst. Always check on mainnet.
-            using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
+            using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
             foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
                 if (blockCommitter.TryRequestConcurrencyQuota())
@@ -128,7 +95,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                         StorageTree st = (StorageTree)ctx;
                         st.Commit();
                         blockCommitter.ReturnConcurrencyQuota();
-                    }, storage.Value));
+                    }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
                 }
                 else
                 {
@@ -143,7 +110,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         internal StorageTree LookupStorageTree(Address address)
         {
-            if (_storages.TryGetValue(address, out var storageTree))
+            if (_storages.TryGetValue(address, out StorageTree storageTree))
             {
                 return storageTree;
             }
@@ -153,15 +120,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             return storageTree;
         }
 
-        public void ClearLoadedAccounts()
-        {
-            _loadedAccounts.Clear();
-        }
+        public void ClearLoadedAccounts() => _loadedAccounts.Clear();
 
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
-        {
-            return LookupStorageTree(address);
-        }
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => LookupStorageTree(address);
     }
 
     private class WorldStateWriteBatch(
@@ -174,38 +135,34 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
-        public void Set(Address key, Account? account)
-        {
-            _dirtyAccounts[key] = account;
-        }
+        public void Set(Address key, Account? account) => _dirtyAccounts[key] = account;
 
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
-        {
-            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), this, address);
-        }
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) => new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
+                (address, rootHash) => MarkDirty(address, rootHash), address);
 
-        public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
-        {
-            _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
-        }
+        public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) => _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
 
         public void Dispose()
         {
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
-                if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
-                account ??= ThrowNullAccount(key);
-                account = account!.WithChangedStorageRoot(storageRoot);
+                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
+                    account = scope.Get(key);
+
+                // Account may be null when EIP-161 deletes an empty account that had storage
+                // changes in the same block. Skip the storage root update since the account
+                // will not exist in the state trie.
+                if (account is null) continue;
+                account = account.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
                 OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
                 if (logger.IsTrace) Trace(key, storageRoot, account);
             }
 
-            using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
+            using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
-                foreach (var kv in _dirtyAccounts)
+                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
                 }
@@ -217,17 +174,18 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static Account ThrowNullAccount(Address address)
-                => throw new InvalidOperationException($"Account {address} is null when updating storage hash");
         }
     }
 
-    private class StorageTreeBulkWriteBatch(int estimatedEntries, StorageTree storageTree, WorldStateWriteBatch worldStateWriteBatch, AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
+    public class StorageTreeBulkWriteBatch(
+        int estimatedEntries,
+        StorageTree storageTree,
+        Action<Address, Hash256> onRootUpdated,
+        AddressAsKey address,
+        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
-        private const int MIN_ENTRIES_TO_BATCH = 16;
+        public const int MIN_ENTRIES_TO_BATCH = 16;
 
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
@@ -237,7 +195,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 ? new(estimatedEntries)
                 : null;
 
-        private ValueHash256 _keyBuff = new ValueHash256();
+        private ValueHash256 _keyBuff = new();
 
         public void Set(in UInt256 index, byte[] value)
         {
@@ -259,16 +217,15 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             {
                 storageTree.RootHash = Keccak.EmptyTreeHash;
             }
-            else
-            {
-                if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
-                _hasSelfDestruct = true;
-            }
+
+            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            _hasSelfDestruct = true;
         }
 
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;
+            int bulkCount = 0;
             if (_bulkWrite is not null)
             {
                 if (_hasSelfDestruct)
@@ -276,44 +233,37 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                     storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
-                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
-                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+                bulkCount = _bulkWrite.Count;
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 storageTree.BulkSet(asRef);
-
-                _bulkWrite?.Dispose();
             }
 
             if (hasSet)
             {
-                storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
-                worldStateWriteBatch.MarkDirty(address, storageTree.RootHash);
+                if (commit)
+                {
+                    storageTree.Commit();
+                }
+                else
+                {
+                    storageTree.UpdateRootHash(bulkCount > 64);
+                }
+                onRootUpdated(address, storageTree.RootHash);
             }
         }
     }
 
-    private class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
+    public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
     {
-        public byte[]? GetCode(in ValueHash256 codeHash)
-        {
-            return codeDb[codeHash.Bytes]?.ToArray();
-        }
+        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes]?.ToArray();
 
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
-        {
-            return new CodeSetter(codeDb.StartWriteBatch());
-        }
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
 
         private class CodeSetter(IWriteBatch writeBatch) : IWorldStateScopeProvider.ICodeSetter
         {
-            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
-            {
-                writeBatch.PutSpan(codeHash.Bytes, code);
-            }
+            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) => writeBatch.PutSpan(codeHash.Bytes, code);
 
-            public void Dispose()
-            {
-                writeBatch.Dispose();
-            }
+            public void Dispose() => writeBatch.Dispose();
         }
     }
 }

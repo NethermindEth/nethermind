@@ -5,9 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.TxPool;
 
@@ -15,8 +12,14 @@ internal class XdcTxGossipPolicy(ISpecProvider provider, IChainHeadInfoProvider 
 {
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        var spec = (IXdcReleaseSpec)provider.GetXdcSpec(chainHeadInfoProvider.HeadNumber);
+        IXdcReleaseSpec spec = (IXdcReleaseSpec)provider.GetXdcSpec(chainHeadInfoProvider.HeadNumber);
 
-        return !tx.RequiresSpecialHandling(spec);
+        if (!tx.RequiresSpecialHandling(spec))
+            return true;
+
+        if (tx.IsSignTransaction(spec))
+            return true;
+
+        return false;
     }
 }

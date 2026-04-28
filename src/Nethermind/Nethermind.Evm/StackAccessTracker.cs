@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker : IDisposable
+public struct StackAccessTracker() : IDisposable
 {
     public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
     public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
@@ -19,18 +19,13 @@ public struct StackAccessTracker : IDisposable
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
-    private TrackingState _trackingState;
+    private TrackingState _trackingState = TrackingState.RentState();
 
     private int _addressesSnapshots;
     private int _storageKeysSnapshots;
     private int _destroyListSnapshots;
     private int _logsSnapshots;
-    private int _largeContractList;
 
-    public StackAccessTracker()
-    {
-        _trackingState = TrackingState.RentState();
-    }
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
@@ -40,9 +35,6 @@ public struct StackAccessTracker : IDisposable
 
     public readonly bool WarmUp(in StorageCell storageCell)
         => _trackingState.AccessedStorageCells.Add(storageCell);
-
-    public readonly bool WarmUpLargeContract(Address address)
-        => _trackingState.LargeContractList.Add(address);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -59,15 +51,9 @@ public struct StackAccessTracker : IDisposable
         }
     }
 
-    public readonly void ToBeDestroyed(Address address)
-    {
-        _trackingState.DestroyList.Add(address);
-    }
+    public readonly void ToBeDestroyed(Address address) => _trackingState.DestroyList.Add(address);
 
-    public readonly void WasCreated(Address address)
-    {
-        _trackingState.CreateList.Add(address);
-    }
+    public readonly void WasCreated(Address address) => _trackingState.CreateList.Add(address);
 
     public void TakeSnapshot()
     {
@@ -75,7 +61,6 @@ public struct StackAccessTracker : IDisposable
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
         _logsSnapshots = _trackingState.Logs.TakeSnapshot();
-        _largeContractList = _trackingState.LargeContractList.TakeSnapshot();
     }
 
     public readonly void Restore()
@@ -84,7 +69,6 @@ public struct StackAccessTracker : IDisposable
         _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
-        _trackingState.LargeContractList.Restore(_largeContractList);
     }
 
     public void Dispose()
@@ -105,12 +89,11 @@ public struct StackAccessTracker : IDisposable
             _trackerPool.Enqueue(state);
         }
 
-        public JournalSet<Address> AccessedAddresses { get; } = new();
-        public JournalSet<StorageCell> AccessedStorageCells { get; } = new();
+        public JournalSet<Address> AccessedAddresses { get; } = new(Address.EqualityComparer);
+        public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
         public JournalCollection<LogEntry> Logs { get; } = new();
-        public JournalSet<Address> DestroyList { get; } = new();
-        public HashSet<AddressAsKey> CreateList { get; } = new();
-        public JournalSet<AddressAsKey> LargeContractList { get; } = new();
+        public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
+        public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
 
         private void Clear()
         {
@@ -119,7 +102,6 @@ public struct StackAccessTracker : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
-            LargeContractList.Clear();
         }
     }
 }

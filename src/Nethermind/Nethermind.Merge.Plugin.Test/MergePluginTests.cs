@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -42,31 +43,41 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class MergePluginTests
 {
+    private sealed class SourceGenProbe
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed class ThrowingProbeResolver : IJsonTypeInfoResolver
+    {
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
+            type == typeof(SourceGenProbe) ? throw new InvalidOperationException("probe resolver was used") : null;
+    }
+
     private ChainSpec _chainSpec = null!;
     private MergeConfig _mergeConfig = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private MergePlugin _plugin = null!;
-    private CliquePlugin? _consensusPlugin = null;
+    private CliquePlugin? _consensusPlugin;
 
     [SetUp]
     public void Setup()
     {
-        _chainSpec = new ChainSpec()
+        _chainSpec = new ChainSpec
         {
             Parameters = new ChainParameters(),
             SealEngineType = SealEngineType.Clique,
             EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
                 new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod }),
         };
-        _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
-        _jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = [ModuleType.Engine] };
+        _mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" };
+        _jsonRpcConfig = new JsonRpcConfig { Enabled = true, EnabledModules = [ModuleType.Engine] };
         _plugin = new MergePlugin(_chainSpec, _mergeConfig);
         _consensusPlugin = new(_chainSpec);
     }
 
-    private IContainer BuildContainer(IConfigProvider? configProvider = null)
-    {
-        return new ContainerBuilder()
+    private IContainer BuildContainer(IConfigProvider? configProvider = null) =>
+        new ContainerBuilder()
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
@@ -74,24 +85,23 @@ public class MergePluginTests
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
-            .AddSingleton<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
+            .AddSingleton(Substitute.For<IRpcModuleProvider>())
             .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
-            .AddSingleton<IBlockProcessingQueue>(Substitute.For<IBlockProcessingQueue>())
-            .OnBuild((ctx) =>
+            .AddSingleton(Substitute.For<IBlockProcessingQueue>())
+            .OnBuild(ctx =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();
                 Build.MockOutNethermindApi((NethermindApi)api);
 
-                api.BlockProcessingQueue?.IsEmpty.Returns(true);
+                api.BlockProcessingQueue.IsEmpty.Returns(true);
             })
             .Build();
-    }
 
     [Test]
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
     {
-        JsonConfigSource? jsonSource = new("MisconfiguredConfig.json");
-        ConfigProvider? configProvider = new();
+        JsonConfigSource jsonSource = new("MisconfiguredConfig.json");
+        ConfigProvider configProvider = new();
         configProvider.AddSource(jsonSource);
         configProvider.Initialize();
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
@@ -116,9 +126,18 @@ public class MergePluginTests
     }
 
     [Test]
+    public void AddTypeInfoResolver_updates_existing_serializer_instances()
+    {
+        EthereumJsonSerializer serializer = new();
+        EthereumJsonSerializer.AddTypeInfoResolver(new ThrowingProbeResolver());
+
+        Assert.Throws<InvalidOperationException>(() => serializer.Serialize(new SourceGenProbe { Value = 1 }));
+    }
+
+    [Test]
     public async Task Initializes_correctly()
     {
-        using IContainer container = BuildContainer();
+        await using IContainer container = BuildContainer();
         INethermindApi api = container.Resolve<INethermindApi>();
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         await _plugin.Init(api);
@@ -133,329 +152,12 @@ public class MergePluginTests
     [Test]
     public async Task Init_registers_gas_limit_calculator_for_testing_rpc_module()
     {
-        using IContainer container = BuildContainer();
+        await using IContainer container = BuildContainer();
         INethermindApi api = container.Resolve<INethermindApi>();
         await _consensusPlugin!.Init(api);
         await _plugin.Init(api);
 
         Assert.DoesNotThrow(() => container.Resolve<IGasLimitCalculator>());
-    }
-
-    [Test]
-    public async Task Testing_buildBlockV1_sets_excess_blob_gas_for_eip4844()
-    {
-        Hash256 parentHash = Keccak.Compute("parent");
-        BlockHeader parentHeader = new(
-            Keccak.Compute("grandparent"),
-            Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
-            UInt256.Zero,
-            1,
-            30_000_000,
-            1,
-            [])
-        {
-            Hash = parentHash,
-            TotalDifficulty = UInt256.Zero,
-            BaseFeePerGas = UInt256.One,
-            GasUsed = 0,
-            StateRoot = Keccak.EmptyTreeHash,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            Bloom = Bloom.Empty,
-            BlobGasUsed = 0,
-            ExcessBlobGas = 0,
-        };
-
-        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(parentHash).Returns(parentBlock);
-
-        Hash256? suggestedWithdrawalsRoot = null;
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        blockchainProcessor
-            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
-            .Returns(static callInfo =>
-            {
-                Block block = callInfo.Arg<Block>();
-                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
-                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
-                block.Header.Bloom ??= Bloom.Empty;
-                block.Header.GasUsed = 0;
-                block.Header.Hash ??= Keccak.Compute("produced");
-                return block;
-            });
-        blockchainProcessor
-            .When(x => x.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()))
-            .Do(callInfo =>
-            {
-                Block block = callInfo.Arg<Block>();
-                suggestedWithdrawalsRoot = block.Header.WithdrawalsRoot;
-            });
-
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
-
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
-
-        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
-        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
-
-        TestingRpcModule module = new(
-            mainProcessingContext,
-            gasLimitCalculator,
-            specProvider,
-            blockFinder,
-            Substitute.For<IBlockTree>(),
-            new EthereumJsonSerializer(),
-            LimboLogs.Instance);
-
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = parentHeader.Timestamp + 12,
-            PrevRandao = Keccak.Compute("randao"),
-            SuggestedFeeRecipient = Address.Zero,
-            Withdrawals =
-            [
-                new Withdrawal
-                {
-                    Index = 0,
-                    ValidatorIndex = 0,
-                    Address = Address.Zero,
-                    AmountInGwei = 1
-                }
-            ],
-            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
-        };
-
-        ResultWrapper<GetPayloadV5Result?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
-
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.ExecutionPayload.BlobGasUsed.Should().Be(0);
-        result.Data!.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
-        suggestedWithdrawalsRoot.Should().Be(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash);
-    }
-
-        [Test]
-    public async Task Testing_commitBlockV1_commits_block_to_chain_head()
-    {
-        // Arrange
-        BlockHeader chainHeadHeader = new(
-            Keccak.Compute("grandparent"),
-            Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
-            UInt256.Zero,
-            1,
-            30_000_000,
-            1,
-            [])
-        {
-            Hash = Keccak.Compute("chainHead"),
-            TotalDifficulty = UInt256.Zero,
-            BaseFeePerGas = UInt256.One,
-            GasUsed = 0,
-            StateRoot = Keccak.EmptyTreeHash,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            Bloom = Bloom.Empty,
-            BlobGasUsed = 0,
-            ExcessBlobGas = 0,
-        };
-
-        Block chainHeadBlock = new(chainHeadHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.Head.Returns(chainHeadBlock);
-
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
-            .Returns(AddBlockResult.Added);
-
-        Hash256? producedBlockHash = null;
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        blockchainProcessor
-            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                Block block = callInfo.Arg<Block>();
-                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
-                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
-                block.Header.Bloom ??= Bloom.Empty;
-                block.Header.GasUsed = 0;
-                block.Header.Hash ??= Keccak.Compute("produced");
-                producedBlockHash = block.Header.Hash;
-                return block;
-            });
-
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
-
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
-
-        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
-        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(chainHeadHeader.GasLimit);
-
-        TestingRpcModule module = new(
-            mainProcessingContext,
-            gasLimitCalculator,
-            specProvider,
-            blockFinder,
-            blockTree,
-            new EthereumJsonSerializer(),
-            LimboLogs.Instance);
-
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = chainHeadHeader.Timestamp + 12,
-            PrevRandao = Keccak.Compute("randao"),
-            SuggestedFeeRecipient = Address.Zero,
-            Withdrawals =
-            [
-                new Withdrawal
-                {
-                    Index = 0,
-                    ValidatorIndex = 0,
-                    Address = Address.Zero,
-                    AmountInGwei = 1
-                }
-            ],
-            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
-        };
-
-        // Act
-        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
-
-        // Assert
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().NotBeNull();
-        result.Data.Should().Be(producedBlockHash!);
-
-        // Verify that SuggestBlockAsync was called with the correct options
-        await blockTree.Received(1).SuggestBlockAsync(
-            Arg.Is<Block>(b => b.Header.Number == chainHeadHeader.Number + 1),
-            BlockTreeSuggestOptions.ShouldProcess);
-    }
-
-    [Test]
-    public async Task Testing_commitBlockV1_fails_when_chain_head_not_found()
-    {
-        // Arrange
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.Head.Returns((Block?)null);
-
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
-
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
-
-        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
-
-        TestingRpcModule module = new(
-            mainProcessingContext,
-            gasLimitCalculator,
-            specProvider,
-            blockFinder,
-            blockTree,
-            new EthereumJsonSerializer(),
-            LimboLogs.Instance);
-
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = 12,
-            PrevRandao = Keccak.Compute("randao"),
-            SuggestedFeeRecipient = Address.Zero
-        };
-
-        // Act
-        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(payloadAttributes, Array.Empty<byte[]>(), null);
-
-        // Assert
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
-    }
-
-    [Test]
-    public async Task Testing_commitBlockV1_fails_when_block_commit_fails()
-    {
-        // Arrange
-        BlockHeader chainHeadHeader = new(
-            Keccak.Compute("grandparent"),
-            Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
-            UInt256.Zero,
-            1,
-            30_000_000,
-            1,
-            [])
-        {
-            Hash = Keccak.Compute("chainHead"),
-            TotalDifficulty = UInt256.Zero,
-            BaseFeePerGas = UInt256.One,
-            GasUsed = 0,
-            StateRoot = Keccak.EmptyTreeHash,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            Bloom = Bloom.Empty
-        };
-
-        Block chainHeadBlock = new(chainHeadHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.Head.Returns(chainHeadBlock);
-
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
-            .Returns(AddBlockResult.InvalidBlock);
-
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        blockchainProcessor
-            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                Block block = callInfo.Arg<Block>();
-                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
-                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
-                block.Header.Bloom ??= Bloom.Empty;
-                block.Header.GasUsed = 0;
-                block.Header.Hash ??= Keccak.Compute("produced");
-                return block;
-            });
-
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
-
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
-
-        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
-        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(chainHeadHeader.GasLimit);
-
-        TestingRpcModule module = new(
-            mainProcessingContext,
-            gasLimitCalculator,
-            specProvider,
-            blockFinder,
-            blockTree,
-            new EthereumJsonSerializer(),
-            LimboLogs.Instance);
-
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = chainHeadHeader.Timestamp + 12,
-            PrevRandao = Keccak.Compute("randao"),
-            SuggestedFeeRecipient = Address.Zero
-        };
-
-        // Act
-        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(payloadAttributes, Array.Empty<byte[]>(), null);
-
-        // Assert
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
 
     [TestCase(true, true)]
@@ -470,7 +172,7 @@ public class MergePluginTests
             jsonRpcConfig = new JsonRpcConfig()
             {
                 Enabled = jsonRpcEnabled,
-                AdditionalRpcUrls = new[] { "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth" }
+                AdditionalRpcUrls = ["http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth"]
             };
         }
         else
@@ -491,27 +193,24 @@ public class MergePluginTests
     [Test]
     public async Task InitDisableJsonRpcUrlWithNoEngineUrl()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = false,
-            EnabledModules = new string[] { "eth", "subscribe" },
-            AdditionalRpcUrls = new[]
-            {
+            EnabledModules = ["eth", "subscribe"],
+            AdditionalRpcUrls =
+            [
                 "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth",
-                "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client",
-            }
+                "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
+            ]
         };
 
-        using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
         INethermindApi api = container.Resolve<INethermindApi>();
         await _plugin.Init(api);
 
         jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo([]);
-        jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo(new string[]
-        {
-            "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
-        });
+        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo();
+        jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo("http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client");
     }
 
     [TestCase(true, true, true)]
@@ -526,7 +225,7 @@ public class MergePluginTests
             DownloadReceiptsInFastSync = downloadReceipt
         };
 
-        using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, _jsonRpcConfig, syncConfig));
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, _jsonRpcConfig, syncConfig));
         INethermindApi api = container.Resolve<INethermindApi>();
         Func<Task>? invocation = _plugin.Invoking((plugin) => plugin.Init(api));
         if (shouldPass)

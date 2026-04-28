@@ -17,8 +17,6 @@ using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
-#nullable enable
-
 namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
@@ -27,10 +25,11 @@ namespace Nethermind.Consensus.Processing
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlockAccessListManager balManager)
             : IBlockProductionTransactionsExecutor
         {
-            private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -41,11 +40,16 @@ namespace Nethermind.Consensus.Processing
             }
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-                => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            {
+                transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+                balManager.SetBlockExecutionContext(blockExecutionContext);
+            }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
             {
+                balManager.NextTransaction();
+
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;
 
@@ -102,15 +106,18 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                    ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor() : transactionProcessor;
+                    TransactionResult result = processor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
                     {
                         _transactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+                        balManager.NextTransaction();
                     }
                     else
                     {
+                        balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }

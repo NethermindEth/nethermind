@@ -10,15 +10,19 @@ using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 
-using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
-
 namespace Nethermind.Core.Caching;
 
-public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null) : ClockCacheBase<TKey>(maxCapacity)
+public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null, IEqualityComparer<TKey>? comparer = null) : ClockCacheBase<TKey>(maxCapacity)
     where TKey : struct, IEquatable<TKey>
 {
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? CollectionExtensions.LockPartitions, maxCapacity);
+#if ZK_EVM
+    private readonly int? _lockPartition = lockPartition;
+    private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw new ArgumentNullException(nameof(comparer)));
+    private readonly MockLock _lock = new();
+#else
+    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? Collections.CollectionExtensions.LockPartitions, maxCapacity, GenericEqualityComparer.GetOptimized(comparer));
     private readonly McsLock _lock = new();
+#endif
 
     public TValue Get(TKey key)
     {
@@ -72,7 +76,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
     private bool SetSlow(TKey key, TValue val)
     {
+#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
         using var lockRelease = _lock.Acquire();
+#pragma warning restore IDE0008
 
         // Recheck under lock
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
@@ -119,6 +125,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
                 {
                     ThrowInvalidOperationException();
                 }
+
                 _count--;
                 break;
             }
@@ -130,10 +137,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         return position;
 
         [DoesNotReturn]
-        void ThrowInvalidOperationException()
-        {
-            throw new InvalidOperationException($"{nameof(ClockCache<TKey, TValue>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
-        }
+        void ThrowInvalidOperationException() => throw new InvalidOperationException($"{nameof(ClockCache<,>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
     }
 
     public bool Delete(TKey key) => Delete(key, out _);
@@ -146,7 +150,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             return false;
         }
 
+#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
         using var lockRelease = _lock.Acquire();
+#pragma warning restore IDE0008
 
         if (_cacheMap.Remove(key, out LruCacheItem ov))
         {
@@ -166,7 +172,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     {
         if (MaxCapacity == 0) return;
 
+#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
         using var lockRelease = _lock.Acquire();
+#pragma warning restore IDE0008
 
         base.Clear();
         _cacheMap.NoResizeClear();

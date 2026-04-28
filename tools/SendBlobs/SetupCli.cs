@@ -149,7 +149,7 @@ internal static class SetupCli
             return Array.Empty<(int count, int blobCount, string @break)>();
 
         ReadOnlySpan<char> chars = options.AsSpan();
-        var result = new List<(int, int, string)>();
+        List<(int, int, string)> result = new List<(int, int, string)>();
 
         ReadOnlySpan<char> nextComma;
         int offSet = 0;
@@ -244,7 +244,7 @@ internal static class SetupCli
             {
                 IJsonRpcClient rpcClient = InitRpcClient(
                     parseResult.GetRequiredValue(rpcUrlOption),
-                    SimpleConsoleLogManager.Instance.GetClassLogger());
+                    SimpleConsoleLogManager.Instance.GetClassLogger(typeof(SetupCli)));
 
                 ulong chainId = await rpcClient.GetChainIdAsync();
 
@@ -317,7 +317,7 @@ internal static class SetupCli
 
                 IJsonRpcClient rpcClient = InitRpcClient(
                     parseResult.GetRequiredValue(rpcUrlOption),
-                    SimpleConsoleLogManager.Instance.GetClassLogger());
+                    SimpleConsoleLogManager.Instance.GetClassLogger(typeof(SetupCli)));
 
                 ulong chainId = await rpcClient.GetChainIdAsync();
 

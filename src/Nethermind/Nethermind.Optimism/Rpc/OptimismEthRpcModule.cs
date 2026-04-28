@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -52,6 +53,7 @@ public class OptimismEthRpcModule(
     IJsonRpcClient? sequencerRpcClient,
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
+    ILogIndexConfig? logIndexConfig,
     IOptimismSpecHelper opSpecHelper)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
@@ -68,6 +70,7 @@ public class OptimismEthRpcModule(
         feeHistoryOracle,
         protocolsManager,
         forkInfo,
+        logIndexConfig,
         secondsPerSlot), IOptimismEthRpcModule
 {
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
@@ -150,7 +153,7 @@ public class OptimismEthRpcModule(
         }
 
         Block block = foundBlock.Object;
-        L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, opSpecHelper);
+        L1BlockGasInfo l1GasInfo = new(block, opSpecHelper);
         OptimismReceiptForRpc result =
             receipt is OptimismTxReceipt optimismTxReceipt
                 ? new OptimismReceiptForRpc(
@@ -209,7 +212,7 @@ public class OptimismEthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        var receipt = _receiptFinder
+        TxReceipt? receipt = _receiptFinder
             .Get(block)
             .FirstOrDefault(r => r.TxHash == transaction.Hash);
 
@@ -246,7 +249,7 @@ public class OptimismEthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc result = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
+        BlockForRpc result = new(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
 
         if (returnFullTransactionObjects)
         {

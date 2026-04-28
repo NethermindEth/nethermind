@@ -1,18 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -20,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using ILogger = Nethermind.Logging.ILogger;
@@ -28,113 +25,75 @@ using ILogger = Nethermind.Logging.ILogger;
 namespace Nethermind.Merge.Plugin;
 
 public class TestingRpcModule(
-    IMainProcessingContext mainProcessingContext,
+    IBlockProducerEnvFactory blockProducerEnvFactory,
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
-    IBlockTree blockTree,
-    IJsonSerializer jsonSerializer,
     ILogManager logManager)
     : ITestingRpcModule
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IBlockchainProcessor _processor = mainProcessingContext.BlockchainProcessor;
-    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
 
-    public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData)
+    public async Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
     {
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
 
         if (parentBlock is not null)
         {
-            BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
-            Transaction[] transactions = GetTransactions(txRlps).ToArray();
+            IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
+
+            BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, spec, extraData);
+
+            // Create a fresh processor per call with its own WorldState to avoid scope conflicts
+            // with the main processing pipeline (TrieWarmer/prewarmer may hold scopes open).
+            await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
+
+            Transaction[] transactions;
+            try
+            {
+                transactions = (txRlps is null
+                        ? env.TxSource.GetTransactions(parentBlock.Header, header.GasLimit, payloadAttributes, filterSource: true)
+                        : DecodeTransactions(txRlps))
+                    .ToArray();
+            }
+            catch (RlpException e)
+            {
+                return ResultWrapper<object?>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
+            }
+
             header.TxRoot = TxTrie.CalculateRoot(transactions);
-            Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
+            BlockToProduce block = new(header, transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null);
 
             FeesTracer feesTracer = new();
-            Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+            Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
 
             if (processedBlock is not null)
             {
-                GetPayloadV5Result getPayloadV5Result = new(processedBlock, feesTracer.Fees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
-
-                if (!getPayloadV5Result.ValidateFork(specProvider))
+                // When explicit transactions were provided, verify all were included.
+                // The block processor in production mode silently skips invalid transactions,
+                // but the spec requires all provided transactions to be included.
+                if (txRlps is not null && processedBlock.Transactions.Length != transactions.Length)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-                    return ResultWrapper<GetPayloadV5Result?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
+                    string error = $"expected {transactions.Length} transactions but only {processedBlock.Transactions.Length} were included";
+                    if (_logger.IsWarn) _logger.Warn($"testing_buildBlockV1 failed: {error}");
+                    return ResultWrapper<object?>.Fail(error, ErrorCodes.InvalidInput);
                 }
 
+                object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, spec);
+
                 if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
-                return ResultWrapper<GetPayloadV5Result?>.Success(getPayloadV5Result);
+                return ResultWrapper<object?>.Success(getPayloadResult);
             }
 
-            return ResultWrapper<GetPayloadV5Result?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
+            return ResultWrapper<object?>.Fail("payload processing failed", ErrorCodes.InternalError);
         }
-        return ResultWrapper<GetPayloadV5Result?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
+
+        return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
     }
 
-        public async Task<ResultWrapper<Hash256?>> testing_commitBlockV1(PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData)
+    private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)
     {
-        BlockHeader? chainHead = blockFinder.Head?.Header;
-
-        if (chainHead is null)
-        {
-            return ResultWrapper<Hash256?>.Fail("chain head not found", MergeErrorCodes.InvalidPayloadAttributes);
-        }
-
-        BlockHeader header = PrepareBlockHeader(chainHead, payloadAttributes, extraData);
-        Transaction[] transactions = GetTransactions(txRlps).ToArray();
-        header.TxRoot = TxTrie.CalculateRoot(transactions);
-        Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
-
-        FeesTracer feesTracer = new();
-        Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
-
-        if (processedBlock is null)
-        {
-            return ResultWrapper<Hash256?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
-        }
-
-        GetPayloadV5Result getPayloadV5Result = new(processedBlock, feesTracer.Fees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
-
-        if (!getPayloadV5Result.ValidateFork(specProvider))
-        {
-            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-            return ResultWrapper<Hash256?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
-        }
-
-        AddBlockResult addBlockResult = await _blockTree.SuggestBlockAsync(processedBlock, BlockTreeSuggestOptions.ShouldProcess);
-
-        if (addBlockResult != AddBlockResult.Added)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
-            return ResultWrapper<Hash256?>.Fail($"failed to commit block: {addBlockResult}", MergeErrorCodes.UnknownPayload);
-        }
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                string fileName = $"{processedBlock.Number}.json";
-                string jsonContent = jsonSerializer.Serialize(getPayloadV5Result);
-                await File.WriteAllTextAsync(fileName, jsonContent);
-                if (_logger.IsDebug) _logger.Debug($"Saved payload to {fileName}");
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Failed to save payload to file", ex);
-            }
-        });
-
-        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
-
-        return ResultWrapper<Hash256?>.Success(processedBlock.Hash);
-    }
-
-    private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, byte[]? extraData)
-    {
-        Address blockAuthor = payloadAttributes.SuggestedFeeRecipient;
+        Address blockAuthor = payloadAttributes.SuggestedFeeRecipient ?? Address.Zero;
         BlockHeader header = new(
             parent.Hash!,
             Keccak.OfAnEmptySequenceRlp,
@@ -147,7 +106,8 @@ public class TestingRpcModule(
         {
             Author = blockAuthor,
             MixHash = payloadAttributes.PrevRandao,
-            ParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot
+            ParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot,
+            SlotNumber = payloadAttributes.SlotNumber
         };
 
         UInt256 difficulty = UInt256.Zero;
@@ -155,7 +115,6 @@ public class TestingRpcModule(
         header.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
         header.IsPostMerge = true;
-        IReleaseSpec spec = specProvider.GetSpec(header);
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
 
         if (spec.IsEip4844Enabled)
@@ -174,11 +133,17 @@ public class TestingRpcModule(
         return header;
     }
 
-    private IEnumerable<Transaction> GetTransactions(IEnumerable<byte[]> txRlps)
+    private static IEnumerable<Transaction> DecodeTransactions(IEnumerable<byte[]> txRlps) =>
+        txRlps.Select(txRlp => Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping));
+
+    private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec)
     {
-        foreach (var txRlp in txRlps)
-        {
-            yield return TxDecoder.Instance.Decode(new RlpStream(txRlp), RlpBehaviors.SkipTypedWrapping);
-        }
+        processedBlock.ExecutionRequests ??= ExecutionRequestExtensions.EmptyRequests;
+        processedBlock.Header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
+
+        return spec.IsEip7928Enabled
+            ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false)
+            : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false);
     }
+
 }

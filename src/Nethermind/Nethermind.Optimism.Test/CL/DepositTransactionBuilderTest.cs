@@ -40,7 +40,7 @@ public class DepositTransactionBuilderTest
     public void DeriveUserDeposits_NoDeposits()
     {
         ReceiptForRpc[] receipts = [];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         depositTransactions.Length.Should().Be(0);
     }
@@ -64,7 +64,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = SomeHash,
             },
         ];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         depositTransactions.Length.Should().Be(0);
     }
@@ -165,11 +165,11 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_FailedDeposit()
     {
-        var blockHash = SomeHash;
-        var from = SomeAddressA;
-        var to = SomeAddressB;
+        Hash256 blockHash = SomeHash;
+        Address from = SomeAddressA;
+        Address to = SomeAddressB;
 
-        var depositLogEventV0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -177,7 +177,7 @@ public class DepositTransactionBuilderTest
             Gas = 8732577,
             IsCreation = false,
         };
-        var logData = depositLogEventV0.ToBytes();
+        byte[] logData = depositLogEventV0.ToBytes();
 
         ReceiptForRpc[] receipts =
         [
@@ -205,7 +205,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         depositTransactions.Length.Should().Be(0);
     }
@@ -213,11 +213,11 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_SuccessfulDeposit()
     {
-        var blockHash = SomeHash;
-        var from = SomeAddressA;
-        var to = SomeAddressB;
+        Hash256 blockHash = SomeHash;
+        Address from = SomeAddressA;
+        Address to = SomeAddressB;
 
-        var depositLogEventV0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -225,7 +225,7 @@ public class DepositTransactionBuilderTest
             Gas = 8732577,
             IsCreation = false,
         };
-        var logData = depositLogEventV0.ToBytes();
+        byte[] logData = depositLogEventV0.ToBytes();
 
         ReceiptForRpc[] receipts =
         [
@@ -253,9 +253,9 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        var expectedTransaction = Build.A.Transaction
+        Transaction expectedTransaction = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithSenderAddress(from)
             .WithTo(to)
@@ -278,10 +278,10 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_IsCreation()
     {
-        var blockHash = SomeHash;
-        var from = SomeAddressA;
+        Hash256 blockHash = SomeHash;
+        Address from = SomeAddressA;
 
-        var depositLogEventV0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -289,7 +289,7 @@ public class DepositTransactionBuilderTest
             Gas = 8732577,
             IsCreation = true,
         };
-        var logData = depositLogEventV0.ToBytes();
+        byte[] logData = depositLogEventV0.ToBytes();
 
         ReceiptForRpc[] receipts =
         [
@@ -317,9 +317,9 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        var expectedTransaction = Build.A.Transaction
+        Transaction expectedTransaction = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithSenderAddress(from)
             .WithTo(null)
@@ -342,11 +342,11 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_MultipleReceiptsMixedStatus()
     {
-        var blockHash = SomeHash;
-        var from = SomeAddressA;
-        var to = SomeAddressB;
+        Hash256 blockHash = SomeHash;
+        Address from = SomeAddressA;
+        Address to = SomeAddressB;
 
-        var depositLogEventV0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -354,7 +354,7 @@ public class DepositTransactionBuilderTest
             Gas = 8732577,
             IsCreation = false,
         };
-        var logData = depositLogEventV0.ToBytes();
+        byte[] logData = depositLogEventV0.ToBytes();
 
         ReceiptForRpc[] receipts =
         [
@@ -405,9 +405,9 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        var expectedTransaction = Build.A.Transaction
+        Transaction expectedTransaction = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithSenderAddress(from)
             .WithTo(to)
@@ -430,11 +430,11 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_SuccessfulDepositMultipleLogs()
     {
-        var blockHash = SomeHash;
-        var from = SomeAddressA;
-        var to = SomeAddressB;
+        Hash256 blockHash = SomeHash;
+        Address from = SomeAddressA;
+        Address to = SomeAddressB;
 
-        var depositLogEventV0_0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -442,9 +442,9 @@ public class DepositTransactionBuilderTest
             Gas = 8732577,
             IsCreation = false,
         };
-        var logData_0 = depositLogEventV0_0.ToBytes();
+        byte[] logData_0 = depositLogEventV0_0.ToBytes();
 
-        var depositLogEventV0_1 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_1 = new()
         {
             Data = Bytes.FromHexString("0xe19ea336343e12e35237bb667fd0336a4fd9"),
             Mint = 0,
@@ -452,7 +452,7 @@ public class DepositTransactionBuilderTest
             Gas = 8078654,
             IsCreation = true,
         };
-        var logData_1 = depositLogEventV0_1.ToBytes();
+        byte[] logData_1 = depositLogEventV0_1.ToBytes();
 
         ReceiptForRpc[] receipts =
         [
@@ -494,9 +494,9 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        var expectedTransaction_0 = Build.A.Transaction
+        Transaction expectedTransaction_0 = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithSenderAddress(from)
             .WithTo(to)
@@ -510,7 +510,7 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0_0.Data.ToArray())
             .TestObject;
 
-        var expectedTransaction_1 = Build.A.Transaction
+        Transaction expectedTransaction_1 = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithSenderAddress(from)
             .WithTo(null)
@@ -535,11 +535,11 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_FailedDepositMultipleLogs()
     {
-        var blockHash = SomeHash;
-        var from = SomeAddressA;
-        var to = SomeAddressB;
+        Hash256 blockHash = SomeHash;
+        Address from = SomeAddressA;
+        Address to = SomeAddressB;
 
-        var depositLogEventV0_0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -547,9 +547,9 @@ public class DepositTransactionBuilderTest
             Gas = 8732577,
             IsCreation = false,
         };
-        var logData_0 = depositLogEventV0_0.ToBytes();
+        byte[] logData_0 = depositLogEventV0_0.ToBytes();
 
-        var depositLogEventV0_1 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_1 = new()
         {
             Data = Bytes.FromHexString("0xe19ea336343e12e35237bb667fd0336a4fd9"),
             Mint = 0,
@@ -557,7 +557,7 @@ public class DepositTransactionBuilderTest
             Gas = 8078654,
             IsCreation = true,
         };
-        var logData_1 = depositLogEventV0_1.ToBytes();
+        byte[] logData_1 = depositLogEventV0_1.ToBytes();
 
         ReceiptForRpc[] receipts =
         [
@@ -599,7 +599,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
         depositTransactions.Length.Should().Be(0);
     }
@@ -607,14 +607,14 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_SuccessfulDepositNotAllDepositLogs()
     {
-        var blockHash = SomeHash;
-        var from_0 = SomeAddressA;
-        var to_0 = SomeAddressB;
+        Hash256 blockHash = SomeHash;
+        Address from_0 = SomeAddressA;
+        Address to_0 = SomeAddressB;
 
-        var from_1 = SomeAddressC;
-        var to_1 = SomeAddressD;
+        Address from_1 = SomeAddressC;
+        Address to_1 = SomeAddressD;
 
-        var depositLogEventV0_0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -622,9 +622,9 @@ public class DepositTransactionBuilderTest
             Gas = 8732577,
             IsCreation = false,
         };
-        var logData_0 = depositLogEventV0_0.ToBytes();
+        byte[] logData_0 = depositLogEventV0_0.ToBytes();
 
-        var depositLogEventV0_1 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_1 = new()
         {
             Data = Bytes.FromHexString("0xe19ea336343e12e35237bb667fd0336a4fd9"),
             Mint = 0,
@@ -632,7 +632,7 @@ public class DepositTransactionBuilderTest
             Gas = 8078654,
             IsCreation = false,
         };
-        var logData_1 = depositLogEventV0_1.ToBytes();
+        byte[] logData_1 = depositLogEventV0_1.ToBytes();
 
         ReceiptForRpc[] receipts =
         [
@@ -682,9 +682,9 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        var depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        var expectedTransaction_0 = Build.A.Transaction
+        Transaction expectedTransaction_0 = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithSenderAddress(from_0)
             .WithTo(to_0)
@@ -698,7 +698,7 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0_0.Data.ToArray())
             .TestObject;
 
-        var expectedTransaction_1 = Build.A.Transaction
+        Transaction expectedTransaction_1 = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithSenderAddress(from_1)
             .WithTo(to_1)

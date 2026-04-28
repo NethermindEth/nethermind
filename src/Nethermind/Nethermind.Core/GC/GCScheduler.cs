@@ -38,11 +38,9 @@ public sealed class GCScheduler
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
 
-    private GCScheduler()
-    {
+    private GCScheduler() =>
         // Initialize the timer without starting it
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
-    }
 
     /// <summary>
     /// Activates background garbage collection when the processing queue is idle.
@@ -118,18 +116,12 @@ public sealed class GCScheduler
     /// Marks that a garbage collection is in progress; or one shouldn't happen.
     /// </summary>
     /// <returns>True if marking succeeded; false if a GC is already in progress.</returns>
-    public static bool MarkGCPaused()
-    {
-        return Interlocked.CompareExchange(ref _canPerformGC, GCNotAllowed, CanPerformGC) == CanPerformGC;
-    }
+    public static bool MarkGCPaused() => Interlocked.CompareExchange(ref _canPerformGC, GCNotAllowed, CanPerformGC) == CanPerformGC;
 
     /// <summary>
     /// Marks that garbage collection has finished.
     /// </summary>
-    public static void MarkGCResumed()
-    {
-        Volatile.Write(ref _canPerformGC, CanPerformGC);
-    }
+    public static void MarkGCResumed() => Volatile.Write(ref _canPerformGC, CanPerformGC);
 
     /// <summary>
     /// Determines and performs the appropriate type of garbage collection.
@@ -190,7 +182,7 @@ public sealed class GCScheduler
         _countToGC = MaxBlocksWithoutGC;
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         // Also trim native memory used by Db
-        MallocHelper.Instance.MallocTrim((uint)1.MiB());
+        MallocHelper.Instance.MallocTrim((uint)1.MiB);
         // Indicate that GC has finished
         MarkGCResumed();
 

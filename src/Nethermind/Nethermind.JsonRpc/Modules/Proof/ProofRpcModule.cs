@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         : IProofRpcModule
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
@@ -164,7 +164,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             int logIndexStart = receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
 
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, block.Timestamp, tx?.GetGasInfo(spec, block.Header) ?? new(), logIndexStart);
+            receiptWithProof.Receipt = new ReceiptForRpc(
+                txHash,
+                receipt,
+                block.Timestamp,
+                tx?.GetGasInfo(spec, block.Header) ?? new(),
+                logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
 
@@ -204,14 +209,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
         }
 
-        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
-        {
-            return TxTrie.CalculateProof(txs, index);
-        }
+        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);
 
-        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
-        {
-            return ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptDecoder);
-        }
+        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) => ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
     }
 }

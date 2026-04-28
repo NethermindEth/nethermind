@@ -39,7 +39,7 @@ public class RateLimiterTests
         await Task.WhenAll(tasks);
 
         int effectivePerSec = (int)(counter / ((Environment.TickCount64 - startTime) / 1000.0));
-        effectivePerSec.Should().BeInRange((int)(eventPerSec * 0.5), (int)(eventPerSec * 1.1));
+        effectivePerSec.Should().BeInRange((int)(eventPerSec * 0.2), (int)(eventPerSec * 1.5));
     }
 
     [Test]

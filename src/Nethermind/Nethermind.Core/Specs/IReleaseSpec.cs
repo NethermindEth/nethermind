@@ -199,10 +199,10 @@ namespace Nethermind.Core.Specs
         bool IsEip2930Enabled { get; }
 
         /// <summary>
-        /// Should EIP158 be ignored for this account.
+        /// Account for which EIP-158 state clearing should be ignored.
         /// </summary>
-        /// <remarks>This is needed for SystemUser account compatibility with Parity.</remarks>
-        bool IsEip158IgnoredAccount(Address address);
+        /// <remarks>This is needed for SystemUser account compatibility with Parity on AuRa chains.</remarks>
+        Address? Eip158IgnoredAccount => null;
 
         /// <summary>
         /// BaseFee opcode
@@ -316,9 +316,9 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
-        /// Eof execution env in EVM
+        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
         /// </summary>
-        bool IsEofEnabled { get; }
+        bool IsEip8024Enabled { get; }
 
         /// <summary>
         /// Transactions that allows code delegation for EOA
@@ -341,7 +341,7 @@ namespace Nethermind.Core.Specs
         bool IsEip4844FeeCollectorEnabled { get; }
 
         /// <summary>
-        /// Secp256r1 precompile
+        /// SecP256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
         bool IsEip7951Enabled { get; }
@@ -378,6 +378,16 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip7934Enabled { get; }
         int Eip7934MaxRlpBlockSize { get; }
+
+        /// <summary>
+        ///  Increase Calldata Floor Cost
+        /// </summary>
+        bool IsEip7976Enabled { get; }
+
+        /// <summary>
+        /// Access List Token Floor Pricing
+        /// </summary>
+        bool IsEip7981Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -438,13 +448,37 @@ namespace Nethermind.Core.Specs
         public bool IsEip7939Enabled { get; }
 
         /// <summary>
-        /// EIP-7907: Meter Contract Code Size And Increase Limit
+        /// EIP-7928: Block-Level Access Lists
         /// </summary>
-        public bool IsEip7907Enabled { get; }
+        public bool IsEip7928Enabled { get; }
+        bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
         /// <summary>
-        /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
+        /// EIP-8037: Cost Per State Byte / State Size Limit.
+        /// Two-dimensional gas metering for state growth control.
         /// </summary>
-        public bool IsRip7728Enabled { get; }
+        public bool IsEip8037Enabled { get; }
+
+        /// <summary>
+        /// EIP-7708: ETH transfers and burns emit a log
+        /// </summary>
+        public bool IsEip7708Enabled { get; }
+
+        /// <summary>
+        /// EIP-7843: SLOTNUM opcode
+        /// </summary>
+        public bool IsEip7843Enabled { get; }
+
+        /// <summary>
+        /// EIP-7954: Increase Maximum Contract Size
+        /// </summary>
+        public bool IsEip7954Enabled { get; }
+
+        /// <summary>
+        /// Precomputed gas cost and refund constants derived from this spec.
+        /// Values are cached per spec instance (singletons per fork) to avoid
+        /// repeated interface dispatch on the EVM opcode hot path.
+        /// </summary>
+        SpecGasCosts GasCosts { get; }
     }
 }

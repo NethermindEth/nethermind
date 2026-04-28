@@ -13,9 +13,6 @@ namespace Nethermind.State.Snap
 
         public IOwnedReadOnlyList<PathGroup> AccountAndStoragePaths { get; set; }
 
-        public void Dispose()
-        {
-            AccountAndStoragePaths?.Dispose();
-        }
+        public void Dispose() => AccountAndStoragePaths?.Dispose();
     }
 }

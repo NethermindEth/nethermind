@@ -37,6 +37,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
             worldState = new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager);
         }
 
+        worldState = new WorldStateMetricsScopeProvider(worldState, static time => Blockchain.Metrics.StateMerkleizationTime = time);
+
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
@@ -46,20 +48,22 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
-                    blockTree,
-                    branchProcessor,
-                    compositeBlockPreprocessorStep,
-                    worldStateManager.GlobalStateReader,
-                    logManager,
-                    new BlockchainProcessor.Options
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
+                    new BlockchainProcessor(
+                        blockTree,
+                        branchProcessor,
+                        compositeBlockPreprocessorStep,
+                        worldStateManager.GlobalStateReader,
+                        logManager,
+                        new BlockchainProcessor.Options
+                        {
+                            StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                            DumpOptions = initConfig.AutoDump
+                        },
+                        processingStats)
                     {
-                        StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                        DumpOptions = initConfig.AutoDump
+                        IsMainProcessor = true // Manual construction because of this flag
                     })
-                {
-                    IsMainProcessor = true // Manual construction because of this flag
-                })
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
                 .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
                 // And finally, to wrap things up.
@@ -72,10 +76,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         LifetimeScope = innerScope;
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await LifetimeScope.DisposeAsync();
-    }
+    public async ValueTask DisposeAsync() => await LifetimeScope.DisposeAsync();
 
     private readonly Components _components;
     public ILifetimeScope LifetimeScope { get; init; }
@@ -87,10 +88,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public ITransactionProcessor TransactionProcessor => _components.TransactionProcessor;
     public IGenesisLoader GenesisLoader => _components.GenesisLoader;
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
-    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs)
-    {
-        TransactionProcessed?.Invoke(this, txProcessedEventArgs);
-    }
+    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs) => TransactionProcessed?.Invoke(this, txProcessedEventArgs);
 
     private record Components(
         ITransactionProcessor TransactionProcessor,

@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
@@ -23,23 +22,11 @@ public class StateSyncAllocationStrategyTests
 {
     private static readonly IPeerAllocationStrategy _strategy = new StateSyncAllocationStrategyFactory.AllocationStrategy(new NoopAllocationStrategy());
 
-    [Test]
-    public void Can_allocate_node_with_snap()
-    {
-        IsNodeAllocated(EthVersions.Eth67, true).Should().BeTrue();
-    }
-
-    [Test]
-    public void Can_allocate_pre_eth67_node()
-    {
-        IsNodeAllocated(EthVersions.Eth66, false).Should().BeTrue();
-    }
-
-    [Test]
-    public void Cannot_allocated_eth67_with_no_snap()
-    {
-        IsNodeAllocated(EthVersions.Eth67, false).Should().BeFalse();
-    }
+    [TestCase(EthVersions.Eth67, true, ExpectedResult = true)]
+    [TestCase(EthVersions.Eth66, false, ExpectedResult = true)]
+    [TestCase(EthVersions.Eth67, false, ExpectedResult = false)]
+    public bool Can_allocate_node(int ethVersion, bool hasSnap) =>
+        IsNodeAllocated(ethVersion, hasSnap);
 
     private bool IsNodeAllocated(int version, bool hasSnap)
     {
@@ -59,7 +46,7 @@ public class StateSyncAllocationStrategyTests
                 x[1] = null;
                 return false;
             });
-        PeerInfo peerInfo = new PeerInfo(syncPeer);
+        PeerInfo peerInfo = new(syncPeer);
 
         return _strategy.Allocate(null, new List<PeerInfo>() { peerInfo }, Substitute.For<INodeStatsManager>(),
             Substitute.For<IBlockTree>()) == peerInfo;
@@ -68,9 +55,7 @@ public class StateSyncAllocationStrategyTests
     private class NoopAllocationStrategy : IPeerAllocationStrategy
     {
         public bool CanBeReplaced => false;
-        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
-        {
-            return peers.FirstOrDefault();
-        }
+        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree) =>
+            peers.FirstOrDefault();
     }
 }

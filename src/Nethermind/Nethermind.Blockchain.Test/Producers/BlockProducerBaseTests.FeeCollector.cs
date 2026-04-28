@@ -54,10 +54,10 @@ public partial class BlockProducerBaseTests
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .AssertNewBlockFeeCollected(4500000.GWei());
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
+            .SendEip1559Transaction(gasTarget / 2, 1.GWei, 20.GWei)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
+            .AssertNewBlockFeeCollected(4500000.GWei);
         await scenario.Finish();
     }
 
@@ -70,9 +70,9 @@ public partial class BlockProducerBaseTests
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
+            .SendEip1559Transaction(gasTarget / 2, 1.GWei, 20.GWei)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
             .AssertNewBlockFeeCollected(0);
         await scenario.Finish();
     }
@@ -87,9 +87,9 @@ public partial class BlockProducerBaseTests
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei(), true)
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei(), true)
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei(), true)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei, true)
+            .SendEip1559Transaction(gasTarget / 2, 1.GWei, 20.GWei, true)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei, true)
             .AssertNewBlockFeeCollected(0);
         await scenario.Finish();
     }

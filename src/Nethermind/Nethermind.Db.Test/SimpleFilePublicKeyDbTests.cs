@@ -22,8 +22,8 @@ public class SimpleFilePublicKeyDbTests
 
         SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
 
-        Random random = new Random();
-        Dictionary<byte[], byte[]> dict = new Dictionary<byte[], byte[]>(Bytes.EqualityComparer);
+        Random random = new();
+        Dictionary<byte[], byte[]> dict = new(Bytes.EqualityComparer);
         for (int i = 0; i < 1024; i++)
         {
             byte[] key = new byte[random.Next(64, 128)];
@@ -37,7 +37,7 @@ public class SimpleFilePublicKeyDbTests
 
         using (filePublicKeyDb.StartWriteBatch())
         {
-            foreach (var kv in dict)
+            foreach (KeyValuePair<byte[], byte[]> kv in dict)
             {
                 filePublicKeyDb[kv.Key] = kv.Value;
             }
@@ -45,10 +45,73 @@ public class SimpleFilePublicKeyDbTests
 
         SimpleFilePublicKeyDb copy = new("Test", Path.GetTempPath(), LimboLogs.Instance);
         Assert.That(copy.Keys.Count, Is.EqualTo(dict.Count));
-        foreach (var kv in dict)
+        foreach (KeyValuePair<byte[], byte[]> kv in dict)
         {
             Assert.That(filePublicKeyDb[kv.Key].AsSpan().SequenceEqual(kv.Value), Is.True);
         }
+    }
+
+    [Test]
+    public void Set_updates_existing_key_with_different_value()
+    {
+        using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+        tempPath.Dispose();
+
+        SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
+
+        byte[] key = [1, 2, 3];
+        byte[] originalValue = [10, 20, 30];
+        byte[] updatedValue = [40, 50, 60];
+
+        filePublicKeyDb[key] = originalValue;
+        filePublicKeyDb[key] = updatedValue;
+
+        Assert.That(filePublicKeyDb[key], Is.EqualTo(updatedValue));
+    }
+
+    [Test]
+    public void Set_with_identical_value_does_not_trigger_persistence()
+    {
+        using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+        tempPath.Dispose();
+
+        byte[] key = [1, 2, 3];
+        byte[] originalValue = [10, 20, 30];
+
+        SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
+        filePublicKeyDb[key] = originalValue;
+        using (filePublicKeyDb.StartWriteBatch()) { }
+
+        // Delete the file to detect if a second flush writes anything
+        File.Delete(Path.Combine(Path.GetTempPath(), SimpleFilePublicKeyDb.DbFileName));
+
+        // Set the same value again — should not mark pending changes
+        filePublicKeyDb[key] = [10, 20, 30];
+        using (filePublicKeyDb.StartWriteBatch()) { }
+
+        // File should not be recreated since there were no pending changes
+        Assert.That(File.Exists(Path.Combine(Path.GetTempPath(), SimpleFilePublicKeyDb.DbFileName)), Is.False);
+    }
+
+    [Test]
+    public void Set_persists_updated_value_after_reload()
+    {
+        using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+        tempPath.Dispose();
+
+        byte[] key = [1, 2, 3];
+        byte[] originalValue = [10, 20, 30];
+        byte[] updatedValue = [40, 50, 60];
+
+        SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
+        filePublicKeyDb[key] = originalValue;
+        using (filePublicKeyDb.StartWriteBatch()) { }
+
+        filePublicKeyDb[key] = updatedValue;
+        using (filePublicKeyDb.StartWriteBatch()) { }
+
+        SimpleFilePublicKeyDb reloaded = new("Test", Path.GetTempPath(), LimboLogs.Instance);
+        Assert.That(reloaded[key], Is.EqualTo(updatedValue));
     }
 
     [Test]
@@ -66,5 +129,18 @@ public class SimpleFilePublicKeyDbTests
         Assert.That(filePublicKeyDb.KeyExists([1, 2, 3]), Is.True);
         filePublicKeyDb.Clear();
         Assert.That(filePublicKeyDb.KeyExists([1, 2, 3]), Is.False);
+    }
+
+    [Test]
+    public void Get_returns_null_for_missing_key()
+    {
+        using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+        tempPath.Dispose();
+
+        SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
+
+        byte[]? result = filePublicKeyDb.Get([1, 2, 3]);
+
+        Assert.That(result, Is.Null);
     }
 }

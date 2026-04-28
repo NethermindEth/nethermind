@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
             TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
             TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode

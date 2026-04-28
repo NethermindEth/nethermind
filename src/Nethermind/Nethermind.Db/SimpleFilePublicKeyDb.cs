@@ -36,7 +36,7 @@ namespace Nethermind.Db
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SimpleFilePublicKeyDb>() ?? throw new ArgumentNullException(nameof(logManager));
             ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
@@ -60,7 +60,11 @@ namespace Nethermind.Db
             set => Set(key, value);
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _cacheSpan[key];
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            _cacheSpan.TryGetValue(key, out byte[]? value);
+            return value;
+        }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
@@ -73,23 +77,14 @@ namespace Nethermind.Db
                 return;
             }
 
-            bool setValue = true;
-            if (_cacheSpan.TryGetValue(key, out var existingValue))
-            {
-                if (!Bytes.AreEqual(existingValue, value))
-                {
-                    setValue = false;
-                }
-            }
-
-            if (setValue)
+            if (!_cacheSpan.TryGetValue(key, out byte[] existingValue) || !Bytes.AreEqual(existingValue, value))
             {
                 _cacheSpan[key] = value;
                 _hasPendingChanges = true;
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out byte[] value) ? value : null)).ToArray();
 
         public void Remove(ReadOnlySpan<byte> key)
         {
@@ -216,7 +211,7 @@ namespace Nethermind.Db
 
             using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
 
-            using var handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
+            using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
             int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
 
             long offset = 0L;

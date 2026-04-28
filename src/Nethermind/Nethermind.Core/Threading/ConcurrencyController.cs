@@ -37,16 +37,23 @@ public class ConcurrencyController(int concurrency)
         return true;
     }
 
-    private void ReturnSlot()
-    {
-        Interlocked.Increment(ref _slots);
-    }
+    private void ReturnSlot() => Interlocked.Increment(ref _slots);
 
     public readonly struct Slot(ConcurrencyController limiter) : IDisposable
     {
-        public void Dispose()
-        {
-            limiter.ReturnSlot();
-        }
+        public void Dispose() => limiter.ReturnSlot();
     }
+
+    public bool TryRequestConcurrencyQuota()
+    {
+        if (Interlocked.Decrement(ref _slots) > 0)
+        {
+            return true;
+        }
+
+        ReturnConcurrencyQuota();
+        return false;
+    }
+
+    public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _slots);
 }

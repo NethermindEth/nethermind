@@ -9,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks.Config;
 
-public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager) : IRocksDbConfigFactory
+public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager, bool validateConfig = true) : IRocksDbConfigFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IRocksDbConfigFactory>();
     private bool _maxOpenFilesInitialized;
@@ -24,18 +24,33 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             if (dbConfig.MaxOpenFiles is null && hardwareInfo.MaxOpenFilesLimit.HasValue)
             {
                 int systemLimit = hardwareInfo.MaxOpenFilesLimit.Value;
-                // Apply 80% of system limit as safety margin to account for:
-                // - Multiple databases (~15) each using this limit
-                // - System operations and network sockets
-                // - Other file descriptors needed by the application
-                int perDbLimit = Math.Max(256, (int)(systemLimit * 0.8));
 
-                if (_logger.IsInfo)
+                // Only cap MaxOpenFiles on systems with genuinely low file descriptor limits
+                // (e.g. macOS default 256, restricted Docker 1024). Setting any finite value
+                // forces RocksDB to use an LRU table cache instead of keeping all SST handles
+                // open, which adds measurable overhead on every read. On systems with high
+                // limits (typical Linux servers: 1048576), leave unlimited for best performance.
+                const int LowLimitThreshold = 10000;
+                if (systemLimit < LowLimitThreshold)
                 {
-                    _logger.Info($"Detected system open files limit of {systemLimit}. Setting MaxOpenFiles to {perDbLimit} per database.");
-                }
+                    // Apply 80% of system limit per database. On low-limit systems the total
+                    // across ~15 databases may exceed the OS limit, but RocksDB will gracefully
+                    // handle open() failures via its table cache eviction. The per-DB value
+                    // stays high so databases with many SST files (state DB) can still cache
+                    // most of their file handles.
+                    int perDbLimit = Math.Max(128, (int)(systemLimit * 0.8));
 
-                dbConfig.MaxOpenFiles = perDbLimit;
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Low system open files limit ({systemLimit}). Setting MaxOpenFiles to {perDbLimit} per database to prevent FD exhaustion.");
+                    }
+
+                    dbConfig.MaxOpenFiles = perDbLimit;
+                }
+                else if (_logger.IsDebug)
+                {
+                    _logger.Debug($"System open files limit is {systemLimit}. Leaving MaxOpenFiles unlimited for best performance.");
+                }
             }
 
             bool skipSstChecks = dbConfig.SkipCheckingSstFileSizesOnDbOpen ?? RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
@@ -46,7 +61,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             }
         }
 
-        IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName);
+        IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName, validateConfig);
         if (databaseName.StartsWith("State"))
         {
             if (!pruningConfig.Mode.IsMemory())
@@ -64,7 +79,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             }
             else if (hardwareInfo.AvailableMemoryBytes >= IHardwareInfo.StateDbLargerMemoryThreshold)
             {
-                if (_logger.IsInfo) _logger.Info($"Detected {hardwareInfo.AvailableMemoryBytes / 1.GiB()} GB of available memory. Applying large memory State Db config.");
+                if (_logger.IsInfo) _logger.Info($"Detected {hardwareInfo.AvailableMemoryBytes / 1.GiB} GB of available memory. Applying large memory State Db config.");
 
                 ulong writeBufferSize = rocksDbConfig.WriteBufferSize ?? 0;
                 if (writeBufferSize < dbConfig.StateDbLargeMemoryWriteBufferSize) writeBufferSize = dbConfig.StateDbLargeMemoryWriteBufferSize;
@@ -78,13 +93,13 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
 
             if (pruningConfig.Mode.IsMemory())
             {
-                ulong totalWriteBufferMb = rocksDbConfig.WriteBufferNumber!.Value * rocksDbConfig.WriteBufferSize!.Value / (ulong)1.MB();
+                ulong totalWriteBufferMb = rocksDbConfig.WriteBufferNumber!.Value * rocksDbConfig.WriteBufferSize!.Value / (ulong)1.MB;
                 double minimumWriteBufferMb = 0.2 * pruningConfig.DirtyCacheMb;
                 if (totalWriteBufferMb < minimumWriteBufferMb)
                 {
-                    ulong minimumWriteBufferSize = (ulong)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / rocksDbConfig.WriteBufferNumber!.Value);
+                    ulong minimumWriteBufferSize = (ulong)Math.Ceiling((minimumWriteBufferMb * 1.MB) / rocksDbConfig.WriteBufferNumber!.Value);
 
-                    if (_logger.IsInfo) _logger.Info($"Adjust state DB write buffer size to {minimumWriteBufferSize / (ulong)1.MB()} MB to account for pruning cache.");
+                    if (_logger.IsInfo) _logger.Info($"Adjust state DB write buffer size to {minimumWriteBufferSize / (ulong)1.MB} MB to account for pruning cache.");
 
                     rocksDbConfig = new AdjustedRocksdbConfig(
                         rocksDbConfig,

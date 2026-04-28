@@ -11,6 +11,4 @@ internal sealed class SnapshotDecoder : BaseSnapshotDecoder<Snapshot>
     protected override Snapshot DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     => DecodeBase<Snapshot>(ref decoderContext, (number, hash, candidates) => new Snapshot(number, hash, candidates), rlpBehaviors);
 
-    protected override Snapshot DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    => DecodeBase<Snapshot>(rlpStream, (number, hash, candidates) => new Snapshot(number, hash, candidates), rlpBehaviors);
 }

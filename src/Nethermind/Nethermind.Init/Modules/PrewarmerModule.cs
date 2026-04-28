@@ -34,13 +34,13 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 
     public class PrewarmerMainProcessingModule : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder
+        protected override void Load(ContainerBuilder builder) => builder
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+
+                // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
 
                 // These are the actual decorated component that provide cached result
@@ -59,9 +59,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
                     IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                    return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
+                    return new PrecompileCachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                 });
-        }
     }
 }

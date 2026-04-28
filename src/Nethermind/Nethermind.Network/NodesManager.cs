@@ -1,10 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -12,6 +8,10 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Nethermind.Config;
+using Nethermind.Core.Crypto;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Network;
 
@@ -34,7 +34,7 @@ public abstract class NodesManager(string path, ILogger logger)
 
             if (File.Exists(oldPath))
             {
-                var moved = true;
+                bool moved = true;
 
                 try
                 {
@@ -82,7 +82,7 @@ public abstract class NodesManager(string path, ILogger logger)
     {
         if (_logger.IsDebug && nodes.Count != 0)
         {
-            var separator = $"{Environment.NewLine}  ";
+            string separator = $"{Environment.NewLine}  ";
 
             _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
         }
