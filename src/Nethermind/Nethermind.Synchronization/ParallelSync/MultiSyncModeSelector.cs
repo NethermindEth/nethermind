@@ -536,21 +536,19 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInFastBlockAccessListsMode(Snapshot best)
         {
             bool fastBlockAccessListsNotFinished = !FastBlocksAccessListsFinished;
-            bool fastReceiptsFinished = FastBlocksReceiptsFinished;
+            bool fastBodiesFinished = FastBlocksBodiesFinished;
             bool notInStateSync = !best.IsInStateSync;
             bool stateSyncFinished = best.StateDownloaded;
 
             // fast blocks access lists can run if there are peers until it is done
-            // fast blocks access lists can run in parallel with full sync when receipts are finished
-            // this follows the same post-state-sync phase as bodies and receipts to keep heavy fast-block payload downloads
-            // out of the initial state sync phase
-            bool result = fastBlockAccessListsNotFinished && fastReceiptsFinished && notInStateSync && stateSyncFinished;
+            // fast blocks access lists can run in parallel with full sync when bodies are finished
+            bool result = fastBlockAccessListsNotFinished && fastBodiesFinished && notInStateSync && stateSyncFinished;
 
             if (_logger.IsTrace)
             {
-                LogDetailedSyncModeChecks("ACCESS_LISTS",
+                LogDetailedSyncModeChecks("BLOCK_ACCESS_LISTS",
                     (nameof(fastBlockAccessListsNotFinished), fastBlockAccessListsNotFinished),
-                    (nameof(fastReceiptsFinished), fastReceiptsFinished),
+                    (nameof(fastBodiesFinished), fastBodiesFinished),
                     (nameof(notInStateSync), notInStateSync),
                     (nameof(stateSyncFinished), stateSyncFinished));
             }
