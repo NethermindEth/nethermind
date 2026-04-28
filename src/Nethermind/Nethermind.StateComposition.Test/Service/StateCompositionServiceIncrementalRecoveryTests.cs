@@ -158,6 +158,56 @@ public class StateCompositionServiceIncrementalRecoveryTests
         }
     }
 
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task OnNewHeadBlock_NoBaseline_FiresDeferredBootstrapScan()
+    {
+        // Regression test for the fresh-chain scenario: plugin started with
+        // blockTree.Head==null (no CL forkchoice driving the head past genesis,
+        // e.g. testing_commitBlockV1-driven chains), so StateCompositionPlugin's
+        // ScheduleBootstrapScan bailed. OnNewHeadBlock must absorb that and
+        // dispatch AnalyzeAsync the first time a header arrives without a
+        // baseline; otherwise _incrementalBlock stays at 0 forever and
+        // statecomp_get reports stale zeros after every block.
+        long scansBefore = Metrics.StateCompScansCompleted;
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+
+        // No baseline seeded — LastProcessedStateRoot stays Hash256.Zero,
+        // matching the production "fresh chain, no persisted snapshot" state.
+        Assert.That(stateHolder.LastProcessedStateRoot, Is.EqualTo(Hash256.Zero));
+
+        Block headBlock = Build.A.Block.WithNumber(1).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(headBlock);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+        Assert.That(service, Is.Not.Null, "service must be constructed to subscribe NewHeadBlock");
+
+        // Fire the event the same way IBlockTree would on a real new head.
+        // The service's OnNewHeadBlock subscriber sees lastRoot==Zero, which
+        // before this fix returned silently; now it should dispatch
+        // AnalyzeAsync against the supplied header.
+        blockTree.NewHeadBlock += Raise.EventWith(blockTree, new BlockEventArgs(headBlock));
+
+        await WaitForConditionAsync(
+            () => stateHolder.HasScanBaseline,
+            TimeSpan.FromSeconds(5),
+            "Deferred bootstrap did not set HasScanBaseline=true within 5s").ConfigureAwait(false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompScansCompleted, Is.EqualTo(scansBefore + 1),
+                "OnNewHeadBlock with lastRoot==Zero must dispatch AnalyzeAsync, which bumps scans_completed.");
+            Assert.That(stateHolder.LastProcessedStateRoot, Is.Not.EqualTo(Hash256.Zero),
+                "After the deferred bootstrap, the baseline must be seeded from the header root.");
+        }
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout, string message)
     {
         using CancellationTokenSource cts = new(timeout);

@@ -98,14 +98,19 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
     public Task InitRpcModules() => Task.CompletedTask;
 
     /// <summary>
-    /// Fire-and-forget the bootstrap scan against the current chain head. This is
-    /// the only call site that originates from the plugin (the other legal caller
-    /// of <see cref="StateCompositionService.AnalyzeAsync"/> is the
-    /// MissingTrieNodeException recovery path inside the service itself). If the
-    /// block tree has no head yet (very early init), log a warning — operators
-    /// must restart the node once the consensus client has driven the head past
-    /// genesis. <see cref="StateCompositionService.AnalyzeAsync"/> already
-    /// serialises via its scan semaphore, so the dispatched task is safe.
+    /// Fire-and-forget the bootstrap scan against the current chain head. This
+    /// is the plugin's startup-time call site for
+    /// <see cref="StateCompositionService.AnalyzeAsync"/>; the two other legal
+    /// callers live inside the service itself
+    /// (<see cref="StateCompositionService.OnNewHeadBlock"/> as the deferred
+    /// bootstrap when this site couldn't run because the head was null at
+    /// init, and the <c>MissingTrieNodeException</c> recovery path in
+    /// <c>RunIncrementalDiff</c>). If the block tree has no head yet (very
+    /// early init) we log a warning here and rely on the deferred bootstrap
+    /// to fire on the first head block instead — operators no longer need to
+    /// restart the node. <see cref="StateCompositionService.AnalyzeAsync"/>
+    /// already serialises via its scan semaphore, so the dispatched task is
+    /// safe regardless of which call site triggered it.
     /// </summary>
     private static void ScheduleBootstrapScan(
         StateCompositionService service,

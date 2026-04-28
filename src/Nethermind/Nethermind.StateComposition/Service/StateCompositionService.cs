@@ -75,15 +75,20 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     }
 
     /// <summary>
-    /// Run a full trie scan. The plugin has exactly two legal callers — any third
-    /// caller collapses the single-operating-mode invariant, so a reviewer adding
-    /// one must delete this comment as a tripwire:
+    /// Run a full trie scan. The plugin has exactly three legal callers — any
+    /// fourth caller collapses the single-operating-mode invariant, so a reviewer
+    /// adding one must delete this comment as a tripwire:
     /// <list type="bullet">
     /// <item><description>Plugin bootstrap: <see cref="StateCompositionPlugin.Init"/>
     /// schedules a background scan when no persisted snapshot is available.</description></item>
     /// <item><description>Incremental recovery: <see cref="ScheduleBaselineRescan"/>
     /// from the <see cref="MissingTrieNodeException"/> handler in
     /// <see cref="RunIncrementalDiff"/>.</description></item>
+    /// <item><description>Deferred bootstrap: <see cref="OnNewHeadBlock"/> dispatches a
+    /// scan when no baseline exists yet (the plugin's startup bootstrap couldn't run
+    /// because <c>blockTree.Head</c> was null at <see cref="StateCompositionPlugin.Init"/>
+    /// time, e.g. a fresh chain whose head is driven by <c>testing_commitBlockV1</c>
+    /// or any non-CL forkchoice mechanism).</description></item>
     /// </list>
     /// Fail-fast / queued via <see cref="_scanLock"/> so back-to-back triggers collapse into one scan.
     /// </summary>

@@ -28,8 +28,18 @@ internal sealed partial class StateCompositionService
             if (header?.StateRoot is null) return;
             _ = Task.Run(async () =>
             {
-                try { await AnalyzeAsync(header, CancellationToken.None).ConfigureAwait(false); }
-                catch (Exception ex) when (_logger.IsError) { _logger.Error("StateComposition: deferred bootstrap scan failed", ex); }
+                try
+                {
+                    await AnalyzeAsync(header, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    // Guard the log call itself, not the catch: a `when (IsError)`
+                    // filter would let the exception escape into the unobserved-task
+                    // pipeline whenever Error logging is off.
+                    if (_logger.IsError)
+                        _logger.Error("StateComposition: deferred bootstrap scan failed", ex);
+                }
             });
             return;
         }
