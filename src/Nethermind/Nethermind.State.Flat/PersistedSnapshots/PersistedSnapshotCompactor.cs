@@ -35,20 +35,26 @@ public class PersistedSnapshotCompactor(
     /// </summary>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
-        if (_compactSize <= 1) return;
+        if (_compactSize <= 0) return;
 
         long blockNumber = snapshotTo.BlockNumber;
         if (blockNumber == 0) return;
 
         int compactSize = (int)Math.Min(blockNumber & -blockNumber, _persistedSnapshotMaxCompactSize);
         if (compactSize < _minCompactSize) return;
-        if (compactSize == _compactSize) return; // persistable snapshots produced by PersistenceManager now
 
-        // We need at least 2 snapshots to compact
-        if (persistedSnapshotRepository.SnapshotCount < 2) return;
+        // Walk down powers of 2 until compaction succeeds or we reach _compactSize.
+        // _compactSize is produced directly by PersistenceManager (batched persistable compactions).
+        while (compactSize > _compactSize)
+        {
+            if (persistedSnapshotRepository.SnapshotCount < 2) return;
 
-        long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
-        CompactRange(snapshotTo, startingBlockNumber, compactSize, isPersistable: false);
+            long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
+            if (CompactRange(snapshotTo, startingBlockNumber, compactSize, isPersistable: false))
+                return;
+
+            compactSize /= 2;
+        }
     }
 
 
@@ -57,15 +63,15 @@ public class PersistedSnapshotCompactor(
     private readonly Histogram _persistedSnapshotCompactTime =
         Prometheus.Metrics.CreateHistogram("persisted_snapshot_compact_time", "persisted_snapshot_compact_time", "size");
 
-    private void CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
+    private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
     {
         using PersistedSnapshotList snapshots = persistedSnapshotRepository.AssembleSnapshotsForCompaction(snapshotTo, startingBlockNumber);
-        if (snapshots.Count < 2) return;
+        if (snapshots.Count < 2) return false;
 
         if (snapshots[0].From.BlockNumber != startingBlockNumber)
         {
             if (_logger.IsDebug) _logger.Debug($"Unable to compile persisted snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}. Starting block number should be {startingBlockNumber}");
-            return;
+            return false;
         }
 
         if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, persistable {isPersistable}");
@@ -126,5 +132,6 @@ public class PersistedSnapshotCompactor(
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
         Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
         Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
+        return true;
     }
 }
