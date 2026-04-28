@@ -16,11 +16,11 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptArrayStorageDecoder))]
     public ReceiptArrayStorageDecoder() : this(true) { }
 
-    private static readonly IRlpStreamEncoder<TxReceipt> Decoder = Rlp.GetStreamEncoder<TxReceipt>(RlpDecoderKey.LegacyStorage)!;
-    private static readonly IRlpValueDecoder<TxReceipt> ValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage)!;
+    private static readonly IRlpStreamEncoder<TxReceipt?> Decoder = Rlp.GetStreamEncoder<TxReceipt?>(RlpDecoderKey.LegacyStorage)!;
+    private static readonly IRlpValueDecoder<TxReceipt?> ValueDecoder = Rlp.GetValueDecoder<TxReceipt?>(RlpDecoderKey.LegacyStorage)!;
 
-    private static readonly IRlpStreamEncoder<TxReceipt> CompactDecoder = Rlp.GetStreamEncoder<TxReceipt>(RlpDecoderKey.Storage)!;
-    private static readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage)!;
+    private static readonly IRlpStreamEncoder<TxReceipt?> CompactDecoder = Rlp.GetStreamEncoder<TxReceipt?>(RlpDecoderKey.Storage)!;
+    private static readonly IRlpValueDecoder<TxReceipt?> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt?>(RlpDecoderKey.Storage)!;
 
     public const int CompactEncoding = 127;
 
@@ -68,19 +68,19 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (decoderContext.PeekByte() == CompactEncoding)
         {
             decoderContext.ReadByte();
-            return CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
+            return (TxReceipt[])(Array)CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
             int startPosition = decoderContext.Position;
             try
             {
-                return ValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+                return (TxReceipt[])(Array)ValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
             }
             catch (RlpException)
             {
                 decoderContext.Position = startPosition;
-                return ValueDecoder.DecodeArray(ref decoderContext);
+                return (TxReceipt[])(Array)ValueDecoder.DecodeArray(ref decoderContext);
             }
         }
     }
@@ -126,19 +126,19 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
             Rlp.ValueDecoderContext decoderContext = new(receiptsData[1..]);
-            return CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
+            return (TxReceipt[])(Array)CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
             Rlp.ValueDecoderContext decoderContext = new(receiptsData);
             try
             {
-                return ValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+                return (TxReceipt[])(Array)ValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
             }
             catch (RlpException)
             {
                 decoderContext.Position = 0;
-                return ValueDecoder.DecodeArray(ref decoderContext);
+                return (TxReceipt[])(Array)ValueDecoder.DecodeArray(ref decoderContext);
             }
         }
     }

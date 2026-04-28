@@ -28,12 +28,12 @@ namespace Nethermind.Serialization.Rlp
 
     public interface IRlpValueDecoder<T> : IRlpDecoder<T>
     {
-        T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+        T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
     public static class RlpValueDecoderExtensions
     {
-        public static T? Decode<T>(this IRlpValueDecoder<T> decoder, ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T Decode<T>(this IRlpValueDecoder<T> decoder, ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Rlp.ValueDecoderContext context = new(bytes);
             return decoder.Decode(ref context, rlpBehaviors);
@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
 
     public abstract class RlpValueDecoder<T> : RlpStreamEncoder<T>, IRlpValueDecoder<T>
     {
-        public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             try
             {
@@ -63,10 +63,10 @@ namespace Nethermind.Serialization.Rlp
             catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
                 ThrowRlpException(e);
-                return default;
+                return default!;
             }
         }
 
-        protected abstract T? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+        protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 }

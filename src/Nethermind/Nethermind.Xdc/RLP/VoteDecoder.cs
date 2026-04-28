@@ -9,11 +9,11 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-public sealed class VoteDecoder : RlpValueDecoder<Vote>
+public sealed class VoteDecoder : RlpValueDecoder<Vote?>
 {
     private static readonly XdcBlockInfoDecoder _xdcBlockInfoDecoder = new();
 
-    protected override Vote DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Vote? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -39,7 +39,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
-    public override void Encode(RlpStream stream, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, Vote? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -57,7 +57,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         stream.Encode(item.GapNumber);
     }
 
-    public Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(Vote? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -68,7 +68,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(Vote? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item!, rlpBehaviors));
 
     public int GetContentLength(Vote item, RlpBehaviors rlpBehaviors) => ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
             + Rlp.LengthOf(item.GapNumber)

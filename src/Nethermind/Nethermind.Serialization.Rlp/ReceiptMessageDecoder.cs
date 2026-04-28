@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
-    public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpValueDecoder<TxReceipt>
+    public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpValueDecoder<TxReceipt?>
     {
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
         private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
@@ -86,7 +86,7 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException("Unexpected receipt field");
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -128,13 +128,13 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
-            int result = item.TxType != TxType.Legacy
+            int result = item?.TxType != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + receiptPayloadLength)
                     : Rlp.LengthOfSequence(1 + receiptPayloadLength) // Rlp(TransactionType || TransactionPayload)
@@ -155,7 +155,7 @@ namespace Nethermind.Serialization.Rlp
             return stream.Data.ToArray()!;
         }
 
-        public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

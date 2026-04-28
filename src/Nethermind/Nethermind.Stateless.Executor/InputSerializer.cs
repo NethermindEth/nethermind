@@ -65,9 +65,9 @@ public static class InputSerializer
         ulong chainId = ReadUInt64(input, ref offset);
         int blockLength = ReadInt32(input, ref offset);
 
-        IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!; // cannot be null
+        IRlpValueDecoder<Block?> blockDecoder = Rlp.GetValueDecoder<Block?>()!; // cannot be null
         Rlp.ValueDecoderContext blockContext = new(input.Slice(offset, blockLength));
-        Block block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+        Block? block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None) ?? throw new RlpException("Block is null");
         blockContext.Check(blockLength);
         offset += blockLength;
 

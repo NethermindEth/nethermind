@@ -8,9 +8,9 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
+public sealed class TimeoutDecoder : RlpValueDecoder<Timeout?>
 {
-    protected override Timeout DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Timeout? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -49,7 +49,7 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override void Encode(RlpStream stream, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -77,7 +77,7 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         stream.Encode(item.GapNumber);
     }
 
-    public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     public int GetContentLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

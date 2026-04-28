@@ -20,7 +20,7 @@ namespace Nethermind.State.Repositories
 
         private readonly object _writeLock = new();
         private readonly ClockCache<long, ChainLevelInfo> _blockInfoCache = new(CacheSize);
-        private readonly IRlpValueDecoder<ChainLevelInfo> _decoder = Rlp.GetValueDecoder<ChainLevelInfo>();
+        private readonly IRlpValueDecoder<ChainLevelInfo?> _decoder = Rlp.GetValueDecoder<ChainLevelInfo?>();
 
         private readonly IDb _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
 
@@ -72,7 +72,7 @@ namespace Nethermind.State.Repositories
 
         public BatchWrite StartBatch() => new(_writeLock, _blockInfoDb.StartWriteBatch());
 
-        public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetValueDecoder<ChainLevelInfo>(), _blockInfoCache);
+        public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetValueDecoder<ChainLevelInfo?>(), _blockInfoCache);
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers)
         {

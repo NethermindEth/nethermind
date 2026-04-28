@@ -10,7 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(LogEntryDecoder))]
-    public sealed class LogEntryDecoder() : RlpValueDecoder<LogEntry>
+    public sealed class LogEntryDecoder() : RlpValueDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static LogEntryDecoder Instance { get; } = new();

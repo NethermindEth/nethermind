@@ -9,9 +9,9 @@ using System.Linq;
 
 namespace Nethermind.Xdc.RLP;
 
-public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertificate>
+public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertificate?>
 {
-    protected override TimeoutCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TimeoutCertificate? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -46,7 +46,7 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    public Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -57,7 +57,7 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override void Encode(RlpStream stream, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -85,7 +85,7 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         stream.Encode(item.GapNumber);
     }
 
-    public override int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

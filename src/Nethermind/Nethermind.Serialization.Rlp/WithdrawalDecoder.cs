@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp;
 
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
-public sealed class WithdrawalDecoder() : RlpValueDecoder<Withdrawal>
+public sealed class WithdrawalDecoder() : RlpValueDecoder<Withdrawal?>
 {
     protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -60,5 +60,5 @@ public sealed class WithdrawalDecoder() : RlpValueDecoder<Withdrawal>
         Rlp.LengthOfAddressRlp +
         Rlp.LengthOf(item.AmountInGwei);
 
-    public override int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(Withdrawal? item, RlpBehaviors _) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item));
 }

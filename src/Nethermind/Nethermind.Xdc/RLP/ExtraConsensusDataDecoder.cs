@@ -6,10 +6,10 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
+internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2?>
 {
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
-    protected override ExtraFieldsV2 DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override ExtraFieldsV2? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -28,7 +28,7 @@ internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    public Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(ExtraFieldsV2? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -38,7 +38,7 @@ internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override void Encode(RlpStream stream, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, ExtraFieldsV2? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -51,7 +51,7 @@ internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
         _quorumCertificateDecoder.Encode(stream, item.QuorumCert, rlpBehaviors);
     }
 
-    public override int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(ExtraFieldsV2? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(ExtraFieldsV2? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

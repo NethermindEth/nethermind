@@ -71,11 +71,11 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
             ? decoder
             : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 
-    protected override T? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T? transaction = null;
         Decode(ref decoderContext, ref transaction, rlpBehaviors);
-        return transaction;
+        return transaction!;
     }
 
     public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

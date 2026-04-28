@@ -9,7 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockInfoDecoder))]
-    public sealed class BlockInfoDecoder() : RlpValueDecoder<BlockInfo>
+    public sealed class BlockInfoDecoder() : RlpValueDecoder<BlockInfo?>
     {
         public static BlockInfoDecoder Instance { get; } = new();
 

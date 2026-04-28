@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp;
 
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
-public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpValueDecoder<BlockBody>
+public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpValueDecoder<BlockBody?>
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
@@ -16,7 +16,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
-    public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetBodyLength(item));
+    public override int GetLength(BlockBody? item, RlpBehaviors rlpBehaviors) => item is null ? 1 : Rlp.LengthOfSequence(GetBodyLength(item));
 
     public int GetBodyLength(BlockBody b)
     {
@@ -87,19 +87,24 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
+        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder)!;
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
+            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder)!;
         }
 
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, BlockBody? body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (body is null)
+        {
+            stream.EncodeNullObject();
+            return;
+        }
         stream.StartSequence(GetBodyLength(body));
         stream.StartSequence(GetTxLength(body.Transactions));
         foreach (Transaction? txn in body.Transactions)

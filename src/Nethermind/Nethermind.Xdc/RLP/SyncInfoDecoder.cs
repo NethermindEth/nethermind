@@ -7,12 +7,12 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
+internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo?>
 {
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
     private readonly TimeoutCertificateDecoder _timeoutCertificateDecoder = new();
 
-    protected override SyncInfo DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override SyncInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -45,7 +45,7 @@ internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override void Encode(RlpStream stream, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, SyncInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -58,7 +58,7 @@ internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
         _timeoutCertificateDecoder.Encode(stream, item.HighestTimeoutCert, rlpBehaviors);
     }
 
-    public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(SyncInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetContentLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

@@ -11,10 +11,10 @@ using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 
 namespace Nethermind.Xdc;
 
-internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertificate>
+internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertificate?>
 {
     private readonly XdcBlockInfoDecoder _blockInfoDecoder = new();
-    protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override QuorumCertificate? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = decoderContext.ReadSequenceLength();
         if (sequenceLength == 0)
@@ -44,7 +44,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -55,7 +55,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -86,7 +86,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         stream.Encode(item.GapNumber);
     }
 
-    public override int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

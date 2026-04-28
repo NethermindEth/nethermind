@@ -14,7 +14,7 @@ namespace Nethermind.Serialization.Rlp
 {
     [Decoder(RlpDecoderKey.Storage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(CompactReceiptStorageDecoder))]
-    public sealed class CompactReceiptStorageDecoder() : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    public sealed class CompactReceiptStorageDecoder() : RlpValueDecoder<TxReceipt?>, IRlpObjectDecoder<TxReceipt?>, IReceiptRefDecoder
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
@@ -206,7 +206,7 @@ namespace Nethermind.Serialization.Rlp
             return logsLength;
         }
 
-        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             return Rlp.LengthOfSequence(Total);

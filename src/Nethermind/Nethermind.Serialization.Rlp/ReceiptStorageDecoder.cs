@@ -13,7 +13,7 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
-    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpValueDecoder<TxReceipt?>, IRlpObjectDecoder<TxReceipt?>, IReceiptRefDecoder
     {
         private readonly bool _supportTxHash = supportTxHash;
         private const byte MarkTxHashByte = 255;
@@ -244,13 +244,13 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
-            int result = item.TxType != TxType.Legacy
+            int result = item?.TxType != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + receiptPayloadLength)
                     : Rlp.LengthOfSequence(1 + receiptPayloadLength) // Rlp(TransactionType || ReceiptPayload)

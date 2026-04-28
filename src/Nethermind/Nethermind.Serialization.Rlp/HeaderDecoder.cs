@@ -9,11 +9,11 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader> { }
-    public interface IBlockHeaderDecoder<T> : IRlpValueDecoder<T>, IRlpStreamEncoder<T> where T : BlockHeader { }
+    public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader?> { }
+    public interface IBlockHeaderDecoder<T> : IRlpValueDecoder<T>, IRlpStreamEncoder<T> where T : BlockHeader? { }
 
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
-    public sealed class HeaderDecoder() : RlpValueDecoder<BlockHeader>, IHeaderDecoder
+    public sealed class HeaderDecoder() : RlpValueDecoder<BlockHeader?>, IHeaderDecoder
     {
         public const int NonceLength = 8;
 

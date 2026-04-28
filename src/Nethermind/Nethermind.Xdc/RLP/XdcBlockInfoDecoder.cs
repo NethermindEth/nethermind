@@ -7,9 +7,9 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
+internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo?>
 {
-    protected override BlockRoundInfo DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockRoundInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -28,7 +28,7 @@ internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
         return new BlockRoundInfo(new Hash256(hashBytes), round, number);
     }
 
-    public override void Encode(RlpStream stream, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, BlockRoundInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -41,7 +41,7 @@ internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
         stream.Encode(item.BlockNumber);
     }
 
-    public override int GetLength(BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(BlockRoundInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     private static int GetContentLength(BlockRoundInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

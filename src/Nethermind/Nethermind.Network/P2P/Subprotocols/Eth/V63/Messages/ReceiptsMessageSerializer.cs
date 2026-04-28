@@ -17,13 +17,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private static readonly RlpLimit ReceiptsRlpLimit = RlpLimit.For<ReceiptsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
         private static readonly RlpLimit BlockReceiptsRlpLimit = RlpLimit.For<TxReceipt[]>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
-        private readonly IRlpStreamEncoder<TxReceipt> _encoder;
-        private readonly IRlpValueDecoder<TxReceipt> _decoder;
+        private readonly IRlpStreamEncoder<TxReceipt?> _encoder;
+        private readonly IRlpValueDecoder<TxReceipt?> _decoder;
         private readonly DecodeRlpValue<TxReceipt[]> _decodeArrayFunc;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, (RlpValueDecoder<TxReceipt>)Rlp.GetValueDecoder<TxReceipt>()!) { }
+        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, (RlpValueDecoder<TxReceipt?>)Rlp.GetValueDecoder<TxReceipt?>()!) { }
 
-        protected ReceiptsMessageSerializer(ISpecProvider specProvider, RlpValueDecoder<TxReceipt> decoder)
+        protected ReceiptsMessageSerializer(ISpecProvider specProvider, RlpValueDecoder<TxReceipt?> decoder)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _encoder = decoder;

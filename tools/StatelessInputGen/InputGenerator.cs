@@ -82,10 +82,16 @@ internal static class InputGenerator
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
-                IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!;
+                IRlpValueDecoder<Block?> blockDecoder = Rlp.GetValueDecoder<Block?>()!;
                 Rlp.ValueDecoderContext blockContext = new(rlp);
                 block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);
+
+                if (block is null)
+                {
+                    AnsiConsole.MarkupLine($"[red]Block RLP decoded as null[/]");
+                    return;
+                }
 
                 string blockNumber = EnsureBlockParamIsNumber(blockParam, block);
 

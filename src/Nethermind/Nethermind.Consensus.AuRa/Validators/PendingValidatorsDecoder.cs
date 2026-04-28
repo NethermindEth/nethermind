@@ -8,9 +8,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal sealed class PendingValidatorsDecoder : RlpValueDecoder<PendingValidators>, IRlpObjectDecoder<PendingValidators>
+    internal sealed class PendingValidatorsDecoder : RlpValueDecoder<PendingValidators?>, IRlpObjectDecoder<PendingValidators?>
     {
-        protected override PendingValidators DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override PendingValidators? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return result;
         }
 
-        public Rlp Encode(PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(PendingValidators? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new Rlp(rlpStream.Data.ToArray());
         }
 
-        public override void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, PendingValidators? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
             rlpStream.StartSequence(contentLength);
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             rlpStream.Encode(item.AreFinalized);
         }
 
-        public override int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
+        public override int GetLength(PendingValidators? item, RlpBehaviors rlpBehaviors) =>
             item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
