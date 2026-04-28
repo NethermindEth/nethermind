@@ -33,6 +33,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Synchronization;
+using static Nethermind.Merge.Plugin.MergeConfig;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -194,6 +195,14 @@ public abstract partial class BaseEngineModuleTests
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
             MergeConfig.TerminalTotalDifficulty ??= "0";
+            // Production default (7s) is too tight under Flat DB CI load — validation
+            // races the timeout and the handler returns SYNCING, breaking tests that
+            // assert VALID/INVALID. Only bump when still at the production default;
+            // callers that exercise timeout→SYNCING behavior pass an explicit value.
+            if (MergeConfig.NewPayloadBlockProcessingTimeout == DefaultNewPayloadBlockProcessingTimeout)
+            {
+                MergeConfig.NewPayloadBlockProcessingTimeout = 30_000;
+            }
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
