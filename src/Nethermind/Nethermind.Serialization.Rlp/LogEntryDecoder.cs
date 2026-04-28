@@ -30,6 +30,7 @@ namespace Nethermind.Serialization.Rlp
             int topicsLength = decoderContext.ReadSequenceLength();
             int topicsCheck = decoderContext.Position + topicsLength;
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
+            decoderContext.GuardLimit(topicCount, RlpLimit.L4);
             Hash256[] topics = new Hash256[topicCount];
             for (int i = 0; i < topics.Length; i++)
             {
