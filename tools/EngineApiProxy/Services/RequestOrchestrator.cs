@@ -133,8 +133,7 @@ public class RequestOrchestrator(
                     return string.Empty;
                 }
 
-                JsonObject? payload = (blockData["data"]?["message"]?["body"]?["execution_payload"])?.DeepClone() as JsonObject;
-                if (payload is null)
+                if ((blockData["data"]?["message"]?["body"]?["execution_payload"])?.DeepClone() is not JsonObject payload)
                 {
                     _logger.Warn($"Failed to fetch payload for hash: {headBlockHash}");
                     return string.Empty;

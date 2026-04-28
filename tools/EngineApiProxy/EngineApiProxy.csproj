@@ -1,7 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EngineApiProxy</AssemblyName>
+    <RootNamespace>Nethermind.EngineApiProxy</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
