@@ -134,7 +134,8 @@ jobs:
           write_summary() {
             echo ""
             echo "=== Writing summary ==="
-            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log > /tmp/nethtest-clean.log 2>/dev/null || true
+            # Strip ANSI codes and extract only PASS/FAIL/EXCEPTION lines
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log 2>/dev/null | grep -E "(^|[ \t])(PASS|FAIL|EXCEPTION) " | sed 's/.*\(PASS\|FAIL\|EXCEPTION\)/\1/' > /tmp/nethtest-clean.log 2>/dev/null || true
 
             HAS_JSON=false
             if [ -s /tmp/nethtest-results.json ] && jq empty /tmp/nethtest-results.json 2>/dev/null; then
@@ -176,24 +177,25 @@ jobs:
                 jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
                   | head -30 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
               else
+                # Group by error: extract text after " — " separator
                 grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null \
-                  | sed 's/^[^ ]* [^ ]*//' | sort | uniq -c | sort -rn \
+                  | sed 's/.*— //' | sort | uniq -c | sort -rn \
                   | head -30 | awk '{printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
                   | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
               fi
 
               {
                 echo ""
-                echo "<details><summary>Failed test names (first 100)</summary>"
+                echo "<details><summary>All $FAILED failed tests</summary>"
                 echo ""
                 echo '```'
               } >> "$GITHUB_STEP_SUMMARY"
               if [ "$HAS_JSON" = true ]; then
-                jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name)"' /tmp/nethtest-results.json \
-                  | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
+                jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name) | \(.error[:100])"' /tmp/nethtest-results.json \
+                  | sort >> "$GITHUB_STEP_SUMMARY"
               else
                 grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null \
-                  | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
+                  | sort >> "$GITHUB_STEP_SUMMARY"
               fi
               { echo '```'; echo "</details>"; } >> "$GITHUB_STEP_SUMMARY"
             fi
