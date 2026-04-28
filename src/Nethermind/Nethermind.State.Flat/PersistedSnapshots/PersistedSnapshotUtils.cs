@@ -221,21 +221,23 @@ internal static class PersistedSnapshotUtils
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                 TreePath path = kv.Key;
-                if (!persisted.TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> nodeRlp))
+                if (!persisted.TryLoadStateNodeHash(path, out ValueHash256 storedHash))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp.SequenceEqual(kv.Value.FullRlp.AsSpan()))
-                    throw new InvalidOperationException($"StateNode at path length {path.Length} RLP mismatch");
+                ValueHash256 expectedHash = ValueKeccak.Compute(kv.Value.FullRlp.AsSpan());
+                if (storedHash != expectedHash)
+                    throw new InvalidOperationException($"StateNode at path length {path.Length} hash mismatch");
             }
 
             // 5. StorageNodes
             foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
-                (Hash256 hash, TreePath path) = kv.Key.Key;
-                if (!persisted.TryLoadStorageNodeRlp(hash, path, out ReadOnlySpan<byte> nodeRlp))
-                    throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp.SequenceEqual(kv.Value.FullRlp.AsSpan()))
-                    throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} RLP mismatch");
+                (Hash256 addrHash, TreePath path) = kv.Key.Key;
+                if (!persisted.TryLoadStorageNodeHash(addrHash, path, out ValueHash256 storedHash))
+                    throw new InvalidOperationException($"StorageNode {addrHash} at path length {path.Length} not found in persisted snapshot");
+                ValueHash256 expectedHash = ValueKeccak.Compute(kv.Value.FullRlp.AsSpan());
+                if (storedHash != expectedHash)
+                    throw new InvalidOperationException($"StorageNode {addrHash} at path length {path.Length} hash mismatch");
             }
         }
         catch (InvalidOperationException ex)
@@ -275,26 +277,6 @@ internal static class PersistedSnapshotUtils
         {
             ReadOnlySpan<byte> compactedData = compactedSnapshot.GetSpan();
             Hsst.Hsst outer = new(compactedData);
-
-            // Determine if this compacted snapshot has NodeRefs by checking metadata flag
-            bool hasNodeRefs = false;
-            if (outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaCol))
-            {
-                Hsst.Hsst metaHsst = new(metaCol);
-                hasNodeRefs = metaHsst.TryGet("noderefs"u8, out _);
-            }
-
-            // Build transitive lookup including referenced snapshots from compacted sources
-            Dictionary<int, PersistedSnapshot> snapshotLookup = [];
-            for (int i = 0; i < snapshots.Count; i++)
-            {
-                snapshotLookup.TryAdd(snapshots[i].Id, snapshots[i]);
-                if (snapshots[i].ReferencedSnapshots is { } refs)
-                {
-                    foreach (PersistedSnapshot refSnapshot in refs)
-                        snapshotLookup.TryAdd(refSnapshot.Id, refSnapshot);
-                }
-            }
 
             // Unified Account Column (0x01): address → per-address HSST { slots, self-destruct, account }
             if (outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> accountColumn))
@@ -385,58 +367,55 @@ internal static class PersistedSnapshotUtils
                 }
             }
 
-            // StateTopNodes (0x05): key = 3-byte encoded TreePath (length 0-5)
+            // StateTopNodes (0x05): key = 3-byte encoded TreePath (length 0-5), value = 32-byte hash
             if (outer.TryGet(PersistedSnapshot.StateTopNodesTag, out ReadOnlySpan<byte> topNodeColumn))
             {
                 Hsst.Hsst topHsst = new(topNodeColumn);
                 Hsst.Hsst.Enumerator e = topHsst.GetEnumerator();
                 while (e.MoveNext())
                 {
-                    ReadOnlySpan<byte> key = e.Current.Key;
-                    ReadOnlySpan<byte> value = ResolveNodeRefForValidation(e.Current.Value, snapshotLookup, hasNodeRefs);
-                    TreePath path = DecodeWith3Byte(key);
-
-                    byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
-                    if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                        throw new InvalidOperationException($"StateTopNode path {path}: RLP mismatch. Got {value.ToHexString()}, Expected: {bundleRlp?.ToHexString()}");
+                    TreePath path = DecodeWith3Byte(e.Current.Key);
+                    ValueHash256 compactedHash = new(e.Current.Value);
+                    ValueHash256 expectedHash = FindExpectedStateNodeHash(snapshots, path)
+                        ?? throw new InvalidOperationException($"StateTopNode path {path}: not found in any source snapshot");
+                    if (compactedHash != expectedHash)
+                        throw new InvalidOperationException($"StateTopNode path {path}: hash mismatch");
                 }
             }
 
-            // StateNodes (0x03): key = 8-byte encoded TreePath (length 6-15)
+            // StateNodes (0x03): key = 8-byte encoded TreePath (length 6-15), value = 32-byte hash
             if (outer.TryGet(PersistedSnapshot.StateNodeTag, out ReadOnlySpan<byte> stateNodeColumn))
             {
                 Hsst.Hsst stateHsst = new(stateNodeColumn);
                 Hsst.Hsst.Enumerator e = stateHsst.GetEnumerator();
                 while (e.MoveNext())
                 {
-                    ReadOnlySpan<byte> key = e.Current.Key;
-                    ReadOnlySpan<byte> value = ResolveNodeRefForValidation(e.Current.Value, snapshotLookup, hasNodeRefs);
-                    TreePath path = DecodeWith8Byte(key);
-
-                    byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
-                    if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                        throw new InvalidOperationException($"StateNode path length {path.Length}: RLP mismatch");
+                    TreePath path = DecodeWith8Byte(e.Current.Key);
+                    ValueHash256 compactedHash = new(e.Current.Value);
+                    ValueHash256 expectedHash = FindExpectedStateNodeHash(snapshots, path)
+                        ?? throw new InvalidOperationException($"StateNode path length {path.Length}: not found in any source snapshot");
+                    if (compactedHash != expectedHash)
+                        throw new InvalidOperationException($"StateNode path length {path.Length}: hash mismatch");
                 }
             }
 
-            // StateNodeFallback (0x06): key = 33 bytes (32-byte path + 1-byte length)
+            // StateNodeFallback (0x06): key = 33 bytes (32-byte path + 1-byte length), value = 32-byte hash
             if (outer.TryGet(PersistedSnapshot.StateNodeFallbackTag, out ReadOnlySpan<byte> fallbackColumn))
             {
                 Hsst.Hsst fallbackHsst = new(fallbackColumn);
                 Hsst.Hsst.Enumerator e = fallbackHsst.GetEnumerator();
                 while (e.MoveNext())
                 {
-                    ReadOnlySpan<byte> key = e.Current.Key;
-                    ReadOnlySpan<byte> value = ResolveNodeRefForValidation(e.Current.Value, snapshotLookup, hasNodeRefs);
-                    TreePath path = new(new Hash256(key[..32].ToArray()), key[32]);
-
-                    byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
-                    if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                        throw new InvalidOperationException($"StateNodeFallback path length {key[32]}: RLP mismatch");
+                    TreePath path = new(new Hash256(e.Current.Key[..32].ToArray()), e.Current.Key[32]);
+                    ValueHash256 compactedHash = new(e.Current.Value);
+                    ValueHash256 expectedHash = FindExpectedStateNodeHash(snapshots, path)
+                        ?? throw new InvalidOperationException($"StateNodeFallback path length {e.Current.Key[32]}: not found in any source snapshot");
+                    if (compactedHash != expectedHash)
+                        throw new InvalidOperationException($"StateNodeFallback path length {e.Current.Key[32]}: hash mismatch");
                 }
             }
 
-            // StorageNodes (0x07): nested HSST. addr hash prefix(20) → 8-byte encoded TreePath → RLP/NodeRef
+            // StorageNodes (0x07): nested HSST. addr hash prefix(20) → 8-byte encoded TreePath → 32-byte hash
             if (outer.TryGet(PersistedSnapshot.StorageNodeTag, out ReadOnlySpan<byte> storageNodeColumn))
             {
                 Span<byte> fullHashBytes = stackalloc byte[32];
@@ -444,29 +423,25 @@ internal static class PersistedSnapshotUtils
                 Hsst.Hsst.Enumerator addrEnum = addrLevel.GetEnumerator();
                 while (addrEnum.MoveNext())
                 {
-                    ReadOnlySpan<byte> addrHashPrefix = addrEnum.Current.Key;
-                    ReadOnlySpan<byte> innerData = addrEnum.Current.Value;
-
                     fullHashBytes.Clear();
-                    addrHashPrefix.CopyTo(fullHashBytes);
+                    addrEnum.Current.Key.CopyTo(fullHashBytes);
                     Hash256 addrHash = new(fullHashBytes.ToArray());
 
-                    Hsst.Hsst innerHsst = new(innerData);
+                    Hsst.Hsst innerHsst = new(addrEnum.Current.Value);
                     Hsst.Hsst.Enumerator innerEnum = innerHsst.GetEnumerator();
                     while (innerEnum.MoveNext())
                     {
-                        ReadOnlySpan<byte> pathKey = innerEnum.Current.Key;
-                        ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(innerEnum.Current.Value, snapshotLookup, hasNodeRefs);
-                        TreePath path = DecodeWith8Byte(pathKey);
-
-                        byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
-                        if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                            throw new InvalidOperationException($"StorageNode {addrHash} path length {path.Length}: RLP mismatch");
+                        TreePath path = DecodeWith8Byte(innerEnum.Current.Key);
+                        ValueHash256 compactedHash = new(innerEnum.Current.Value);
+                        ValueHash256 expectedHash = FindExpectedStorageNodeHash(snapshots, addrHash, path)
+                            ?? throw new InvalidOperationException($"StorageNode {addrHash} path length {path.Length}: not found in any source snapshot");
+                        if (compactedHash != expectedHash)
+                            throw new InvalidOperationException($"StorageNode {addrHash} path length {path.Length}: hash mismatch");
                     }
                 }
             }
 
-            // StorageNodeFallback (0x08): nested HSST. addr hash prefix(20) → 33-byte TreePath → RLP/NodeRef
+            // StorageNodeFallback (0x08): nested HSST. addr hash prefix(20) → 33-byte TreePath → 32-byte hash
             if (outer.TryGet(PersistedSnapshot.StorageNodeFallbackTag, out ReadOnlySpan<byte> storageNodeFallbackColumn))
             {
                 Span<byte> fullHashBytesFb = stackalloc byte[32];
@@ -474,24 +449,20 @@ internal static class PersistedSnapshotUtils
                 Hsst.Hsst.Enumerator addrEnum = addrLevel.GetEnumerator();
                 while (addrEnum.MoveNext())
                 {
-                    ReadOnlySpan<byte> addrHashPrefix = addrEnum.Current.Key;
-                    ReadOnlySpan<byte> innerData = addrEnum.Current.Value;
-
                     fullHashBytesFb.Clear();
-                    addrHashPrefix.CopyTo(fullHashBytesFb);
+                    addrEnum.Current.Key.CopyTo(fullHashBytesFb);
                     Hash256 addrHash = new(fullHashBytesFb.ToArray());
 
-                    Hsst.Hsst innerHsst = new(innerData);
+                    Hsst.Hsst innerHsst = new(addrEnum.Current.Value);
                     Hsst.Hsst.Enumerator innerEnum = innerHsst.GetEnumerator();
                     while (innerEnum.MoveNext())
                     {
-                        ReadOnlySpan<byte> pathKey = innerEnum.Current.Key;
-                        ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(innerEnum.Current.Value, snapshotLookup, hasNodeRefs);
-                        TreePath path = new(new Hash256(pathKey[..32].ToArray()), pathKey[32]);
-
-                        byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
-                        if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                            throw new InvalidOperationException($"StorageNodeFallback {addrHash} path length {pathKey[32]}: RLP mismatch");
+                        TreePath path = new(new Hash256(innerEnum.Current.Key[..32].ToArray()), innerEnum.Current.Key[32]);
+                        ValueHash256 compactedHash = new(innerEnum.Current.Value);
+                        ValueHash256 expectedHash = FindExpectedStorageNodeHash(snapshots, addrHash, path)
+                            ?? throw new InvalidOperationException($"StorageNodeFallback {addrHash} path length {innerEnum.Current.Key[32]}: not found in any source snapshot");
+                        if (compactedHash != expectedHash)
+                            throw new InvalidOperationException($"StorageNodeFallback {addrHash} path length {innerEnum.Current.Key[32]}: hash mismatch");
                     }
                 }
             }
@@ -511,18 +482,24 @@ internal static class PersistedSnapshotUtils
         File.WriteAllText(filename, JsonSerializer.Serialize(base64List));
     }
 
-    /// <summary>
-    /// Resolve a NodeRef value by finding the referenced snapshot and reading the entry.
-    /// Returns the original value if <paramref name="hasNodeRefs"/> is false.
-    /// </summary>
-    private static ReadOnlySpan<byte> ResolveNodeRefForValidation(
-        ReadOnlySpan<byte> value, Dictionary<int, PersistedSnapshot> snapshotLookup, bool hasNodeRefs)
+    private static ValueHash256? FindExpectedStateNodeHash(PersistedSnapshotList snapshots, in TreePath path)
     {
-        if (!hasNodeRefs) return value;
-        NodeRef nodeRef = NodeRef.Read(value);
-        if (!snapshotLookup.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snapshot))
-            throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found during validation");
-        return PersistedSnapshot.ResolveValue(snapshot.GetSpan(), nodeRef.ValueLengthOffset);
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryLoadStateNodeHash(path, out ValueHash256 hash))
+                return hash;
+        }
+        return null;
+    }
+
+    private static ValueHash256? FindExpectedStorageNodeHash(PersistedSnapshotList snapshots, Hash256 addrHash, in TreePath path)
+    {
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryLoadStorageNodeHash(addrHash, path, out ValueHash256 hash))
+                return hash;
+        }
+        return null;
     }
 
     private static TreePath DecodeWith3Byte(ReadOnlySpan<byte> key) =>

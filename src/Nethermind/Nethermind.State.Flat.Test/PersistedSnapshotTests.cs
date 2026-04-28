@@ -171,18 +171,6 @@ public class PersistedSnapshotTests
     }
 
     [Test]
-    public void NodeRef_ReadWrite_RoundTrip()
-    {
-        NodeRef original = new(42, 12345);
-        byte[] buffer = new byte[NodeRef.Size];
-        NodeRef.Write(buffer, original);
-        NodeRef decoded = NodeRef.Read(buffer);
-
-        Assert.That(decoded.SnapshotId, Is.EqualTo(42));
-        Assert.That(decoded.ValueLengthOffset, Is.EqualTo(12345));
-    }
-
-    [Test]
     public void PersistedSnapshotList_Queries_NewestFirst()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -212,20 +200,20 @@ public class PersistedSnapshotTests
         PersistedSnapshotList list = new(2);
         list.Add(p1);
         list.Add(p2);
-        ReadOnlySpan<byte> result = default;
+        ValueHash256 result = default;
         bool found = false;
         for (int i = list.Count - 1; i >= 0; i--)
         {
-            if (list[i].TryLoadStateNodeRlp(path, out result))
+            if (list[i].TryLoadStateNodeHash(path, out result))
             {
                 found = true;
                 break;
             }
         }
 
-        // Should return the newest (p2) value
+        // Should return the hash of the newest (p2) value
         Assert.That(found, Is.True);
-        Assert.That(result.ToArray(), Is.EqualTo(rlp2));
+        Assert.That(result, Is.EqualTo(ValueKeccak.Compute(rlp2)));
     }
 
     [Test]

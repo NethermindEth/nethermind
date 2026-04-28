@@ -86,7 +86,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
                 ArenaManager baseArena = new(Path.Combine(basePath, "arenas"));
                 IArenaManager compactedArena = ctx.Resolve<IArenaManager>();
-                PersistedSnapshotRepository repo = new(baseArena, compactedArena, basePath, ctx.Resolve<IFlatDbConfig>());
+                PersistedSnapshotRepository repo = new(baseArena, compactedArena, basePath, ctx.Resolve<IFlatDbConfig>(), ctx.Resolve<IBlockRangeTrieForest>());
                 repo.LoadFromCatalog();
                 return repo;
             })

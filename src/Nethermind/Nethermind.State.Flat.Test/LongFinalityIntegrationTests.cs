@@ -64,15 +64,14 @@ public class LongFinalityIntegrationTests
         return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing);
     }
 
-    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data,
-        PersistedSnapshot[]? referencedSnapshots = null)
+    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data)
     {
         using ArenaWriter writer = _memArena.CreateWriter(data.Length);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, type, reservation, referencedSnapshots);
+        return new PersistedSnapshot(id, from, to, type, reservation);
     }
 
     [Test]
@@ -80,7 +79,7 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -105,11 +104,11 @@ public class LongFinalityIntegrationTests
         repo.ConvertSnapshotToPersistedSnapshot(snap);
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
 
-        // Query all types through the individual persisted snapshot
-        Assert.That(persisted!.TryLoadStateNodeRlp(statePath, out ReadOnlySpan<byte> stateResult), Is.True);
-        Assert.That(stateResult.ToArray(), Is.EqualTo(stateRlp));
-        Assert.That(persisted.TryLoadStorageNodeRlp(storageAddr, storagePath, out ReadOnlySpan<byte> storageResult), Is.True);
-        Assert.That(storageResult.ToArray(), Is.EqualTo(storageRlp));
+        // Query trie nodes by hash — base snapshots store the Keccak hash of RLP
+        Assert.That(persisted!.TryLoadStateNodeHash(statePath, out ValueHash256 stateResult), Is.True);
+        Assert.That(stateResult, Is.EqualTo(ValueKeccak.Compute(stateRlp)));
+        Assert.That(persisted.TryLoadStorageNodeHash(storageAddr, storagePath, out ValueHash256 storageResult), Is.True);
+        Assert.That(storageResult, Is.EqualTo(ValueKeccak.Compute(storageRlp)));
         persisted.Dispose();
     }
 
@@ -128,7 +127,7 @@ public class LongFinalityIntegrationTests
         // Session 1: persist two snapshots
         using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance))
         {
             repo.LoadFromCatalog();
 
@@ -148,24 +147,22 @@ public class LongFinalityIntegrationTests
         // Session 2: reload and verify
         using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(2));
 
             // path1 is in s0→s1, path2 is in s1→s2 — query each snapshot directly
             Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snap1), Is.True);
-            Assert.That(snap1!.TryLoadStateNodeRlp(path1, out ReadOnlySpan<byte> r1Span), Is.True);
-            byte[] r1 = r1Span.ToArray();
+            Assert.That(snap1!.TryLoadStateNodeHash(path1, out ValueHash256 r1Hash), Is.True);
             snap1.Dispose();
 
             Assert.That(repo.TryLeaseSnapshotTo(s2, out PersistedSnapshot? snap2), Is.True);
-            Assert.That(snap2!.TryLoadStateNodeRlp(path2, out ReadOnlySpan<byte> r2Span), Is.True);
-            byte[] r2 = r2Span.ToArray();
+            Assert.That(snap2!.TryLoadStateNodeHash(path2, out ValueHash256 r2Hash), Is.True);
             snap2.Dispose();
 
-            Assert.That(r1, Is.EqualTo(rlp1));
-            Assert.That(r2, Is.EqualTo(rlp2));
+            Assert.That(r1Hash, Is.EqualTo(ValueKeccak.Compute(rlp1)));
+            Assert.That(r2Hash, Is.EqualTo(ValueKeccak.Compute(rlp2)));
         }
     }
 
@@ -203,16 +200,12 @@ public class LongFinalityIntegrationTests
         toMerge.Add(baseSnap2);
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
-        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, merged,
-            [baseSnap1, baseSnap2]);
+        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, merged);
 
-        // State node should have newer value
-        Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out ReadOnlySpan<byte> stateRlpResult), Is.True);
-        Assert.That(stateRlpResult.ToArray(), Is.EqualTo(new byte[] { 0xC1, 0x80, 0x80 }));
-
-        // Storage node from older should be preserved
-        Assert.That(mergedSnap.TryLoadStorageNodeRlp(storageAddr, storagePath, out ReadOnlySpan<byte> storageRlpResult), Is.True);
-        Assert.That(storageRlpResult.ToArray(), Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+        // Merged (NoTrie) snapshot is forest-spilled: trie node lookups return false
+        Assert.That(mergedSnap.IsForestSpilled, Is.True);
+        Assert.That(mergedSnap.TryLoadStateNodeHash(statePath, out ValueHash256 _), Is.False);
+        Assert.That(mergedSnap.TryLoadStorageNodeHash(storageAddr, storagePath, out ValueHash256 _), Is.False);
 
         // Both accounts should be present
         Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
@@ -226,7 +219,7 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         StateId prev = new(0, Keccak.EmptyTreeHash);
@@ -246,17 +239,22 @@ public class LongFinalityIntegrationTests
     [Test]
     public async Task FlatDbManager_EndToEnd_WithPersistedSnapshots()
     {
-        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
-        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
-        repo.LoadFromCatalog();
-
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
         TreePath path = new(Keccak.Compute("e2e_path"), 4);
         byte[] nodeRlp = [0xC0, 0x80];
+        Hash256 nodeHash = Keccak.Compute(nodeRlp);
 
-        // Persist a snapshot with a state node
+        // Use a real forest so RLP written at conversion time is readable by the bundle
+        using SnapshotableMemDb forestDb = new();
+        ForestImpl forest = new(forestDb);
+
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), forest);
+        repo.LoadFromCatalog();
+
+        // Persist a snapshot with a state node — RLP is spilled into forest
         repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>
             c.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp)));
 
@@ -281,11 +279,11 @@ public class LongFinalityIntegrationTests
             LimboLogs.Instance,
             enableDetailedMetrics: false,
             persistedSnapshotRepository: repo,
-            blockRangeTrieForest: NullBlockRangeTrieForest.Instance);
+            blockRangeTrieForest: forest);
 
         ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
 
-        byte[]? result = bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
+        byte[]? result = bundle.TryLoadStateRlp(path, nodeHash, ReadFlags.None);
         Assert.That(result, Is.EqualTo(nodeRlp));
 
         bundle.Dispose();
@@ -302,7 +300,7 @@ public class LongFinalityIntegrationTests
         // Session 1: persist snapshots
         using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance))
         {
             repo.LoadFromCatalog();
             repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>
@@ -316,7 +314,7 @@ public class LongFinalityIntegrationTests
         // Session 2: reload and prune
         using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(3));
@@ -329,7 +327,7 @@ public class LongFinalityIntegrationTests
         // Session 3: verify pruned state persists
         using (ArenaManager baseArena3 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena3 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena3, compactedArena3, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena3, compactedArena3, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(1));
@@ -341,7 +339,7 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -353,7 +351,7 @@ public class LongFinalityIntegrationTests
 
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
-        Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("any"), 4), out _), Is.False);
+        Assert.That(persisted.TryLoadStateNodeHash(new TreePath(Keccak.Compute("any"), 4), out ValueHash256 _), Is.False);
         persisted.Dispose();
     }
 
@@ -382,15 +380,15 @@ public class LongFinalityIntegrationTests
         {
             using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
             using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
-            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig());
-            repo.LoadFromCatalog();
-
             // CompactSize=4, BlockRangePerForest=4 → range 0 = blocks 0-3, range 1 = blocks 4-7.
             // At block 8: compactSize=8 > CompactSize=4 → forest-spilled compaction.
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2, BlockRangePerForest = 4 };
             using SnapshotableMemDb forestDb = new();
             ForestImpl forest = new(forestDb);
-            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, forest, LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, config, forest);
+            repo.LoadFromCatalog();
+
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, LimboLogs.Instance);
 
             TreePath pathRange0 = new(Keccak.Compute("nodeRange0"), 4);
             TreePath pathRange1 = new(Keccak.Compute("nodeRange1"), 4);

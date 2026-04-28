@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
@@ -20,12 +19,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// The outer HSST has 7 column entries, each containing an inner HSST.
 /// Inner HSST keys are the entity keys without the tag prefix.
 ///
-/// Snapshot types:
-/// - Full: all values written directly. Trie RLP values are non-inline (large).
-///   Slot suffix values are inline (small).
-/// - Linked: only trie columns (0x03, 0x05, 0x06, 0x07 inner, 0x08 inner) become
-///   NodeRef(8 bytes, inline) pointing to the Full snapshot's data region.
-///   Account (0x01), slot, and self-destruct values are copied as-is (not NodeRefs).
+/// Trie columns (0x03, 0x05, 0x06, 0x07, 0x08) store a 32-byte Keccak hash as the value.
+/// The actual RLP for each node is written to <c>BlockRangeTrieForest</c> at build time.
+/// Slot suffix values are inline (small).
 /// </summary>
 public static class PersistedSnapshotBuilder
 {
@@ -47,7 +43,7 @@ public static class PersistedSnapshotBuilder
         return cmp != 0 ? cmp : a.Key.Path.Length.CompareTo(b.Key.Path.Length);
     };
 
-    public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer) where TWriter : IByteBufferWriter
+    public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, IBlockRangeTrieForest.IWriter? forestWriter = null, long blockRange = 0) where TWriter : IByteBufferWriter
     {
         // Declare mutable locals populated by the parallel jobs below.
         List<(TreePath Path, TrieNode Node)> stateTop = null!, stateCompact = null!, stateFallback = null!;
@@ -134,19 +130,19 @@ public static class PersistedSnapshotBuilder
             WriteAccountColumn(ref outer, snapshot, sortedStorages, uniqueAddresses);
 
             // Column 0x03: State nodes (compact, path length 6-15)
-            WriteStateNodesColumnCompact(ref outer, stateCompact);
+            WriteStateNodesColumnCompact(ref outer, stateCompact, forestWriter, blockRange);
 
             // Column 0x05: State top nodes (path length 0-5)
-            WriteStateTopNodesColumn(ref outer, stateTop);
+            WriteStateTopNodesColumn(ref outer, stateTop, forestWriter, blockRange);
 
             // Column 0x06: State nodes fallback (path length 16+)
-            WriteStateNodesColumnFallback(ref outer, stateFallback);
+            WriteStateNodesColumnFallback(ref outer, stateFallback, forestWriter, blockRange);
 
             // Column 0x07: Storage nodes (compact, path length 6-15)
-            WriteStorageNodesColumnCompact(ref outer, storCompact);
+            WriteStorageNodesColumnCompact(ref outer, storCompact, forestWriter, blockRange);
 
             // Column 0x08: Storage nodes fallback (path length 16+)
-            WriteStorageNodesColumnFallback(ref outer, storFallback);
+            WriteStorageNodesColumnFallback(ref outer, storFallback, forestWriter, blockRange);
 
             outer.Build();
         }
@@ -288,71 +284,92 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
     }
 
-    private static void WriteStateTopNodesColumn<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes) where TWriter : IByteBufferWriter
+    private static void WriteStateTopNodesColumn<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes,
+        IBlockRangeTrieForest.IWriter? forestWriter, long blockRange) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 3);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 3, inlineValues: true);
         byte[] keyBuffer = new byte[3];
+        Span<byte> hashBuffer = stackalloc byte[32];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
             path.EncodeWith3Byte(keyBuffer.AsSpan(0, 3));
-            inner.Add(keyBuffer.AsSpan(0, 3), node.FullRlp.AsSpan());
+            ValueHash256 hash = ValueKeccak.Compute(node.FullRlp.AsSpan());
+            hash.Bytes.CopyTo(hashBuffer);
+            inner.Add(keyBuffer.AsSpan(0, 3), hashBuffer);
+            forestWriter?.PutState(blockRange, path, hash, node.FullRlp.AsSpan());
         }
 
         inner.Build();
         outer.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
     }
 
-    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes,
+        IBlockRangeTrieForest.IWriter? forestWriter, long blockRange) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8, inlineValues: true);
         byte[] keyBuffer = new byte[8];
+        Span<byte> hashBuffer = stackalloc byte[32];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
             path.EncodeWith8Byte(keyBuffer.AsSpan());
-            inner.Add(keyBuffer.AsSpan(0, 8), node.FullRlp.AsSpan());
+            ValueHash256 hash = ValueKeccak.Compute(node.FullRlp.AsSpan());
+            hash.Bytes.CopyTo(hashBuffer);
+            inner.Add(keyBuffer.AsSpan(0, 8), hashBuffer);
+            forestWriter?.PutState(blockRange, path, hash, node.FullRlp.AsSpan());
         }
 
         inner.Build();
         outer.FinishValueWrite(PersistedSnapshot.StateNodeTag);
     }
 
-    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, List<(TreePath Path, TrieNode Node)> stateNodes,
+        IBlockRangeTrieForest.IWriter? forestWriter, long blockRange) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, inlineValues: true);
         byte[] keyBuffer = new byte[33];
+        Span<byte> hashBuffer = stackalloc byte[32];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
             path.Path.Bytes.CopyTo(keyBuffer.AsSpan());
             keyBuffer[32] = (byte)path.Length;
-            inner.Add(keyBuffer.AsSpan(0, 33), node.FullRlp.AsSpan());
+            ValueHash256 hash = ValueKeccak.Compute(node.FullRlp.AsSpan());
+            hash.Bytes.CopyTo(hashBuffer);
+            inner.Add(keyBuffer.AsSpan(0, 33), hashBuffer);
+            forestWriter?.PutState(blockRange, path, hash, node.FullRlp.AsSpan());
         }
 
         inner.Build();
         outer.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
     }
 
-    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, List<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, List<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes,
+        IBlockRangeTrieForest.IWriter? forestWriter, long blockRange) where TWriter : IByteBufferWriter
     {
-        // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeRLP)
+        // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeHash(32))
         ref TWriter hashWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, minSeparatorLength: 2);
         byte[] pathKey = new byte[8];
+        Span<byte> hashBuffer = stackalloc byte[32];
         int i = 0;
         while (i < storageNodes.Count)
         {
             Hash256 currentHash = storageNodes[i].Key.Addr;
+            ValueHash256 addrHash = currentHash;
 
             ref TWriter innerWriter = ref hashLevel.BeginValueWrite();
-            using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8);
+            using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8, inlineValues: true);
 
             while (i < storageNodes.Count && storageNodes[i].Key.Addr.Equals(currentHash))
             {
                 ((Hash256 _, TreePath path) snKey, TrieNode node) = storageNodes[i];
                 snKey.path.EncodeWith8Byte(pathKey.AsSpan());
-                inner.Add(pathKey.AsSpan(0, 8), node.FullRlp.AsSpan());
+                ValueHash256 hash = ValueKeccak.Compute(node.FullRlp.AsSpan());
+                hash.Bytes.CopyTo(hashBuffer);
+                inner.Add(pathKey.AsSpan(0, 8), hashBuffer);
+                forestWriter?.PutStorage(blockRange, addrHash, snKey.path, hash, node.FullRlp.AsSpan());
                 i++;
             }
 
@@ -364,26 +381,32 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StorageNodeTag);
     }
 
-    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, List<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, List<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes,
+        IBlockRangeTrieForest.IWriter? forestWriter, long blockRange) where TWriter : IByteBufferWriter
     {
-        // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeRLP)
+        // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeHash(32))
         ref TWriter hashWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, minSeparatorLength: 2);
         byte[] pathKey = new byte[33];
+        Span<byte> hashBuffer = stackalloc byte[32];
         int i = 0;
         while (i < storageNodes.Count)
         {
             Hash256 currentHash = storageNodes[i].Key.Addr;
+            ValueHash256 addrHash = currentHash;
 
             ref TWriter innerWriter = ref hashLevel.BeginValueWrite();
-            using HsstBuilder<TWriter> inner = new(ref innerWriter);
+            using HsstBuilder<TWriter> inner = new(ref innerWriter, inlineValues: true);
 
             while (i < storageNodes.Count && storageNodes[i].Key.Addr.Equals(currentHash))
             {
                 ((Hash256 _, TreePath path) snKey, TrieNode node) = storageNodes[i];
                 snKey.path.Path.Bytes.CopyTo(pathKey.AsSpan());
                 pathKey[32] = (byte)snKey.path.Length;
-                inner.Add(pathKey.AsSpan(0, 33), node.FullRlp.AsSpan());
+                ValueHash256 hash = ValueKeccak.Compute(node.FullRlp.AsSpan());
+                hash.Bytes.CopyTo(hashBuffer);
+                inner.Add(pathKey.AsSpan(0, 33), hashBuffer);
+                forestWriter?.PutStorage(blockRange, addrHash, snKey.path, hash, node.FullRlp.AsSpan());
                 i++;
             }
 
@@ -395,238 +418,8 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StorageNodeFallbackTag);
     }
 
-    /// <summary>
-    /// Convert a Full snapshot into a Linked snapshot where trie RLP columns have NodeRefs.
-    /// Account column (0x01) is copied as-is. Metadata column (0x00) is copied as-is.
-    /// Trie columns (0x03, 0x05, 0x06) have values replaced with NodeRef(snapshotId, offset).
-    /// Nested trie columns (0x07, 0x08) have inner values replaced with NodeRefs.
-    /// </summary>
-    internal static void ConvertFullToLinked<TWriter>(PersistedSnapshot fullSnapshot, ref TWriter writer) where TWriter : IByteBufferWriter
-    {
-        ReadOnlySpan<byte> snapshotData = fullSnapshot.GetSpan();
-        Hsst.Hsst outer = new(snapshotData);
-        using HsstBuilder<TWriter> outerBuilder = new(ref writer);
-
-        byte[][] tags = [
-            PersistedSnapshot.MetadataTag,
-            PersistedSnapshot.AccountColumnTag,
-            PersistedSnapshot.StateNodeTag,
-            PersistedSnapshot.StateTopNodesTag,
-            PersistedSnapshot.StateNodeFallbackTag,
-            PersistedSnapshot.StorageNodeTag,
-            PersistedSnapshot.StorageNodeFallbackTag,
-        ];
-
-        int snapshotId = fullSnapshot.Id;
-
-        foreach (byte[] tag in tags)
-        {
-            if (!outer.TryGet(tag, out ReadOnlySpan<byte> column)) continue;
-            int columnOffset = SpanOffset(snapshotData, column);
-
-            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-
-            switch (tag[0])
-            {
-                // Metadata and account: copy as-is
-                case 0x00 or 0x01:
-                    CopyColumn(column, ref valueWriter);
-                    break;
-                // Flat trie columns: convert values to NodeRefs
-                case 0x03:
-                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, minSeparatorLength: 8);
-                    break;
-                case 0x05:
-                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, minSeparatorLength: 3);
-                    break;
-                case 0x06:
-                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset);
-                    break;
-                // Nested trie columns: convert inner values to NodeRefs
-                case 0x07:
-                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2, innerMinSep: 8);
-                    break;
-                case 0x08:
-                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2);
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
-            }
-
-            outerBuilder.FinishValueWrite(tag);
-        }
-
-        outerBuilder.Build();
-    }
-
     private static void CopyColumn<TWriter>(ReadOnlySpan<byte> column, ref TWriter writer) where TWriter : IByteBufferWriter =>
         IByteBufferWriter.Copy(ref writer, column);
-
-    /// <summary>
-    /// Convert a flat (non-nested) trie column's values to NodeRefs.
-    /// Each entry's RLP value is replaced with a NodeRef pointing back to the Full snapshot.
-    /// </summary>
-    private static void ConvertFlatColumnToNodeRefs<TWriter>(
-        ReadOnlySpan<byte> column, ref TWriter writer,
-        int snapshotId, int columnOffset,
-        int minSeparatorLength = 0) where TWriter : IByteBufferWriter
-    {
-        Hsst.Hsst hsst = new(column);
-        HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues: true);
-        Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
-        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
-
-        while (e.MoveNext())
-        {
-            NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffset + e.CurrentMetadataStart));
-            builder.Add(e.Current.Key, refBytes);
-        }
-
-        builder.Build();
-        builder.Dispose();
-        e.Dispose();
-    }
-
-    /// <summary>
-    /// Convert a nested trie column (storage nodes) to NodeRefs.
-    /// Outer keys (address hash prefixes) are preserved. Inner values are replaced with NodeRefs.
-    /// </summary>
-    private static void ConvertNestedColumnToNodeRefs<TWriter>(
-        ReadOnlySpan<byte> column, ReadOnlySpan<byte> snapshotData, ref TWriter writer,
-        int snapshotId,
-        int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriter
-    {
-        Hsst.Hsst outerHsst = new(column);
-        HsstBuilder<TWriter> builder = new(ref writer, outerMinSep);
-        Hsst.Hsst.Enumerator outerEnum = outerHsst.GetEnumerator();
-        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
-
-        while (outerEnum.MoveNext())
-        {
-            ReadOnlySpan<byte> innerData = outerEnum.Current.Value;
-            int innerOffset = SpanOffset(snapshotData, innerData);
-
-            Hsst.Hsst innerHsst = new(innerData);
-            ref TWriter innerWriter = ref builder.BeginValueWrite();
-            HsstBuilder<TWriter> innerBuilder = new(ref innerWriter, innerMinSep, inlineValues: true);
-            Hsst.Hsst.Enumerator innerEnum = innerHsst.GetEnumerator();
-
-            while (innerEnum.MoveNext())
-            {
-                NodeRef.Write(refBytes, new NodeRef(snapshotId, innerOffset + innerEnum.CurrentMetadataStart));
-                innerBuilder.Add(innerEnum.Current.Key, refBytes);
-            }
-
-            innerBuilder.Build();
-            innerBuilder.Dispose();
-            innerEnum.Dispose();
-            builder.FinishValueWrite(outerEnum.Current.Key);
-        }
-
-        builder.Build();
-        builder.Dispose();
-        outerEnum.Dispose();
-    }
-
-    /// <summary>
-    /// N-way merge of N persisted snapshots (oldest-first) into output buffer.
-    /// Pre-converts all Full snapshots to Linked so the merge only handles Linked snapshots
-    /// (all trie values are already NodeRefs). This eliminates the dual code path in trie merges.
-    /// </summary>
-    internal static void NWayMergeSnapshots<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> referencedIds) where TWriter : IByteBufferWriter
-    {
-        int n = snapshots.Count;
-
-        // Pre-convert Full snapshots to Linked using a temporary MemoryArenaManager
-        using MemoryArenaManager tempArena = new(1024 * 1024);
-        PersistedSnapshotList mergeSnapshots = new(n);
-
-        try
-        {
-            for (int i = 0; i < n; i++)
-            {
-                if (snapshots[i].Type == PersistedSnapshotType.Full)
-                {
-                    int estimatedSize = snapshots[i].Size / 2 + 4096;
-                    using ArenaWriter tempWriter = tempArena.CreateWriter(Math.Max(estimatedSize, snapshots[i].Size));
-                    ConvertFullToLinked(snapshots[i], ref tempWriter.GetWriter());
-                    (_, ArenaReservation tempRes) = tempWriter.Complete();
-                    PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
-                        PersistedSnapshotType.Linked, tempRes);
-                    mergeSnapshots.Add(convertedSnap);
-                }
-                else
-                {
-                    if (!snapshots[i].TryAcquire())
-                        throw new InvalidOperationException("Cannot acquire lease for snapshot");
-                    mergeSnapshots.Add(snapshots[i]);
-                }
-            }
-
-            using HsstBuilder<TWriter> outerBuilder = new(ref writer);
-
-            byte[][] tags = [
-                PersistedSnapshot.MetadataTag,
-                PersistedSnapshot.AccountColumnTag,
-                PersistedSnapshot.StateNodeTag,
-                PersistedSnapshot.StateTopNodesTag,
-                PersistedSnapshot.StateNodeFallbackTag,
-                PersistedSnapshot.StorageNodeTag,
-                PersistedSnapshot.StorageNodeFallbackTag,
-            ];
-
-            foreach (byte[] tag in tags)
-            {
-                ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-
-                // All trie columns now use NWayStreamingMerge since all inputs are Linked (values are NodeRefs)
-                switch (tag[0])
-                {
-                    case 0x00:
-                        NWayMetadataMerge(snapshots, ref valueWriter, referencedIds);
-                        break;
-                    case 0x01:
-                        NWayMergeAccountColumn(mergeSnapshots, tag, ref valueWriter);
-                        break;
-                    case 0x03:
-                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            minSeparatorLength: 8, inlineValues: true);
-                        break;
-                    case 0x05:
-                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            minSeparatorLength: 3, inlineValues: true);
-                        break;
-                    case 0x06:
-                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            inlineValues: true);
-                        break;
-                    case 0x07:
-                        NWayNestedStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            outerMinSep: 2, innerMinSep: 8, innerInline: true);
-                        break;
-                    case 0x08:
-                        NWayNestedStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            outerMinSep: 2, innerInline: true);
-                        break;
-                    default:
-                        throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
-                }
-
-                outerBuilder.FinishValueWrite(tag);
-            }
-
-            outerBuilder.Build();
-        }
-        finally
-        {
-            mergeSnapshots.Dispose();
-        }
-    }
-
-    private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
-        inner.IsEmpty ? 0 : (int)Unsafe.ByteOffset(
-            ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
-            ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
 
     // --- N-Way merge methods ---
 
@@ -1107,63 +900,111 @@ public static class PersistedSnapshotBuilder
     }
 
     /// <summary>
-    /// N-way metadata merge: from_block/from_hash from oldest, to_block/to_hash/version from newest.
-    /// <summary>
     /// Merges N persisted snapshots (oldest-first) into a new snapshot that contains only
     /// the metadata and account columns. All trie-node columns are omitted.
-    /// Used when RLPs have been written to <c>BlockRangeTrieForest</c> instead.
+    /// Used for compacted snapshots whose block-range span exceeds CompactSize.
     /// </summary>
     internal static void NWayMergeSnapshotsNoTrie<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer) where TWriter : IByteBufferWriter
     {
+        using HsstBuilder<TWriter> outerBuilder = new(ref writer);
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayMetadataMergeNoTrie(snapshots, ref valueWriter);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
+        }
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayMergeAccountColumn(snapshots, PersistedSnapshot.AccountColumnTag, ref valueWriter);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
+        }
+
+        outerBuilder.Build();
+    }
+
+    /// <summary>
+    /// Merges N persisted snapshots (oldest-first) into a new snapshot that contains metadata,
+    /// account column, and all trie-hash columns (32-byte hash values per node).
+    /// Used for compacted snapshots whose block-range span is less than CompactSize.
+    /// </summary>
+    internal static void NWayMergeSnapshotsWithTrieHashes<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer) where TWriter : IByteBufferWriter
+    {
+        using HsstBuilder<TWriter> outerBuilder = new(ref writer);
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayMetadataMerge(snapshots, ref valueWriter);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
+        }
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayMergeAccountColumn(snapshots, PersistedSnapshot.AccountColumnTag, ref valueWriter);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
+        }
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayStreamingMerge(snapshots, PersistedSnapshot.StateNodeTag, ref valueWriter, minSeparatorLength: 8, inlineValues: true);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeTag);
+        }
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayStreamingMerge(snapshots, PersistedSnapshot.StateTopNodesTag, ref valueWriter, minSeparatorLength: 3, inlineValues: true);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
+        }
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayStreamingMerge(snapshots, PersistedSnapshot.StateNodeFallbackTag, ref valueWriter, inlineValues: true);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
+        }
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayNestedStreamingMerge(snapshots, PersistedSnapshot.StorageNodeTag, ref valueWriter, outerMinSep: 2, innerMinSep: 8, innerInline: true);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StorageNodeTag);
+        }
+
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayNestedStreamingMerge(snapshots, PersistedSnapshot.StorageNodeFallbackTag, ref valueWriter, outerMinSep: 2, innerInline: true);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StorageNodeFallbackTag);
+        }
+
+        outerBuilder.Build();
+    }
+
+    private static void NWayMetadataMerge<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer) where TWriter : IByteBufferWriter
+    {
         int n = snapshots.Count;
+        ReadOnlySpan<byte> oldestData = snapshots[0].GetSpan();
+        ReadOnlySpan<byte> newestData = snapshots[n - 1].GetSpan();
 
-        using MemoryArenaManager tempArena = new(1024 * 1024);
-        PersistedSnapshotList mergeSnapshots = new(n);
+        Hsst.Hsst oldestOuter = new(oldestData);
+        Hsst.Hsst newestOuter = new(newestData);
+        oldestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> oldestMeta);
+        newestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> newestMeta);
 
-        try
-        {
-            for (int i = 0; i < n; i++)
-            {
-                if (snapshots[i].Type == PersistedSnapshotType.Full)
-                {
-                    int estimatedSize = snapshots[i].Size / 2 + 4096;
-                    using ArenaWriter tempWriter = tempArena.CreateWriter(Math.Max(estimatedSize, snapshots[i].Size));
-                    ConvertFullToLinked(snapshots[i], ref tempWriter.GetWriter());
-                    (_, ArenaReservation tempRes) = tempWriter.Complete();
-                    PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
-                        PersistedSnapshotType.Linked, tempRes);
-                    mergeSnapshots.Add(convertedSnap);
-                }
-                else
-                {
-                    if (!snapshots[i].TryAcquire())
-                        throw new InvalidOperationException("Cannot acquire lease for snapshot");
-                    mergeSnapshots.Add(snapshots[i]);
-                }
-            }
+        Hsst.Hsst oldestHsst = new(oldestMeta);
+        Hsst.Hsst newestHsst = new(newestMeta);
 
-            using HsstBuilder<TWriter> outerBuilder = new(ref writer);
+        oldestHsst.TryGet("from_block"u8, out ReadOnlySpan<byte> fromBlock);
+        oldestHsst.TryGet("from_hash"u8, out ReadOnlySpan<byte> fromHash);
+        newestHsst.TryGet("to_block"u8, out ReadOnlySpan<byte> toBlock);
+        newestHsst.TryGet("to_hash"u8, out ReadOnlySpan<byte> toHash);
+        newestHsst.TryGet("version"u8, out ReadOnlySpan<byte> version);
 
-            // Metadata (no noderefs, empty ref_ids — trie data lives in forest)
-            {
-                ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-                NWayMetadataMergeNoTrie(snapshots, ref valueWriter);
-                outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
-            }
-
-            // Account column only
-            {
-                ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-                NWayMergeAccountColumn(mergeSnapshots, PersistedSnapshot.AccountColumnTag, ref valueWriter);
-                outerBuilder.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
-            }
-
-            outerBuilder.Build();
-        }
-        finally
-        {
-            mergeSnapshots.Dispose();
-        }
+        using HsstBuilder<TWriter> builder = new(ref writer);
+        // Key order (ASCII): "from_block" < "from_hash" < "to_block" < "to_hash" < "version"
+        builder.Add("from_block"u8, fromBlock);
+        builder.Add("from_hash"u8, fromHash);
+        builder.Add("to_block"u8, toBlock);
+        builder.Add("to_hash"u8, toHash);
+        builder.Add("version"u8, version);
+        builder.Build();
     }
 
     private static void NWayMetadataMergeNoTrie<TWriter>(PersistedSnapshotList snapshots, ref TWriter writer) where TWriter : IByteBufferWriter
@@ -1198,52 +1039,5 @@ public static class PersistedSnapshotBuilder
         builder.Build();
     }
 
-    /// Injects noderefs=[0x01] and ref_ids from referencedIds set.
-    /// Emits in sorted key order.
-    /// </summary>
-    internal static void NWayMetadataMerge<TWriter>(
-        PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> refIds) where TWriter : IByteBufferWriter
-    {
-        int n = snapshots.Count;
-        ReadOnlySpan<byte> oldestData = snapshots[0].GetSpan();
-        ReadOnlySpan<byte> newestData = snapshots[n - 1].GetSpan();
-
-        Hsst.Hsst oldestOuter = new(oldestData);
-        Hsst.Hsst newestOuter = new(newestData);
-        oldestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> oldestMeta);
-        newestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> newestMeta);
-
-        Hsst.Hsst oldestHsst = new(oldestMeta);
-        Hsst.Hsst newestHsst = new(newestMeta);
-
-        // Extract fields
-        oldestHsst.TryGet("from_block"u8, out ReadOnlySpan<byte> fromBlock);
-        oldestHsst.TryGet("from_hash"u8, out ReadOnlySpan<byte> fromHash);
-        newestHsst.TryGet("to_block"u8, out ReadOnlySpan<byte> toBlock);
-        newestHsst.TryGet("to_hash"u8, out ReadOnlySpan<byte> toHash);
-        newestHsst.TryGet("version"u8, out ReadOnlySpan<byte> version);
-
-        // Build ref_ids value
-        byte[] refIdsValue = new byte[refIds.Count * 4];
-        int idx = 0;
-        foreach (int id in refIds)
-        {
-            BitConverter.TryWriteBytes(refIdsValue.AsSpan(idx * 4, 4), id);
-            idx++;
-        }
-
-        using HsstBuilder<TWriter> builder = new(ref writer);
-
-        // Emit all keys in sorted ASCII order:
-        // "from_block" < "from_hash" < "noderefs" < "ref_ids" < "to_block" < "to_hash" < "version"
-        builder.Add("from_block"u8, fromBlock);
-        builder.Add("from_hash"u8, fromHash);
-        builder.Add("noderefs"u8, [0x01]);
-        builder.Add("ref_ids"u8, refIdsValue);
-        builder.Add("to_block"u8, toBlock);
-        builder.Add("to_hash"u8, toHash);
-        builder.Add("version"u8, version);
-
-        builder.Build();
-    }
 }
+

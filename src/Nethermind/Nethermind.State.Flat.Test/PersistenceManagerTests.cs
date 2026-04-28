@@ -71,7 +71,8 @@ public class PersistenceManagerTests
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
             _persistedSnapshotRepository,
-            deletionDriver);
+            deletionDriver,
+            NullBlockRangeTrieForest.Instance);
     }
 
     [TearDown]

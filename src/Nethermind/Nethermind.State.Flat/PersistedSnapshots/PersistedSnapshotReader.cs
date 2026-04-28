@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -88,74 +87,50 @@ public static class PersistedSnapshotReader
         return addressLevel.TryGet(addressBytes, out perAddrData);
     }
 
-    internal static bool TryLoadStateNodeRlp(ReadOnlySpan<byte> data, scoped in TreePath path,
-        Dictionary<int, PersistedSnapshot>? referencedSnapshots, bool hasNodeRefs, out ReadOnlySpan<byte> nodeRlp)
+    internal static bool TryLoadStateNodeHash(ReadOnlySpan<byte> data, scoped in TreePath path, out ValueHash256 hash)
     {
+        ReadOnlySpan<byte> raw;
         if (path.Length <= TopPathThreshold)
         {
             Span<byte> key = stackalloc byte[3];
             path.EncodeWith3Byte(key);
-            if (!TryGetFromColumn(data, PersistedSnapshot.StateTopNodesTag, key, out nodeRlp)) return false;
-            TryResolveNodeRef(nodeRlp, out nodeRlp, referencedSnapshots, hasNodeRefs);
-            return true;
+            if (!TryGetFromColumn(data, PersistedSnapshot.StateTopNodesTag, key, out raw)) { hash = default; return false; }
         }
+        else if (path.Length <= CompactPathThreshold)
+        {
+            Span<byte> key = stackalloc byte[8];
+            path.EncodeWith8Byte(key);
+            if (!TryGetFromColumn(data, PersistedSnapshot.StateNodeTag, key, out raw)) { hash = default; return false; }
+        }
+        else
+        {
+            Span<byte> fullKey = stackalloc byte[33];
+            path.Path.Bytes.CopyTo(fullKey);
+            fullKey[32] = (byte)path.Length;
+            if (!TryGetFromColumn(data, PersistedSnapshot.StateNodeFallbackTag, fullKey, out raw)) { hash = default; return false; }
+        }
+        hash = new ValueHash256(raw);
+        return true;
+    }
+
+    internal static bool TryLoadStorageNodeHash(ReadOnlySpan<byte> data, Hash256 address, in TreePath path, out ValueHash256 hash)
+    {
+        ReadOnlySpan<byte> raw;
         if (path.Length <= CompactPathThreshold)
         {
             Span<byte> key = stackalloc byte[8];
             path.EncodeWith8Byte(key);
-            if (!TryGetFromColumn(data, PersistedSnapshot.StateNodeTag, key, out nodeRlp)) return false;
-            TryResolveNodeRef(nodeRlp, out nodeRlp, referencedSnapshots, hasNodeRefs);
-            return true;
+            if (!TryGetNestedValue(data, PersistedSnapshot.StorageNodeTag, address.Bytes[..StorageHashPrefixLength], key, out raw)) { hash = default; return false; }
         }
-        Span<byte> fullKey = stackalloc byte[33];
-        path.Path.Bytes.CopyTo(fullKey);
-        fullKey[32] = (byte)path.Length;
-        if (!TryGetFromColumn(data, PersistedSnapshot.StateNodeFallbackTag, fullKey, out nodeRlp)) return false;
-        TryResolveNodeRef(nodeRlp, out nodeRlp, referencedSnapshots, hasNodeRefs);
-        return true;
-    }
-
-    internal static bool TryLoadStorageNodeRlp(ReadOnlySpan<byte> data, Hash256 address, in TreePath path,
-        Dictionary<int, PersistedSnapshot>? referencedSnapshots, bool hasNodeRefs, scoped out ReadOnlySpan<byte> nodeRlp)
-    {
-        if (path.Length <= CompactPathThreshold)
+        else
         {
-            Span<byte> key = stackalloc byte[8];
-            path.EncodeWith8Byte(key);
-            if (!TryGetNestedValue(data, PersistedSnapshot.StorageNodeTag, address.Bytes[..StorageHashPrefixLength], key, out nodeRlp)) return false;
-            TryResolveNodeRef(nodeRlp, out nodeRlp, referencedSnapshots, hasNodeRefs);
-            return true;
+            Span<byte> fullKey = stackalloc byte[33];
+            path.Path.Bytes.CopyTo(fullKey);
+            fullKey[32] = (byte)path.Length;
+            if (!TryGetNestedValue(data, PersistedSnapshot.StorageNodeFallbackTag, address.Bytes[..StorageHashPrefixLength], fullKey, out raw)) { hash = default; return false; }
         }
-        Span<byte> fullKey = stackalloc byte[33];
-        path.Path.Bytes.CopyTo(fullKey);
-        fullKey[32] = (byte)path.Length;
-        if (!TryGetNestedValue(data, PersistedSnapshot.StorageNodeFallbackTag, address.Bytes[..StorageHashPrefixLength], fullKey, out nodeRlp)) return false;
-        TryResolveNodeRef(nodeRlp, out nodeRlp, referencedSnapshots, hasNodeRefs);
+        hash = new ValueHash256(raw);
         return true;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void TryResolveNodeRef(ReadOnlySpan<byte> value, out ReadOnlySpan<byte> resolved,
-        Dictionary<int, PersistedSnapshot>? referencedSnapshots, bool hasNodeRefs)
-    {
-        if (!hasNodeRefs || referencedSnapshots is null)
-        {
-            resolved = value;
-            return;
-        }
-
-        NodeRef nodeRef = NodeRef.Read(value);
-        if (!referencedSnapshots.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snapshot))
-            throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found");
-        Hsst.Hsst.ReadEntry(snapshot.GetSpan(), nodeRef.ValueLengthOffset, out _, out resolved);
-    }
-
-    internal static bool CheckHasNodeRefsFlag(ReadOnlySpan<byte> data)
-    {
-        Hsst.Hsst outer = new(data);
-        if (!outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaColumn)) return false;
-        Hsst.Hsst inner = new(metaColumn);
-        return inner.TryGet("noderefs"u8, out _);
     }
 
     internal static bool CheckForestSpilledFlag(ReadOnlySpan<byte> data)
@@ -164,27 +139,6 @@ public static class PersistedSnapshotReader
         if (!outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaColumn)) return false;
         Hsst.Hsst inner = new(metaColumn);
         return inner.TryGet("forest_spilled"u8, out _);
-    }
-
-    internal static int[]? ReadRefIdsFromMetadata(ReadOnlySpan<byte> snapshotData)
-    {
-        Hsst.Hsst outer = new(snapshotData);
-        if (!outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaColumn)) return null;
-        Hsst.Hsst inner = new(metaColumn);
-        if (!inner.TryGet("ref_ids"u8, out ReadOnlySpan<byte> refIdBytes)) return null;
-        if (refIdBytes.Length == 0 || refIdBytes.Length % 4 != 0) return null;
-        int count = refIdBytes.Length / 4;
-        int[] ids = new int[count];
-        for (int i = 0; i < count; i++)
-            ids[i] = BitConverter.ToInt32(refIdBytes.Slice(i * 4, 4));
-        return ids;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static byte[] ResolveValue(ReadOnlySpan<byte> snapshotData, int valueLengthOffset)
-    {
-        Hsst.Hsst.ReadEntry(snapshotData, valueLengthOffset, out _, out ReadOnlySpan<byte> value);
-        return value.ToArray();
     }
 
     private static bool TryGetFromColumn(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> entityKey, scoped out ReadOnlySpan<byte> value)
@@ -426,7 +380,7 @@ public static class PersistedSnapshotReader
 
     public ref struct StateNodeEnumerator : IDisposable
     {
-        private readonly KeyValuePair<TreePath, TrieNode>[] _entries;
+        private readonly KeyValuePair<TreePath, ValueHash256>[] _entries;
         private int _index;
 
         public StateNodeEnumerator(PersistedSnapshot snapshot)
@@ -434,7 +388,7 @@ public static class PersistedSnapshotReader
             _index = -1;
             ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
             Hsst.Hsst outer = new(snapshotData);
-            List<KeyValuePair<TreePath, TrieNode>> list = [];
+            List<KeyValuePair<TreePath, ValueHash256>> list = [];
 
             // Column 0x05: TopNodes (path length 0-5)
             if (outer.TryGet(PersistedSnapshot.StateTopNodesTag, out ReadOnlySpan<byte> topColumn))
@@ -445,9 +399,7 @@ public static class PersistedSnapshotReader
                 {
                     Hsst.Hsst.KeyValueEntry entry = e.Current;
                     TreePath path = TreePath.DecodeWith3Byte(entry.Key);
-                    TryResolveNodeRef(entry.Value, out ReadOnlySpan<byte> resolved,
-                        snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                    list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    list.Add(new(path, new ValueHash256(entry.Value)));
                 }
             }
 
@@ -460,9 +412,7 @@ public static class PersistedSnapshotReader
                 {
                     Hsst.Hsst.KeyValueEntry entry = e.Current;
                     TreePath path = DecodeCompactTreePath(entry.Key);
-                    TryResolveNodeRef(entry.Value, out ReadOnlySpan<byte> resolved,
-                        snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                    list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    list.Add(new(path, new ValueHash256(entry.Value)));
                 }
             }
 
@@ -475,9 +425,7 @@ public static class PersistedSnapshotReader
                 {
                     Hsst.Hsst.KeyValueEntry entry = e.Current;
                     TreePath path = new(new ValueHash256(entry.Key[..32]), entry.Key[32]);
-                    TryResolveNodeRef(entry.Value, out ReadOnlySpan<byte> resolved,
-                        snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                    list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    list.Add(new(path, new ValueHash256(entry.Value)));
                 }
             }
 
@@ -485,7 +433,7 @@ public static class PersistedSnapshotReader
         }
 
         public bool MoveNext() => ++_index < _entries.Length;
-        public readonly KeyValuePair<TreePath, TrieNode> Current => _entries[_index];
+        public readonly KeyValuePair<TreePath, ValueHash256> Current => _entries[_index];
         public readonly void Dispose() { }
     }
 
@@ -497,7 +445,7 @@ public static class PersistedSnapshotReader
 
     public ref struct StorageNodeEnumerator : IDisposable
     {
-        private readonly KeyValuePair<(Hash256AsKey, TreePath), TrieNode>[] _entries;
+        private readonly KeyValuePair<(Hash256AsKey, TreePath), ValueHash256>[] _entries;
         private int _index;
 
         public StorageNodeEnumerator(PersistedSnapshot snapshot)
@@ -505,7 +453,7 @@ public static class PersistedSnapshotReader
             _index = -1;
             ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
             Hsst.Hsst outer = new(snapshotData);
-            List<KeyValuePair<(Hash256AsKey, TreePath), TrieNode>> list = [];
+            List<KeyValuePair<(Hash256AsKey, TreePath), ValueHash256>> list = [];
 
             // Column 0x07: StorageNode (path ≤15, compact 8-byte key)
             if (outer.TryGet(PersistedSnapshot.StorageNodeTag, out ReadOnlySpan<byte> nodeColumn))
@@ -522,9 +470,7 @@ public static class PersistedSnapshotReader
                     {
                         Hsst.Hsst.KeyValueEntry pathEntry = pathEnum.Current;
                         TreePath path = DecodeCompactTreePath(pathEntry.Key);
-                        TryResolveNodeRef(pathEntry.Value, out ReadOnlySpan<byte> resolved,
-                            snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                        list.Add(new((addressHash, path), new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                        list.Add(new((addressHash, path), new ValueHash256(pathEntry.Value)));
                     }
                 }
             }
@@ -544,9 +490,7 @@ public static class PersistedSnapshotReader
                     {
                         Hsst.Hsst.KeyValueEntry pathEntry = pathEnum.Current;
                         TreePath path = new(new ValueHash256(pathEntry.Key[..32]), pathEntry.Key[32]);
-                        TryResolveNodeRef(pathEntry.Value, out ReadOnlySpan<byte> resolved,
-                            snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                        list.Add(new((addressHash, path), new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                        list.Add(new((addressHash, path), new ValueHash256(pathEntry.Value)));
                     }
                 }
             }
@@ -555,7 +499,7 @@ public static class PersistedSnapshotReader
         }
 
         public bool MoveNext() => ++_index < _entries.Length;
-        public readonly KeyValuePair<(Hash256AsKey, TreePath), TrieNode> Current => _entries[_index];
+        public readonly KeyValuePair<(Hash256AsKey, TreePath), ValueHash256> Current => _entries[_index];
         public readonly void Dispose() { }
     }
 }

@@ -56,7 +56,7 @@ public class FlatDbManagerPersistedTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         await using FlatDbManager manager = new(
@@ -85,13 +85,18 @@ public class FlatDbManagerPersistedTests
         // Build a persisted snapshot with a known state trie node
         TreePath path = new(Keccak.Compute("path"), 4);
         byte[] nodeRlp = [0xC0, 0x80, 0x80];
+        Hash256 nodeHash = Keccak.Compute(nodeRlp);
         SnapshotContent content = new();
         content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
 
+        // Use a real forest so RLP written during conversion is readable by the bundle
+        using SnapshotableMemDb forestDb = new();
+        Nethermind.State.Flat.BlockRangeTrieForest.BlockRangeTrieForest forest = new(forestDb);
+
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), forest);
         repo.LoadFromCatalog();
         repo.ConvertSnapshotToPersistedSnapshot(snap);
 
@@ -117,12 +122,12 @@ public class FlatDbManagerPersistedTests
             LimboLogs.Instance,
             enableDetailedMetrics: false,
             persistedSnapshotRepository: repo,
-            blockRangeTrieForest: NullBlockRangeTrieForest.Instance);
+            blockRangeTrieForest: forest);
 
         ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
 
-        // The bundle should find the trie node from the persisted snapshot
-        byte[]? result = bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
+        // The bundle should find the trie node via the forest
+        byte[]? result = bundle.TryLoadStateRlp(path, nodeHash, ReadFlags.None);
         Assert.That(result, Is.EqualTo(nodeRlp));
 
         bundle.Dispose();
@@ -133,7 +138,7 @@ public class FlatDbManagerPersistedTests
     {
         ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         // Persist something to verify cleanup

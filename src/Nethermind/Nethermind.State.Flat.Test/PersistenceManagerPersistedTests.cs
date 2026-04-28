@@ -40,11 +40,11 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        _ = new PersistedSnapshotCompactor(repo, compactedArena, config, NullBlockRangeTrieForest.Instance, LimboLogs.Instance);
+        _ = new PersistedSnapshotCompactor(repo, compactedArena, config, LimboLogs.Instance);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -64,11 +64,11 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        _ = new PersistedSnapshotCompactor(repo, compactedArena, config, NullBlockRangeTrieForest.Instance, LimboLogs.Instance);
+        _ = new PersistedSnapshotCompactor(repo, compactedArena, config, LimboLogs.Instance);
 
         // Persist snapshots at various block heights
         StateId s0 = new(0, Keccak.EmptyTreeHash);

@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Storage;
-using Nethermind.Trie;
 using Prometheus;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -21,21 +19,20 @@ public class PersistedSnapshotCompactor(
     IPersistedSnapshotRepository persistedSnapshotRepository,
     IArenaManager arenaManager,
     IFlatDbConfig config,
-    IBlockRangeTrieForest blockRangeTrieForest,
     ILogManager logManager) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly int _compactSize = config.CompactSize;
     private readonly int _persistedSnapshotMaxCompactSize = config.PersistedSnapshotMaxCompactSize;
     private readonly int _minCompactSize = Math.Max(config.MinCompactSize, 2);
-    private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
-    private readonly int _blockRangePerForest = config.BlockRangePerForest;
 
     /// <summary>
     /// Try to compact persisted snapshots using logarithmic compaction.
     /// Mirrors <see cref="SnapshotCompactor.GetSnapshotsToCompact"/> logic.
-    /// Skips compactSize == _compactSize since persistable snapshots are now produced
-    /// directly by PersistenceManager from in-memory compacted snapshots.
+    /// Handles all compactSizes from <c>_minCompactSize</c> up to <c>_persistedSnapshotMaxCompactSize</c>,
+    /// except <c>_compactSize</c> itself: PersistenceManager converts in-memory compacted snapshots
+    /// spanning exactly <c>_compactSize</c> blocks directly to persistable persisted snapshots, and
+    /// <c>ProcessCompactBatch</c> also excludes that level from the dispatcher.
     /// </summary>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
@@ -46,7 +43,7 @@ public class PersistedSnapshotCompactor(
 
         int compactSize = (int)Math.Min(blockNumber & -blockNumber, _persistedSnapshotMaxCompactSize);
         if (compactSize < _minCompactSize) return;
-        if (compactSize == _compactSize) return; // persistable snapshots produced by PersistenceManager now
+        if (compactSize == _compactSize) return; // handled by PersistenceManager (in-memory compacted → persistable persisted snapshot)
 
         // We need at least 2 snapshots to compact
         if (persistedSnapshotRepository.SnapshotCount < 2) return;
@@ -77,22 +74,13 @@ public class PersistedSnapshotCompactor(
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
 
-        // If any input is a Full snapshot, dump its trie RLPs to the forest and produce a
-        // no-trie merged output. Full inputs only appear at the first compaction level
-        // (CompactSize → 2*CompactSize). At higher levels all inputs are already Linked/forest-spilled.
-        bool hasFullInputs = false;
-        for (int i = 0; i < snapshots.Count; i++)
-            if (snapshots[i].Type == PersistedSnapshotType.Full) { hasFullInputs = true; break; }
-
-        if (hasFullInputs)
-        {
-            DumpFullSnapshotsToForest(snapshots);
-            CompactRangeForestSpilled(from, to, snapshots, compactSize, isPersistable);
-        }
+        // Outputs with span < _compactSize keep merged trie-hash columns (RLP stays in BlockRangeTrieForest).
+        // Outputs with span > _compactSize are forest-spilled — trie columns omitted entirely.
+        // The == _compactSize case is handled by PersistenceManager, never reaches here.
+        if (compactSize < _compactSize)
+            CompactRangeWithTrieHashes(from, to, snapshots, compactSize, isPersistable);
         else
-        {
-            CompactRangeLinked(from, to, snapshots, compactSize, isPersistable);
-        }
+            CompactRangeForestSpilled(from, to, snapshots, compactSize, isPersistable);
 
         Metrics.PersistedSnapshotCompactions++;
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
@@ -100,35 +88,30 @@ public class PersistedSnapshotCompactor(
         Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
     }
 
-    private void DumpFullSnapshotsToForest(PersistedSnapshotList snapshots)
+    private void CompactRangeWithTrieHashes(StateId from, StateId to, PersistedSnapshotList snapshots, int compactSize, bool isPersistable)
     {
-        using IBlockRangeTrieForest.IWriter writer = blockRangeTrieForest.CreateWriter();
-
+        int estimatedSize = 0;
         for (int i = 0; i < snapshots.Count; i++)
+            estimatedSize += snapshots[i].Size;
+
+        SnapshotLocation location;
+        ArenaReservation reservation;
+        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
         {
-            PersistedSnapshot snapshot = snapshots[i];
-            if (snapshot.Type != PersistedSnapshotType.Full) continue;
+            long sw = Stopwatch.GetTimestamp();
+            PersistedSnapshotBuilder.NWayMergeSnapshotsWithTrieHashes(snapshots, ref arenaWriter.GetWriter());
 
-            long blockRange = BlockRangeForestKey.BlockRangeForBlock(snapshot.To.BlockNumber, _blockRangePerForest);
+            for (int i = 0; i < snapshots.Count; i++)
+                snapshots[i].AdviseDontNeed();
 
-            foreach ((TreePath path, TrieNode node) in new PersistedSnapshotReader.StateNodeEnumerable(snapshot))
-            {
-                if (node.FullRlp.Length == 0) continue;
-                ValueHash256 hash = ValueKeccak.Compute(node.FullRlp.AsSpan());
-                writer.PutState(blockRange, path, hash, node.FullRlp.AsSpan());
-            }
+            int len = arenaWriter.GetWriter().Written;
+            _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
+            _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
 
-            foreach (((Hash256AsKey addrKey, TreePath path), TrieNode node) in new PersistedSnapshotReader.StorageNodeEnumerable(snapshot))
-            {
-                if (node.FullRlp.Length == 0) continue;
-                Hash256 addrH256 = addrKey;
-                ValueHash256 addrHash = addrH256;
-                ValueHash256 hash = ValueKeccak.Compute(node.FullRlp.AsSpan());
-                writer.PutStorage(blockRange, addrHash, path, hash, node.FullRlp.AsSpan());
-            }
+            (location, reservation) = arenaWriter.Complete();
         }
 
-        writer.Flush();
+        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, isPersistable);
     }
 
     private void CompactRangeForestSpilled(StateId from, StateId to, PersistedSnapshotList snapshots, int compactSize, bool isPersistable)
@@ -154,59 +137,6 @@ public class PersistedSnapshotCompactor(
             (location, reservation) = arenaWriter.Complete();
         }
 
-        // No referenced IDs — forest-spilled snapshots have no inline NodeRefs.
-        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedSnapshotIds: [], isPersistable);
-    }
-
-    private void CompactRangeLinked(StateId from, StateId to, PersistedSnapshotList snapshots, int compactSize, bool isPersistable)
-    {
-        // Collect all base snapshot IDs that the compacted result will reference via NodeRefs
-        HashSet<int> referencedIds = [];
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            if (snapshots[i].Type == PersistedSnapshotType.Full)
-            {
-                referencedIds.Add(snapshots[i].Id);
-            }
-            else if (snapshots[i].ReferencedSnapshotIds is int[] ids)
-            {
-                for (int j = 0; j < ids.Length; j++) referencedIds.Add(ids[j]);
-            }
-        }
-
-        SnapshotLocation location;
-        ArenaReservation reservation;
-        int estimatedSize = 0;
-        for (int i = 0; i < snapshots.Count; i++)
-            estimatedSize += snapshots[i].Size;
-        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
-        {
-            long sw = Stopwatch.GetTimestamp();
-            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds);
-
-            for (int i = 0; i < snapshots.Count; i++)
-                snapshots[i].AdviseDontNeed();
-
-            int len = arenaWriter.GetWriter().Written;
-            _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
-            _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
-
-            (location, reservation) = arenaWriter.Complete();
-
-            if (_validatePersistedSnapshot)
-            {
-                PersistedSnapshot compacted = new(0, from, to, PersistedSnapshotType.Linked, reservation);
-                try
-                {
-                    PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, snapshots, true);
-                }
-                finally
-                {
-                    compacted.Dispose();
-                }
-            }
-        }
-
-        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedIds, isPersistable);
+        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, isPersistable);
     }
 }

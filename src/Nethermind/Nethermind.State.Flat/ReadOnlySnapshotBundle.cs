@@ -234,20 +234,14 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        // RLP lives entirely in BlockRangeTrieForest for hash-only persisted snapshots.
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
-        {
-            if (persistedSnapshots[i].TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> rlp))
-            {
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpPersistedLabel);
-                return rlp.ToArray();
-            }
-        }
-        _persistedSnapshotSkipTime.WithLabels("state_rlp").Observe(Stopwatch.GetTimestamp() - sw);
-
-        // Scan forest from newest persisted snapshot range down to persisted-state range
         byte[]? forestRlp = TryLoadStateRlpFromForest(path, hash);
-        if (forestRlp is not null) return forestRlp;
+        if (forestRlp is not null)
+        {
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpPersistedLabel);
+            return forestRlp;
+        }
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -262,19 +256,12 @@ public sealed class ReadOnlySnapshotBundle(
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
-        {
-            if (persistedSnapshots[i].TryLoadStorageNodeRlp(address, path, out ReadOnlySpan<byte> rlp))
-            {
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);
-                return rlp.ToArray();
-            }
-        }
-        _persistedSnapshotSkipTime.WithLabels("storage_rlp").Observe(Stopwatch.GetTimestamp() - sw);
-
-        // Scan forest from newest persisted snapshot range down to persisted-state range
         byte[]? forestRlp = TryLoadStorageRlpFromForest(address, path, hash);
-        if (forestRlp is not null) return forestRlp;
+        if (forestRlp is not null)
+        {
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);
+            return forestRlp;
+        }
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;

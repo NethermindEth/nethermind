@@ -21,11 +21,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 ///       0x02 (SelfDestructSubTag): raw SD flag bytes (empty = destructed, 0x01 = new account)
 ///       0x03 (AccountSubTag):      raw account slim RLP bytes (empty = deleted account)
 ///   }
-///   Column 0x03: TreePath (8 bytes compact) → State trie node RLP (path length 6-15)
-///   Column 0x05: TreePath (3 bytes: PathByte0, PathByte1, Length) → State trie node RLP (path length 0-5)
-///   Column 0x06: TreePath.Path (32 bytes) + PathLength (1 byte) → State trie node RLP (path length 16+)
-///   Column 0x07: AddressHash (20 bytes) → nested HSST (TreePath (8 bytes compact) → Storage trie node RLP, path length 6-15)
-///   Column 0x08: AddressHash (20 bytes) → nested HSST (TreePath.Path (33 bytes) → Storage trie node RLP, path length 16+)
+///   Column 0x03: TreePath (8 bytes compact) → State trie node Keccak hash (path length 6-15)
+///   Column 0x05: TreePath (3 bytes: PathByte0, PathByte1, Length) → State trie node Keccak hash (path length 0-5)
+///   Column 0x06: TreePath.Path (32 bytes) + PathLength (1 byte) → State trie node Keccak hash (path length 16+)
+///   Column 0x07: AddressHash (20 bytes) → nested HSST (TreePath (8 bytes compact) → Storage trie node Keccak hash, path length 6-15)
+///   Column 0x08: AddressHash (20 bytes) → nested HSST (TreePath.Path (33 bytes) → Storage trie node Keccak hash, path length 16+)
+///
+/// Forest-spilled snapshots (block-range span > CompactSize) omit the trie columns entirely.
 /// </summary>
 public sealed class PersistedSnapshot : RefCountingDisposable
 {
@@ -44,16 +46,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] AccountSubTag = [0x03];
 
     private readonly ArenaReservation _reservation;
-    private readonly Dictionary<int, PersistedSnapshot>? _referencedSnapshots;
-
-    internal ICollection<PersistedSnapshot>? ReferencedSnapshots => _referencedSnapshots?.Values;
-    internal Dictionary<int, PersistedSnapshot>? ReferencedSnapshotsLookup => _referencedSnapshots;
-    internal bool HasNodeRefs { get; }
 
     /// <summary>
-    /// True when this snapshot's trie-node columns were omitted because RLPs are stored in
-    /// <c>BlockRangeTrieForest</c> instead. <see cref="TryLoadStateNodeRlp"/> and
-    /// <see cref="TryLoadStorageNodeRlp"/> always return false for such snapshots.
+    /// True when this snapshot's trie-node columns were omitted because block-range span exceeds CompactSize.
+    /// <see cref="TryLoadStateNodeHash"/> and <see cref="TryLoadStorageNodeHash"/> always return false for such snapshots.
     /// </summary>
     public bool IsForestSpilled { get; }
 
@@ -62,18 +58,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public StateId To { get; }
     public PersistedSnapshotType Type { get; }
 
-    /// <summary>
-    /// IDs of base snapshots referenced by NodeRefs in this compacted snapshot.
-    /// Null for base snapshots or compacted snapshots with no NodeRef references.
-    /// </summary>
-    public int[]? ReferencedSnapshotIds { get; }
-
     public int Size => _reservation.Size;
 
     public ReadOnlySpan<byte> GetSpan() => _reservation.GetSpan();
 
-    public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation,
-        PersistedSnapshot[]? referencedSnapshots = null)
+    public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation)
     {
         Id = id;
         From = from;
@@ -81,20 +70,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         Type = type;
         _reservation = reservation;
         _reservation.AcquireLease();
-        HasNodeRefs = PersistedSnapshotReader.CheckHasNodeRefsFlag(GetSpan());
         IsForestSpilled = PersistedSnapshotReader.CheckForestSpilledFlag(GetSpan());
-
-        if (referencedSnapshots is { Length: > 0 })
-        {
-            _referencedSnapshots = new Dictionary<int, PersistedSnapshot>(referencedSnapshots.Length);
-            ReferencedSnapshotIds = new int[referencedSnapshots.Length];
-            for (int i = 0; i < referencedSnapshots.Length; i++)
-            {
-                referencedSnapshots[i].TryAcquireLease();
-                ReferencedSnapshotIds[i] = referencedSnapshots[i].Id;
-                _referencedSnapshots[referencedSnapshots[i].Id] = referencedSnapshots[i];
-            }
-        }
     }
 
     public bool TryGetAccount(Address address, [UnscopedRef] out ReadOnlySpan<byte> accountRlp) =>
@@ -114,36 +90,19 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool? TryGetSelfDestructFlag(Address address) =>
         PersistedSnapshotReader.TryGetSelfDestructFlag(GetSpan(), address);
 
-    public bool TryLoadStateNodeRlp(scoped in TreePath path, out ReadOnlySpan<byte> nodeRlp)
+    /// <summary>Returns the 32-byte Keccak hash stored for the given state trie path, or false if not present or forest-spilled.</summary>
+    public bool TryLoadStateNodeHash(scoped in TreePath path, out ValueHash256 hash)
     {
-        if (IsForestSpilled) { nodeRlp = default; return false; }
-        return PersistedSnapshotReader.TryLoadStateNodeRlp(GetSpan(), in path, _referencedSnapshots, HasNodeRefs, out nodeRlp);
+        if (IsForestSpilled) { hash = default; return false; }
+        return PersistedSnapshotReader.TryLoadStateNodeHash(GetSpan(), in path, out hash);
     }
 
-    public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, scoped out ReadOnlySpan<byte> nodeRlp)
+    /// <summary>Returns the 32-byte Keccak hash stored for the given storage trie path, or false if not present or forest-spilled.</summary>
+    public bool TryLoadStorageNodeHash(Hash256 address, in TreePath path, out ValueHash256 hash)
     {
-        if (IsForestSpilled) { nodeRlp = default; return false; }
-        return PersistedSnapshotReader.TryLoadStorageNodeRlp(GetSpan(), address, in path, _referencedSnapshots, HasNodeRefs, out nodeRlp);
+        if (IsForestSpilled) { hash = default; return false; }
+        return PersistedSnapshotReader.TryLoadStorageNodeHash(GetSpan(), address, in path, out hash);
     }
-
-    /// <summary>
-    /// Read the "ref_ids" list from a snapshot's metadata column.
-    /// Returns null if the metadata or "ref_ids" key is missing.
-    /// </summary>
-    public static int[]? ReadRefIdsFromMetadata(ReadOnlySpan<byte> snapshotData) =>
-        PersistedSnapshotReader.ReadRefIdsFromMetadata(snapshotData);
-
-    /// <summary>
-    /// Resolve a NodeRef by reading the entry value from the referenced snapshot.
-    /// </summary>
-    public static byte[] ResolveValue(ReadOnlySpan<byte> snapshotData, int valueLengthOffset) =>
-        PersistedSnapshotReader.ResolveValue(snapshotData, valueLengthOffset);
-
-    /// <summary>
-    /// Read the raw entry value at a given ValueLengthOffset in this snapshot's data.
-    /// </summary>
-    public byte[] ReadEntryValue(int valueLengthOffset) =>
-        PersistedSnapshotReader.ResolveValue(GetSpan(), valueLengthOffset);
 
     // --- Snapshot-matching enumerable properties ---
 
@@ -157,13 +116,5 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public bool TryAcquire() => TryAcquireLease();
 
-    protected override void CleanUp()
-    {
-        _reservation.Dispose();
-        if (_referencedSnapshots is not null)
-        {
-            foreach (PersistedSnapshot snapshot in _referencedSnapshots.Values)
-                snapshot.Dispose();
-        }
-    }
+    protected override void CleanUp() => _reservation.Dispose();
 }

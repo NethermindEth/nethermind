@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
 
@@ -30,23 +29,12 @@ internal static class PersistedSnapshotBuilderTestExtensions
         if (snapshots.Count == 0) throw new ArgumentException("Cannot merge empty snapshot list");
         if (snapshots.Count == 1) return snapshots[0].GetSpan().ToArray();
 
-        HashSet<int> referencedIds = new();
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            if (snapshots[i].Type == PersistedSnapshotType.Full)
-                referencedIds.Add(snapshots[i].Id);
-            else if (snapshots[i].ReferencedSnapshotIds is int[] ids)
-            {
-                for (int j = 0; j < ids.Length; j++) referencedIds.Add(ids[j]);
-            }
-        }
-
         int totalSize = 0;
         for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
         totalSize += 4096;
 
         using PooledByteBufferWriter pooled = new(totalSize);
-        PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref pooled.GetWriter(), referencedIds);
+        PersistedSnapshotBuilder.NWayMergeSnapshotsNoTrie(snapshots, ref pooled.GetWriter());
         return pooled.WrittenSpan.ToArray();
     }
 

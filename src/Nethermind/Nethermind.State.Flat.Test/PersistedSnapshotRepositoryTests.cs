@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
@@ -50,7 +51,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -77,7 +78,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -100,10 +101,10 @@ public class PersistedSnapshotRepositoryTests
         repo.ConvertSnapshotToPersistedSnapshot(snap1);
         repo.ConvertSnapshotToPersistedSnapshot(snap2);
 
-        // The newest snapshot (s1→s2) should have rlp2 at the path
+        // The newest snapshot (s1→s2) should have the hash of rlp2 at the path
         Assert.That(repo.TryLeaseSnapshotTo(s2, out PersistedSnapshot? newest), Is.True);
-        Assert.That(newest!.TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> result), Is.True);
-        Assert.That(result.ToArray(), Is.EqualTo(rlp2));
+        Assert.That(newest!.TryLoadStateNodeHash(path, out ValueHash256 result), Is.True);
+        Assert.That(result, Is.EqualTo(ValueKeccak.Compute(rlp2)));
         newest.Dispose();
     }
 
@@ -116,7 +117,7 @@ public class PersistedSnapshotRepositoryTests
         // Session 1: persist a snapshot
         using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance))
         {
             repo.LoadFromCatalog();
             Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
@@ -126,7 +127,7 @@ public class PersistedSnapshotRepositoryTests
         // Session 2: reload from disk
         using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(1));
@@ -140,7 +141,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);

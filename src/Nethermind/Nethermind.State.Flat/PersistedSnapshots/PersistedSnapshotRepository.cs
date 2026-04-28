@@ -3,9 +3,11 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
-
+using Nethermind.State.Flat.BlockRangeTrieForest;
 using Nethermind.State.Flat.Storage;
+using Nethermind.Trie;
 using Prometheus;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -14,10 +16,12 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Manages persisted snapshots on disk with a two-layer design (base + compacted),
 /// mirroring <see cref="SnapshotRepository"/>'s pattern.
 /// </summary>
-public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, IArenaManager compactedArenaManager, string basePath, IFlatDbConfig config) : IPersistedSnapshotRepository
+public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, IArenaManager compactedArenaManager, string basePath, IFlatDbConfig config, IBlockRangeTrieForest blockRangeTrieForest) : IPersistedSnapshotRepository
 {
     private readonly IArenaManager _baseArenaManager = baseArenaManager;
     private readonly IArenaManager _compactedArenaManager = compactedArenaManager;
+    private readonly IBlockRangeTrieForest _blockRangeTrieForest = blockRangeTrieForest;
+    private readonly int _blockRangePerForest = config.BlockRangePerForest;
     private readonly SnapshotCatalog _catalog = new(Path.Combine(basePath, "catalog.bin"));
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
@@ -51,19 +55,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             _baseArenaManager.Initialize(baseEntries);
             _compactedArenaManager.Initialize(compactedEntries);
 
-            // Load base snapshots first
             foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
-            {
-                if (entry.Type != PersistedSnapshotType.Full) continue;
                 LoadSnapshot(entry);
-            }
-
-            // Then compacted
-            foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
-            {
-                if (entry.Type != PersistedSnapshotType.Linked) continue;
-                LoadSnapshot(entry);
-            }
 
             _nextId = _catalog.NextId();
         }
@@ -72,30 +65,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
         ArenaReservation reservation = ArenaForEntry(entry).Open(entry.Location);
-
-        PersistedSnapshot[]? referencedSnapshots = null;
-        if (entry.Type == PersistedSnapshotType.Linked)
-        {
-            int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(reservation.GetSpan());
-            if (refIds is { Length: > 0 })
-            {
-                List<PersistedSnapshot> refs = [];
-                foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
-                {
-                    for (int i = 0; i < refIds.Length; i++)
-                    {
-                        if (kv.Value.Id == refIds[i])
-                        {
-                            refs.Add(kv.Value);
-                            break;
-                        }
-                    }
-                }
-                referencedSnapshots = refs.Count > 0 ? [.. refs] : null;
-            }
-        }
-
-        PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, entry.Type, reservation, referencedSnapshots);
+        PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, entry.Type, reservation);
 
         bool isPersistableSize = IsPersistableSize(entry);
         if (entry.Type == PersistedSnapshotType.Full && !isPersistableSize)
@@ -114,14 +84,17 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     /// </summary>
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false)
     {
-        // Persistable compacted snapshots use compacted arena; base snapshots use base arena
         IArenaManager arena = isPersistable ? _compactedArenaManager : _baseArenaManager;
+        long blockRange = BlockRangeForestKey.BlockRangeForBlock(snapshot.To.BlockNumber, _blockRangePerForest);
 
         SnapshotLocation location;
         ArenaReservation reservation;
         using (ArenaWriter arenaWriter = arena.CreateWriter(PersistedSnapshotBuilder.EstimateSize(snapshot)))
         {
-            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter());
+            using IBlockRangeTrieForest.IWriter forestWriter = _blockRangeTrieForest.CreateWriter();
+            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter(), forestWriter, blockRange);
+            // Flush forest before publishing the snapshot so bundle reads find the RLP immediately.
+            forestWriter.Flush();
             if (isPersistable)
                 _persistedSnapshotSize.WithLabels("is_persistable").Observe(arenaWriter.GetWriter().Written);
             else
@@ -132,7 +105,6 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         lock (_catalogLock)
         {
             int id = _nextId++;
-            // Full type: the snapshot contains all data inline, no need to seek to base snapshots during persistence
             _catalog.Add(new SnapshotCatalog.CatalogEntry(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, location));
             _catalog.Save();
 
@@ -146,11 +118,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         }
     }
 
-    /// <summary>
-    /// Store a compacted snapshot with a pre-computed location and reservation.
-    /// Referenced snapshot IDs are the base snapshots whose data is referenced via NodeRefs.
-    /// </summary>
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable)
+    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, bool isPersistable)
     {
         lock (_catalogLock)
         {
@@ -158,8 +126,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             _catalog.Add(new SnapshotCatalog.CatalogEntry(id, from, to, PersistedSnapshotType.Linked, location));
             _catalog.Save();
 
-            PersistedSnapshot[]? referencedSnapshots = ResolveReferencedSnapshots(referencedSnapshotIds);
-            PersistedSnapshot snapshot = new(id, from, to, PersistedSnapshotType.Linked, reservation, referencedSnapshots);
+            PersistedSnapshot snapshot = new(id, from, to, PersistedSnapshotType.Linked, reservation);
             if (isPersistable)
                 _persistableCompactedSnapshots[to] = snapshot;
             else
@@ -297,28 +264,10 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         {
             int pruned = 0;
 
-            // Collect base snapshot IDs referenced by active compacted snapshots
-            HashSet<int> referencedBaseIds = [];
-            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
-            {
-                if (kv.Value.To.BlockNumber >= stateId.BlockNumber && kv.Value.ReferencedSnapshotIds is int[] ids)
-                {
-                    for (int i = 0; i < ids.Length; i++) referencedBaseIds.Add(ids[i]);
-                }
-            }
-            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _persistableCompactedSnapshots)
-            {
-                if (kv.Value.To.BlockNumber >= stateId.BlockNumber && kv.Value.ReferencedSnapshotIds is int[] ids)
-                {
-                    for (int i = 0; i < ids.Length; i++) referencedBaseIds.Add(ids[i]);
-                }
-            }
-
-            // Prune base snapshots (skip if referenced by an active compacted snapshot)
             List<StateId> baseToRemove = [];
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
             {
-                if (kv.Value.To.BlockNumber < stateId.BlockNumber && !referencedBaseIds.Contains(kv.Value.Id))
+                if (kv.Value.To.BlockNumber < stateId.BlockNumber)
                     baseToRemove.Add(kv.Key);
             }
             foreach (StateId key in baseToRemove)
@@ -371,21 +320,6 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     }
 
     public bool HasBaseSnapshot(in StateId stateId) => _baseSnapshots.ContainsKey(stateId);
-
-    /// <summary>
-    /// Look up base snapshots by ID and return them as an array for NodeRef resolution.
-    /// </summary>
-    private PersistedSnapshot[]? ResolveReferencedSnapshots(ICollection<int> snapshotIds)
-    {
-        if (snapshotIds is { Count: 0 }) return null;
-        List<PersistedSnapshot> result = [];
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
-        {
-            if (snapshotIds.Contains(kv.Value.Id))
-                result.Add(kv.Value);
-        }
-        return result.Count > 0 ? [.. result] : null;
-    }
 
     private bool IsPersistableSize(SnapshotCatalog.CatalogEntry entry) =>
         entry.To.BlockNumber - entry.From.BlockNumber == _compactSize;

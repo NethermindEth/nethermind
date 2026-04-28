@@ -31,7 +31,8 @@ public class PersistenceManager(
     ILogManager logManager,
     IPersistedSnapshotCompactor persistedSnapshotCompactor,
     IPersistedSnapshotRepository persistedSnapshotRepository,
-    BlockRangeForestDeletionDriver deletionDriver) : IPersistenceManager
+    BlockRangeForestDeletionDriver deletionDriver,
+    IBlockRangeTrieForest blockRangeTrieForest) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
@@ -47,6 +48,7 @@ public class PersistenceManager(
     private readonly IPersistedSnapshotCompactor _persistedSnapshotCompactor = persistedSnapshotCompactor;
     private readonly IPersistedSnapshotRepository _persistedSnapshotRepository = persistedSnapshotRepository;
     private readonly BlockRangeForestDeletionDriver _deletionDriver = deletionDriver;
+    private readonly IBlockRangeTrieForest _blockRangeTrieForest = blockRangeTrieForest;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
@@ -545,6 +547,9 @@ public class PersistenceManager(
         int stateNodeCount = 0;
         int storageNodeCount = 0;
 
+        long fromRange = BlockRangeForestKey.BlockRangeForBlock(snapshot.From.BlockNumber, _blockRangePerForest);
+        long toRange = BlockRangeForestKey.BlockRangeForBlock(snapshot.To.BlockNumber, _blockRangePerForest);
+
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
             foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
@@ -564,22 +569,41 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, value);
             }
 
-            foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
+            foreach (KeyValuePair<TreePath, ValueHash256> kv in snapshot.StateNodes)
             {
-                batch.SetStateTrieNode(kv.Key, kv.Value);
+                byte[]? rlp = null;
+                for (long r = toRange; r >= fromRange; r--)
+                {
+                    rlp = _blockRangeTrieForest.TryGetState(r, kv.Key, kv.Value);
+                    if (rlp is not null) break;
+                }
+                if (rlp is null)
+                    throw new InvalidOperationException($"State trie node not found in forest: path={kv.Key}, hash={kv.Value}, range=[{fromRange}..{toRange}]");
+                batch.SetStateTrieNode(kv.Key, new TrieNode(NodeType.Unknown, rlp));
                 stateNodeCount++;
             }
 
-            foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
+            foreach (KeyValuePair<(Hash256AsKey, TreePath), ValueHash256> kv in snapshot.StorageNodes)
             {
-                ((Hash256AsKey address, TreePath path), TrieNode node) = kv;
-                batch.SetStorageTrieNode(address, path, node);
+                ((Hash256AsKey address, TreePath path), ValueHash256 hash) = kv;
+                ValueHash256 addrHash = (Hash256)address;
+                byte[]? rlp = null;
+                for (long r = toRange; r >= fromRange; r--)
+                {
+                    rlp = _blockRangeTrieForest.TryGetStorage(r, addrHash, path, hash);
+                    if (rlp is not null) break;
+                }
+                if (rlp is null)
+                    throw new InvalidOperationException($"Storage trie node not found in forest: address={address}, path={path}, hash={hash}, range=[{fromRange}..{toRange}]");
+                batch.SetStorageTrieNode(address, path, new TrieNode(NodeType.Unknown, rlp));
                 storageNodeCount++;
             }
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
 
+        // Forest entries strictly below toRange are safe to evict: persistence is oldest-first,
+        // and each snapshot's nodes were written at toRange when the base snapshot was first built.
         long belowBlockRange = BlockRangeForestKey.BlockRangeForBlock(snapshot.To.BlockNumber, _blockRangePerForest);
         _deletionDriver.DeleteBatch(belowBlockRange, 2 * (stateNodeCount + storageNodeCount));
     }

@@ -35,15 +35,14 @@ public class PersistedSnapshotCompactorTests
     public void TearDown() =>
         _memArena.Dispose();
 
-    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data,
-        PersistedSnapshot[]? referencedSnapshots = null)
+    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data)
     {
         using ArenaWriter writer = _memArena.CreateWriter(data.Length);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, type, reservation, referencedSnapshots);
+        return new PersistedSnapshot(id, from, to, type, reservation);
     }
 
     [Test]
@@ -55,13 +54,13 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
             using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
-            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig());
+            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig(), NullBlockRangeTrieForest.Instance);
             repo.LoadFromCatalog();
 
             // CompactSize=4, MinCompactSize=2. Use 8 blocks so compactSize = 8 & -8 = 8 > CompactSize=4, triggering compaction.
             // (compactSize == _compactSize is now skipped since persistable snapshots are produced by PersistenceManager)
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, NullBlockRangeTrieForest.Instance, Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, Nethermind.Logging.LimboLogs.Instance);
 
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("1"));
@@ -130,7 +129,7 @@ public class PersistedSnapshotCompactorTests
     }
 
     [Test]
-    public void CompactedSnapshot_HasNodeRefsAndRefIds_InMetadata()
+    public void CompactedSnapshot_Merge_ProducesValidHsst()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -155,24 +154,10 @@ public class PersistedSnapshotCompactorTests
         toMerge.Add(baseSnap1);
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
-        // Read merged bytes directly to verify metadata
+        // Read merged bytes directly to verify metadata exists
         Hsst.Hsst outer = new(merged);
         Assert.That(outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaColumn), Is.True);
-        Hsst.Hsst meta = new(metaColumn);
-
-        // "noderefs" key with value [0x01]
-        Assert.That(meta.TryGet("noderefs"u8, out ReadOnlySpan<byte> nodeRefsValue), Is.True);
-        Assert.That(nodeRefsValue.ToArray(), Is.EqualTo(new byte[] { 0x01 }));
-
-        // "ref_ids" key with both base snapshot IDs as LE int32s
-        Assert.That(meta.TryGet("ref_ids"u8, out ReadOnlySpan<byte> refIdsValue), Is.True);
-        Assert.That(refIdsValue.Length, Is.EqualTo(8)); // 2 IDs × 4 bytes
-
-        // ReadRefIdsFromMetadata should return both IDs
-        int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(merged);
-        Assert.That(refIds, Is.Not.Null);
-        Assert.That(refIds, Does.Contain(0));
-        Assert.That(refIds, Does.Contain(1));
+        Assert.That(metaColumn.Length, Is.GreaterThan(0));
     }
 
     private static IEnumerable<TestCaseData> MergeValidationTestCases()
@@ -336,7 +321,7 @@ public class PersistedSnapshotCompactorTests
         PersistedSnapshot spilled = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, noTrieData);
 
         Assert.That(spilled.IsForestSpilled, Is.True);
-        Assert.That(spilled.TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> _), Is.False);
+        Assert.That(spilled.TryLoadStateNodeHash(path, out ValueHash256 _), Is.False);
         Assert.That(spilled.TryGetAccount(TestItem.AddressA, out ReadOnlySpan<byte> _), Is.True);
         Assert.That(spilled.TryGetAccount(TestItem.AddressB, out ReadOnlySpan<byte> _), Is.True);
     }
@@ -350,15 +335,15 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
             using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
-            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, new FlatDbConfig());
-            repo.LoadFromCatalog();
-
             // CompactSize=4, MinCompactSize=2, BlockRangePerForest=4
             // At block 8: compactSize = 8 & -8 = 8 > CompactSize=4 → triggers forest-spilled compaction
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2, BlockRangePerForest = 4 };
             using SnapshotableMemDb forestDb = new();
             ForestImpl forest = new(forestDb);
-            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, forest, Nethermind.Logging.LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, testDir, config, forest);
+            repo.LoadFromCatalog();
+
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, Nethermind.Logging.LimboLogs.Instance);
 
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             TreePath path = new(Keccak.Compute("statePath"), 4);
@@ -385,7 +370,7 @@ public class PersistedSnapshotCompactorTests
             // Compacted snapshot at block 8 should be forest-spilled
             Assert.That(repo.TryLeaseCompactedSnapshotTo(s8, out PersistedSnapshot? compacted), Is.True);
             Assert.That(compacted!.IsForestSpilled, Is.True);
-            Assert.That(compacted.TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> _), Is.False);
+            Assert.That(compacted.TryLoadStateNodeHash(path, out ValueHash256 _), Is.False);
 
             // All accounts are still readable
             for (int i = 0; i < 8; i++)
@@ -406,7 +391,7 @@ public class PersistedSnapshotCompactorTests
     }
 
     [Test]
-    public void ReadRefIdsFromMetadata_ReturnsNull_ForBaseSnapshot()
+    public void BaseSnapshot_Build_ProducesValidHsst()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -416,12 +401,12 @@ public class PersistedSnapshotCompactorTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
-        int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(data);
-        Assert.That(refIds, Is.Null);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data);
+        Assert.That(persisted.IsForestSpilled, Is.False);
     }
 
     [Test]
-    public void CompactedSnapshot_NodeRefResolution_WorksWithMetadataFlag()
+    public void BaseSnapshot_TryLoadStateNodeHash_ReturnsCorrectHash()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -444,24 +429,11 @@ public class PersistedSnapshotCompactorTests
 
         PersistedSnapshot baseSnap0 = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1);
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2);
-        PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(baseSnap0);
-        toMerge.Add(baseSnap1);
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
-        // With referenced snapshots: NodeRefs resolve to actual RLP
-        PersistedSnapshot compactedWithRefs = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, merged,
-            [baseSnap0, baseSnap1]);
-        Assert.That(compactedWithRefs.TryLoadStateNodeRlp(path1, out ReadOnlySpan<byte> resolved1), Is.True);
-        Assert.That(resolved1.ToArray(), Is.EqualTo(rlp1));
-        Assert.That(compactedWithRefs.TryLoadStateNodeRlp(path2, out ReadOnlySpan<byte> resolved2), Is.True);
-        Assert.That(resolved2.ToArray(), Is.EqualTo(rlp2));
+        Assert.That(baseSnap0.TryLoadStateNodeHash(path1, out ValueHash256 hash1), Is.True);
+        Assert.That(hash1, Is.EqualTo(ValueKeccak.Compute(rlp1)));
 
-        // Without referenced snapshots: returns raw NodeRef bytes (8 bytes)
-        PersistedSnapshot compactedWithoutRefs = CreatePersistedSnapshot(3, s0, s2, PersistedSnapshotType.Linked, merged);
-        Assert.That(compactedWithoutRefs.TryLoadStateNodeRlp(path1, out ReadOnlySpan<byte> raw1), Is.True);
-        Assert.That(raw1.Length, Is.EqualTo(NodeRef.Size));
-        Assert.That(compactedWithoutRefs.TryLoadStateNodeRlp(path2, out ReadOnlySpan<byte> raw2), Is.True);
-        Assert.That(raw2.Length, Is.EqualTo(NodeRef.Size));
+        Assert.That(baseSnap1.TryLoadStateNodeHash(path2, out ValueHash256 hash2), Is.True);
+        Assert.That(hash2, Is.EqualTo(ValueKeccak.Compute(rlp2)));
     }
 }
