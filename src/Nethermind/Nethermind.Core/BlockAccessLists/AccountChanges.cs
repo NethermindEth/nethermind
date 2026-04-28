@@ -348,12 +348,16 @@ public class AccountChanges : IEquatable<AccountChanges>
 
         foreach (KeyValuePair<uint, NonceChange> change in _nonceChanges)
         {
-            // Prestate sorts first; treat as "before any real index" for existence purposes.
-            if (change.Key == Eip7928Constants.PrestateIndex || change.Key < blockAccessIndex)
+            if (change.Key == Eip7928Constants.PrestateIndex)
+            {
+                continue;
+            }
+
+            if (change.Key < blockAccessIndex)
             {
                 return true;
             }
-            else
+            else if (change.Key >= blockAccessIndex)
             {
                 break;
             }
@@ -361,14 +365,40 @@ public class AccountChanges : IEquatable<AccountChanges>
 
         foreach (KeyValuePair<uint, BalanceChange> change in _balanceChanges)
         {
-            if (change.Key == Eip7928Constants.PrestateIndex || change.Key < blockAccessIndex)
+            if (change.Key == Eip7928Constants.PrestateIndex)
+            {
+                continue;
+            }
+
+            if (change.Key < blockAccessIndex)
             {
                 return true;
             }
-            else
+            else if (change.Key >= blockAccessIndex)
             {
                 break;
             }
+        }
+
+        CodeChange? lastCodeChange = null;
+        foreach (KeyValuePair<uint, CodeChange> change in _codeChanges)
+        {
+            if (change.Key == Eip7928Constants.PrestateIndex)
+            {
+                continue;
+            }
+
+            if (change.Key >= blockAccessIndex)
+            {
+                break;
+            }
+
+            lastCodeChange = change.Value;
+        }
+
+        if (lastCodeChange is not null)
+        {
+            return lastCodeChange.Value.Code.Length != 0;
         }
 
         return false;
