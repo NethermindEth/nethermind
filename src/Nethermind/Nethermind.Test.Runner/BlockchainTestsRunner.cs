@@ -106,7 +106,9 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
                 {
                     EthereumTestResult result = await RunTest(test, tracer: tracer);
                     testResults.Add(result);
-                    if (!jsonOutput && !suppressOutput)
+                    if (suppressOutput)
+                        Console.Error.WriteLine($"{(result.Pass ? "PASS" : "FAIL")} {test.Name}");
+                    else if (!jsonOutput)
                     {
                         if (result.Pass)
                             WriteGreen("PASS");
@@ -117,7 +119,10 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
                 catch (Exception ex)
                 {
                     testResults.Add(new EthereumTestResult(test.Name, test.ForkName, ex.Message));
-                    if (!jsonOutput && !suppressOutput) WriteRed($"EXCEPTION: {ex.Message}");
+                    if (suppressOutput)
+                        Console.Error.WriteLine($"EXCEPTION {test.Name} — {ex.Message}");
+                    else if (!jsonOutput)
+                        WriteRed($"EXCEPTION: {ex.Message}");
                 }
             }
         }
