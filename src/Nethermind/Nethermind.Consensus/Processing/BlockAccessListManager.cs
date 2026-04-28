@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
@@ -17,6 +16,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -57,6 +57,7 @@ public class BlockAccessListManager(
     private readonly ParallelTxProcessorWithWorldStateManager _parallelTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
     private readonly SequentialTxProcessorWithWorldStateManager _sequentialTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
     private const int GasValidationChunkSize = 8;
+    private const long SystemTransactionGasLimit = 30_000_000L;
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
@@ -382,7 +383,9 @@ public class BlockAccessListManager(
                     generatedHead.Value.CodeChange is not null && !generatedHead.Value.CodeChange.Value.Equals(suggestedHead.Value.CodeChange.Value) ||
                     !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
                 {
-                    throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
+                    throw new InvalidBlockLevelAccessListException(block.Header,
+                        $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}. " +
+                        $"Generated: {DescribeChange(generatedHead.Value)}. Suggested: {DescribeChange(suggestedHead.Value)}.");
                 }
             }
             else if (cmp > 0)
@@ -413,6 +416,12 @@ public class BlockAccessListManager(
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
+
+        static string DescribeChange(ChangeAtIndex change)
+        {
+            string slotChanges = string.Join(", ", change.SlotChanges);
+            return $"{change.Address} Balance={change.BalanceChange?.ToString() ?? "-"} Nonce={change.NonceChange?.ToString() ?? "-"} Code={change.CodeChange?.ToString() ?? "-"} Slots=[{slotChanges}] Reads={change.Reads}";
+        }
     }
 
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)
@@ -426,7 +435,30 @@ public class BlockAccessListManager(
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
     {
         CheckInitialized();
-        new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
+        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null)
+        {
+            return;
+        }
+
+        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        Address to = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        if (!preExecution.WorldState.IsContract(to))
+        {
+            return;
+        }
+
+        SystemCall systemCall = new()
+        {
+            Value = UInt256.Zero,
+            Data = header.ParentHash.Bytes.ToArray(),
+            To = to,
+            SenderAddress = Address.SystemUser,
+            GasLimit = SystemTransactionGasLimit,
+            GasPrice = UInt256.Zero,
+        };
+        systemCall.Hash = systemCall.CalculateHash();
+
+        preExecution.TxProcessor.Execute(systemCall, NullTxTracer.Instance);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
