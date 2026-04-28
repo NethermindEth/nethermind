@@ -26,12 +26,12 @@ on:
       eest_version:
         description: EEST fixtures version (tag from ethereum/execution-spec-tests)
         required: false
-        default: v5.4.0
+        default: bal@v5.6.0
         type: string
       eest_archive:
         description: EEST fixtures archive name
         required: false
-        default: fixtures_develop.tar.gz
+        default: fixtures_bal.tar.gz
         type: string
       workers:
         description: Parallel workers
@@ -48,8 +48,8 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
-  EEST_VERSION: ${{ inputs.eest_version || 'v5.4.0' }}
-  EEST_ARCHIVE: ${{ inputs.eest_archive || 'fixtures_develop.tar.gz' }}
+  EEST_VERSION: ${{ inputs.eest_version || 'bal@v5.6.0' }}
+  EEST_ARCHIVE: ${{ inputs.eest_archive || 'fixtures_bal.tar.gz' }}
   WORKERS: ${{ inputs.workers || '4' }}
   FILTER: ${{ inputs.filter || '' }}
 
@@ -139,19 +139,17 @@ jobs:
             --workers $WORKERS \
             --neverTrace \
             $FILTER_ARG \
-            > /tmp/nethtest-results.json 2> /tmp/nethtest-stderr.log
+            > /tmp/nethtest-results.json
           rc=$?
           set -e
 
           echo "Exit code: $rc"
+          echo "Results file size: $(wc -c < /tmp/nethtest-results.json 2>/dev/null || echo 0) bytes"
           if [ $rc -ne 0 ]; then
             echo "::warning::nethtest exited with code $rc"
-            echo "--- stderr (last 50 lines) ---"
-            tail -50 /tmp/nethtest-stderr.log
           fi
           if [ ! -s /tmp/nethtest-results.json ]; then
             echo "::error::nethtest produced no output"
-            tail -100 /tmp/nethtest-stderr.log
             exit 1
           fi
 
