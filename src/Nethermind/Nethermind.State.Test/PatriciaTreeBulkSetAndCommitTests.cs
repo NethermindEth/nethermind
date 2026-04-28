@@ -28,6 +28,8 @@ public class PatriciaTreeBulkSetAndCommitTests
             Interlocked.Increment(ref Count);
             return inner.CommitNode(ref path, node);
         }
+        public bool TryRequestConcurrentQuota() => inner.TryRequestConcurrentQuota();
+        public void ReturnConcurrencyQuota() => inner.ReturnConcurrencyQuota();
     }
 
     private sealed class CountingStore(IScopedTrieStore inner) : IScopedTrieStore

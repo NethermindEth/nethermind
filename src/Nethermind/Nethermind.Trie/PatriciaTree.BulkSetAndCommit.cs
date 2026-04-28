@@ -57,8 +57,7 @@ public partial class PatriciaTree
             _ => -1,
         };
 
-        TraverseStack traverseStack = _threadStaticTraverseStack ?? new();
-        _threadStaticTraverseStack = null;
+        TraverseStack traverseStack = GetTraverseStack();
 
         TreePath path = TreePath.Empty;
         TrieNode? newRoot;
@@ -98,7 +97,7 @@ public partial class PatriciaTree
         }
 
         // _writeBeforeCommit intentionally NOT updated: fused op leaves no pending dirty nodes.
-        _threadStaticTraverseStack = traverseStack;
+        ReturnTraverseStack(traverseStack);
         RootRef = newRoot;
         SetRootHash(RootRef?.Keccak, true);
     }
@@ -183,13 +182,13 @@ public partial class PatriciaTree
 
         int nibMask;
 
-        if ((flags & Flags.WasSorted) != 0)
-        {
-            nibMask = HexarySearchAlreadySorted(entries, path.Length, indexes);
-        }
-        else if (entries.Length <= 3)
+        if (entries.Length <= 3)
         {
             nibMask = SortTiny(entries, path.Length, indexes);
+        }
+        else if ((flags & Flags.WasSorted) != 0)
+        {
+            nibMask = HexarySearchAlreadySorted(entries, path.Length, indexes);
         }
         else if (entries.Length < InPlaceSortThreshold)
         {
@@ -567,8 +566,7 @@ public partial class PatriciaTree
         {
             try
             {
-                TraverseStack stack = _threadStaticTraverseStack ?? new();
-                _threadStaticTraverseStack = null;
+                TraverseStack stack = GetTraverseStack();
                 try
                 {
                     (int startIdx, int count, int _, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[nib];
@@ -587,7 +585,7 @@ public partial class PatriciaTree
                 }
                 finally
                 {
-                    _threadStaticTraverseStack = stack;
+                    ReturnTraverseStack(stack);
                 }
             }
             finally
