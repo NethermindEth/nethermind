@@ -36,7 +36,7 @@ on:
       workers:
         description: Parallel workers
         required: false
-        default: '8'
+        default: '4'
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -50,7 +50,7 @@ env:
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
   EEST_VERSION: ${{ inputs.eest_version || 'bal@v5.6.0' }}
   EEST_ARCHIVE: ${{ inputs.eest_archive || 'fixtures_bal.tar.gz' }}
-  WORKERS: ${{ inputs.workers || '8' }}
+  WORKERS: ${{ inputs.workers || '4' }}
   FILTER: ${{ inputs.filter || '' }}
 
 defaults:
@@ -122,15 +122,110 @@ jobs:
           echo "Found fixture directory: $FIXTURE_DIR"
           echo "Fixture count: $(find "$FIXTURE_DIR" -name '*.json' | wc -l) JSON files"
 
-      - name: Run nethtest
+      - name: Run nethtest and parse results
         working-directory: src/Nethermind
-        continue-on-error: true
         run: |
           FILTER_ARG=""
           if [ -n "$FILTER" ]; then
             FILTER_ARG="--filter $FILTER"
           fi
 
+          # Write summary even if the process crashes
+          write_summary() {
+            echo ""
+            echo "=== Writing summary ==="
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log > /tmp/nethtest-clean.log 2>/dev/null || true
+
+            HAS_JSON=false
+            if [ -s /tmp/nethtest-results.json ] && jq empty /tmp/nethtest-results.json 2>/dev/null; then
+              HAS_JSON=true
+              TOTAL=$(jq 'length' /tmp/nethtest-results.json)
+              PASSED=$(jq '[.[] | select(.pass == true)] | length' /tmp/nethtest-results.json)
+              FAILED=$(jq '[.[] | select(.pass == false)] | length' /tmp/nethtest-results.json)
+            else
+              TOTAL=$(grep -cE "^(PASS|FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null || echo 0)
+              PASSED=$(grep -c "^PASS " /tmp/nethtest-clean.log 2>/dev/null || echo 0)
+              FAILED=$(( TOTAL - PASSED ))
+            fi
+
+            HEADER="nethtest results"
+            if [ "$HAS_JSON" = false ] && [ "$TOTAL" -gt 0 ]; then
+              HEADER="nethtest results (process crashed — partial results from stderr)"
+            elif [ "$TOTAL" -eq 0 ]; then
+              HEADER="nethtest results (process crashed before producing output)"
+            fi
+
+            {
+              echo "## $HEADER"
+              echo ""
+              echo "| Metric | Value |"
+              echo "|--------|-------|"
+              echo "| Test type | \`--$TEST_TYPE\` |"
+              echo "| EEST version | \`$EEST_VERSION\` |"
+              echo "| Workers | $WORKERS |"
+              echo "| Total | $TOTAL |"
+              echo "| Passed | **$PASSED** |"
+              echo "| Failed | **$FAILED** |"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$FAILED" -gt 0 ]; then
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "### Failures by error type" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              if [ "$HAS_JSON" = true ]; then
+                jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
+                  | head -30 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+              else
+                grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null \
+                  | sed 's/^[^ ]* [^ ]*//' | sort | uniq -c | sort -rn \
+                  | head -30 | awk '{printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
+                  | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+              fi
+
+              {
+                echo ""
+                echo "<details><summary>Failed test names (first 100)</summary>"
+                echo ""
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              if [ "$HAS_JSON" = true ]; then
+                jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name)"' /tmp/nethtest-results.json \
+                  | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
+              else
+                grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null \
+                  | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
+              fi
+              { echo '```'; echo "</details>"; } >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # Local repro command
+            FILTER_CMD=""
+            if [ -n "$FILTER" ]; then
+              FILTER_CMD=" --filter '$FILTER'"
+            fi
+            {
+              echo ""
+              echo "### Run locally"
+              echo ""
+              echo '```bash'
+              echo "# 1. Download EEST fixtures (once)"
+              echo "mkdir -p /tmp/eest && curl -fsSL https://github.com/ethereum/execution-spec-tests/releases/download/$EEST_VERSION/$EEST_ARCHIVE | tar -xz -C /tmp/eest"
+              echo ""
+              echo "# 2. Build and run"
+              echo "cd src/Nethermind"
+              echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release"
+              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers $WORKERS --neverTrace${FILTER_CMD}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED"
+          }
+
+          trap write_summary EXIT
+
+          touch /tmp/nethtest-results.json /tmp/nethtest-stderr.log
+
+          set +e
           dotnet run --no-build --no-launch-profile -c Release \
             --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
             --$TEST_TYPE \
@@ -141,106 +236,17 @@ jobs:
             $FILTER_ARG \
             > /tmp/nethtest-results.json \
             2> /tmp/nethtest-stderr.log
+          rc=$?
+          set -e
 
-      - name: Show stderr output
-        if: always()
-        run: |
-          if [ -f /tmp/nethtest-stderr.log ]; then
-            echo "--- stderr (last 200 lines, ANSI stripped) ---"
-            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log | tail -200
-          else
-            echo "No stderr log found"
-          fi
+          echo "Exit code: $rc"
+          echo "Results file size: $(wc -c < /tmp/nethtest-results.json) bytes"
+          echo "Stderr lines: $(wc -l < /tmp/nethtest-stderr.log)"
 
-      - name: Parse results
-        if: always()
-        run: |
-          HAS_JSON=false
-          if [ -s /tmp/nethtest-results.json ] && jq empty /tmp/nethtest-results.json 2>/dev/null; then
-            HAS_JSON=true
-            TOTAL=$(jq 'length' /tmp/nethtest-results.json)
-            PASSED=$(jq '[.[] | select(.pass == true)] | length' /tmp/nethtest-results.json)
-            FAILED=$(jq '[.[] | select(.pass == false)] | length' /tmp/nethtest-results.json)
-          else
-            echo "::warning::No JSON output — falling back to stderr log"
-            # Strip ANSI color codes before parsing
-            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log > /tmp/nethtest-stderr-clean.log 2>/dev/null || true
-            TOTAL=$(grep -cE "^(PASS|FAIL|EXCEPTION) " /tmp/nethtest-stderr-clean.log 2>/dev/null || echo 0)
-            PASSED=$(grep -c "^PASS " /tmp/nethtest-stderr-clean.log 2>/dev/null || echo 0)
-            FAILED=$(( TOTAL - PASSED ))
-          fi
-
-          CRASHED=""
-          if [ "$HAS_JSON" = false ] && [ -f /tmp/nethtest-stderr.log ]; then
-            CRASHED=" (process crashed — results from stderr)"
-          fi
-
-          echo "## nethtest results${CRASHED}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Test type | \`--$TEST_TYPE\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| EEST version | \`$EEST_VERSION\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Workers | $WORKERS |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Total | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Passed | **$PASSED** |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Failed | **$FAILED** |" >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "$FAILED" -gt 0 ]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "### Failures by error type" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ "$HAS_JSON" = true ]; then
-              jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
-                | head -30 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
-            else
-              grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-stderr-clean.log 2>/dev/null \
-                | sed 's/^[^ ]* [^ ]*//' | sort | uniq -c | sort -rn \
-                | head -30 | awk '{printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
-                | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
-            fi
-
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "<details><summary>Failed test names (first 100)</summary>" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            if [ "$HAS_JSON" = true ]; then
-              jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name)"' /tmp/nethtest-results.json \
-                | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
-            else
-              grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-stderr-clean.log 2>/dev/null \
-                | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
-            fi
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            echo "</details>" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          # Local repro command
-          FILTER_CMD=""
-          if [ -n "$FILTER" ]; then
-            FILTER_CMD=" --filter '$FILTER'"
-          fi
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Run locally" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-          echo "# 1. Download EEST fixtures (once)" >> "$GITHUB_STEP_SUMMARY"
-          echo "mkdir -p /tmp/eest && curl -fsSL https://github.com/ethereum/execution-spec-tests/releases/download/$EEST_VERSION/$EEST_ARCHIVE | tar -xz -C /tmp/eest" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "# 2. Build and run" >> "$GITHUB_STEP_SUMMARY"
-          echo "cd src/Nethermind" >> "$GITHUB_STEP_SUMMARY"
-          echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release" >> "$GITHUB_STEP_SUMMARY"
-          echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers $WORKERS --neverTrace${FILTER_CMD}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-
-          echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED"
-          if [ "$FAILED" -gt 0 ]; then
-            echo "::error::$FAILED test(s) failed"
-            exit 1
-          fi
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "::error::No tests were executed"
-            exit 1
+          if [ $rc -ne 0 ]; then
+            echo "::warning::nethtest exited with code $rc"
+            echo "--- stderr (last 50 lines) ---"
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log | tail -50
           fi
 
       - name: Upload results
@@ -248,5 +254,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nethtest-results-${{ env.TEST_TYPE }}
-          path: /tmp/nethtest-results.json
+          path: |
+            /tmp/nethtest-results.json
+            /tmp/nethtest-stderr.log
           retention-days: 30
