@@ -1630,10 +1630,6 @@ public partial class EngineModuleTests
         chain.BlockTree.IsMainChain(a2.BlockHash).Should().BeTrue("precondition: a2 stays on main at H=2");
         chain.BlockTree.IsMainChain(a3.BlockHash).Should().BeFalse("precondition: a3's marker was flipped to b3");
 
-        // Count FindHeader calls made by the repeated FCU only. Safe=Keccak.Zero skips its
-        // ValidateBlockHash lookup, so the baseline calls are: 1 to resolve head, 1 for finalized
-        // validation, plus the IsInconsistent walk (1 under the optimization, 2 without).
-        // ShouldProceedWithReorg is skipped because head is unchanged (blocks is null → no reorg).
         spy.ResetCounters();
         ForkchoiceStateV1 repeated = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);

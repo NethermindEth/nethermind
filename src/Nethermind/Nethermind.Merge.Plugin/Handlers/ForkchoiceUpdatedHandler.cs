@@ -75,14 +75,10 @@ public class ForkchoiceUpdatedHandler(
                ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
-    // Spec point 2: MAY skip if headBlockHash is a VALID ancestor of the latest known finalized block.
-    // Spec point 6: MUST return -38006 if reorg depth exceeds IPruningConfig.PruningBoundary.
-    // Taiko overrides this to always proceed because its finality follows L1 and may regress on L1 reorgs.
     protected virtual bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
         [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
     {
-        BlockHeader? knownFinalizedHeader = _blockTree.FindFinalizedHeader();
-        if (knownFinalizedHeader is not null && newHeadHeader.Number <= knownFinalizedHeader.Number && _blockTree.IsMainChain(newHeadHeader))
+        if (_blockTree.IsOnMainChainBehindFinalized(newHeadHeader))
         {
             if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated skipped - head is a valid ancestor of the latest known finalized block.");
             result = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
