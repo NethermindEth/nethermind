@@ -154,7 +154,16 @@ namespace Nethermind.Evm.TransactionProcessing
         public TransactionResult Process(
             Transaction transaction,
             ITxTracer txTracer,
-            ExecutionOptions options) => ExecuteCore(transaction, txTracer, options);
+            ExecutionOptions options)
+        {
+            if (options == ExecutionOptions.None)
+            {
+                // BuildUp mode
+                WorldState.TakeSnapshot(true);
+            }
+
+            return ExecuteCore(transaction, txTracer, options);
+        }
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
