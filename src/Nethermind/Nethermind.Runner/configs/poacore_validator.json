@@ -3,7 +3,7 @@
   "Init": {
     "ChainSpecPath": "chainspec/poacore.json",
     "GenesisHash": "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634",
-    "BaseDbPath": "nethermind_db/poacore_validator",
+    "BaseDbPath": "nethermind_db/poacore",
     "LogFileName": "poacore_validator.log",
     "MemoryHint": 768000000
   },
@@ -26,7 +26,13 @@
     "NodeName": "POA Core Validator"
   },
   "Bloom": {
-    "Index": false
+    "Index": false,
+    "IndexLevelBucketSizes": [
+      16,
+      16,
+      16,
+      16
+    ]
   },
   "Merge": {
     "Enabled": false

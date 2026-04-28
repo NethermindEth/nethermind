@@ -261,7 +261,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("mainnet")]
     [TestCase("poacore.json", new[] { 16, 16, 16, 16 })]
     [TestCase("poacore_archive.json", new[] { 16, 16, 16, 16 })]
-    [TestCase("poacore_validator.json", null, false)]
+    [TestCase("poacore_validator.json", new[] { 16, 16, 16, 16 }, false)]
     [TestCase("gnosis.json", new[] { 16, 16, 16 })]
     [TestCase("gnosis_archive.json", new[] { 16, 16, 16 })]
     [TestCase("volta")]
@@ -316,16 +316,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
             Assert.That(initConfig.LogFileName, Is.EqualTo(expectedLogFileName), configFile);
         }
-    }
-
-    [Test]
-    public void Poacore_validator_uses_separate_database_path()
-    {
-        IInitConfig regularConfig = GetConfigFromFile<IInitConfig>("poacore.json");
-        IInitConfig validatorConfig = GetConfigFromFile<IInitConfig>("poacore_validator.json");
-
-        Assert.That(validatorConfig.BaseDbPath, Is.EqualTo("nethermind_db/poacore_validator"));
-        Assert.That(validatorConfig.BaseDbPath, Is.Not.EqualTo(regularConfig.BaseDbPath));
     }
 
     [Test]
