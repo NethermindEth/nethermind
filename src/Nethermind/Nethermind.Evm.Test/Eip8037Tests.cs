@@ -3,11 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
