@@ -145,7 +145,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             return false;
         }
 
+        double required = epochInfo.Masternodes.Length * spec.CertificateThreshold;
         (Address[] candidates, Signature[] signatures) = (snapshot.NextEpochCandidates, timeoutCertificate.Signatures);
+        if (signatures.Length < required)
+        {
+            errorMessage = $"Number of signatures ({signatures.Length}) does not meet threshold of {required}";
+            return false;
+        }
+
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
         if (VotesManager.CountValidSignatures(candidates, signatures, timeoutMsgHash, out errorMessage) is not { } signCount)
         {

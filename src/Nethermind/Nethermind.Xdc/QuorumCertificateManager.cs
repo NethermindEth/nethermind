@@ -173,6 +173,12 @@ internal class QuorumCertificateManager(
         if (qcRound > 0)
         {
             (Address[] masternodes, Signature[] signatures) = (epochSwitchInfo.Masternodes, qc.Signatures);
+            if (signatures.Length < required)
+            {
+                error = $"Number of signatures ({signatures.Length}) does not meet threshold of {required}";
+                return false;
+            }
+
             ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
             if (VotesManager.CountValidSignatures(masternodes, signatures, voteHash, out error) is not { } signCount)
             {

@@ -23,7 +23,6 @@ namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]
 public class TimeoutCertificateManagerTests
 {
-
     [Test]
     public void VerifyTC_NullCert_Throws()
     {

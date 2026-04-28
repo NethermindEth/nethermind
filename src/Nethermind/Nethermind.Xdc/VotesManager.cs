@@ -118,7 +118,10 @@ internal class VotesManager(
             if (!vote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
                 return Task.CompletedTask;
 
-            Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
+            if (roundVotes.Count < requiredVotes)
+                return Task.CompletedTask;
+
+            Signature[] validSignatures = GetValidSignatures(epochInfo.Masternodes, roundVotes);
             if (validSignatures.Length < requiredVotes)
                 return Task.CompletedTask;
 
@@ -246,11 +249,13 @@ internal class VotesManager(
         return nextBlockHash == ancestorBlockInfo.Hash;
     }
 
-    private static Signature[] GetValidSignatures(IReadOnlyCollection<Vote> votes, Address[] masternodes)
+    private static Signature[] GetValidSignatures(
+        IReadOnlyCollection<Address> allowedSigners,
+        IReadOnlyCollection<Vote> votes)
     {
         //Possible optimize here
         List<Signature> signatures = new(votes.Count);
-        Dictionary<Address, int> signedBy = masternodes.ToDictionary(static a => a, static _ => 0);
+        Dictionary<Address, int> signedBy = allowedSigners.ToDictionary(static a => a, static _ => 0);
 
         foreach ((Signature signature, Address signer) in votes.AsParallel().Select(static v => (
                      v.Signature,
@@ -277,13 +282,15 @@ internal class VotesManager(
     /// if there's any validation <paramref name="error"/>.
     /// </returns>
     public static int? CountValidSignatures(
-        IEnumerable<Address> allowedSigners,
-        IEnumerable<Signature> signatures,
+        IReadOnlyCollection<Address> allowedSigners,
+        IReadOnlyCollection<Signature> signatures,
         ValueHash256 messageHash,
         out string? error)
     {
         //Possible optimize here
-        Dictionary<Address, int> signedBy = allowedSigners.ToDictionary(static a => a, static _ => 0);
+        Dictionary<Address, int> signedBy = new(allowedSigners.Count);
+        foreach (Address signer in allowedSigners)
+            signedBy.TryAdd(signer, 0);
 
         int count = 0;
         string? localError = null;
