@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [feat/evm-enginetest]
+    branches: [feat/evm-enginetest, fix/bal-parallel-execution-crash]
   workflow_dispatch:
     inputs:
       branch:
