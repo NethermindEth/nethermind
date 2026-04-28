@@ -79,9 +79,6 @@ namespace Nethermind.Network.Test.Builders
                 .With<GetReceiptsMessage70>(new GetReceiptsMessageSerializer70(new GetReceiptsMessageSerializer()))
                 .With<ReceiptsMessage70>(new ReceiptsMessageSerializer70(specProvider));
 
-        public SerializationBuilder WithNodeData() => With(new Network.P2P.Subprotocols.NodeData.Messages.GetNodeDataMessageSerializer())
-                .With(new Network.P2P.Subprotocols.NodeData.Messages.NodeDataMessageSerializer());
-
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
             Ecdsa ecdsa = new();

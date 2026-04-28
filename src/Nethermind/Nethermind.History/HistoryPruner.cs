@@ -52,6 +52,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly int _deletionProgressLoggingInterval;
     private readonly long _ancientBarrier;
     private long _deletePointer = 1;
+    private readonly long _minDeletableBlockNumber;
     private BlockHeader? _deletePointerHeader;
     private long _lastSavedDeletePointer = 1;
     private long? _cutoffPointer;
@@ -90,6 +91,7 @@ public class HistoryPruner : IHistoryPruner
         _epochLength = (long)blocksConfig.SecondsPerSlot * SlotsPerEpoch; // must be changed if slot length changes
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
+        _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; //not not remove genesis
 
         CheckConfig();
 
@@ -248,7 +250,13 @@ public class HistoryPruner : IHistoryPruner
     private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
         => SchedulePruneHistory(_processExitSource.Token);
 
-    private void SchedulePruneHistory(CancellationToken cancellationToken)
+    /// <summary>
+    /// Schedules a pruning operation if one is not already running. Pruning will only be performed if the configured pruning interval has elapsed and there are blocks eligible for pruning.
+    /// Cancelled when timeout elapses or process is exiting, to avoid long pruning operations during shutdown. Will be rescheduled on next trigger if pruning could not be completed.
+    /// </summary>
+    public void SchedulePruneHistory() => SchedulePruneHistory(_processExitSource.Token);
+
+    protected void SchedulePruneHistory(CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _currentlyPruning) == 0)
         {
@@ -258,6 +266,9 @@ public class HistoryPruner : IHistoryPruner
                 {
                     try
                     {
+                        TimeSpan? pruningTimeout = _historyConfig.PruningTimeoutSeconds > 0
+                            ? TimeSpan.FromSeconds(_historyConfig.PruningTimeoutSeconds)
+                            : null;
                         if (!_backgroundTaskScheduler.TryScheduleTask(1,
                                 (_, backgroundTaskToken) =>
                                 {
@@ -273,7 +284,7 @@ public class HistoryPruner : IHistoryPruner
                                     }
 
                                     return Task.CompletedTask;
-                                }, source: "HistoryPruner"))
+                                }, timeout: pruningTimeout, source: "HistoryPruner"))
                         {
                             Interlocked.Exchange(ref _currentlyPruning, 0);
                             if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");
@@ -349,7 +360,7 @@ public class HistoryPruner : IHistoryPruner
 
     internal bool SetDeletePointerToOldestBlock()
     {
-        long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, BlockExists, BlockTree.BinarySearchDirection.Down);
+        long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(_minDeletableBlockNumber, _blockTree.SyncPivot.BlockNumber, BlockExists, BlockTree.BinarySearchDirection.Down);
 
         if (oldestBlockNumber is not null)
         {
@@ -433,9 +444,9 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 // should never happen
-                if (number == 0 || number >= _blockTree.SyncPivot.BlockNumber)
+                if (number < _minDeletableBlockNumber || number >= _blockTree.SyncPivot.BlockNumber)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Encountered unexpected block #{number} while pruning history, this block will not be deleted. Should be in range (0, {_blockTree.SyncPivot.BlockNumber}).");
+                    if (_logger.IsWarn) _logger.Warn($"Encountered unexpected block #{number} while pruning history, this block will not be deleted. Should be in range [{_minDeletableBlockNumber}, {_blockTree.SyncPivot.BlockNumber}).");
                     continue;
                 }
 
@@ -542,7 +553,7 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateDeletePointer(val.AsRlpValueContext().DecodeLong());
+            UpdateDeletePointer(Math.Max(val.AsRlpValueContext().DecodeLong(), _minDeletableBlockNumber));
             _lastSavedDeletePointer = _deletePointer;
             _hasLoadedDeletePointer = true;
         }
