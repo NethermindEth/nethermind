@@ -250,6 +250,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
             StateReservoir = GasCostOf.CreateState,
             CostPerStateByte = GasCostOf.CostPerStateByte,
         };
+        TestState.CreateAccount(Recipient, UInt256.Zero);
         StackAccessTracker accessTracker = new();
         using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
             gas,
