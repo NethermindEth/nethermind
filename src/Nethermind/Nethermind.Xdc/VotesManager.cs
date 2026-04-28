@@ -118,10 +118,7 @@ internal class VotesManager(
             if (!vote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
                 return Task.CompletedTask;
 
-            if (roundVotes.Count < requiredVotes)
-                return Task.CompletedTask;
-
-            Signature[] validSignatures = GetValidSignatures(epochInfo.Masternodes, roundVotes);
+            Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
             if (validSignatures.Length < requiredVotes)
                 return Task.CompletedTask;
 
@@ -249,28 +246,20 @@ internal class VotesManager(
         return nextBlockHash == ancestorBlockInfo.Hash;
     }
 
-    private static Signature[] GetValidSignatures(
-        IReadOnlyCollection<Address> allowedSigners,
-        IReadOnlyCollection<Vote> votes)
+    private static Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        //TODO: try to minimize number of allocations, at least for common cases
-        List<Signature> signatures = new(votes.Count);
-        Dictionary<Address, int> signedBy = new(allowedSigners.Count);
-        foreach (Address signer in allowedSigners)
-            signedBy.TryAdd(signer, 0);
-
-        foreach ((Signature signature, Address signer) in votes.AsParallel().Select(static v => (
-                     v.Signature,
-                     v.Signer ??= _ethereumEcdsa.RecoverVoteSigner(v)
-                 )))
+        HashSet<Address> masternodeSet = new(masternodes);
+        List<Signature> signatures = new();
+        foreach (Vote vote in votes)
         {
-            ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
+            vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
 
-            if (!Unsafe.IsNullRef(ref signCount) && ++signCount == 1)
-                signatures.Add(signature);
+            if (masternodeSet.Contains(vote.Signer))
+            {
+                signatures.Add(vote.Signature);
+            }
         }
-
-        return [.. signatures];
+        return signatures.ToArray();
     }
 
     /// <summary>
