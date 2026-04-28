@@ -40,7 +40,12 @@ public class TaikoExtendedEthModule(
     /// the latest header) if we returned a successful null, producing a stale
     /// <c>safeCheckpoint</c> and ultimately an inconsistent FCU during ancient-block import.
     /// </summary>
-    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
+    // ResourceNotFound (-32000) instead of the default InternalError (-32603), and IsTemporary
+    // so the JsonRpc framework's SuppressWarning flag fires (JsonRpcService.cs:158 ->
+    // JsonRpcProcessor.cs:428). Without this, every cold-boot tryLastFinalizedCheckpoint poll
+    // produces a loud "Error response handling JsonRpc..." WARN line on a known-transient miss.
+    private static readonly ResultWrapper<UInt256?> BlockIdNotFound =
+        ResultWrapper<UInt256?>.Fail("not found", ErrorCodes.ResourceNotFound, isTemporary: true);
 
     /// <summary>
     /// Maximum number of blocks to scan backwards when the batch→block index is missing.
@@ -82,14 +87,14 @@ public class TaikoExtendedEthModule(
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"taiko_lastL1OriginByBatchID: no block found for batch {batchId}");
+                if (_logger.IsDebug) _logger.Debug($"taiko_lastL1OriginByBatchID: no block found for batch {batchId}");
                 return L1OriginByBatchIdNullResult;
             }
         }
 
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
-        if (origin is null && _logger.IsWarn)
-            _logger.Warn($"taiko_lastL1OriginByBatchID: block {blockId} found for batch {batchId} but no L1 origin entry");
+        if (origin is null && _logger.IsDebug)
+            _logger.Debug($"taiko_lastL1OriginByBatchID: block {blockId} found for batch {batchId} but no L1 origin entry");
 
         return origin is null ? L1OriginByBatchIdNullResult : ResultWrapper<L1Origin?>.Success(origin);
     }
@@ -102,7 +107,7 @@ public class TaikoExtendedEthModule(
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"taiko_lastBlockIDByBatchID: no block found for batch {batchId}");
+                if (_logger.IsDebug) _logger.Debug($"taiko_lastBlockIDByBatchID: no block found for batch {batchId}");
                 return BlockIdNotFound;
             }
         }
