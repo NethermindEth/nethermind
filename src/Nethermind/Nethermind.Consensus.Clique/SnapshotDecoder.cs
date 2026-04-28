@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.Clique
             decoderContext.ReadSequenceLength();
             int length = decoderContext.DecodeInt();
             decoderContext.GuardLimit(length);
-            SortedList<Address, long> signers = new(AddressComparer.Instance);
+            SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>());
             for (int i = 0; i < length; i++)
             {
                 Address signer = decoderContext.DecodeAddress();

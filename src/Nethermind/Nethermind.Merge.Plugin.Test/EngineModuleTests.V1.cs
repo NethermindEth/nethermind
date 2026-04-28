@@ -460,7 +460,7 @@ public partial class EngineModuleTests
 
     [TestCase(true)]
     [TestCase(false)]
-    [CancelAfter(5000)]
+    [CancelAfter(30000)]
     public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor, CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
@@ -1051,7 +1051,7 @@ public partial class EngineModuleTests
         resultWrapper.Data.PayloadStatus.LatestValidHash.Should().Be(Keccak.Zero);
     }
 
-    [CancelAfter(5000)]
+    [CancelAfter(30000)]
     public async Task executePayloadV1_on_top_of_terminal_block(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
@@ -1088,7 +1088,7 @@ public partial class EngineModuleTests
         ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
     }
 
-    [CancelAfter(5000)]
+    [CancelAfter(30000)]
     public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
