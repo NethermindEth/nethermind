@@ -28,12 +28,12 @@ public class OptimismProtocolVersionTest
     [TestCaseSource(nameof(V0ReadWriteCases))]
     public void OptimismProtocolVersionV0_ReadWrite((string HexString, OptimismProtocolVersion.V0 Expected) testCase)
     {
-        var bytes = Bytes.FromHexString(testCase.HexString);
-        var actual = OptimismProtocolVersion.Read(bytes);
+        byte[] bytes = Bytes.FromHexString(testCase.HexString);
+        OptimismProtocolVersion actual = OptimismProtocolVersion.Read(bytes);
 
-        var bytesWritten = new byte[OptimismProtocolVersion.ByteLength];
+        byte[] bytesWritten = new byte[OptimismProtocolVersion.ByteLength];
         actual.Write(bytesWritten);
-        var bytesWrittenHex = bytesWritten.ToHexString(withZeroX: true);
+        string bytesWrittenHex = bytesWritten.ToHexString(withZeroX: true);
 
         actual.Should().Be(testCase.Expected);
         testCase.HexString.Should().Be(bytesWrittenHex);
@@ -89,7 +89,7 @@ public class OptimismProtocolVersionTest
     [TestCase(10)]
     public void OptimismProtocolVersionV0_BuildLengthIs8(int buildLength)
     {
-        var build = new byte[buildLength];
+        byte[] build = new byte[buildLength];
 
         Func<OptimismProtocolVersion> read = () => new OptimismProtocolVersion.V0(build, 0, 0, 0, 0);
         read.Should().Throw<ArgumentException>();
@@ -102,7 +102,7 @@ public class OptimismProtocolVersionTest
     [TestCase("0x0000000000000100000000000000000000000000000000000000000000000000", true)]
     public void OptimismProtocolVersionV0_ReservedIsZero(string hexString, bool shouldThrow)
     {
-        var bytes = Bytes.FromHexString(hexString);
+        byte[] bytes = Bytes.FromHexString(hexString);
         Action read = () => OptimismProtocolVersion.Read(bytes);
 
         if (shouldThrow)
@@ -133,7 +133,7 @@ public class OptimismProtocolVersionTest
     [TestCase(byte.MaxValue)]
     public void OptimismProtocolVersion_Throws_Unknown_Version(byte version)
     {
-        var bytes = new byte[32];
+        byte[] bytes = new byte[32];
         bytes[0] = version;
 
         Action read = () => OptimismProtocolVersion.Read(bytes);

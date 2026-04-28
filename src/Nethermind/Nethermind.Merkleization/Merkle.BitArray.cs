@@ -10,14 +10,14 @@ public static partial class Merkle
 {
     public static void Merkleize(out UInt256 root, BitArray value)
     {
-        Merkleizer merkleizer = new Merkleizer(0);
+        Merkleizer merkleizer = new(0);
         merkleizer.Feed(value);
         merkleizer.CalculateRoot(out root);
     }
 
     public static void Merkleize(out UInt256 root, BitArray value, ulong limit)
     {
-        Merkleizer merkleizer = new Merkleizer(0);
+        Merkleizer merkleizer = new(0);
         merkleizer.Feed(value, limit);
         merkleizer.CalculateRoot(out root);
     }

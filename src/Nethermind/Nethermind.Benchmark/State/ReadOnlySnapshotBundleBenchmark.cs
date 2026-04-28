@@ -54,10 +54,10 @@ public class ReadOnlySnapshotBundleBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        FlatDbConfig config = new FlatDbConfig();
-        ResourcePool resourcePool = new ResourcePool(config);
-        List<FlatSnapshot> allSnapshots = new List<FlatSnapshot>(SnapshotCount);
-        StateId currentStateId = new StateId(0, Keccak.EmptyTreeHash);
+        FlatDbConfig config = new();
+        ResourcePool resourcePool = new(config);
+        List<FlatSnapshot> allSnapshots = new(SnapshotCount);
+        StateId currentStateId = new(0, Keccak.EmptyTreeHash);
 
         int totalAccountCount = 0;
         int totalStorageAccountCount = 0;
@@ -74,20 +74,20 @@ public class ReadOnlySnapshotBundleBenchmark
             int slotsPerStorageAccount = 100 * multiplier;
 
             // Build ReadOnlySnapshotBundle from previously captured snapshots
-            SnapshotPooledList prevSnapshots = new SnapshotPooledList(allSnapshots.Count);
+            SnapshotPooledList prevSnapshots = new(allSnapshots.Count);
             foreach (FlatSnapshot s in allSnapshots)
             {
                 s.TryAcquire();
                 prevSnapshots.Add(s);
             }
 
-            ReadOnlySnapshotBundle readOnly = new ReadOnlySnapshotBundle(
+            ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
-            NullTrieNodeCache cache = new NullTrieNodeCache();
-            SnapshotBundle bundle = new SnapshotBundle(
+            NullTrieNodeCache cache = new();
+            SnapshotBundle bundle = new(
                 readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            CapturingCommitTarget commitTarget = new CapturingCommitTarget();
-            FlatWorldStateScope scope = new FlatWorldStateScope(
+            CapturingCommitTarget commitTarget = new();
+            FlatWorldStateScope scope = new(
                 currentStateId: currentStateId,
                 snapshotBundle: bundle,
                 codeDb: new NullCodeDb(),
@@ -155,7 +155,7 @@ public class ReadOnlySnapshotBundleBenchmark
         }
 
         // Build final ReadOnlySnapshotBundle with all 8 snapshots
-        SnapshotPooledList finalSnapshots = new SnapshotPooledList(allSnapshots.Count);
+        SnapshotPooledList finalSnapshots = new(allSnapshots.Count);
         foreach (FlatSnapshot s in allSnapshots)
         {
             s.TryAcquire();
@@ -178,16 +178,16 @@ public class ReadOnlySnapshotBundleBenchmark
         _hitSlots = new (Address, UInt256)[ArraySize];
         for (int i = 0; i < ArraySize; i++)
         {
-            var range = storageRanges[i % storageRanges.Count];
+            (int AddressStart, int StorageCount, int SlotsPerAccount) range = storageRanges[i % storageRanges.Count];
             int storageAccountIndex = range.AddressStart + (i / storageRanges.Count % range.StorageCount);
             UInt256 slot = (UInt256)(ulong)((i * 97 % range.SlotsPerAccount) + 1);
             _hitSlots[i] = (DeriveAddress(storageAccountIndex), slot);
         }
 
         // Collect state/storage trie nodes from all snapshots
-        List<TreePath> shortPaths = new List<TreePath>(ArraySize);
-        List<TreePath> longPaths = new List<TreePath>(ArraySize);
-        List<(Hash256, TreePath)> storageNodesList = new List<(Hash256, TreePath)>(ArraySize);
+        List<TreePath> shortPaths = new(ArraySize);
+        List<TreePath> longPaths = new(ArraySize);
+        List<(Hash256, TreePath)> storageNodesList = new(ArraySize);
 
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
@@ -226,7 +226,7 @@ public class ReadOnlySnapshotBundleBenchmark
             _sameAccountSlots[i] = (sameAddr, (UInt256)(ulong)(i + 1));
 
         Hash256 sameAddrHash = Keccak.Compute(sameAddr.Bytes);
-        List<(Hash256, TreePath)> sameAccountNodesList = new List<(Hash256, TreePath)>(ArraySize);
+        List<(Hash256, TreePath)> sameAccountNodesList = new(ArraySize);
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
             foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
@@ -380,7 +380,7 @@ public class ReadOnlySnapshotBundleBenchmark
     }
 
     private static Address DeriveAddress(int index) =>
-        new Address(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
+        new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
 
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
@@ -416,7 +416,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
         private sealed class NullCodeSetter : IWorldStateScopeProvider.ICodeSetter
         {
-            public static readonly NullCodeSetter Instance = new NullCodeSetter();
+            public static readonly NullCodeSetter Instance = new();
 
             public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
 

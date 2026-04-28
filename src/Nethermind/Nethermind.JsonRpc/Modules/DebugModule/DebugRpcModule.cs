@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -50,10 +51,7 @@ public class DebugRpcModule(
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
-    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false)
-    {
-        return ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
-    }
+    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) => ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
@@ -91,13 +89,9 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        // default to previous block gas if unspecified
-        call.Gas ??= header!.GasLimit;
-
-        // enforces gas cap
         call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -296,20 +290,11 @@ public class DebugRpcModule(
         }
     }
 
-    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null) => throw new NotImplementedException();
 
-    public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<GcStats> debug_gcStats()
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<GcStats> debug_gcStats() => throw new NotImplementedException();
 
     public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber) =>
         GetBlockRlpOrFail(new BlockParameter(blockNumber));
@@ -317,30 +302,21 @@ public class DebugRpcModule(
     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
         GetBlockRlpOrFail(new BlockParameter(hash));
 
-    public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) => throw new NotImplementedException();
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
-        var dbValue = debugBridge.GetDbValue(dbName, key);
+        byte[] dbValue = debugBridge.GetDbValue(dbName, key);
         return ResultWrapper<byte[]>.Success(dbValue);
     }
 
     public ResultWrapper<object> debug_getConfigValue(string category, string name)
     {
-        var configValue = debugBridge.GetConfigValue(category, name);
+        object configValue = debugBridge.GetConfigValue(category, name);
         return ResultWrapper<object>.Success(configValue);
     }
 
@@ -397,10 +373,7 @@ public class DebugRpcModule(
         return ResultWrapper<byte[]>.Success(rlp.Bytes);
     }
 
-    public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage()
-    {
-        return ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
-    }
+    public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
@@ -448,11 +421,8 @@ public class DebugRpcModule(
         jsonRpcConfig.BuildTimeoutCancellationToken();
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
-        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
-    {
-        return new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
+        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null) => new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
-    }
 
     public ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
@@ -503,7 +473,7 @@ public class DebugRpcModule(
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
         PrepareTransactions(bundles, header);
-        var simulatePayload = new SimulatePayload<TransactionForRpc>
+        SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
             {
@@ -512,6 +482,18 @@ public class DebugRpcModule(
                 Calls = bundle.Transactions
             }).ToList()
         };
+
+        // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
+        // Pre-compute the block number each bundle targets so we can drop fillers from the result and
+        // keep a 1:1 mapping to the input bundles.
+        HashSet<long> bundleBlockNumbers = new(bundles.Length);
+        long lastBlockNumber = header.Number;
+        foreach (TransactionBundle bundle in bundles)
+        {
+            long number = (long)bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
+            bundleBlockNumbers.Add(number);
+            lastBlockNumber = number;
+        }
 
         BlockParameter concreteBlockParameter = new(header.Number);
 
@@ -522,6 +504,7 @@ public class DebugRpcModule(
                 blockchainBridge,
                 blockFinder,
                 jsonRpcConfig,
+                specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default),
                 _secondsPerSlot
             ).Execute(simulatePayload, concreteBlockParameter);
@@ -533,7 +516,9 @@ public class DebugRpcModule(
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
         }
 
-        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data.Select(blockResult => blockResult.Traces);
+        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data
+            .Where(blockResult => blockResult.Number is long n && bundleBlockNumbers.Contains(n))
+            .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
     }
@@ -544,7 +529,6 @@ public class DebugRpcModule(
         {
             foreach (TransactionForRpc call in bundle.Transactions)
             {
-                call.Gas ??= header.GasLimit;
                 call.EnsureDefaults(jsonRpcConfig.GasCap);
             }
         }
@@ -663,5 +647,35 @@ public class DebugRpcModule(
             return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
         return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(parent, block));
+    }
+
+    public ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null)
+    {
+        blockParameter ??= BlockParameter.Latest;
+
+        BlockHeader? header = blockFinder.FindHeader(blockParameter);
+        if (header is null)
+        {
+            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
+        }
+
+        if (header.Number == 0)
+        {
+            return ResultWrapper<Witness>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
+        }
+
+        callRequest.Gas ??= header.GasLimit;
+
+        Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: false);
+        if (!txResult.Success(out Transaction? tx, out string? error))
+        {
+            return ResultWrapper<Witness>.Fail(error, ErrorCodes.InvalidInput);
+        }
+
+        tx.SenderAddress ??= Address.Zero;
+
+        if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data.Length}");
+
+        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(header, tx));
     }
 }

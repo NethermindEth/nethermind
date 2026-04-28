@@ -55,14 +55,15 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     }
 
     public override bool ValidateFork(ISpecProvider specProvider)
-         => specProvider.GetSpec(BlockNumber, Timestamp).IsEip7928Enabled;
+         => specProvider.GetSpec(BlockNumber, Timestamp).BlockLevelAccessListsEnabled;
 
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-4844</see>.
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-7928</see>.
     /// </summary>
     [JsonRequired]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public sealed override byte[]? BlockAccessList { get; set; }
 
     /// <summary>
@@ -70,5 +71,6 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
     /// </summary>
     [JsonRequired]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public sealed override ulong? SlotNumber { get; set; }
 }

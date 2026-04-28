@@ -8,14 +8,12 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
-    public sealed class AccessListDecoder : RlpValueDecoder<AccessList?>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
+    public sealed class AccessListDecoder() : RlpValueDecoder<AccessList?>
     {
         private const int IndexLength = 32;
 
         public static readonly AccessListDecoder Instance = new();
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
-        public AccessListDecoder() { }
 
         protected override AccessList? DecodeInternal(
             ref Rlp.ValueDecoderContext decoderContext,

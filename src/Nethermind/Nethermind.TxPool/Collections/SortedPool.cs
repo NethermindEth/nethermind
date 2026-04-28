@@ -102,7 +102,7 @@ namespace Nethermind.TxPool.Collections
 
         private TValue[] GetSnapShotLocked()
         {
-            using var handle = Lock.Acquire();
+            using McsLock.Disposable handle = Lock.Acquire();
 
             TValue[]? snapshot = _snapshot;
             if (snapshot is not null)
@@ -110,14 +110,14 @@ namespace Nethermind.TxPool.Collections
                 return snapshot;
             }
 
-            var count = 0;
+            int count = 0;
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
             {
                 count += bucket.Value.Count;
             }
 
             snapshot = new TValue[count];
-            var index = 0;
+            int index = 0;
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
             {
                 foreach (TValue value in bucket.Value)
@@ -136,7 +136,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             IEnumerable<KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>>> buckets = _buckets;
             if (where is not null)
@@ -151,7 +151,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public TValue[] GetBucketSnapshot(TGroupKey group)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             ArgumentNullException.ThrowIfNull(group);
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : [];
@@ -162,7 +162,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public int GetBucketCount(TGroupKey group)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             ArgumentNullException.ThrowIfNull(group);
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.Count : 0;
@@ -184,7 +184,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public EnhancedSortedSet<TValue> GetFirsts()
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             EnhancedSortedSet<TValue> sortedValues = new(_sortedComparer);
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
@@ -198,10 +198,7 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Returns best overall element as per supplied comparer order.
         /// </summary>
-        public TValue? GetBest()
-        {
-            return GetFirsts().Min;
-        }
+        public TValue? GetBest() => GetFirsts().Min;
 
         /// <summary>
         /// Gets last element in supplied comparer order.
@@ -225,7 +222,7 @@ namespace Nethermind.TxPool.Collections
         /// <returns>If element was removed. False if element was not present in pool.</returns>
         private bool TryRemove(TKey key, out TValue? value, [NotNullWhen(true)] out ICollection<TValue>? bucket)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             return TryRemoveNonLocked(key, false, out value, out bucket);
         }
@@ -295,7 +292,7 @@ namespace Nethermind.TxPool.Collections
         /// <returns>Elements matching predicated criteria.</returns>
         public IEnumerable<TValue> TakeWhile(TGroupKey groupKey, Predicate<TValue> where)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
@@ -325,7 +322,7 @@ namespace Nethermind.TxPool.Collections
         /// <returns>True if element is present in pool.</returns>
         public bool ContainsKey(TKey key)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             return _cacheMap.ContainsKey(key);
         }
@@ -338,7 +335,7 @@ namespace Nethermind.TxPool.Collections
         /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
         public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             return TryGetValueNonLocked(key, out value);
         }
@@ -354,7 +351,7 @@ namespace Nethermind.TxPool.Collections
         /// <returns>If element was inserted. False if element was already present in pool.</returns>
         public bool TryInsert(TKey key, TValue value, out TValue? removed)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             if (CanInsert(key, value))
             {
@@ -423,7 +420,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (value is null)
             {
-                throw new ArgumentNullException();
+                throw new ArgumentNullException(nameof(value));
             }
 
             return !_cacheMap.ContainsKey(key);
@@ -497,14 +494,14 @@ namespace Nethermind.TxPool.Collections
 
         public bool ContainsBucket(TGroupKey groupKey)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             return _buckets.ContainsKey(groupKey);
         }
 
         public bool TryGetBucket(TGroupKey groupKey, out TValue[] items)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
@@ -518,7 +515,7 @@ namespace Nethermind.TxPool.Collections
 
         public bool TryGetBucketsWorstValue(TGroupKey groupKey, out TValue? item)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
@@ -532,7 +529,7 @@ namespace Nethermind.TxPool.Collections
 
         public bool BucketAny(TGroupKey groupKey, Func<TValue, bool> predicate)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
             return _buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket)
                 && bucket.Any(predicate);
         }
@@ -572,13 +569,13 @@ namespace Nethermind.TxPool.Collections
         private string GetInfoAboutWorstValues()
         {
             TKey? key = _worstValue.GetValueOrDefault().Value;
-            var isWorstValueInPool = _cacheMap.TryGetValue(key, out TValue? value) && value is not null;
+            bool isWorstValueInPool = _cacheMap.TryGetValue(key, out TValue? value) && value is not null;
             return $"Number of items in worstSortedValues: {_worstSortedValues.Count}; IsWorstValueInPool: {isWorstValueInPool};";
         }
 
         public void UpdatePool(Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             foreach ((TGroupKey groupKey, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
@@ -590,7 +587,7 @@ namespace Nethermind.TxPool.Collections
 
         public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))

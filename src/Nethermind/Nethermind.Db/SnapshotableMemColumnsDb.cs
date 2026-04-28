@@ -53,15 +53,9 @@ namespace Nethermind.Db
 
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
-        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore)
-        {
-            return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
-        }
+        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
 
-        public IColumnsWriteBatch<TKey> StartWriteBatch()
-        {
-            return new InMemoryColumnWriteBatch<TKey>(this);
-        }
+        public IColumnsWriteBatch<TKey> StartWriteBatch() => new InMemoryColumnWriteBatch<TKey>(this);
 
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
@@ -96,10 +90,7 @@ namespace Nethermind.Db
         {
             private readonly Dictionary<TKey, IKeyValueStoreSnapshot> _snapshots = snapshots;
 
-            public IReadOnlyKeyValueStore GetColumn(TKey key)
-            {
-                return _snapshots[key];
-            }
+            public IReadOnlyKeyValueStore GetColumn(TKey key) => _snapshots[key];
 
             public void Dispose()
             {

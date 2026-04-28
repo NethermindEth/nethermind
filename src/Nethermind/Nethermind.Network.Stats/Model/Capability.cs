@@ -7,16 +7,10 @@ using System.Text.Json.Serialization;
 namespace Nethermind.Stats.Model
 {
     [JsonConverter(typeof(CapabilityConverter))]
-    public class Capability : IEquatable<Capability>
+    public class Capability(string protocolCode, int version) : IEquatable<Capability>
     {
-        public Capability(string protocolCode, int version)
-        {
-            ProtocolCode = protocolCode;
-            Version = version;
-        }
-
-        public string ProtocolCode { get; }
-        public int Version { get; }
+        public string ProtocolCode { get; } = protocolCode;
+        public int Version { get; } = version;
 
         public bool Equals(Capability other)
         {
@@ -48,14 +42,8 @@ namespace Nethermind.Stats.Model
             return obj.GetType() == GetType() && Equals((Capability)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(ProtocolCode, Version);
-        }
+        public override int GetHashCode() => HashCode.Combine(ProtocolCode, Version);
 
-        public override string ToString()
-        {
-            return string.Concat(ProtocolCode, Version);
-        }
+        public override string ToString() => string.Concat(ProtocolCode, Version);
     }
 }

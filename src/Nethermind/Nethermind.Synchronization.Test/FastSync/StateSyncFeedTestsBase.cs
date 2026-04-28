@@ -42,7 +42,7 @@ public abstract class StateSyncFeedTestsBase(
     int defaultPeerCount = 1,
     int defaultPeerMaxRandomLatency = 0)
 {
-    public const int TimeoutLength = 20000;
+    public const int TimeoutLength = 60000;
 
     // Chain length used for test block trees, use a constant to avoid shared state
     private const int TestChainLength = 100;
@@ -61,36 +61,36 @@ public abstract class StateSyncFeedTestsBase(
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         (_logger.UnderlyingLogger as ConsoleAsyncLogger)?.Flush();
-    }
 
     protected static StorageTree SetStorage(ITrieStore trieStore, byte i, Address address)
     {
-        StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, LimboLogs.Instance);
+        StorageTree remoteStorageTree = new(trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, LimboLogs.Instance);
         for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, [(byte)j, i]);
 
         remoteStorageTree.Commit();
         return remoteStorageTree;
     }
 
-    protected IContainer PrepareDownloader(RemoteDbContext remote, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
+    protected IContainer PrepareDownloader(RemoteDbContext remote, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10, Action<ContainerBuilder>? configureBuilder = null)
     {
         SyncPeerMock[] syncPeers = new SyncPeerMock[defaultPeerCount];
         for (int i = 0; i < defaultPeerCount; i++)
         {
-            Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
+            Node node = new(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
             {
                 EthDetails = "eth68",
             };
-            SyncPeerMock mock = new SyncPeerMock(remote.StateDb, remote.CodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
+            SyncPeerMock mock = new(remote.StateDb, remote.CodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
             mockMutator?.Invoke(mock);
             syncPeers[i] = mock;
         }
 
         ContainerBuilder builder = BuildTestContainerBuilder(remote, syncDispatcherAllocateTimeoutMs)
             .AddSingleton<SyncPeerMock[]>(syncPeers);
+
+        configureBuilder?.Invoke(builder);
 
         builder.RegisterBuildCallback((ctx) =>
         {
@@ -145,7 +145,7 @@ public abstract class StateSyncFeedTestsBase(
         return containerBuilder;
     }
 
-    protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength)
+    protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength, bool failOnTimeout = true)
     {
         // Note: The `RunContinuationsAsynchronously` is very important, or the thread might continue synchronously
         // which causes unexpected hang.
@@ -161,9 +161,14 @@ public abstract class StateSyncFeedTestsBase(
         safeContext.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
         safeContext.StartDispatcher(safeContext.CancellationToken);
 
-        await Task.WhenAny(
+        Task completed = await Task.WhenAny(
             dormantAgainSource.Task,
             Task.Delay(timeout));
+
+        if (failOnTimeout && completed != dormantAgainSource.Task)
+        {
+            Assert.Fail($"State sync did not reach Dormant within {timeout}ms.");
+        }
     }
 
     protected class SafeContext(
@@ -243,9 +248,9 @@ public abstract class StateSyncFeedTestsBase(
             Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth68" };
             _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
-            PruningConfig pruningConfig = new PruningConfig();
-            TestFinalizedStateProvider testFinalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
-            TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
+            PruningConfig pruningConfig = new();
+            TestFinalizedStateProvider testFinalizedStateProvider = new(pruningConfig.PruningBoundary);
+            TrieStore trieStore = new(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                 Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
             _snapServer = new SnapServer(
@@ -286,15 +291,11 @@ public abstract class StateSyncFeedTestsBase(
             return new ByteArrayListAdapter(responses);
         }
 
-        public void SetFilter(Hash256[]? availableHashes)
-        {
+        public void SetFilter(Hash256[]? availableHashes) =>
             _filter = availableHashes;
-        }
 
-        public void SetBlockTree(IBlockTree blockTree)
-        {
+        public void SetBlockTree(IBlockTree blockTree) =>
             _blockTree = blockTree;
-        }
 
         public override bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
@@ -307,15 +308,11 @@ public abstract class StateSyncFeedTestsBase(
             return false;
         }
 
-        public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
-        {
-            return Task.FromResult(_blockTree?.Head?.Header);
-        }
+        public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) =>
+            Task.FromResult(_blockTree?.Head?.Header);
 
-        public override Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
-        {
-            return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
-        }
+        public override Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token) =>
+            Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
 
         public override Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token) =>
             GetTrieNodes(new GetTrieNodesRequest()
@@ -324,11 +321,8 @@ public abstract class StateSyncFeedTestsBase(
                 AccountAndStoragePaths = SnapProtocolHandler.GetPathGroups(request),
             }, token);
 
-        public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
-        {
-            IByteArrayList? nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-            return Task.FromResult(nodes!);
-        }
+        public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
+            Task.FromResult(_snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token)!);
     }
 }
 

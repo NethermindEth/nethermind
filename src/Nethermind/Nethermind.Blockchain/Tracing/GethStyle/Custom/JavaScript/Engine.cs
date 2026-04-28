@@ -37,7 +37,9 @@ public class Engine : IDisposable
 
     [ThreadStatic] private static Engine? _currentEngine;
 
-    private static readonly V8Runtime _runtime = new();
+    private const int V8MaxOldSpaceMb = 128;
+
+    private static readonly V8Runtime _runtime = new(new V8RuntimeConstraints { MaxOldSpaceSize = V8MaxOldSpaceMb });
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
     private static readonly LruCache<int, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
@@ -47,11 +49,9 @@ public class Engine : IDisposable
         set => _currentEngine = value;
     }
 
-    static Engine()
-    {
+    static Engine() =>
         // compile default scripts in background thread
         Task.Run(CompileStandardScripts);
-    }
 
     private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
 
@@ -134,7 +134,7 @@ public class Engine : IDisposable
     private ITypedArray<byte> Slice(object input, long start, long end)
     {
         ArgumentNullException.ThrowIfNull(input);
-        var bytes = input.ToBytes();
+        byte[] bytes = input.ToBytes();
 
         return start < 0 || end < start || end > bytes.Length
             ? throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: available {bytes.Length}, offset {start}, size {end - start}")
@@ -151,6 +151,8 @@ public class Engine : IDisposable
     /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
         ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToTypedScriptArray();
+
+    public void Interrupt() => V8Engine.Interrupt();
 
     public void Dispose()
     {

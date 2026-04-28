@@ -29,7 +29,7 @@ public class FullStateFinderTests
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(Arg.Is<BlockHeader>((header) => header.StateRoot == _goodRoot)).Returns(true);
 
-        FullStateFinder finder = new FullStateFinder(blockTree, stateReader);
+        FullStateFinder finder = new(blockTree, stateReader);
         finder.FindBestFullState().Should().Be(950);
     }
 
@@ -44,7 +44,7 @@ public class FullStateFinderTests
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(Arg.Is<BlockHeader>((header) => header.StateRoot == _goodRoot)).Returns(true);
 
-        FullStateFinder finder = new FullStateFinder(blockTree, stateReader);
+        FullStateFinder finder = new(blockTree, stateReader);
         finder.FindBestFullState().Should().Be(50);
 
         BlockHeader parent = blockTree.FindHeader(50, BlockTreeLookupOptions.None)!;

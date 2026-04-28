@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -108,14 +108,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncConfig.AncientBodiesBarrierCalc);
         }
 
-        private void ResetSyncStatusList()
-        {
-            _syncStatusList = new SyncStatusList(
+        private void ResetSyncStatusList() => _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedBodyNumber,
                 _syncConfig.AncientBodiesBarrier);
-        }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 
@@ -240,16 +237,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private int InsertBodies(BodiesSyncBatch batch)
         {
-            bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
             BlockBody[]? responses = batch.Response?.Bodies ?? [];
+            int responseIndex = 0;
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = responses.Length <= i
+                BlockBody? body = responses.Length <= responseIndex
                     ? null
-                    : responses[i];
+                    : responses[responseIndex];
 
                 // last batch
                 if (blockInfo is null)
@@ -257,31 +254,37 @@ namespace Nethermind.Synchronization.FastBlocks
                     break;
                 }
 
-                if (body is not null)
+                if (body is null)
                 {
-                    Block? block = null;
-                    bool isValid = !hasBreachedProtocol && TryPrepareBlock(blockInfo, body, out block);
-                    if (isValid)
+                    if (responseIndex < responses.Length)
                     {
-                        validResponsesCount++;
-                        InsertOneBlock(block!);
+                        responseIndex++;
                     }
-                    else
-                    {
-                        hasBreachedProtocol = true;
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
-                        if (batch.ResponseSourcePeer is not null)
-                        {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
-                        }
+                    _syncStatusList.MarkPending(blockInfo);
+                    continue;
+                }
 
-                        _syncStatusList.MarkPending(blockInfo);
-                    }
+                if (TryPrepareBlock(blockInfo, body, out Block? block))
+                {
+                    responseIndex++;
+                    validResponsesCount++;
+                    InsertOneBlock(block!);
                 }
                 else
                 {
+                    // Body responses can be sparse, so an invalid body may belong to a later requested header.
                     _syncStatusList.MarkPending(blockInfo);
+                }
+            }
+
+            if (responseIndex < responses.Length)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
+
+                if (batch.ResponseSourcePeer is not null)
+                {
+                    _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
                 }
             }
 

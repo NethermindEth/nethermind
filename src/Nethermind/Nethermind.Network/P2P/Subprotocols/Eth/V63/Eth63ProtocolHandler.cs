@@ -47,9 +47,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override void HandleMessageCore(ZeroPacket message)
         {
-            base.HandleMessage(message);
+            base.HandleMessageCore(message);
             int size = message.Content.ReadableBytes;
 
             switch (message.PacketType)
@@ -75,14 +75,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override string Name => "eth63";
 
-        protected virtual void Handle(ReceiptsMessage msg, long size)
-        {
-            _receiptsRequests.Handle((msg.TxReceipts, size), size);
-        }
+        protected virtual void Handle(ReceiptsMessage msg, long size) => _receiptsRequests.Handle((msg.TxReceipts, size), size);
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            using var message = msg;
+            using GetNodeDataMessage message = msg;
 
             long startTime = Stopwatch.GetTimestamp();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
@@ -97,10 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
-        protected virtual void Handle(NodeDataMessage msg, int size)
-        {
-            _nodeDataRequests.Handle(msg.Data, size);
-        }
+        protected virtual void Handle(NodeDataMessage msg, int size) => _nodeDataRequests.Handle(msg.Data, size);
 
         public override Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
         {

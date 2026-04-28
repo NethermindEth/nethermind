@@ -33,17 +33,19 @@ internal static partial class XdcExtensions
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
-        IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
-        if (spec is null)
-            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
-        spec.ApplyV2Config(round);
-        return spec;
+        if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
+            return xdcProvider.GetXdcSpec(xdcBlockHeader, round);
+        if (round == 0)
+            round = xdcBlockHeader.ExtraConsensusData?.BlockRound ?? 0;
+        return specProvider.GetXdcSpec(xdcBlockHeader.Number, round);
     }
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
     {
-        IXdcReleaseSpec spec = specProvider.GetSpec(blockNumber, null) as IXdcReleaseSpec;
-        if (spec is null)
+        if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
+            return xdcProvider.GetXdcSpec(blockNumber, round);
+        // Fallback for testing; note that this mutates the spec instance
+        if (specProvider.GetSpec(blockNumber, null) is not IXdcReleaseSpec spec)
             throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
         spec.ApplyV2Config(round);
         return spec;
@@ -84,7 +86,7 @@ internal static partial class XdcExtensions
         ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
         if (sigBytes.Length != Signature.Size + 2)
             throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
-        Signature signature = new Signature(sigBytes.Slice(2, 64), sigBytes[66]);
+        Signature signature = new(sigBytes.Slice(2, 64), sigBytes[66]);
         decoderContext.SkipItem();
         return signature;
     }
@@ -96,5 +98,12 @@ internal static partial class XdcExtensions
         Signature signature = DecodeSignature(ref ctx);
         stream.Position = ctx.Position;
         return signature;
+    }
+
+    public static bool IsGapPlusOne(this XdcSubnetBlockHeader header, IXdcReleaseSpec spec)
+    {
+        if (header.Number == 1)
+            return true;
+        return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
     }
 }

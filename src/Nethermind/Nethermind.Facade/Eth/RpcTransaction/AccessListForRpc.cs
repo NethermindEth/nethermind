@@ -18,15 +18,9 @@ public class AccessListForRpc
 {
     private readonly IEnumerable<Item> _items;
 
-    public AccessListForRpc()
-    {
-        _items = Array.Empty<Item>();
-    }
+    public AccessListForRpc() => _items = Array.Empty<Item>();
 
-    private AccessListForRpc(IEnumerable<Item> items)
-    {
-        _items = items;
-    }
+    private AccessListForRpc(IEnumerable<Item> items) => _items = items;
 
     private class Item
     {
@@ -75,7 +69,7 @@ public class AccessListForRpc
             const int maxStorageKeysPerItem = 1000;
             const int maxStorageKeys = 10000;
 
-            var items = new List<Item>();
+            List<Item> items = new();
             int itemCount = 0;
             int totalItemStorageItemsCount = 0;
 
@@ -160,9 +154,6 @@ public class AccessListForRpc
         }
 
 
-        public override void Write(Utf8JsonWriter writer, AccessListForRpc value, JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, value._items, options);
-        }
+        public override void Write(Utf8JsonWriter writer, AccessListForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value._items, options);
     }
 }

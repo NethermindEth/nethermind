@@ -19,12 +19,12 @@ namespace Nethermind.Era1;
 /// Main reader for era file. Uses E2StoreReader which internally mmap the whole file. This reader is thread safe
 /// allowing multiple thread to read from it at the same time.
 /// </summary>
-public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
+public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly E2StoreReader _fileReader;
+    private readonly E2StoreReader _fileReader = e2;
 
     public long FirstBlock => _fileReader.First;
     public long LastBlock => _fileReader.LastBlock;
@@ -34,15 +34,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     {
     }
 
-
-    public EraReader(E2StoreReader e2)
-    {
-        _fileReader = e2;
-    }
-
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        foreach (var blockNumber in EnumerateBlockNumber())
+        foreach (long blockNumber in EnumerateBlockNumber())
         {
             EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
             yield return (result.Block, result.Receipts);
@@ -181,43 +175,35 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             out UInt256 currentTotalDifficulty);
         header.TotalDifficulty = currentTotalDifficulty;
 
-        Block block = new Block(header, body);
+        Block block = new(header, body);
         return new EntryReadResult(block, receipts);
     }
 
     private BlockBody DecodeBody(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        Rlp.ValueDecoderContext ctx = new(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        Rlp.ValueDecoderContext ctx = new(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 
     private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        Rlp.ValueDecoderContext ctx = new(buffer.Span);
         return RlpDecoderExtensions.DecodeArray(_receiptDecoder, ref ctx, RlpBehaviors.None);
     }
 
-    public ValueHash256 CalculateChecksum()
-    {
-        return _fileReader.CalculateChecksum();
-    }
+    public ValueHash256 CalculateChecksum() => _fileReader.CalculateChecksum();
 
     public void Dispose() => _fileReader.Dispose();
 
-    private struct EntryReadResult
+    private struct EntryReadResult(Block block, TxReceipt[] receipts)
     {
-        public EntryReadResult(Block block, TxReceipt[] receipts)
-        {
-            Block = block;
-            Receipts = receipts;
-        }
-        public Block Block { get; }
-        public TxReceipt[] Receipts { get; }
+        public Block Block { get; } = block;
+        public TxReceipt[] Receipts { get; } = receipts;
     }
 }

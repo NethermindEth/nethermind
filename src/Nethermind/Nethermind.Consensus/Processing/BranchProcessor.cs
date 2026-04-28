@@ -197,13 +197,21 @@ public class BranchProcessor(
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        suggestedBlock.Transactions.Length < 3
+        ShouldSkipPreWarming(suggestedBlock, spec)
             ? null
             : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,
                 spec,
                 token,
                 beaconBlockRootHandler);
+
+    // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
+    // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
+    private bool ShouldSkipPreWarming(Block suggestedBlock, IReleaseSpec spec)
+        => suggestedBlock.Transactions.Length < 3 && !ShouldBalReadWarm(suggestedBlock, spec);
+
+    private bool ShouldBalReadWarm(Block suggestedBlock, IReleaseSpec spec)
+        => preWarmer is not null && preWarmer.IsBalReadWarmingEnabled(spec) && suggestedBlock.BlockAccessList is not null;
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
@@ -222,12 +230,10 @@ public class BranchProcessor(
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(Block suggestedBlock)
-        {
+        public static void CalculateInBackground(Block suggestedBlock) =>
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
             ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
-        }
 
         void IThreadPoolWorkItem.Execute()
         {

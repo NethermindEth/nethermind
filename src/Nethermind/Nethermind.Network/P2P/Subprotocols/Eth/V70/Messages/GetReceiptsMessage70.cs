@@ -14,10 +14,7 @@ public class GetReceiptsMessage70 : Eth66Message<V63.Messages.GetReceiptsMessage
     }
 
     public GetReceiptsMessage70(long requestId, long firstBlockReceiptIndex, V63.Messages.GetReceiptsMessage ethMessage)
-        : base(requestId, ethMessage)
-    {
-        FirstBlockReceiptIndex = firstBlockReceiptIndex;
-    }
+        : base(requestId, ethMessage) => FirstBlockReceiptIndex = firstBlockReceiptIndex;
 
     public override string ToString() => $"GetReceipts70({RequestId}, start={FirstBlockReceiptIndex}, {EthMessage})";
 }

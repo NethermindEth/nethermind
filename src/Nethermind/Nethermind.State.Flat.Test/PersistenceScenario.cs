@@ -302,7 +302,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat) Assert.Ignore("Preimage mode does not support raw operation");
 
         Account acc = TestItem.GenerateIndexedAccount(0);
-        Hash256 addrHash = new Hash256(TestItem.AddressA.ToAccountPath.Bytes);
+        Hash256 addrHash = new(TestItem.AddressA.ToAccountPath.Bytes);
         Hash256 slotHash = Keccak.Compute([1, 2, 3]);
 
         // Test raw account operations
@@ -317,7 +317,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Assert.That(rawAccount, Is.Not.Null);
 
             // Decode and verify
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(rawAccount);
+            Rlp.ValueDecoderContext ctx = new(rawAccount);
             Assert.That(AccountDecoder.Instance.Decode(ref ctx), Is.EqualTo(acc));
         }
 
@@ -652,8 +652,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         hash1Bytes[4] = 0x11;
         hash2Bytes[4] = 0x22;
 
-        Hash256 account1Hash = new Hash256(hash1Bytes);
-        Hash256 account2Hash = new Hash256(hash2Bytes);
+        Hash256 account1Hash = new(hash1Bytes);
+        Hash256 account2Hash = new(hash2Bytes);
 
         TreePath shortPath = TreePath.FromHexString("1234"); // -> StorageNodes
         TreePath longPath = TreePath.FromHexString("0123456789abcdef0123456789abcdef01234567"); // -> FallbackNodes

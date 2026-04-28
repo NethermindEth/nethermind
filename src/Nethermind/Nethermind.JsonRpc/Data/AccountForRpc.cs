@@ -11,15 +11,9 @@ public readonly struct AccountForRpc
 {
     private readonly Account? _account;
     private readonly AccountStruct? _accountStruct;
-    public AccountForRpc(Account account)
-    {
-        _account = account;
-    }
+    public AccountForRpc(Account account) => _account = account;
 
-    public AccountForRpc(in AccountStruct account)
-    {
-        _accountStruct = account;
-    }
+    public AccountForRpc(in AccountStruct account) => _accountStruct = account;
 
     public readonly ValueHash256 CodeHash => (_accountStruct?.CodeHash ?? _account?.CodeHash.ValueHash256)!.Value;
     public readonly ValueHash256 StorageRoot => (_accountStruct?.StorageRoot ?? _account?.StorageRoot.ValueHash256)!.Value;

@@ -54,10 +54,9 @@ namespace Nethermind.Test.Runner
 
         private void WriteErr(StateTestTxTrace txTrace)
         {
-            // Emit each opcode step as an EIP-3155 JSON line to stderr.
-            foreach (var entry in txTrace.Entries)
+            foreach (StateTestTxTraceEntry entry in txTrace.Entries)
             {
-                var stackJson = string.Join(",", entry.Stack.Select(s => $"\"{s}\""));
+                string stackJson = string.Join(",", entry.Stack.Select(s => $"\"{s}\""));
                 Console.Error.Write($"{{\"pc\":{entry.Pc},\"op\":{entry.Operation},\"gas\":\"0x{entry.Gas:x}\",\"gasCost\":\"0x{entry.GasCost:x}\",\"stack\":[{stackJson}],\"depth\":{entry.Depth},\"memSize\":{entry.MemSize}");
                 if (!string.IsNullOrEmpty(entry.Error))
                     Console.Error.Write($",\"error\":\"{entry.Error}\"");
@@ -103,7 +102,7 @@ namespace Nethermind.Test.Runner
                     txTracer.IsTracingStack = _traceStack;
                     result = RunTest(test, txTracer);
 
-                    var txTrace = txTracer.BuildResult();
+                    StateTestTxTrace txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
                     txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
@@ -129,9 +128,9 @@ namespace Nethermind.Test.Runner
                 // EIP-3155 always needs stack; IsTracingStack controls whether
                 // the EVM calls SetOperationStack at all.
                 txTracer.IsTracingStack = true;
-                var result = RunTest(test, txTracer);
+                EthereumTestResult result = RunTest(test, txTracer);
 
-                var txTrace = txTracer.BuildResult();
+                StateTestTxTrace txTrace = txTracer.BuildResult();
                 txTrace.Result.Time = result.TimeInMs;
                 txTrace.State.StateRoot = result.StateRoot;
                 txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;

@@ -15,10 +15,7 @@ public class Root : IEquatable<Root>, IComparable<Root>
 
     public byte[] Bytes { get; }
 
-    public Root()
-    {
-        Bytes = new byte[Length];
-    }
+    public Root() => Bytes = new byte[Length];
 
     public Root(UInt256 span)
         : this(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateReadOnlySpan(ref span, 1)))
@@ -30,15 +27,9 @@ public class Root : IEquatable<Root>, IComparable<Root>
     {
     }
 
-    public void AsInt(out UInt256 intRoot)
-    {
-        intRoot = new UInt256(Bytes.AsSpan());
-    }
+    public void AsInt(out UInt256 intRoot) => intRoot = new UInt256(Bytes.AsSpan());
 
-    public static Root Wrap(byte[] bytes)
-    {
-        return new Root(bytes);
-    }
+    public static Root Wrap(byte[] bytes) => new(bytes);
 
     private Root(byte[] bytes)
     {
@@ -64,15 +55,9 @@ public class Root : IEquatable<Root>, IComparable<Root>
 
     public static Root Zero { get; } = new Root(new byte[Length]);
 
-    public ReadOnlySpan<byte> AsSpan()
-    {
-        return new ReadOnlySpan<byte>(Bytes);
-    }
+    public ReadOnlySpan<byte> AsSpan() => new(Bytes);
 
-    public override int GetHashCode()
-    {
-        return BinaryPrimitives.ReadInt32LittleEndian(AsSpan()[..4]);
-    }
+    public override int GetHashCode() => BinaryPrimitives.ReadInt32LittleEndian(AsSpan()[..4]);
 
     public static bool operator ==(Root left, Root right)
     {
@@ -80,7 +65,7 @@ public class Root : IEquatable<Root>, IComparable<Root>
         return left.Equals(right);
     }
 
-    public static explicit operator Root(ReadOnlySpan<byte> span) => new Root(span);
+    public static explicit operator Root(ReadOnlySpan<byte> span) => new(span);
 
     public static explicit operator ReadOnlySpan<byte>(Root value) => value.AsSpan();
 
@@ -89,10 +74,7 @@ public class Root : IEquatable<Root>, IComparable<Root>
         return !(left == right);
     }
 
-    public override string ToString()
-    {
-        return Bytes.ToHexString(true);
-    }
+    public override string ToString() => Bytes.ToHexString(true);
 
     public bool Equals(Root? other)
     {
@@ -101,14 +83,9 @@ public class Root : IEquatable<Root>, IComparable<Root>
         return Bytes.SequenceEqual(other.Bytes);
     }
 
-    public override bool Equals(object? obj)
-    {
-        return ReferenceEquals(this, obj) || obj is Root other && Equals(other);
-    }
+    public override bool Equals(object? obj) => ReferenceEquals(this, obj) || obj is Root other && Equals(other);
 
-    public int CompareTo(Root? other)
-    {
+    public int CompareTo(Root? other) =>
         // lexicographic compare
-        return other is null ? 1 : AsSpan().SequenceCompareTo(other.AsSpan());
-    }
+        other is null ? 1 : AsSpan().SequenceCompareTo(other.AsSpan());
 }

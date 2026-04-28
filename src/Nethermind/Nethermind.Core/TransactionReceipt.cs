@@ -70,65 +70,44 @@ namespace Nethermind.Core
             => _bloom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);
     }
 
-    public ref struct TxReceiptStructRef
+    public ref struct TxReceiptStructRef(TxReceipt receipt)
     {
         /// <summary>
         /// EIP-2718 transaction type
         /// </summary>
-        public TxType TxType { get; set; }
+        public TxType TxType { get; set; } = receipt.TxType;
 
         /// <summary>
         ///     EIP-658
         /// </summary>
-        public byte StatusCode { get; set; }
-        public long BlockNumber { get; set; }
-        public Hash256StructRef BlockHash;
-        public Hash256StructRef TxHash;
-        public int Index { get; set; }
-        public long GasUsed { get; set; }
-        public long GasUsedTotal { get; set; }
-        public AddressStructRef Sender;
-        public AddressStructRef ContractAddress;
-        public AddressStructRef Recipient;
+        public byte StatusCode { get; set; } = receipt.StatusCode;
+        public long BlockNumber { get; set; } = receipt.BlockNumber;
+        public Hash256StructRef BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
+        public Hash256StructRef TxHash = (receipt.TxHash ?? Keccak.Zero).ToStructRef();
+        public int Index { get; set; } = receipt.Index;
+        public long GasUsed { get; set; } = receipt.GasUsed;
+        public long GasUsedTotal { get; set; } = receipt.GasUsedTotal;
+        public AddressStructRef Sender = (receipt.Sender ?? Address.Zero).ToStructRef();
+        public AddressStructRef ContractAddress = (receipt.ContractAddress ?? Address.Zero).ToStructRef();
+        public AddressStructRef Recipient = (receipt.Recipient ?? Address.Zero).ToStructRef();
 
         [Todo(Improve.Refactor, "Receipt tracer?")]
-        public Span<byte> ReturnValue;
+        public Span<byte> ReturnValue = receipt.ReturnValue;
 
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public Hash256StructRef PostTransactionState;
+        public Hash256StructRef PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
 
-        public BloomStructRef Bloom;
+        public BloomStructRef Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
 
         /// <summary>
         /// Rlp encoded logs
         /// </summary>
-        public ReadOnlySpan<byte> LogsRlp { get; set; }
+        public ReadOnlySpan<byte> LogsRlp { get; set; } = default;
 
-        public LogEntry[]? Logs { get; set; }
+        public LogEntry[]? Logs { get; set; } = receipt.Logs;
 
-        public string? Error { get; set; }
-
-        public TxReceiptStructRef(TxReceipt receipt)
-        {
-            TxType = receipt.TxType;
-            StatusCode = receipt.StatusCode;
-            BlockNumber = receipt.BlockNumber;
-            BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
-            TxHash = (receipt.TxHash ?? Keccak.Zero).ToStructRef();
-            Index = receipt.Index;
-            GasUsed = receipt.GasUsed;
-            GasUsedTotal = receipt.GasUsedTotal;
-            Sender = (receipt.Sender ?? Address.Zero).ToStructRef();
-            ContractAddress = (receipt.ContractAddress ?? Address.Zero).ToStructRef();
-            Recipient = (receipt.Recipient ?? Address.Zero).ToStructRef();
-            ReturnValue = receipt.ReturnValue;
-            PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
-            Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
-            Logs = receipt.Logs;
-            LogsRlp = default;
-            Error = receipt.Error;
-        }
+        public string? Error { get; set; } = receipt.Error;
     }
 }

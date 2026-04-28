@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -15,6 +15,7 @@
     <PackageReference Include="Ckzg.Bindings" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
+    <PackageReference Include="Nethermind.ZiskBindings" Condition="$(EnableZkEvm) == 'true'" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="Nethermind.Crypto.Bls" />
   </ItemGroup>

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -45,32 +46,15 @@ namespace Ethereum.Test.Base;
 
 public abstract class BlockchainTestBase
 {
-    private static readonly ILogger _logger;
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
-    private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
+    private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
 
-    static BlockchainTestBase()
-    {
-        DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logger = _logManager.GetClassLogger<BlockchainTestBase>();
-    }
-
-    private class DifficultyCalculatorWrapper : IDifficultyCalculator
-    {
-        public IDifficultyCalculator? Wrapped { get; set; }
-
-        public UInt256 Calculate(BlockHeader header, BlockHeader parent)
-        {
-            if (Wrapped is null)
-            {
-                throw new InvalidOperationException(
-                    $"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
-            }
-
-            return Wrapped.Calculate(header, parent);
-        }
-    }
+    /// <summary>
+    /// Override to force parallel or sequential BAL execution in tests.
+    /// Null means use the default config value.
+    /// </summary>
+    protected virtual bool? ParallelExecutionOverride => null;
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
@@ -106,7 +90,9 @@ public abstract class BlockchainTestBase
             await KzgPolynomialCommitments.InitializeAsync();
         }
 
-        DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
+        // Per-test fresh instance bound to this test's specProvider. Tests run with
+        // [Parallelizable(ParallelScope.All)] so anything shared-mutable across tests would race.
+        IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
         IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
         bool isPostMerge = test.Network != London.Instance &&
                            test.Network != Berlin.Instance &&
@@ -131,15 +117,32 @@ public abstract class BlockchainTestBase
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarmStateOnBlockProcessing = false;
+        if (ParallelExecutionOverride.HasValue)
+        {
+            blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
+        }
+
+        if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
+        {
+            mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(1).TotalMilliseconds;
+        }
+
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            .AddSingleton<IDifficultyCalculator>(difficultyCalculator)
+            // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty
+            // matching, so legacy invalid-block fixtures (wrongDifficulty_*) are actually rejected.
+            .AddSingleton<ISealValidator>(new DifficultyOnlySealValidator(difficultyCalculator))
             .AddSingleton<ITxPool>(NullTxPool.Instance);
 
-        if (isEngineTest)
+        // Wire in the merge module for any post-Merge test (engine API flow OR post-Paris
+        // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
+        // EIP-3675 post-Merge field rules (difficulty=0, nonce=0, empty UnclesHash) which the
+        // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
+        if (isEngineTest || isPostMerge)
         {
             containerBuilder.AddModule(new TestMergeModule(configProvider));
         }
@@ -272,7 +275,7 @@ public abstract class BlockchainTestBase
             }
 
             Assert.That(differences, Is.Empty, "differences");
-            var result = new EthereumTestResult(test.Name, test.ForkName, testPassed);
+            EthereumTestResult result = new(test.Name, test.ForkName, testPassed);
             if (headBlock?.Hash is not null)
                 result.LastBlockHash = headBlock.Hash;
             if (!string.IsNullOrEmpty(lastPayloadStatus))
@@ -296,8 +299,8 @@ public abstract class BlockchainTestBase
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
         for (int i = 0; i < correctRlp.Count; i++)
         {
-            // Mimic the actual behaviour where block goes through validating sync manager
-            correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
+            // Setting IsPostMerge here would bypass PoSSwitcher and hide divergences
+            // between CI and hive's production pipeline (the bug this test path exists to catch).
 
             // For tests with reorgs, find the actual parent header from block tree
             parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
@@ -305,9 +308,13 @@ public abstract class BlockchainTestBase
             Assert.That(correctRlp[i].Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
 
             bool expectsException = correctRlp[i].ExpectedException is not null;
-            // Validate block structure first (mimics SyncServer validation)
-            bool blockValid = blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError);
-            if (blockValid)
+            // Validate block structure first (mimics SyncServer validation). Pre-validation is
+            // not authoritative for invalid-block fixtures: many EEST exceptions (state root,
+            // BAL hash, BAL gas-limit floor, etc.) are only detectable post-execution. So an
+            // expected-to-fail block may pass pre-validation here; rejection is then expected
+            // to come from the processor (synchronous InvalidBlockException) or from the
+            // end-of-test LastBlockHash check after the chain head is settled.
+            if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError))
             {
                 try
                 {
@@ -339,7 +346,7 @@ public abstract class BlockchainTestBase
         return (parentHeader, lastBlockError);
     }
 
-    private static readonly Dictionary<int, int> s_newPayloadParamCounts = Enumerable
+    private static readonly Dictionary<int, int> NewPayloadParamCounts = Enumerable
         .Range(1, EngineApiVersions.NewPayload.Latest)
         .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
             ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
@@ -359,41 +366,133 @@ public abstract class BlockchainTestBase
             int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            int paramCount = s_newPayloadParamCounts[newPayloadVersion];
+            int paramCount = NewPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
-            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext,
-                "engine_newPayloadV" + newPayloadVersion, paramsJson);
+            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
             if (npResponse is JsonRpcErrorResponse errorResponse)
             {
-                if (validationError is null)
-                    throw new Exception(
-                        $"engine_newPayloadV{newPayloadVersion} unexpected RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
-                continue;
+                AssertExpectedRpcError(errorResponse, validationError, newPayloadVersion);
             }
-
-            PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
-            lastStatus = payloadStatus.Status;
-            if (payloadStatus.ValidationError is not null)
-                lastValidationError = payloadStatus.ValidationError;
-            string expectedStatus = validationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
-            if (payloadStatus.Status != expectedStatus)
-                throw new Exception(
-                    $"engine_newPayloadV{newPayloadVersion}: expected {expectedStatus} status" +
-                    (validationError is not null ? $" for validation error \"{validationError}\"" : "") +
-                    $", got {payloadStatus.Status}" +
-                    (payloadStatus.ValidationError is not null ? $" (err: {payloadStatus.ValidationError})" : ""));
-
-            if (payloadStatus.Status == PayloadStatus.Valid)
+            else
             {
-                string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
-                AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+
+                if (payloadStatus.Status == PayloadStatus.Valid)
+                {
+                    string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
+                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                }
             }
         }
         return (lastStatus, lastValidationError);
     }
+
+    private static void AssertExpectedRpcError(JsonRpcErrorResponse errorResponse, string? validationError, int payloadVersion) =>
+        Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
+    {
+        string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
+        Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
+
+        if (expectedValidationError is not null)
+            AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
+    }
+
+    private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
+    {
+        Assert.That(actualError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} returned INVALID without validation error. Expected: {expectedError}");
+
+        string[] mapped = MapValidationErrorsToEestExceptions(actualError!);
+        string[] expected = expectedError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        bool matches = expected.Any(e => mapped.Contains(e) || actualError!.Contains(e, StringComparison.Ordinal));
+
+        Assert.That(matches, Is.True, $"engine_newPayloadV{payloadVersion} unexpected validation error. Actual: {actualError}. Mapped: {string.Join("|", mapped)}. Expected: {expectedError}");
+    }
+
+    // Mirrors execution-specs NethermindExceptionMapper: client validation text -> EEST exception ids.
+    private static readonly (string ExpectedError, string Substring)[] ValidationErrorSubstringMappings =
+    [
+        ("TransactionException.SENDER_NOT_EOA", "sender has deployed code"),
+        ("TransactionException.INTRINSIC_GAS_TOO_LOW", "intrinsic gas too low"),
+        ("TransactionException.INTRINSIC_GAS_BELOW_FLOOR_GAS_COST", "intrinsic gas too low"),
+        ("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS", "miner premium is negative"),
+        ("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS", "max fee per gas less than block base fee"),
+        ("TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS", "InvalidMaxPriorityFeePerGas: Cannot be higher than maxFeePerGas"),
+        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "Block gas limit exceeded"),
+        ("TransactionException.NONCE_IS_MAX", "NonceTooHigh"),
+        ("TransactionException.INITCODE_SIZE_EXCEEDED", "max initcode size exceeded"),
+        ("TransactionException.NONCE_MISMATCH_TOO_LOW", "transaction nonce is too low"),
+        ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "transaction nonce is too high"),
+        ("TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS", "InsufficientMaxFeePerBlobGas: Not enough to cover blob gas fee"),
+        ("TransactionException.TYPE_1_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("TransactionException.TYPE_2_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("TransactionException.TYPE_3_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("TransactionException.TYPE_3_TX_ZERO_BLOBS", "blob transaction must have at least 1 blob"),
+        ("TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH", "InvalidBlobVersionedHashVersion: Blob version not supported"),
+        ("TransactionException.TYPE_3_TX_CONTRACT_CREATION", "blob transaction of type create"),
+        ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "MissingAuthorizationList: Must be set"),
+        ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "NotAllowedCreateTransaction: To must be set"),
+        ("TransactionException.TYPE_4_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch: Blob gas in header does not match calculated"),
+        ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch: Blob gas in header does not match calculated"),
+        ("BlockException.INVALID_REQUESTS", "InvalidRequestsHash: Requests hash mismatch in block"),
+        ("BlockException.INVALID_GAS_USED_ABOVE_LIMIT", "ExceededGasLimit: Gas used exceeds gas limit."),
+        ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit: Gas used exceeds gas limit."),
+        ("BlockException.RLP_BLOCK_LIMIT_EXCEEDED", "ExceededBlockSizeLimit: Exceeded block size limit"),
+        ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", "DepositsInvalid: Invalid deposit event layout:"),
+        ("BlockException.INVALID_BASEFEE_PER_GAS", "InvalidBaseFeePerGas: Does not match calculated"),
+        ("BlockException.INVALID_BLOCK_TIMESTAMP_OLDER_THAN_PARENT", "InvalidTimestamp: Timestamp in header cannot be lower than ancestor"),
+        ("BlockException.INVALID_BLOCK_NUMBER", "InvalidBlockNumber: Block number does not match the parent"),
+        ("BlockException.EXTRA_DATA_TOO_BIG", "InvalidExtraData: Extra data in header is not valid"),
+        ("BlockException.INVALID_GASLIMIT", "InvalidGasLimit: Gas limit is not correct"),
+        ("BlockException.INVALID_RECEIPTS_ROOT", "InvalidReceiptsRoot: Receipts root in header does not match"),
+        ("BlockException.INVALID_LOG_BLOOM", "InvalidLogsBloom: Logs bloom in header does not match"),
+        ("BlockException.INVALID_STATE_ROOT", "InvalidStateRoot: State root in header does not match"),
+        ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
+        ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockLevelAccessListExceededSizeLimit:"),
+        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockLevelAccessListExceededSizeLimit:"),
+    ];
+
+    private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
+
+    private static readonly (string ExpectedError, Regex Pattern)[] ValidationErrorRegexMappings =
+    [
+        ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
+        ("TransactionException.TYPE_3_TX_WITH_FULL_BLOBS", ValidationErrorRegex(@"Transaction \d+ is not valid")),
+        ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
+        ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),
+        ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", ValidationErrorRegex(@"TxGasLimitCapExceeded: Gas limit \d+ \w+ cap of \d+\.?")),
+        ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
+        ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
+        ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations)Empty: Contract is not deployed\.")),
+        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations)Failed: Contract execution failed\.")),
+        ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),
+        ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
+        ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
+        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
+        ("BlockException.INVALID_BAL_EXTRA_ACCOUNT", ValidationErrorRegex(@"Error decoding block access list:.*Account changes were in incorrect order")),
+        ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
+        ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
+        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
+    ];
+
+    private static string[] MapValidationErrorsToEestExceptions(string validationError) =>
+    [
+        .. ValidationErrorSubstringMappings
+            .Where(m => validationError.Contains(m.Substring, StringComparison.Ordinal))
+            .Select(m => m.ExpectedError)
+            .Concat(ValidationErrorRegexMappings
+                .Where(m => m.Pattern.IsMatch(validationError))
+                .Select(m => m.ExpectedError))
+            .Distinct()
+    ];
+
+    private static Regex ValidationErrorRegex(string pattern) => new(pattern, ValidationErrorRegexOptions);
 
     private static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
     {
@@ -403,19 +502,10 @@ public abstract class BlockchainTestBase
     }
 
     private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
-        SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion,
-            $$$"""[{"headBlockHash":"{{{blockHash}}}","safeBlockHash":"{{{blockHash}}}","finalizedBlockHash":"{{{blockHash}}}"},null]""");
+        SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
 
-    private static void AssertRpcSuccess(JsonRpcResponse response)
-    {
-        if (response is not JsonRpcSuccessResponse)
-        {
-            string message = response is JsonRpcErrorResponse err
-                ? $"RPC error: {err.Error?.Code} {err.Error?.Message}"
-                : "unexpected response type";
-            throw new Exception(message);
-        }
-    }
+    private static void AssertRpcSuccess(JsonRpcResponse response) =>
+        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {
@@ -428,6 +518,11 @@ public abstract class BlockchainTestBase
                 byte[] rlpBytes = Bytes.FromHexString(testBlockJson.Rlp!);
                 Block suggestedBlock = Rlp.Decode<Block>(rlpBytes);
 
+                // EEST omits blockHeader (and the parsed body fields) for invalid-block fixtures
+                // because there is no canonical header for a block that must be rejected. The
+                // hash/uncle assertions only make sense when the fixture provides a header, but
+                // the block itself must still be enrolled so that validation actually runs and
+                // ExpectException is honoured.
                 if (testBlockJson.BlockHeader is not null)
                 {
                     Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));

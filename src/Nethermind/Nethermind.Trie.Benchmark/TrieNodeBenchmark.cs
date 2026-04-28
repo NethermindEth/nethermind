@@ -50,16 +50,10 @@ namespace Nethermind.Trie.Benchmark
         // public Param Input { get; set; }
 
         [Benchmark]
-        public TrieNode Just_trie_node_56B()
-        {
-            return new TrieNode(NodeType.Unknown);
-        }
+        public TrieNode Just_trie_node_56B() => new(NodeType.Unknown);
 
         [Benchmark]
-        public Keccak Just_keccak_80B()
-        {
-            return Keccak.Compute(_bytes);
-        }
+        public Keccak Just_keccak_80B() => Keccak.Compute(_bytes);
 
         private byte[] _bytes = new byte[32];
 
@@ -69,20 +63,17 @@ namespace Nethermind.Trie.Benchmark
         public TrieNode Just_trie_node_with_hash_136B()
         {
             BinaryPrimitives.WriteInt64BigEndian(_bytes, _i);
-            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Compute(_bytes));
+            TrieNode trieNode = new(NodeType.Unknown, Keccak.Compute(_bytes));
             return trieNode;
         }
 
         [Benchmark]
-        public TrieNode Just_trie_node_with_rlp_120B()
-        {
-            return new TrieNode(NodeType.Unknown, new byte[7]);
-        }
+        public TrieNode Just_trie_node_with_rlp_120B() => new(NodeType.Unknown, new byte[7]);
 
         [Benchmark]
         public TrieNode Just_extension_with_child_96B()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            TrieNode trieNode = new(NodeType.Extension);
             trieNode.SetChild(0, null);
             return trieNode;
         }
@@ -90,7 +81,7 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieNode Just_branch_with_child_208B()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            TrieNode trieNode = new(NodeType.Branch);
             trieNode.SetChild(0, null);
             return trieNode;
         }
@@ -98,39 +89,24 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieNode Just_leaf_with_value_128B()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Leaf);
+            TrieNode trieNode = new(NodeType.Leaf);
             trieNode.Value = new byte[7];
             return trieNode;
         }
 
         [Benchmark]
-        public HexPrefix Just_hex_prefix_64B()
-        {
-            return new HexPrefix(true, new byte[5]);
-        }
+        public HexPrefix Just_hex_prefix_64B() => new(true, new byte[5]);
 
         [Benchmark]
-        public Rlp Just_rlp_56B()
-        {
-            return new Rlp(new byte[8]);
-        }
+        public Rlp Just_rlp_56B() => new(new byte[8]);
 
         [Benchmark]
-        public Rlp Just_rlp_aligned_56B()
-        {
-            return new Rlp(new byte[1]);
-        }
+        public Rlp Just_rlp_aligned_56B() => new(new byte[1]);
 
         [Benchmark]
-        public RlpStream Just_rlp_stream_64B()
-        {
-            return new RlpStream(new byte[7]);
-        }
+        public RlpStream Just_rlp_stream_64B() => new(new byte[7]);
 
         [Benchmark]
-        public RlpStream Just_rlp_stream_160B()
-        {
-            return new RlpStream(new byte[100]);
-        }
+        public RlpStream Just_rlp_stream_160B() => new(new byte[100]);
     }
 }

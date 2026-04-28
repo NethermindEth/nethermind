@@ -13,10 +13,7 @@ namespace Nethermind.Network.Enr
         /// </summary>
         public abstract string Key { get; }
 
-        internal int GetRlpLength()
-        {
-            return Rlp.LengthOf(Key) + GetRlpLengthOfValue();
-        }
+        internal int GetRlpLength() => Rlp.LengthOf(Key) + GetRlpLengthOfValue();
 
         /// <summary>
         /// Needed for optimized RLP serialization.
@@ -35,31 +32,20 @@ namespace Nethermind.Network.Enr
 
         protected abstract void EncodeValue(RlpStream rlpStream);
 
-        public override int GetHashCode()
-        {
-            return Key.GetHashCode();
-        }
+        public override int GetHashCode() => Key.GetHashCode();
     }
 
     /// <summary>
     /// Single key, value pair entry in the ENR record content.
     /// </summary>
     [DebuggerDisplay("{Key} {Value}")]
-    public abstract class EnrContentEntry<TValue> : EnrContentEntry
+    public abstract class EnrContentEntry<TValue>(TValue value) : EnrContentEntry
     {
         /// <summary>
         /// A value of the node record entry.
         /// </summary>
-        public TValue Value { get; }
+        public TValue Value { get; } = value;
 
-        protected EnrContentEntry(TValue value)
-        {
-            Value = value;
-        }
-
-        public override string ToString()
-        {
-            return $"{Key} {Value}";
-        }
+        public override string ToString() => $"{Key} {Value}";
     }
 }

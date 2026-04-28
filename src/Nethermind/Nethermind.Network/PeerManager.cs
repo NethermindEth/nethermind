@@ -409,7 +409,7 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Candidate peers cleanup failed", e);
+                _logger.DebugError("Candidate peers cleanup failed", e);
             }
         }
 
@@ -748,18 +748,11 @@ namespace Nethermind.Network
             Incompatible
         }
 
-        private readonly struct PeerStats
+        private readonly struct PeerStats(Peer peer, bool failedValidation, long currentReputation)
         {
-            public Peer Peer { get; }
-            public bool FailedValidation { get; }
-            public long CurrentReputation { get; }
-
-            public PeerStats(Peer peer, bool failedValidation, long currentReputation)
-            {
-                Peer = peer;
-                FailedValidation = failedValidation;
-                CurrentReputation = currentReputation;
-            }
+            public Peer Peer { get; } = peer;
+            public bool FailedValidation { get; } = failedValidation;
+            public long CurrentReputation { get; } = currentReputation;
         }
 
         private class PeerStatsComparer : IComparer<PeerStats>
@@ -851,7 +844,7 @@ namespace Nethermind.Network
             }
             catch (Exception ex)
             {
-                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error trying to initiate connection with peer: {candidate.Node:s}", ex);
+                _logger.DebugError($"Error trying to initiate connection with peer: {candidate.Node:s}", ex);
                 return false;
             }
 

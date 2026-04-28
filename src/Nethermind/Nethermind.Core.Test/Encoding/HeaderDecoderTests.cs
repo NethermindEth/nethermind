@@ -38,7 +38,7 @@ public class HeaderDecoderTests
     [Test]
     public void Can_decode_aura()
     {
-        var auRaSignature = new byte[64];
+        byte[] auRaSignature = new byte[64];
         new Random().NextBytes(auRaSignature);
         BlockHeader header = Build.A.BlockHeader
             .WithAura(100000000, auRaSignature)

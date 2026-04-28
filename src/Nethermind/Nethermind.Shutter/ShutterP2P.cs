@@ -118,8 +118,8 @@ public class ShutterP2P : IShutterP2P
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
-                using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+                using CancellationTokenSource timeoutSource = new(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
+                using CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                 lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -194,7 +194,7 @@ public class ShutterP2P : IShutterP2P
         }
         catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not parse Shutter decryption keys: {e}");
+            _logger.DebugWarn($"Could not parse Shutter decryption keys: {e}");
         }
     }
 }

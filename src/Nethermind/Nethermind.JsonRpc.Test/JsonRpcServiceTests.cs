@@ -42,10 +42,7 @@ public class JsonRpcServiceTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _context?.Dispose();
-    }
+    public void TearDown() => _context?.Dispose();
 
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;
@@ -54,7 +51,7 @@ public class JsonRpcServiceTests
 
     private JsonRpcResponse TestRequest<T>(T module, string method, params object?[]? parameters) where T : IRpcModule
     {
-        var pool = new SingletonModulePool<T>(new SingletonFactory<T>(module), true);
+        SingletonModulePool<T> pool = new(new SingletonFactory<T>(module), true);
 
         return TestRequestWithPool(pool, method, parameters);
     }
@@ -217,6 +214,17 @@ public class JsonRpcServiceTests
         JsonRpcErrorResponse? response = TestRequest(ethRpcModule, "eth_getTransactionReceipt", parameters) as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
+    [TestCase("eth_getBlockByNumber", new object?[] { }, "missing value for required argument 0", TestName = "FirstArgOmitted")]
+    [TestCase("eth_feeHistory", new object?[] { "0x1", "latest" }, "missing value for required argument 2", TestName = "LaterArgOmitted")]
+    public void MissingRequiredArgument_ReturnsGethStyleError(string method, object?[] parameters, string expectedMessage)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcErrorResponse? response = TestRequest(ethRpcModule, method, parameters) as JsonRpcErrorResponse;
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(response?.Error?.Message, Is.EqualTo(expectedMessage));
+        Assert.That(response?.Error?.Data, Is.Null);
     }
 
     [Test]

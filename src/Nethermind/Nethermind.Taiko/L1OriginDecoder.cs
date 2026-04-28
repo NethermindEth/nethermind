@@ -91,10 +91,7 @@ public sealed class L1OriginDecoder : RlpValueDecoder<L1Origin>
         }
     }
 
-    public override int GetLength(L1Origin item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(L1Origin item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     private int GetContentLength(L1Origin item, RlpBehaviors rlpBehaviors)
     {

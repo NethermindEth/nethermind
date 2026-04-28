@@ -28,7 +28,6 @@ namespace Nethermind.Network
         public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
             new(Protocol.Eth, 68),
-            new(Protocol.NodeData, 1)
         };
 
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
@@ -327,10 +326,7 @@ namespace Nethermind.Network
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
 
-        public void AddSupportedCapability(Capability capability)
-        {
-            _capabilities.Add(capability);
-        }
+        public void AddSupportedCapability(Capability capability) => _capabilities.Add(capability);
 
         public void RemoveSupportedCapability(Capability capability)
         {

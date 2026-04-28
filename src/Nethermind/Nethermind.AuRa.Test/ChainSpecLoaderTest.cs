@@ -19,8 +19,8 @@ public class ChainSpecLoaderTest
 {
     private static ChainSpec LoadChainSpec(string path)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
-        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }
 
@@ -43,7 +43,7 @@ public class ChainSpecLoaderTest
         chainSpec.Parameters.TerminalTotalDifficulty.ToString()
             .Should().Be("8626000000000000000000058750000000000000000000");
 
-        var auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
         auraParams.WithdrawalContractAddress.ToString(true)
             .Should().Be("0x0B98057eA310F4d31F2a452B414647007d1645d9");
@@ -63,7 +63,7 @@ public class ChainSpecLoaderTest
         chainSpec.Parameters.TerminalTotalDifficulty.ToString()
             .Should().Be("231707791542740786049188744689299064356246512");
 
-        var auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
         auraParams.WithdrawalContractAddress.ToString(true)
             .Should().Be("0xb97036A26259B7147018913bD58a774cf91acf25");

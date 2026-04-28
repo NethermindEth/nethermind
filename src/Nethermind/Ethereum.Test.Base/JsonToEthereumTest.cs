@@ -437,16 +437,15 @@ namespace Ethereum.Test.Base
         private static (string name, string category) GetNameAndCategory(string key)
         {
             key = key.Replace('\\', '/');
-            var index = key.IndexOf(".py::");
+            int index = key.IndexOf(".py::");
             if (index < 0)
             {
                 return (key, "");
             }
-            // Use the full fixture key as the name (matches geth/erigon output)
-            var name = key;
+            string name = key;
             string category = key.Substring(0, index);
             int startIndex = 0;
-            for (var i = 0; i < 3; i++)
+            for (int i = 0; i < 3; i++)
             {
                 int newIndex = category.IndexOf("/", startIndex);
                 if (newIndex < 0)

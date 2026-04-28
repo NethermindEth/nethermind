@@ -13,13 +13,10 @@ public class InvalidBlockDetector
 {
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? OnInvalidBlock;
 
-    private void TriggerOnInvalidBlock(Block invalidBlock)
+    private void TriggerOnInvalidBlock(Block invalidBlock) => OnInvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs()
     {
-        OnInvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs()
-        {
-            InvalidBlock = invalidBlock
-        });
-    }
+        InvalidBlock = invalidBlock
+    });
 
     internal class BlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, InvalidBlockDetector invalidBlockDetector) : IBlockProcessor
     {

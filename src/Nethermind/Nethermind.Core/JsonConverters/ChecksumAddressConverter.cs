@@ -12,16 +12,10 @@ public class ChecksumAddressConverter : AddressConverter
     public override void Write(
         Utf8JsonWriter writer,
         Address address,
-        JsonSerializerOptions options)
-    {
-        writer.WriteStringValue(address.ToString(true, true));
-    }
+        JsonSerializerOptions options) => writer.WriteStringValue(address.ToString(true, true));
 
     [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer,
         Address value,
-        JsonSerializerOptions options)
-    {
-        writer.WritePropertyName(value.ToString(true, true));
-    }
+        JsonSerializerOptions options) => writer.WritePropertyName(value.ToString(true, true));
 }

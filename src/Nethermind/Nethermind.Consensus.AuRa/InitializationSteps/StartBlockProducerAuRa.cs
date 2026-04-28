@@ -28,6 +28,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -71,6 +72,7 @@ public class StartBlockProducerAuRa(
     IAuRaStepCalculator stepCalculator,
     AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
     IWorldStateManager worldStateManager,
+    IWithdrawalProcessorFactory withdrawalProcessorFactory,
     ILifetimeScope lifetimeScope,
     ILogManager logManager)
 {
@@ -126,7 +128,7 @@ public class StartBlockProducerAuRa(
         return blockProducer;
     }
 
-    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txProcessor, IWorldState worldState)
+    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txProcessor, IWorldState worldState, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepository)
     {
         ITxFilter auRaTxFilter = apiTxAuRaFilterBuilders.CreateAuRaTxFilter(
             new LocalTxFilter(engineSigner));
@@ -160,14 +162,18 @@ public class StartBlockProducerAuRa(
         (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. _parameters.RewriteBytecodeTimestampParsed];
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
-        var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
+        BlockAccessListManager balManager = new(worldState, specProvider, blockhashProvider, logManager, blocksConfig, withdrawalProcessorFactory);
+
+        BlockProcessor.BlockProductionTransactionsExecutor transactionExecutor = new(
             new BuildUpTransactionProcessorAdapter(txProcessor),
             worldState,
             new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),
-            logManager);
+            logManager,
+            balManager);
 
         return new AuRaBlockProcessor(
             specProvider,
+            _parameters,
             blockValidator,
             rewardCalculatorSource.Get(txProcessor),
             transactionExecutor,
@@ -178,6 +184,7 @@ public class StartBlockProducerAuRa(
             blockTree,
             NullWithdrawalProcessor.Instance,
             new ExecutionRequestsProcessor(txProcessor),
+            balManager,
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator() as AuRaContractGasLimitOverride,
@@ -203,7 +210,7 @@ public class StartBlockProducerAuRa(
                 _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
             DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
-                new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                new(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     _txPriorityContract?.Priorities,
                     blockTree,
@@ -263,7 +270,7 @@ public class StartBlockProducerAuRa(
             ILifetimeScope innerLifetime = lifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddSingleton<IWorldStateScopeProvider>(worldStateScopeProvider)
                 .AddSingleton<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState>(CreateBlockProcessor)
+                .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState, IBlockhashProvider, ICodeInfoRepository>(CreateBlockProcessor)
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>());
             lifetimeScope.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
 
@@ -309,7 +316,7 @@ public class StartBlockProducerAuRa(
 
             if (randomnessContractAddress?.Any() == true)
             {
-                RandomContractTxSource randomContractTxSource = new RandomContractTxSource(
+                RandomContractTxSource randomContractTxSource = new(
                     GetRandomContracts(randomnessContractAddress, abiEncoder,
                         readOnlyTxProcessingEnvFactory.Create(),
                         signer),
@@ -336,7 +343,7 @@ public class StartBlockProducerAuRa(
 
         if (needSigner)
         {
-            TxSealer transactionSealer = new TxSealer(engineSigner, timestamper);
+            TxSealer transactionSealer = new(engineSigner, timestamper);
             txSource = new GeneratedTxSource(txSource, transactionSealer, apiStateReader, logManager);
         }
 

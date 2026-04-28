@@ -45,10 +45,7 @@ public class JsonConfigProviderTests
     }
 
     [Test]
-    public void Provides_helpful_error_message_when_file_does_not_exist()
-    {
-        Assert.Throws<IOException>(() => _configProvider = new JsonConfigProvider("SampleJson.json"));
-    }
+    public void Provides_helpful_error_message_when_file_does_not_exist() => Assert.Throws<IOException>(() => _configProvider = new JsonConfigProvider("SampleJson.json"));
 
     [Test]
     public void Can_load_config_from_file()
@@ -62,10 +59,7 @@ public class JsonConfigProviderTests
 
         Assert.That(jsonRpcConfig.EnabledModules.Length, Is.EqualTo(2));
 
-        void CheckIfEnabled(string x)
-        {
-            Assert.That(jsonRpcConfig.EnabledModules.Contains(x), Is.True);
-        }
+        void CheckIfEnabled(string x) => Assert.That(jsonRpcConfig.EnabledModules.Contains(x), Is.True);
 
         new[] { ModuleType.Eth, ModuleType.Debug }.ForEach(CheckIfEnabled);
 
@@ -73,8 +67,5 @@ public class JsonConfigProviderTests
     }
 
     [Test]
-    public void Can_load_raw_value()
-    {
-        Assert.That(_configProvider.GetRawValue("KeyStoreConfig", "KdfparamsDklen"), Is.EqualTo("100"));
-    }
+    public void Can_load_raw_value() => Assert.That(_configProvider.GetRawValue("KeyStoreConfig", "KdfparamsDklen"), Is.EqualTo("100"));
 }
