@@ -104,7 +104,10 @@ public class PersistedSnapshotCompactor(
             PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds);
 
             for (int i = 0; i < snapshots.Count; i++)
-                snapshots[i].AdviseDontNeed();
+            {
+                if (snapshots[i].Type != PersistedSnapshotType.Full)
+                    snapshots[i].AdviseDontNeed();
+            }
 
             int len = arenaWriter.GetWriter().Written;
             _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
