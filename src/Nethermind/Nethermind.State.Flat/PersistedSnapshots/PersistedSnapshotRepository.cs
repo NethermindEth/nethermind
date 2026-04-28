@@ -4,7 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Db;
-
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Prometheus;
 
@@ -119,11 +119,20 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         // Persistable compacted snapshots use compacted arena; base snapshots use base arena
         IArenaManager arena = isPersistable ? _compactedArenaManager : _baseArenaManager;
 
+        BloomFilter? bloom = null;
+        if (_bloomBitsPerKey > 0)
+        {
+            long capacity = (long)snapshot.AccountsCount
+                          + snapshot.Content.SelfDestructedStorageAddresses.Count
+                          + 2L * snapshot.StoragesCount;
+            bloom = new BloomFilter(Math.Max(capacity, 1), _bloomBitsPerKey);
+        }
+
         SnapshotLocation location;
         ArenaReservation reservation;
         using (ArenaWriter arenaWriter = arena.CreateWriter(PersistedSnapshotBuilder.EstimateSize(snapshot)))
         {
-            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter());
+            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter(), bloom);
             if (isPersistable)
                 _persistedSnapshotSize.WithLabels("is_persistable").Observe(arenaWriter.GetWriter().Written);
             else
@@ -139,7 +148,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             _catalog.Save();
 
             PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, reservation);
-            AttachBloom(persisted);
+            if (bloom is not null)
+                persisted.AttachKeyBloom(bloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
             if (isPersistable)
@@ -153,7 +163,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     /// Store a compacted snapshot with a pre-computed location and reservation.
     /// Referenced snapshot IDs are the base snapshots whose data is referenced via NodeRefs.
     /// </summary>
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable)
+    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable, BloomFilter? bloom = null)
     {
         lock (_catalogLock)
         {
@@ -163,7 +173,10 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
 
             PersistedSnapshot[]? referencedSnapshots = ResolveReferencedSnapshots(referencedSnapshotIds);
             PersistedSnapshot snapshot = new(id, from, to, PersistedSnapshotType.Linked, reservation, referencedSnapshots);
-            AttachBloom(snapshot);
+            if (bloom is not null)
+                snapshot.AttachKeyBloom(bloom);
+            else
+                AttachBloom(snapshot);
             if (isPersistable)
                 _persistableCompactedSnapshots[to] = snapshot;
             else

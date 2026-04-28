@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -15,7 +16,7 @@ public interface IPersistedSnapshotRepository : IDisposable
 
     // Two-layer storage
     void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false);
-    void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable);
+    void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable, BloomFilter? bloom = null);
 
     // Compaction assembly (mirrors SnapshotRepository.AssembleSnapshotsUntil)
     PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber);

@@ -181,6 +181,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal Hsst.IHsstReadahead CreateColumnReadahead(int columnOffset, int columnLength)
         => new ArenaReadahead(_reservation, columnOffset, columnLength);
 
+    internal long KeyBloomCount => _keyBloom?.Count ?? 0;
+
     internal void AttachKeyBloom(BloomFilter bloom) => _keyBloom = bloom;
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();
