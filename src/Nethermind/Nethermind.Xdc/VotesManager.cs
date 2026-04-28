@@ -253,9 +253,11 @@ internal class VotesManager(
         IReadOnlyCollection<Address> allowedSigners,
         IReadOnlyCollection<Vote> votes)
     {
-        //Possible optimize here
+        //TODO: try to minimize number of allocations, at least for common cases
         List<Signature> signatures = new(votes.Count);
-        Dictionary<Address, int> signedBy = allowedSigners.ToDictionary(static a => a, static _ => 0);
+        Dictionary<Address, int> signedBy = new(allowedSigners.Count);
+        foreach (Address signer in allowedSigners)
+            signedBy.TryAdd(signer, 0);
 
         foreach ((Signature signature, Address signer) in votes.AsParallel().Select(static v => (
                      v.Signature,
@@ -264,7 +266,7 @@ internal class VotesManager(
         {
             ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
-            if (Unsafe.IsNullRef(ref signCount) || Interlocked.Increment(ref signCount) != 1)
+            if (Unsafe.IsNullRef(ref signCount) || ++signCount != 1)
                 continue;
 
             signatures.Add(signature);
@@ -287,13 +289,13 @@ internal class VotesManager(
         ValueHash256 messageHash,
         out string? error)
     {
-        //Possible optimize here
+        //TODO: try to minimize number of allocations, at least for common cases
         Dictionary<Address, int> signedBy = new(allowedSigners.Count);
         foreach (Address signer in allowedSigners)
             signedBy.TryAdd(signer, 0);
 
         int count = 0;
-        string? localError = null;
+        string? localError = null; // concurrent "overwrite" is ok, no need to syncrhonize
         Parallel.ForEach(signatures, (s, state) =>
         {
             Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
