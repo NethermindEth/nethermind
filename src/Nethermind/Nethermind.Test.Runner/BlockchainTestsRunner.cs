@@ -13,7 +13,6 @@ namespace Nethermind.Test.Runner;
 
 public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 {
-    protected override bool? ParallelExecutionOverride => false;
     protected override ILogManager? ComponentLogManagerOverride => suppressOutput ? new TestLogManager(LogLevel.Error) : null;
 
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
