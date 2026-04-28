@@ -12,6 +12,10 @@ namespace Nethermind.Test.Runner;
 
 public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 {
+    // BAL ParallelExecution throws unhandled exceptions from background threads
+    // that crash the process. Disable until BlockAccessListManager is fixed.
+    protected override bool? ParallelExecutionOverride => false;
+
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader? _testsSource;
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
