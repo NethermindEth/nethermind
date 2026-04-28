@@ -21,7 +21,7 @@ internal class QuorumCertificateManager(
     IBlockTree blockTree,
     ISpecProvider xdcConfig,
     IEpochSwitchManager epochSwitchManager,
-    ILogManager logManager) : CertificateManagerBase, IQuorumCertificateManager
+    ILogManager logManager) : IQuorumCertificateManager
 {
     private IXdcConsensusContext _context { get; } = context;
     private readonly IBlockTree _blockTree = blockTree;
@@ -174,7 +174,7 @@ internal class QuorumCertificateManager(
         {
             (Address[] masternodes, Signature[] signatures) = (epochSwitchInfo.Masternodes, qc.Signatures);
             ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
-            if (CountValidSignatures(masternodes, signatures, voteHash, out error) is not { } signCount)
+            if (VotesManager.CountValidSignatures(masternodes, signatures, voteHash, out error) is not { } signCount)
             {
                 return false;
             }

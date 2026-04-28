@@ -22,8 +22,9 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-public class TimeoutCertificateManager : CertificateManagerBase, ITimeoutCertificateManager
+public class TimeoutCertificateManager : ITimeoutCertificateManager
 {
+    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private readonly IXdcConsensusContext _consensusContext;
     private readonly ITimeoutTimer _timeoutTimer;
@@ -146,7 +147,7 @@ public class TimeoutCertificateManager : CertificateManagerBase, ITimeoutCertifi
 
         (Address[] candidates, Signature[] signatures) = (snapshot.NextEpochCandidates, timeoutCertificate.Signatures);
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
-        if (CountValidSignatures(candidates, signatures, timeoutMsgHash, out errorMessage) is not { } signCount)
+        if (VotesManager.CountValidSignatures(candidates, signatures, timeoutMsgHash, out errorMessage) is not { } signCount)
         {
             return false;
         }
@@ -224,7 +225,7 @@ public class TimeoutCertificateManager : CertificateManagerBase, ITimeoutCertifi
 
         // Verify msg signature
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
-        Address signer = EthereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
+        Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
         timeout.Signer = signer;
 
         return snapshot.NextEpochCandidates.Contains(signer);
