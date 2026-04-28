@@ -22,10 +22,9 @@ namespace Nethermind.Taiko.Precompiles;
 /// </summary>
 public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 {
-    public static readonly L1SloadPrecompile Instance = new();
-    static L1SloadPrecompile IPrecompile<L1SloadPrecompile>.Instance => Instance;
-
     private const string L1StorageAccessFailed = "l1 storage access failed";
+
+    public static L1SloadPrecompile Instance { get; } = new();
 
     private L1SloadPrecompile()
     {

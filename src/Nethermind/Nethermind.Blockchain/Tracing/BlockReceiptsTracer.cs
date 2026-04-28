@@ -14,7 +14,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
+public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
@@ -88,7 +88,10 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
 
         // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
-        Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
+        if (!parallel)
+        {
+            Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
+        }
 
         // Track cumulative receipt gas (post-refund)
         _cumulativeReceiptGas += gasConsumed.SpentGas;
@@ -232,6 +235,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
+
+    /// <summary>
+    /// EIP-8037: cumulative state gas for the last tracked tx.
+    /// Used by parallel execution to pass state gas back for 2D block gas accounting.
+    /// </summary>
+    public long BlockStateGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].State : 0;
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
     public long CumulativeRegularGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].Regular : 0;
 
