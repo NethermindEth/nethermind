@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -17,7 +18,6 @@ public sealed unsafe class ArenaFile : IDisposable
     private const int MADV_RANDOM = 1;
     private const int MADV_DONTNEED = 4;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
-    private static int _touchSink;
 
     [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
     private static extern int Madvise(void* addr, nuint length, int advice);
@@ -72,13 +72,19 @@ public sealed unsafe class ArenaFile : IDisposable
     public void Touch(long offset, int size)
     {
         if (size <= 0) return;
-        int pageSize = Environment.SystemPageSize;
-        byte* p = _basePtr + offset;
-        int sink = 0;
-        for (int i = 0; i < size; i += pageSize)
-            sink ^= p[i];
-        sink ^= p[size - 1];
-        Volatile.Write(ref _touchSink, sink);
+        byte[] buf = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        try
+        {
+            long end = offset + size;
+            while (offset < end)
+            {
+                int chunk = (int)Math.Min(buf.Length, end - offset);
+                int read = RandomAccess.Read(_handle, buf.AsSpan(0, chunk), offset);
+                if (read <= 0) break;
+                offset += read;
+            }
+        }
+        finally { ArrayPool<byte>.Shared.Return(buf); }
     }
 
     public void AdviseDontNeed(long offset, int size)

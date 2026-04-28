@@ -64,6 +64,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public int Size => _reservation.Size;
 
+    internal ArenaReservation Reservation => _reservation;
+
     public ReadOnlySpan<byte> GetSpan() => _reservation.GetSpan();
 
     public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation,
