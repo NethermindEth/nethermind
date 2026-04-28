@@ -105,7 +105,7 @@ jobs:
         run: |
           EEST_DIR="/tmp/eest-fixtures/$EEST_VERSION"
           if [ "$TEST_TYPE" = "engineTest" ]; then
-            FIXTURE_DIR="$(find "$EEST_DIR" -type d -name 'blockchain_test_engine' | head -1)"
+            FIXTURE_DIR="$(find "$EEST_DIR" -type d -name 'blockchain_tests_engine' | head -1)"
           elif [ "$TEST_TYPE" = "blockTest" ]; then
             FIXTURE_DIR="$(find "$EEST_DIR" -type d -name 'blockchain_tests' | head -1)"
           elif [ "$TEST_TYPE" = "stateTest" ]; then
