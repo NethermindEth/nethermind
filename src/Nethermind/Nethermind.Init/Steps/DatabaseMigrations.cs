@@ -9,7 +9,7 @@ using Nethermind.Init.Steps.Migrations;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
+    [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
     public sealed class DatabaseMigrations(IEnumerable<IDatabaseMigration> migrations) : IStep
     {
         public async Task Execute(CancellationToken cancellationToken)
