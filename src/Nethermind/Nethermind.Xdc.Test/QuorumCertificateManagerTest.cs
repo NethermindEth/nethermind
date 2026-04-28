@@ -81,7 +81,7 @@ public class QuorumCertificateManagerTest
         BlockRoundInfo roundInfo = new(headerBuilder.TestObject.Hash!, 1, 1);
         Signature[] sigs = XdcTestHelper.CreateVoteSignatures(roundInfo, 0, [.. keys.Take(quorumCount - 1)]);
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
-        yield return new TestCaseData(new QuorumCertificate(roundInfo, [..sigs, malleable], 0), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(new QuorumCertificate(roundInfo, [.. sigs, malleable], 0), headerBuilder, masterNodes, false);
     }
 
     [TestCaseSource(nameof(QcCases))]

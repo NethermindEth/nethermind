@@ -125,7 +125,7 @@ public class TimeoutCertificateManagerTests
         ValueHash256 msgHash = TimeoutCertificateManager.ComputeTimeoutMsgHash(1, 0);
         Signature[] sigs = [.. keys.Take(quorumCount - 1).Select(k => ecdsa.Sign(k, msgHash))];
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
-        yield return new TestCaseData(new TimeoutCertificate(1, [..sigs, malleable], 0), masterNodes, false);
+        yield return new TestCaseData(new TimeoutCertificate(1, [.. sigs, malleable], 0), masterNodes, false);
     }
 
     [TestCaseSource(nameof(TcCases))]

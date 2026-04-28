@@ -174,7 +174,7 @@ internal class QuorumCertificateManager(
         {
             (Address[] masternodes, Signature[] signatures) = (epochSwitchInfo.Masternodes, qc.Signatures);
             ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
-            if (CountValidSignatures(masternodes, signatures, voteHash, out error) is not {} signCount)
+            if (CountValidSignatures(masternodes, signatures, voteHash, out error) is not { } signCount)
             {
                 return false;
             }

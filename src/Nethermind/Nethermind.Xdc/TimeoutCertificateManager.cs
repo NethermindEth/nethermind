@@ -224,7 +224,7 @@ public class TimeoutCertificateManager : CertificateManagerBase, ITimeoutCertifi
 
         // Verify msg signature
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
-        Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
+        Address signer = EthereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
         timeout.Signer = signer;
 
         return snapshot.NextEpochCandidates.Contains(signer);

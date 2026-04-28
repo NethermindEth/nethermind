@@ -15,7 +15,7 @@ namespace Nethermind.Xdc;
 
 public abstract class CertificateManagerBase
 {
-    protected static readonly EthereumEcdsa _ethereumEcdsa = new(0);
+    protected static readonly EthereumEcdsa EthereumEcdsa = new(0);
 
     /// <summary>
     /// Verifies each signature against <paramref name="allowedSigners"/>, deduplicates by
@@ -38,7 +38,7 @@ public abstract class CertificateManagerBase
         string? localError = null;
         Parallel.ForEach(signatures, (s, state) =>
         {
-            Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
+            Address signer = EthereumEcdsa.RecoverAddress(s, messageHash);
             ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
             if (Unsafe.IsNullRef(ref signCount))
