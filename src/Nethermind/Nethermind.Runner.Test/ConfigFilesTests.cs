@@ -283,6 +283,25 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [Test]
+    public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
+    {
+        int archiveConfigs = 0;
+        foreach (string configFile in AllConfigFiles())
+        {
+            if (!IsArchiveConfig(configFile))
+            {
+                continue;
+            }
+
+            archiveConfigs++;
+            IPruningConfig pruningConfig = GetConfigFromFile<IPruningConfig>(configFile);
+            Assert.That(pruningConfig.Mode, Is.EqualTo(PruningMode.None), configFile);
+        }
+
+        Assert.That(archiveConfigs, Is.GreaterThan(0));
+    }
+
+    [Test]
     public void Explicit_log_file_names_match_config_file_names()
     {
         foreach (string configFile in AllConfigFiles())
@@ -430,6 +449,10 @@ public class ConfigFilesTests : ConfigFileTestsBase
         configProvider.AddSource(new JsonConfigSource(Path.Combine(ConfigDirectory, configFile)));
         return configProvider;
     }
+
+    private static bool IsArchiveConfig(string configFile) =>
+        configFile.Contains("_archive", StringComparison.OrdinalIgnoreCase) ||
+        configFile.Contains("-archive", StringComparison.OrdinalIgnoreCase);
 
     private static string ConfigDirectory => Path.Combine(TestContext.CurrentContext.TestDirectory, "configs");
 }
