@@ -250,6 +250,24 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void AccountExists_OnlyPrestateEntryAndNotExistedBeforeBlock_ReturnsFalse()
+    {
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            balSetup: bal =>
+            {
+                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
+                ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 0));
+                ac.AddBalanceChange(new BalanceChange(Eip7928Constants.PrestateIndex, 0));
+                ac.ExistedBeforeBlock = false;
+            });
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.False);
+        }
+    }
+
+    [Test]
     public void GetBalance_AddressNotInAccessList_Throws()
     {
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
