@@ -54,6 +54,8 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void AdviseDontNeed(ArenaReservation reservation) { }
 
+    public void Touch(ArenaReservation reservation, int subOffset, int size) { }
+
     public void MarkDead(in SnapshotLocation location)
     {
         _deadBytes.TryGetValue(location.ArenaId, out long dead);

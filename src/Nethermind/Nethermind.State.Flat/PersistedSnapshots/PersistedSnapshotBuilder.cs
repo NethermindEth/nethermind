@@ -575,8 +575,21 @@ public static class PersistedSnapshotBuilder
                 PersistedSnapshot.StorageNodeFallbackTag,
             ];
 
-            foreach (byte[] tag in tags)
+            // One-column lookahead: prefetch tags[i+1] while processing tags[i].
+            // Metadata (0x00) is small; skip prefetch for it but use it to warm tags[1].
+            Task prefetchTask = Task.CompletedTask;
+            for (int tagIdx = 0; tagIdx < tags.Length; tagIdx++)
             {
+                byte[] tag = tags[tagIdx];
+
+                // Await prefetch for this column (fired during the previous iteration).
+                prefetchTask.Wait();
+
+                // Fire prefetch for next column while the current one is merged.
+                prefetchTask = tagIdx + 1 < tags.Length
+                    ? PersistedSnapshot.PrefetchColumnsAsync(mergeSnapshots, tags[tagIdx + 1])
+                    : Task.CompletedTask;
+
                 ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
 
                 // All trie columns now use NWayStreamingMerge since all inputs are Linked (values are NodeRefs)
@@ -614,6 +627,7 @@ public static class PersistedSnapshotBuilder
 
                 outerBuilder.FinishValueWrite(tag);
             }
+            prefetchTask.Wait();
 
             outerBuilder.Build();
         }

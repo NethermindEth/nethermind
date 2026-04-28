@@ -21,6 +21,8 @@ public sealed class ArenaReservation(IArenaManager arenaManager, int arenaId, lo
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 
+    public void Touch(int subOffset, int size) => _arenaManager.Touch(this, subOffset, size);
+
     protected override void CleanUp()
     {
         AdviseDontNeed();
