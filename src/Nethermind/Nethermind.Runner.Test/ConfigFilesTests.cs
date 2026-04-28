@@ -16,6 +16,7 @@ using Nethermind.EthStats;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
@@ -151,6 +152,12 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IJsonRpcConfig, int>(configWildcard, static c => c.Port, 8545);
         Test<IJsonRpcConfig, string>(configWildcard, static c => c.Host, "127.0.0.1");
     }
+
+    [TestCase("sepolia", DiscoveryVersion.V5)]
+    [TestCase("hoodi", DiscoveryVersion.All)]
+    [TestCase("mainnet", DiscoveryVersion.All)]
+    public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
+        Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
 
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);
