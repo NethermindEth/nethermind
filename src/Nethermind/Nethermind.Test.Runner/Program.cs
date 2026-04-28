@@ -103,7 +103,7 @@ internal class Program
         if (testTypeCount != 1)
         {
             Console.WriteLine("Please specify one of: --stateTest, --blockTest, or --engineTest");
-            return 0;
+            return 1;
         }
 
         WhenTrace whenTrace = WhenTrace.WhenFailing;
@@ -224,35 +224,6 @@ internal class Program
         return bag.OrderBy(x => x.index).SelectMany(x => x.results).ToList();
     }
 
-    private static List<BlockchainTest> ParseBlockchainTestFile(string file, Regex? filterRegex)
-    {
-        List<BlockchainTest> tests = [];
-        try
-        {
-            TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
-            foreach (EthereumTest loadedTest in source.LoadTests<EthereumTest>())
-            {
-                if (loadedTest is FailedToLoadTest)
-                {
-                    tests.Add(null);
-                    continue;
-                }
-
-                if (loadedTest is not BlockchainTest bt) continue;
-
-                if (filterRegex is not null && bt.Name is not null && !filterRegex.Match(bt.Name).Success)
-                    continue;
-
-                tests.Add(bt);
-            }
-        }
-        catch (Exception)
-        {
-            tests.Add(null);
-        }
-
-        return tests;
-    }
 
     private static List<EthereumTestResult> RunStateTestFiles(
         List<string> files, WhenTrace whenTrace, bool traceMemory, bool traceStack,

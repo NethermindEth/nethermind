@@ -15,7 +15,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader? _testsSource;
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
-    private readonly string? filter;
+    private readonly Regex? _filterRegex;
     private readonly ulong chainId;
     private readonly bool trace;
     private readonly bool traceMemory;
@@ -34,7 +34,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         bool suppressOutput = false)
     {
         _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-        this.filter = filter;
+        _filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
         this.chainId = chainId;
         this.trace = trace;
         this.traceMemory = traceMemory;
@@ -56,7 +56,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         bool suppressOutput = false)
     {
         _testsSource = null;
-        this.filter = filter;
+        _filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
         this.chainId = chainId;
         this.trace = trace;
         this.traceMemory = traceMemory;
@@ -67,25 +67,29 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
+        if (_testsSource is null)
+            throw new InvalidOperationException("RunTestsAsync requires a test source; use the constructor that accepts ITestSourceLoader.");
+
         List<EthereumTestResult> testResults = [];
-        IEnumerable<EthereumTest> tests = _testsSource!.LoadTests<EthereumTest>();
+        IEnumerable<EthereumTest> tests = _testsSource.LoadTests<EthereumTest>();
         foreach (EthereumTest loadedTest in tests)
         {
-            if (loadedTest as FailedToLoadTest is not null)
+            if (loadedTest is FailedToLoadTest)
             {
                 if (!jsonOutput && !suppressOutput) WriteRed(loadedTest.LoadFailure);
                 testResults.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure));
                 continue;
             }
 
+            if (loadedTest is not BlockchainTest test)
+                continue;
+
             // Create a streaming tracer once for all tests if tracing is enabled
             using BlockchainTestStreamingTracer? tracer = trace
                 ? new BlockchainTestStreamingTracer(new() { EnableMemory = traceMemory, DisableStack = traceNoStack })
                 : null;
 
-            BlockchainTest test = loadedTest as BlockchainTest;
-
-            if (filter is not null && test.Name is not null && !Regex.Match(test.Name, $"^({filter})").Success)
+            if (_filterRegex is not null && test.Name is not null && !_filterRegex.IsMatch(test.Name))
                 continue;
 
             if (!jsonOutput && !suppressOutput) Console.Write($"{test,-120} ");

@@ -355,15 +355,18 @@ public abstract class BlockchainTestBase
     {
         if (newPayloads is null || newPayloads.Length == 0) return ("", null);
 
-        int initialFcuVersion = int.Parse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
+        if (!int.TryParse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString(), out int initialFcuVersion))
+            throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{newPayloads[0].ForkChoiceUpdatedVersion}'");
         AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString()));
 
         string lastStatus = "";
         string? lastValidationError = null;
         foreach (TestEngineNewPayloadsJson enginePayload in newPayloads)
         {
-            int newPayloadVersion = int.Parse(enginePayload.NewPayloadVersion ?? EngineApiVersions.NewPayload.Latest.ToString());
-            int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
+            if (!int.TryParse(enginePayload.NewPayloadVersion ?? EngineApiVersions.NewPayload.Latest.ToString(), out int newPayloadVersion))
+                throw new FormatException($"Invalid NewPayloadVersion: '{enginePayload.NewPayloadVersion}'");
+            if (!int.TryParse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString(), out int fcuVersion))
+                throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{enginePayload.ForkChoiceUpdatedVersion}'");
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
             int paramCount = NewPayloadParamCounts[newPayloadVersion];

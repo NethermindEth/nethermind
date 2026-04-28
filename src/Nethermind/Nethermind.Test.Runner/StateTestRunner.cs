@@ -59,7 +59,7 @@ namespace Nethermind.Test.Runner
                 string stackJson = string.Join(",", entry.Stack.Select(s => $"\"{s}\""));
                 Console.Error.Write($"{{\"pc\":{entry.Pc},\"op\":{entry.Operation},\"gas\":\"0x{entry.Gas:x}\",\"gasCost\":\"0x{entry.GasCost:x}\",\"stack\":[{stackJson}],\"depth\":{entry.Depth},\"memSize\":{entry.MemSize}");
                 if (!string.IsNullOrEmpty(entry.Error))
-                    Console.Error.Write($",\"error\":\"{entry.Error}\"");
+                    Console.Error.Write($",\"error\":{System.Text.Json.JsonSerializer.Serialize(entry.Error)}");
                 Console.Error.WriteLine("}");
             }
 
