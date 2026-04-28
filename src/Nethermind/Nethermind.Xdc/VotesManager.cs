@@ -266,10 +266,8 @@ internal class VotesManager(
         {
             ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
-            if (Unsafe.IsNullRef(ref signCount) || ++signCount != 1)
-                continue;
-
-            signatures.Add(signature);
+            if (!Unsafe.IsNullRef(ref signCount) && ++signCount == 1)
+                signatures.Add(signature);
         }
 
         return [.. signatures];
