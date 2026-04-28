@@ -119,7 +119,7 @@ internal class Program
         string filter = parseResult.GetValue(Options.Filter);
         bool trace = parseResult.GetValue(Options.TraceAlways);
         bool traceMemory = !parseResult.GetValue(Options.ExcludeMemory);
-        bool traceStack = parseResult.GetValue(Options.ExcludeStack);
+        bool excludeStack = parseResult.GetValue(Options.ExcludeStack);
         bool enableWarmup = parseResult.GetValue(Options.EnableWarmup);
 
         // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).
@@ -140,13 +140,13 @@ internal class Program
             if (isEngineTest || isBlockTest)
             {
                 bool forceJson = isEngineTest || jsonOutput;
-                List<EthereumTestResult> results = await RunBlockTestFiles(files, filter, chainId, trace, traceMemory, traceStack, forceJson, workers);
+                List<EthereumTestResult> results = await RunBlockTestFiles(files, filter, chainId, trace, traceMemory, excludeStack, forceJson, workers);
                 if (forceJson)
                     Console.Out.Write(_serializer.Serialize(results, true));
             }
             else if (isStateTest)
             {
-                List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, workers);
+                List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
                 Console.Out.Write(_serializer.Serialize(results, true));
             }
 
@@ -175,7 +175,7 @@ internal class Program
 
     private static async Task<List<EthereumTestResult>> RunBlockTestFiles(
         List<string> files, string filter, ulong chainId,
-        bool trace, bool traceMemory, bool traceStack,
+        bool trace, bool traceMemory, bool excludeStack,
         bool jsonOutput, int workers)
     {
         await KzgPolynomialCommitments.InitializeAsync();
@@ -188,7 +188,7 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, traceStack, jsonOutput: jsonOutput, suppressOutput: true);
+                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: jsonOutput, suppressOutput: true);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     allResults.AddRange(results);
                 }
@@ -210,7 +210,7 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), item.file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace: false, traceMemory, traceStack, jsonOutput: true, suppressOutput: true);
+                    BlockchainTestsRunner runner = new(source, filter, chainId, trace: false, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     bag.Add((item.index, results));
                 }
@@ -297,7 +297,7 @@ internal class Program
         TestsSourceLoader source = new(new LoadGeneralStateTestFileStrategy(), file);
         foreach (GeneralStateTest test in source.LoadTests<GeneralStateTest>())
         {
-            if (filterRegex is not null && !filterRegex.Match(test.Name).Success)
+            if (filterRegex is not null && !filterRegex.IsMatch(test.Name))
                 continue;
             tests.Add(test);
         }

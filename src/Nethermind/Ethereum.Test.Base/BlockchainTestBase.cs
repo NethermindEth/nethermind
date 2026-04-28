@@ -383,6 +383,9 @@ public abstract class BlockchainTestBase
             {
                 PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
                 AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+                lastStatus = payloadStatus.Status;
+                if (payloadStatus.ValidationError is not null)
+                    lastValidationError = payloadStatus.ValidationError;
 
                 if (payloadStatus.Status == PayloadStatus.Valid)
                 {

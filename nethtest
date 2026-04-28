@@ -1,2 +1,3 @@
 #!/bin/bash
-exec dotnet run --no-build -c Release --project /Users/spencer/ethereum/clients/nethermind/src/Nethermind/Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- "$@"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec dotnet run --no-build -c Release --project "$SCRIPT_DIR/src/Nethermind/Nethermind.Test.Runner/Nethermind.Test.Runner.csproj" -- "$@"
