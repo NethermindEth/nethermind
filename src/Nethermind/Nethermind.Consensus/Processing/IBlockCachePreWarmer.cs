@@ -15,4 +15,5 @@ public interface IBlockCachePreWarmer : IDisposable
 {
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
+    bool IsBalReadWarmingEnabled(IReleaseSpec spec);
 }

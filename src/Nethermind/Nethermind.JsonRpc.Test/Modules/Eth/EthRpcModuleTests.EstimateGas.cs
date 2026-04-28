@@ -621,4 +621,50 @@ public partial class EthRpcModuleTests
             $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{message}\"}},\"id\":67}}");
     }
 
+
+    [Test]
+    public async Task Estimate_gas_baseFeePerGas_override_allows_tx_with_gasPrice_below_real_baseFee()
+    {
+        // In London the block has a non-zero baseFee (≥ 1 gwei).
+        // A legacy tx with explicit gasPrice=1 wei fails because ShouldSetBaseFee() is true
+        // (gasPrice is set) and gasPrice < baseFee.
+        // With baseFeePerGas=0 override the check passes and the tx can be estimated.
+        // A state override funds the sender so balance is not the limiting factor.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string sender = TestItem.AddressA.ToString();
+        object? transaction = JsonSerializer.Deserialize<object>(
+            "{\"from\":\"" + sender + "\",\"to\":\"0xc200000000000000000000000000000000000000\",\"gasPrice\":\"0x1\"}");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            "{\"" + sender + "\":{\"balance\":\"0xde0b6b3a7640000\"}}"); // 1 ETH
+
+        string withoutOverride = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        JToken.Parse(withoutOverride)["error"].Should().NotBeNull(because: "gasPrice(1 wei) < baseFee should fail without block override");
+
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""");
+        string withOverride = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
+        JToken.Parse(withOverride)["result"]!.Value<string>().Should().Be("0x5208");
+    }
+
+    [Test]
+    public async Task Estimate_gas_block_override_gasLimit_bounds_estimation()
+    {
+        // blockOverride.gasLimit=50000 caps the gas budget.
+        // Contract creation always costs at least 21000 (intrinsic) + 32000 (TxCreate) = 53000,
+        // which exceeds the 50000 cap.
+        using Context ctx = await Context.CreateWithCancunEnabled();
+
+        // Bytecode from the equivalent geth test: constructor that checks basefee/gasprice.
+        const string initBytecode = "0x6080604052348015600f57600080fd5b50483a1015601c57600080fd5b60003a111560315760004811603057600080fd5b5b603f80603e6000396000f3fe6080604052600080fdfea264697066735822122060729c2cee02b10748fae5200f1c9da4661963354973d9154c13a8e9ce9dee1564736f6c63430008130033";
+        object? transaction = JsonSerializer.Deserialize<object>(
+            "{\"from\":\"" + TestItem.AddressA + "\",\"data\":\"" + initBytecode + "\"}");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            "{\"" + TestItem.AddressA + "\":{\"balance\":\"0xde0b6b3a7640000\"}}"); // 1 ETH
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"gasLimit":"0xC350"}"""); // 50000
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
+        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
+            .Should().BeEquivalentTo("gas limit below intrinsic gas");
+    }
+
 }

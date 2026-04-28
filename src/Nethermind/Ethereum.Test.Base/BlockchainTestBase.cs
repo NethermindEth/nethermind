@@ -51,26 +51,27 @@ public abstract class BlockchainTestBase
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
 
+    /// <summary>
+    /// Override to force parallel or sequential BAL execution in tests.
+    /// Null means use the default config value.
+    /// </summary>
+    protected virtual bool? ParallelExecutionOverride => null;
+
+    /// <summary>
+    /// Returns <c>true</c> if <paramref name="spec"/> represents a post-merge fork.
+    /// Walks the <see cref="NamedReleaseSpec.Parent"/> chain looking for Paris (the mainnet
+    /// merge fork) or ShanghaiGnosis (Gnosis transitioned to PoS at LondonGnosis → ShanghaiGnosis,
+    /// skipping a Paris-equivalent fork, so its parent chain never reaches Paris).
+    /// </summary>
     protected static bool IsPostMergeSpec(IReleaseSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
 
-        return spec != GrayGlacier.Instance &&
-               spec != ArrowGlacier.Instance &&
-               spec != LondonGnosis.Instance &&
-               spec != London.Instance &&
-               spec != Berlin.Instance &&
-               spec != MuirGlacier.Instance &&
-               spec != Istanbul.Instance &&
-               spec != ConstantinopleFix.Instance &&
-               spec != Constantinople.Instance &&
-               spec != Byzantium.Instance &&
-               spec != SpuriousDragon.Instance &&
-               spec != TangerineWhistle.Instance &&
-               spec != Dao.Instance &&
-               spec != Homestead.Instance &&
-               spec != Frontier.Instance &&
-               spec != Olympic.Instance;
+        for (NamedReleaseSpec? cur = spec as NamedReleaseSpec; cur is not null; cur = cur.Parent)
+        {
+            if (cur == Paris.Instance || cur == ShanghaiGnosis.Instance) return true;
+        }
+        return false;
     }
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
@@ -122,6 +123,11 @@ public abstract class BlockchainTestBase
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarmStateOnBlockProcessing = false;
+        if (ParallelExecutionOverride.HasValue)
+        {
+            blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
+        }
+
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
         {
             mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(1).TotalMilliseconds;
@@ -436,8 +442,8 @@ public abstract class BlockchainTestBase
         ("BlockException.INVALID_LOG_BLOOM", "InvalidLogsBloom: Logs bloom in header does not match"),
         ("BlockException.INVALID_STATE_ROOT", "InvalidStateRoot: State root in header does not match"),
         ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
-        ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
-        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
+        ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockLevelAccessListExceededSizeLimit:"),
+        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockLevelAccessListExceededSizeLimit:"),
     ];
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
