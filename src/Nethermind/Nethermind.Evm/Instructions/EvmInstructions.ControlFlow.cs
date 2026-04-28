@@ -256,6 +256,10 @@ public static partial class EvmInstructions
         if (!inheritorAccountExists)
         {
             state.CreateAccount(inheritor, result);
+            if (spec.IsEip8037Enabled)
+            {
+                vmState.AccessTracker.RecordAccountCreated(inheritor);
+            }
         }
         else if (!inheritor.Equals(executingAccount))
         {
