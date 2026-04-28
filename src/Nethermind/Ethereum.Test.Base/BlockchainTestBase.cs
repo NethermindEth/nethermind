@@ -408,8 +408,8 @@ public abstract class BlockchainTestBase
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "Block gas limit exceeded"),
         ("TransactionException.NONCE_IS_MAX", "NonceTooHigh"),
         ("TransactionException.INITCODE_SIZE_EXCEEDED", "max initcode size exceeded"),
-        ("TransactionException.NONCE_MISMATCH_TOO_LOW", "transaction nonce is too low"),
-        ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "transaction nonce is too high"),
+        ("TransactionException.NONCE_MISMATCH_TOO_LOW", "nonce too low"),
+        ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "nonce too high"),
         ("TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS", "InsufficientMaxFeePerBlobGas: Not enough to cover blob gas fee"),
         ("TransactionException.TYPE_1_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
         ("TransactionException.TYPE_2_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
@@ -444,7 +444,7 @@ public abstract class BlockchainTestBase
 
     private static readonly (string ExpectedError, Regex Pattern)[] ValidationErrorRegexMappings =
     [
-        ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
+        ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient funds for gas \* price \+ value|insufficient funds for transfer|insufficient funds for gas|insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
         ("TransactionException.TYPE_3_TX_WITH_FULL_BLOBS", ValidationErrorRegex(@"Transaction \d+ is not valid")),
         ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
         ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),
