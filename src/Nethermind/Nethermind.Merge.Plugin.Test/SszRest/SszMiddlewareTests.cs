@@ -54,6 +54,10 @@ public class SszMiddlewareTests
 
     private const int AuthenticatedPort = 8551;
     private const string OctetStream = "application/octet-stream";
+    private const string BearerToken =
+        "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" +
+        ".eyJpYXQiOjE2NDQ5OTQ5NzF9" +
+        ".RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PME";
 
     [SetUp]
     public void SetUp()
@@ -129,30 +133,30 @@ public class SszMiddlewareTests
             LimboLogs.Instance);
     }
 
-    private static DefaultHttpContext MakePostContext(string path, byte[] body, int port = AuthenticatedPort)
+    private static DefaultHttpContext MakeBaseContext(string method, string path, int port)
     {
         DefaultHttpContext ctx = new();
-        ctx.Request.Method = "POST";
+        ctx.Request.Method = method;
         ctx.Request.Path = path;
+        ctx.Connection.LocalPort = port;
+        ctx.Request.Headers.Authorization = BearerToken;
+        ctx.Response.Body = new MemoryStream();
+        return ctx;
+    }
+    private static DefaultHttpContext MakePostContext(string path, byte[] body, int port = AuthenticatedPort)
+    {
+        DefaultHttpContext ctx = MakeBaseContext("POST", path, port);
         ctx.Request.ContentType = OctetStream;
         ctx.Request.ContentLength = body.Length;
         ctx.Request.Body = new MemoryStream(body);
-        ctx.Connection.LocalPort = port;
-        ctx.Request.Headers.Authorization = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PME";
-        ctx.Response.Body = new MemoryStream();
         return ctx;
     }
 
     private static DefaultHttpContext MakeGetContext(string path, int port = AuthenticatedPort)
     {
-        DefaultHttpContext ctx = new();
-        ctx.Request.Method = "GET";
-        ctx.Request.Path = path;
+        DefaultHttpContext ctx = MakeBaseContext("GET", path, port);
         ctx.Request.Headers.Accept = OctetStream;
         ctx.Request.Body = Stream.Null;
-        ctx.Connection.LocalPort = port;
-        ctx.Request.Headers.Authorization = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PME";
-        ctx.Response.Body = new MemoryStream();
         return ctx;
     }
 
@@ -190,9 +194,8 @@ public class SszMiddlewareTests
     [Test]
     public async Task GetPayloadV1_returns_200_and_no_store_header()
     {
-        ExecutionPayload ep = MakeMinimalPayload();
         _getPayloadV1.HandleAsync(Arg.Any<byte[]>())
-            .Returns(ResultWrapper<ExecutionPayload?>.Success(ep));
+            .Returns(ResultWrapper<ExecutionPayload?>.Success(SszTestData.MakeMinimalPayload()));
 
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708");
 
@@ -217,45 +220,25 @@ public class SszMiddlewareTests
         await _getPayloadV1.DidNotReceive().HandleAsync(Arg.Any<byte[]>());
     }
 
-    [Test]
-    public async Task Forkchoice_calls_handler_and_returns_200()
-    {
-        ForkchoiceUpdatedV1Result fcuResult = new()
-        {
-            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
-            PayloadId = null
-        };
-        _forkchoiceUpdated
-            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<int>())
-            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
-
-        byte[] body = BuildForkchoiceRequest();
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        await _forkchoiceUpdated.Received(1)
-            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), 1);
-    }
-
-    [Test]
-    public async Task Forkchoice_passes_correct_version_to_handler()
+    [TestCase("/engine/v1/forkchoice", 1)]
+    [TestCase("/engine/v4/forkchoice", 4)]
+    public async Task Forkchoice_calls_handler_with_correct_version(string path, int expectedVersion)
     {
         _forkchoiceUpdated
             .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<int>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result
             {
-                PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Syncing }
+                PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
             }));
 
         byte[] body = BuildForkchoiceRequest();
-        DefaultHttpContext ctx = MakePostContext("/engine/v4/forkchoice", body);
+        DefaultHttpContext ctx = MakePostContext(path, body);
 
         await _middleware.InvokeAsync(ctx);
 
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
         await _forkchoiceUpdated.Received(1)
-            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), 4);
+            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), expectedVersion);
     }
 
     [Test]
@@ -267,7 +250,7 @@ public class SszMiddlewareTests
         _getBlobsV1.HandleAsync(Arg.Any<byte[][]>())
             .Returns(ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success([bap]));
 
-        byte[] body = BuildGetBlobsRequest([TestItem.KeccakA.Bytes.ToArray()]);
+        byte[] body = BuildHashListRequest([TestItem.KeccakA.Bytes.ToArray()]);
         DefaultHttpContext ctx = MakePostContext("/engine/v1/blobs", body);
 
         await _middleware.InvokeAsync(ctx);
@@ -277,34 +260,19 @@ public class SszMiddlewareTests
         await _getBlobsV2.DidNotReceive().HandleAsync(Arg.Any<GetBlobsHandlerV2Request>());
     }
 
-    [Test]
-    public async Task GetBlobsV2_uses_allowPartialReturn_false()
+    [TestCase("/engine/v2/blobs", false)]
+    [TestCase("/engine/v3/blobs", true)]
+    public async Task GetBlobsV2V3_sends_correct_allowPartialReturn(string path, bool expectedAllowPartial)
     {
         GetBlobsHandlerV2Request? capturedRequest = null;
         _getBlobsV2.HandleAsync(Arg.Do<GetBlobsHandlerV2Request>(r => capturedRequest = r))
             .Returns(ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(null));
 
-        byte[] body = BuildGetBlobsRequest([]);
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/blobs", body);
+        DefaultHttpContext ctx = MakePostContext(path, BuildHashListRequest([]));
 
         await _middleware.InvokeAsync(ctx);
 
-        capturedRequest!.Value.AllowPartialReturn.Should().BeFalse();
-    }
-
-    [Test]
-    public async Task GetBlobsV3_uses_allowPartialReturn_true()
-    {
-        GetBlobsHandlerV2Request? capturedRequest = null;
-        _getBlobsV2.HandleAsync(Arg.Do<GetBlobsHandlerV2Request>(r => capturedRequest = r))
-            .Returns(ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(null));
-
-        byte[] body = BuildGetBlobsRequest([]);
-        DefaultHttpContext ctx = MakePostContext("/engine/v3/blobs", body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        capturedRequest!.Value.AllowPartialReturn.Should().BeTrue();
+        capturedRequest!.Value.AllowPartialReturn.Should().Be(expectedAllowPartial);
     }
 
     [Test]
@@ -455,7 +423,6 @@ public class SszMiddlewareTests
     {
         bool nextInvoked = false;
         SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
-
         DefaultHttpContext ctx = MakePostContext("/engine/v1/unknown-resource", []);
 
         await mw.InvokeAsync(ctx);
@@ -484,7 +451,7 @@ public class SszMiddlewareTests
         _getBlobsV1.HandleAsync(Arg.Any<byte[][]>())
             .Returns(ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(null!));
 
-        byte[] body = BuildGetBlobsRequest([TestItem.KeccakA.Bytes.ToArray()]);
+        byte[] body = BuildHashListRequest([TestItem.KeccakA.Bytes.ToArray()]);
         DefaultHttpContext ctx = MakePostContext("/engine/v1/blobs", body);
 
         await _middleware.InvokeAsync(ctx);
@@ -502,24 +469,6 @@ public class SszMiddlewareTests
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
     }
-
-    private static ExecutionPayload MakeMinimalPayload() => new()
-    {
-        ParentHash = TestItem.KeccakA,
-        FeeRecipient = TestItem.AddressA,
-        StateRoot = TestItem.KeccakB,
-        ReceiptsRoot = TestItem.KeccakC,
-        LogsBloom = Bloom.Empty,
-        PrevRandao = TestItem.KeccakD,
-        BlockNumber = 1,
-        GasLimit = 1_000_000,
-        GasUsed = 0,
-        Timestamp = 1_700_000_000,
-        ExtraData = [],
-        BaseFeePerGas = 1,
-        BlockHash = TestItem.KeccakE,
-        Transactions = []
-    };
 
     private static Block MakeMinimalBlock()
     {
@@ -547,7 +496,7 @@ public class SszMiddlewareTests
     private static byte[] BuildMinimalV1NewPayloadRequest() =>
         NewPayloadV1RequestWire.Encode(new NewPayloadV1RequestWire
         {
-            ExecutionPayload = ExecutionPayloadV1Ssz.Wrap(MakeMinimalPayload())
+            ExecutionPayload = ExecutionPayloadV1Ssz.Wrap(SszTestData.MakeMinimalPayload())
         });
 
     private static byte[] BuildForkchoiceRequest()
@@ -560,25 +509,17 @@ public class SszMiddlewareTests
         return body;
     }
 
-    private static byte[] BuildGetBlobsRequest(byte[][] hashes)
+    private static byte[] BuildHashListRequest(byte[][] hashes)
     {
-        int varLen = hashes.Length * 32;
-        byte[] result = new byte[4 + varLen];
+        byte[] result = new byte[4 + hashes.Length * 32];
         BitConverter.TryWriteBytes(result.AsSpan(0, 4), (uint)4);
         for (int i = 0; i < hashes.Length; i++)
             Buffer.BlockCopy(hashes[i], 0, result, 4 + i * 32, 32);
         return result;
     }
 
-    private static byte[] BuildPayloadBodiesByHashRequest(Hash256[] hashes)
-    {
-        int varLen = hashes.Length * 32;
-        byte[] result = new byte[4 + varLen];
-        BitConverter.TryWriteBytes(result.AsSpan(0, 4), (uint)4);
-        for (int i = 0; i < hashes.Length; i++)
-            Buffer.BlockCopy(hashes[i].Bytes.ToArray(), 0, result, 4 + i * 32, 32);
-        return result;
-    }
+    private static byte[] BuildPayloadBodiesByHashRequest(Hash256[] hashes) =>
+        BuildHashListRequest(Array.ConvertAll(hashes, h => h.Bytes.ToArray()));
 
     private static byte[] BuildPayloadBodiesByRangeRequest(ulong start, ulong count)
     {
@@ -588,8 +529,8 @@ public class SszMiddlewareTests
         return result;
     }
 
-    private static byte[] BuildCapabilitiesRequest(string[] capabilities)
-        => ToBytes(SszCodec.EncodeCapabilitiesResponse(capabilities));
+    private static byte[] BuildCapabilitiesRequest(string[] capabilities) =>
+        ToBytes(SszCodec.EncodeCapabilitiesResponse(capabilities));
 
     private static byte[] BuildClientVersionRequest()
     {
@@ -605,6 +546,6 @@ public class SszMiddlewareTests
         return request;
     }
 
-    private static byte[] BuildTransitionConfigRequest(TransitionConfigurationV1 tc)
-        => ToBytes(SszCodec.EncodeTransitionConfigurationResponse(tc));
+    private static byte[] BuildTransitionConfigRequest(TransitionConfigurationV1 tc) =>
+        ToBytes(SszCodec.EncodeTransitionConfigurationResponse(tc));
 }

@@ -17,6 +17,7 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 [Parallelizable(ParallelScope.Self)]
 public class SszCodecTests
 {
+
     private static byte[] ToBytes((byte[] buffer, int length) pooled)
     {
         try
@@ -28,6 +29,19 @@ public class SszCodecTests
             ArrayPool<byte>.Shared.Return(pooled.buffer);
         }
     }
+
+    private static void AssertPooledBufferConsistent((byte[] buffer, int length) pooled)
+    {
+        try
+        {
+            pooled.length.Should().BePositive().And.BeLessThanOrEqualTo(pooled.buffer.Length);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(pooled.buffer);
+        }
+    }
+
 
     [TestCase(PayloadStatus.Valid, (byte)0)]
     [TestCase(PayloadStatus.Invalid, (byte)1)]
@@ -100,7 +114,6 @@ public class SszCodecTests
     {
         string[] caps = ["POST /engine/v5/payloads", "GET /engine/v6/payloads/{id}", "POST /engine/v4/forkchoice"];
 
-        // Request and response containers share the same SSZ shape.
         byte[] encoded = ToBytes(SszCodec.EncodeCapabilitiesResponse(caps));
         string[] decoded = SszCodec.DecodeCapabilitiesRequest(encoded);
 
@@ -167,15 +180,31 @@ public class SszCodecTests
 
     [Test]
     public void EncodeGetPayloadV1Response_produces_non_empty_bytes() =>
-        ToBytes(SszCodec.EncodeGetPayloadV1Response(MakeMinimalPayload())).Should().NotBeEmpty();
+        ToBytes(SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload())).Should().NotBeEmpty();
 
     [Test]
     public void EncodeGetPayloadV3Response_produces_non_empty_bytes()
     {
-        ExecutionPayloadV3 ep = MakeV3Payload();
+        ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
         Block block = ep.TryGetBlock().Block!;
         ToBytes(SszCodec.EncodeGetPayloadV3Response(new GetPayloadV3Result(block, UInt256.One, new BlobsBundleV1(block), false)))
             .Should().NotBeEmpty();
+    }
+
+    private static void AssertCommonNewPayloadFields(
+        byte[]?[] hashes, Hash256[] expectedHashes,
+        Hash256? parentBeaconBlockRoot, Hash256 expectedParentRoot,
+        byte[][]? requests, byte[] expectedRequest)
+    {
+        hashes.Should().HaveCount(expectedHashes.Length);
+        for (int i = 0; i < expectedHashes.Length; i++)
+            hashes[i].Should().BeEquivalentTo(expectedHashes[i].Bytes.ToArray());
+
+        parentBeaconBlockRoot.Should().NotBeNull();
+        parentBeaconBlockRoot.Should().Be(expectedParentRoot);
+
+        requests.Should().NotBeNull().And.HaveCount(1);
+        requests![0].Should().BeEquivalentTo(expectedRequest);
     }
 
     [Test]
@@ -185,7 +214,7 @@ public class SszCodecTests
 
         NewPayloadV4RequestWire wire = new()
         {
-            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(MakeV3Payload()),
+            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(SszTestData.MakeV3Payload()),
             ExpectedBlobVersionedHashes = [TestItem.KeccakA, TestItem.KeccakB],
             ParentBeaconBlockRoot = TestItem.KeccakC,
             ExecutionRequests = [new SszTransaction { Data = executionRequest }]
@@ -203,16 +232,10 @@ public class SszCodecTests
         ((ExecutionPayloadV3)payload).BlobGasUsed.Should().Be(0x20000UL);
         ((ExecutionPayloadV3)payload).ExcessBlobGas.Should().Be(0x40000UL);
 
-        hashes.Should().HaveCount(2);
-        hashes[0].Should().BeEquivalentTo(TestItem.KeccakA.Bytes.ToArray());
-        hashes[1].Should().BeEquivalentTo(TestItem.KeccakB.Bytes.ToArray());
-
-        parentBeaconBlockRoot.Should().NotBeNull();
-        parentBeaconBlockRoot.Should().Be(TestItem.KeccakC);
-
-        requests.Should().NotBeNull();
-        requests!.Should().HaveCount(1);
-        requests[0].Should().BeEquivalentTo(executionRequest);
+        AssertCommonNewPayloadFields(
+            hashes, [TestItem.KeccakA, TestItem.KeccakB],
+            parentBeaconBlockRoot, TestItem.KeccakC,
+            requests, executionRequest);
     }
 
     [Test]
@@ -224,7 +247,7 @@ public class SszCodecTests
 
         NewPayloadV5RequestWire wire = new()
         {
-            ExecutionPayload = ExecutionPayloadV4Ssz.Wrap(MakeV4Payload(blockAccessList, slotNumber)),
+            ExecutionPayload = ExecutionPayloadV4Ssz.Wrap(SszTestData.MakeV4Payload(blockAccessList, slotNumber)),
             ExpectedBlobVersionedHashes = [TestItem.KeccakA],
             ParentBeaconBlockRoot = TestItem.KeccakD,
             ExecutionRequests = [new SszTransaction { Data = executionRequest }]
@@ -246,48 +269,26 @@ public class SszCodecTests
         v4.BlobGasUsed.Should().Be(0x20000UL);
         v4.ExcessBlobGas.Should().Be(0x40000UL);
 
-        hashes.Should().HaveCount(1);
-        hashes[0].Should().BeEquivalentTo(TestItem.KeccakA.Bytes.ToArray());
-
-        parentBeaconBlockRoot.Should().NotBeNull();
-        parentBeaconBlockRoot.Should().Be(TestItem.KeccakD);
-
-        requests.Should().NotBeNull().And.HaveCount(1);
-        requests![0].Should().BeEquivalentTo(executionRequest);
+        AssertCommonNewPayloadFields(
+            hashes, [TestItem.KeccakA],
+            parentBeaconBlockRoot, TestItem.KeccakD,
+            requests, executionRequest);
     }
 
     [Test]
-    public void EncodePayloadStatus_buffer_length_is_consistent()
-    {
-        (byte[] buffer, int length) = SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = PayloadStatus.Valid });
-        try
-        {
-            length.Should().BePositive().And.BeLessThanOrEqualTo(buffer.Length);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
+    public void EncodePayloadStatus_buffer_length_is_consistent() =>
+        AssertPooledBufferConsistent(
+            SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
 
     [Test]
-    public void EncodeGetPayloadV1Response_buffer_length_is_consistent()
-    {
-        (byte[] buffer, int length) = SszCodec.EncodeGetPayloadV1Response(MakeMinimalPayload());
-        try
-        {
-            length.Should().BePositive().And.BeLessThanOrEqualTo(buffer.Length);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
+    public void EncodeGetPayloadV1Response_buffer_length_is_consistent() =>
+        AssertPooledBufferConsistent(
+            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload()));
 
     [Test]
     public void EncodeGetPayloadV1Response_fields_land_at_spec_defined_offsets()
     {
-        ExecutionPayload ep = MakeMinimalPayload();
+        ExecutionPayload ep = SszTestData.MakeMinimalPayload();
         ep.BaseFeePerGas = new UInt256(0xABCDEF);
 
         (byte[] buffer, int length) = SszCodec.EncodeGetPayloadV1Response(ep);
@@ -310,66 +311,4 @@ public class SszCodecTests
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
-
-    private static ExecutionPayload MakeMinimalPayload() => new()
-    {
-        ParentHash = TestItem.KeccakA,
-        FeeRecipient = TestItem.AddressA,
-        StateRoot = TestItem.KeccakB,
-        ReceiptsRoot = TestItem.KeccakC,
-        LogsBloom = Bloom.Empty,
-        PrevRandao = TestItem.KeccakD,
-        BlockNumber = 1,
-        GasLimit = 1_000_000,
-        GasUsed = 0,
-        Timestamp = 1_700_000_000,
-        ExtraData = [],
-        BaseFeePerGas = 1,
-        BlockHash = TestItem.KeccakE,
-        Transactions = []
-    };
-
-    private static ExecutionPayloadV3 MakeV3Payload() => new()
-    {
-        ParentHash = TestItem.KeccakA,
-        FeeRecipient = TestItem.AddressA,
-        StateRoot = TestItem.KeccakB,
-        ReceiptsRoot = TestItem.KeccakC,
-        LogsBloom = Bloom.Empty,
-        PrevRandao = TestItem.KeccakD,
-        BlockNumber = 100,
-        GasLimit = 2_000_000,
-        GasUsed = 50_000,
-        Timestamp = 1_700_000_100,
-        ExtraData = [],
-        BaseFeePerGas = 10,
-        BlockHash = TestItem.KeccakE,
-        Transactions = [],
-        Withdrawals = [],
-        BlobGasUsed = 0x20000,
-        ExcessBlobGas = 0x40000
-    };
-
-    private static ExecutionPayloadV4 MakeV4Payload(byte[] blockAccessList, ulong slotNumber) => new()
-    {
-        ParentHash = TestItem.KeccakA,
-        FeeRecipient = TestItem.AddressA,
-        StateRoot = TestItem.KeccakB,
-        ReceiptsRoot = TestItem.KeccakC,
-        LogsBloom = Bloom.Empty,
-        PrevRandao = TestItem.KeccakD,
-        BlockNumber = 100,
-        GasLimit = 2_000_000,
-        GasUsed = 50_000,
-        Timestamp = 1_700_000_100,
-        ExtraData = [],
-        BaseFeePerGas = 10,
-        BlockHash = TestItem.KeccakE,
-        Transactions = [],
-        Withdrawals = [],
-        BlobGasUsed = 0x20000,
-        ExcessBlobGas = 0x40000,
-        BlockAccessList = blockAccessList,
-        SlotNumber = slotNumber
-    };
 }
