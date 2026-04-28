@@ -35,7 +35,7 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
     private static Result<byte[]> RunInternal(ReadOnlyMemory<byte> inputData)
     {
         if (inputData.Length != 192)
-            return Errors.Failed;
+            return Errors.InvalidInputLength;
 
         ReadOnlySpan<byte> inputSpan = inputData.Span;
         ReadOnlySpan<byte> versionedHash = inputSpan[..32];
