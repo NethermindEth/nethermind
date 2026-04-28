@@ -46,10 +46,10 @@ public sealed class SszMiddleware(
     private static Dictionary<(string, string), List<ISszEndpointHandler>> BuildRoutes(
         IEnumerable<ISszEndpointHandler> handlers)
     {
-        Dictionary<(string, string), List<ISszEndpointHandler>> dict = new(TupleComparerExtensions.OrdinalIgnoreCaseTupleComparer);
+        Dictionary<(string, string), List<ISszEndpointHandler>> dict = new();
         foreach (ISszEndpointHandler h in handlers)
         {
-            (string, string) key = (h.HttpMethod, h.Resource.ToLowerInvariant());
+            (string, string) key = (h.HttpMethod.ToLowerInvariant(), h.Resource.ToLowerInvariant());
             if (!dict.TryGetValue(key, out List<ISszEndpointHandler>? list))
                 dict[key] = list = [];
             list.Add(h);
@@ -79,26 +79,15 @@ public sealed class SszMiddleware(
 
         if (!await _auth.Authenticate(ctx.Request.Headers.Authorization.ToString()))
         {
-            await WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized, "Authentication error");
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized, "Authentication error");
             return;
         }
 
-        string path = ctx.Request.Path.Value ?? string.Empty;
-        Match match = PathRegex.Match(path);
-
-        if (!match.Success)
+        if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out string resource, out string extra))
         {
-            await WriteErrorAsync(ctx, StatusCodes.Status404NotFound, "Unknown SSZ endpoint");
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound, "Unknown SSZ endpoint");
             return;
         }
-
-        if (!int.TryParse(match.Groups["version"].Value, out int version))
-        {
-            await WriteErrorAsync(ctx, StatusCodes.Status404NotFound, "Invalid version in path");
-            return;
-        }
-        string resource = match.Groups["resource"].Value.ToLowerInvariant();
-        string extra = match.Groups["extra"].Value;
 
         if (_logger.IsTrace)
             _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{resource}" +
@@ -106,7 +95,7 @@ public sealed class SszMiddleware(
 
         if (!TryResolveHandler(ctx.Request.Method, resource, version, out ISszEndpointHandler? handler))
         {
-            await WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
                 $"Unknown method: {ctx.Request.Method} /engine/v{version}/{resource}");
             return;
         }
@@ -118,7 +107,7 @@ public sealed class SszMiddleware(
         }
         catch (InvalidOperationException ex)
         {
-            await WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
             return;
         }
 
@@ -128,14 +117,29 @@ public sealed class SszMiddleware(
         }
         catch (Exception ex)
         {
-            if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {path}", ex);
-            await WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
+            if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
         }
+    }
+
+    private static bool TryRoute(string path, out int version, out string resource, out string extra)
+    {
+        version = 0;
+        resource = string.Empty;
+        extra = string.Empty;
+
+        Match match = PathRegex.Match(path);
+        if (!match.Success) return false;
+        if (!int.TryParse(match.Groups["version"].Value, out version)) return false;
+
+        resource = match.Groups["resource"].Value.ToLowerInvariant();
+        extra = match.Groups["extra"].Value;
+        return true;
     }
 
     private bool TryResolveHandler(string method, string resource, int version, out ISszEndpointHandler? handler)
     {
-        if (!_routes.TryGetValue((method, resource.ToLowerInvariant()), out List<ISszEndpointHandler>? candidates))
+        if (!_routes.TryGetValue((method.ToLowerInvariant(), resource), out List<ISszEndpointHandler>? candidates))
         {
             handler = null;
             return false;
@@ -198,13 +202,6 @@ public sealed class SszMiddleware(
 
         return ms.ToArray();
     }
-
-    private static async Task WriteErrorAsync(HttpContext ctx, int status, string message)
-    {
-        ctx.Response.StatusCode = status;
-        ctx.Response.ContentType = "text/plain";
-        await ctx.Response.WriteAsync(message);
-    }
 }
 
 public interface ISszProcessExitSource
@@ -215,20 +212,4 @@ public interface ISszProcessExitSource
 internal sealed class SszProcessExitSource : ISszProcessExitSource
 {
     public required CancellationToken ProcessExit { get; init; }
-}
-
-file static class TupleComparerExtensions
-{
-    internal static readonly IEqualityComparer<(string, string)> OrdinalIgnoreCaseTupleComparer =
-        new TupleStringComparer(StringComparer.OrdinalIgnoreCase);
-
-    private sealed class TupleStringComparer(StringComparer inner)
-        : IEqualityComparer<(string, string)>
-    {
-        public bool Equals((string, string) x, (string, string) y)
-            => inner.Equals(x.Item1, y.Item1) && inner.Equals(x.Item2, y.Item2);
-
-        public int GetHashCode((string, string) obj)
-            => HashCode.Combine(inner.GetHashCode(obj.Item1), inner.GetHashCode(obj.Item2));
-    }
 }

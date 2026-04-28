@@ -34,6 +34,14 @@ public static class SszCodec
         return (buffer, length);
     }
 
+    private static T[] WrapBytes<T>(byte[][] src, Func<byte[], T> ctor)
+    {
+        if (src is null || src.Length == 0) return [];
+        T[] result = new T[src.Length];
+        for (int i = 0; i < src.Length; i++) result[i] = ctor(src[i]);
+        return result;
+    }
+
     public static (byte[] buffer, int length) EncodePayloadStatus(PayloadStatusV1 ps)
         => EncodePooled(BuildPayloadStatusWire(ps));
 
@@ -60,77 +68,13 @@ public static class SszCodec
     public static (ForkchoiceStateV1 state, PayloadAttributes? attrs)
         DecodeForkchoiceUpdatedRequest(ReadOnlySpan<byte> buf, int version)
     {
-        ForkchoiceStateWire fcState;
-        PayloadAttributes? attrs = null;
-
-        if (version <= 1)
+        (ForkchoiceStateWire fcState, PayloadAttributes? attrs) = version switch
         {
-            ForkchoiceUpdatedV1RequestWire.Decode(buf, out ForkchoiceUpdatedV1RequestWire wire);
-            fcState = wire.ForkchoiceState;
-            if (wire.PayloadAttributes is { Length: > 0 })
-            {
-                PayloadAttributesV1Wire pa = wire.PayloadAttributes[0];
-                attrs = new PayloadAttributes
-                {
-                    Timestamp = pa.Timestamp,
-                    PrevRandao = pa.PrevRandao,
-                    SuggestedFeeRecipient = pa.SuggestedFeeRecipient
-                };
-            }
-        }
-        else if (version == 2)
-        {
-            ForkchoiceUpdatedV2RequestWire.Decode(buf, out ForkchoiceUpdatedV2RequestWire wire);
-            fcState = wire.ForkchoiceState;
-            if (wire.PayloadAttributes is { Length: > 0 })
-            {
-                PayloadAttributesV2Wire pa = wire.PayloadAttributes[0];
-                attrs = new PayloadAttributes
-                {
-                    Timestamp = pa.Timestamp,
-                    PrevRandao = pa.PrevRandao,
-                    SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
-                    Withdrawals = WithdrawalsFromWire(pa.Withdrawals)
-                };
-            }
-        }
-        else if (version == 3)
-        {
-            ForkchoiceUpdatedV3RequestWire.Decode(buf, out ForkchoiceUpdatedV3RequestWire wire);
-            fcState = wire.ForkchoiceState;
-            if (wire.PayloadAttributes is { Length: > 0 })
-            {
-                PayloadAttributesV3Wire pa = wire.PayloadAttributes[0];
-                attrs = new PayloadAttributes
-                {
-                    Timestamp = pa.Timestamp,
-                    PrevRandao = pa.PrevRandao,
-                    SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
-                    Withdrawals = WithdrawalsFromWire(pa.Withdrawals),
-                    ParentBeaconBlockRoot = pa.ParentBeaconBlockRoot is { Length: 1 }
-                        ? pa.ParentBeaconBlockRoot[0] : null
-                };
-            }
-        }
-        else
-        {
-            ForkchoiceUpdatedRequestWire.Decode(buf, out ForkchoiceUpdatedRequestWire wire);
-            fcState = wire.ForkchoiceState;
-            if (wire.PayloadAttributes is { Length: > 0 })
-            {
-                PayloadAttributesWire pa = wire.PayloadAttributes[0];
-                attrs = new PayloadAttributes
-                {
-                    Timestamp = pa.Timestamp,
-                    PrevRandao = pa.PrevRandao,
-                    SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
-                    Withdrawals = WithdrawalsFromWire(pa.Withdrawals),
-                    ParentBeaconBlockRoot = pa.ParentBeaconBlockRoot is { Length: 1 }
-                        ? pa.ParentBeaconBlockRoot[0] : null,
-                    SlotNumber = pa.SlotNumber
-                };
-            }
-        }
+            <= 1 => DecodeForkchoice<ForkchoiceUpdatedV1RequestWire>(buf, w => w.ForkchoiceState, w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
+            2 => DecodeForkchoice<ForkchoiceUpdatedV2RequestWire>(buf, w => w.ForkchoiceState, w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
+            3 => DecodeForkchoice<ForkchoiceUpdatedV3RequestWire>(buf, w => w.ForkchoiceState, w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
+            _ => DecodeForkchoice<ForkchoiceUpdatedRequestWire>(buf, w => w.ForkchoiceState, w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
+        };
 
         ForkchoiceStateV1 state = new(
             headBlockHash: fcState.HeadBlockHash,
@@ -140,14 +84,23 @@ public static class SszCodec
         return (state, attrs);
     }
 
+    private static (ForkchoiceStateWire, PayloadAttributes?) DecodeForkchoice<TWire>(
+        ReadOnlySpan<byte> buf,
+        Func<TWire, ForkchoiceStateWire> getState,
+        Func<TWire, PayloadAttributes?> getAttrs)
+        where TWire : struct, ISszCodec<TWire>
+    {
+        TWire.Decode(buf, out TWire wire);
+        return (getState(wire), getAttrs(wire));
+    }
+
     public static (ExecutionPayload payload, byte[]?[] versionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         DecodeNewPayloadRequest(ReadOnlySpan<byte> buf, int version)
     {
         if (version <= 1)
         {
             NewPayloadV1RequestWire.Decode(buf, out NewPayloadV1RequestWire w);
-            ExecutionPayload ep = ExecutionPayloadV1Ssz.Unwrap(w.ExecutionPayload);
-            return (ep, [], null, null);
+            return (ExecutionPayloadV1Ssz.Unwrap(w.ExecutionPayload), [], null, null);
         }
         if (version == 2)
         {
@@ -159,10 +112,7 @@ public static class SszCodec
             NewPayloadV3RequestWire.Decode(buf, out NewPayloadV3RequestWire w);
             ExecutionPayloadV3 ep = ExecutionPayloadV3Ssz.Unwrap(w.ExecutionPayload);
             ep.ParentBeaconBlockRoot = w.ParentBeaconBlockRoot;
-            return (ep,
-                HashesFromWire(w.ExpectedBlobVersionedHashes),
-                w.ParentBeaconBlockRoot,
-                null);
+            return (ep, HashesFromWire(w.ExpectedBlobVersionedHashes), w.ParentBeaconBlockRoot, null);
         }
         if (version == 4)
         {
@@ -404,6 +354,40 @@ public static class SszCodec
         ValidationError = ps.ValidationError is not null ? Encoding.UTF8.GetBytes(ps.ValidationError) : []
     };
 
+    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV1Wire pa) => new()
+    {
+        Timestamp = pa.Timestamp,
+        PrevRandao = pa.PrevRandao,
+        SuggestedFeeRecipient = pa.SuggestedFeeRecipient
+    };
+
+    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV2Wire pa) => new()
+    {
+        Timestamp = pa.Timestamp,
+        PrevRandao = pa.PrevRandao,
+        SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
+        Withdrawals = WithdrawalsFromWire(pa.Withdrawals)
+    };
+
+    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV3Wire pa) => new()
+    {
+        Timestamp = pa.Timestamp,
+        PrevRandao = pa.PrevRandao,
+        SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
+        Withdrawals = WithdrawalsFromWire(pa.Withdrawals),
+        ParentBeaconBlockRoot = pa.ParentBeaconBlockRoot is { Length: 1 } ? pa.ParentBeaconBlockRoot[0] : null
+    };
+
+    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) => new()
+    {
+        Timestamp = pa.Timestamp,
+        PrevRandao = pa.PrevRandao,
+        SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
+        Withdrawals = WithdrawalsFromWire(pa.Withdrawals),
+        ParentBeaconBlockRoot = pa.ParentBeaconBlockRoot is { Length: 1 } ? pa.ParentBeaconBlockRoot[0] : null,
+        SlotNumber = pa.SlotNumber
+    };
+
     private static WithdrawalWire[] WithdrawalsToWire(Withdrawal[]? ws)
     {
         if (ws is null || ws.Length == 0) return [];
@@ -435,12 +419,7 @@ public static class SszCodec
     }
 
     private static SszTransaction[] TxsToWire(byte[][] txs)
-    {
-        if (txs is null || txs.Length == 0) return [];
-        SszTransaction[] result = new SszTransaction[txs.Length];
-        for (int i = 0; i < txs.Length; i++) result[i] = new SszTransaction { Data = txs[i] };
-        return result;
-    }
+        => WrapBytes(txs, data => new SszTransaction { Data = data });
 
     private static byte[]?[] HashesFromWire(Hash256[]? hashes)
     {
@@ -451,20 +430,10 @@ public static class SszCodec
     }
 
     private static SszKzgCommitment[] KzgProofsToWire(byte[][] proofs)
-    {
-        if (proofs is null || proofs.Length == 0) return [];
-        SszKzgCommitment[] result = new SszKzgCommitment[proofs.Length];
-        for (int i = 0; i < proofs.Length; i++) result[i] = new() { Bytes = proofs[i] };
-        return result;
-    }
+        => WrapBytes(proofs, b => new SszKzgCommitment { Bytes = b });
 
     private static SszTransaction[] ExecutionRequestsToWire(byte[][]? reqs)
-    {
-        if (reqs is null || reqs.Length == 0) return [];
-        SszTransaction[] result = new SszTransaction[reqs.Length];
-        for (int i = 0; i < reqs.Length; i++) result[i] = new() { Data = reqs[i] };
-        return result;
-    }
+        => reqs is null ? [] : WrapBytes(reqs, data => new SszTransaction { Data = data });
 
     private static byte[][]? ExecutionRequestsFromWire(SszTransaction[]? reqs)
     {

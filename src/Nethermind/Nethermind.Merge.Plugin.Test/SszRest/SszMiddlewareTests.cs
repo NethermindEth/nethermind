@@ -100,24 +100,24 @@ public class SszMiddlewareTests
         [
             new NewPayloadSszHandler(_newPayload),
 
-            new GetPayloadV1SszHandler(_getPayloadV1),
-            new GetPayloadV2SszHandler(_getPayloadV2),
-            new GetPayloadV3SszHandler(_getPayloadV3),
-            new GetPayloadV4SszHandler(_getPayloadV4),
-            new GetPayloadV5SszHandler(_getPayloadV5),
-            new GetPayloadV6SszHandler(_getPayloadV6),
+            new GetPayloadSszHandler<ExecutionPayload>(1, _getPayloadV1, SszCodec.EncodeGetPayloadV1Response),
+            new GetPayloadSszHandler<GetPayloadV2Result>(2, _getPayloadV2, SszCodec.EncodeGetPayloadV2Response),
+            new GetPayloadSszHandler<GetPayloadV3Result>(3, _getPayloadV3, SszCodec.EncodeGetPayloadV3Response),
+            new GetPayloadSszHandler<GetPayloadV4Result>(4, _getPayloadV4, SszCodec.EncodeGetPayloadV4Response),
+            new GetPayloadSszHandler<GetPayloadV5Result>(5, _getPayloadV5, SszCodec.EncodeGetPayloadV5Response),
+            new GetPayloadSszHandler<GetPayloadV6Result>(6, _getPayloadV6, SszCodec.EncodeGetPayloadV6Response),
 
             new ForkchoiceUpdatedSszHandler(_forkchoiceUpdated),
 
             new GetBlobsV1SszHandler(_getBlobsV1),
-            new GetBlobsV2SszHandler(_getBlobsV2),
-            new GetBlobsV3SszHandler(_getBlobsV2),
+            new GetBlobsV2SszHandler(2, allowPartialReturn: false, _getBlobsV2, SszCodec.EncodeGetBlobsV2Response),
+            new GetBlobsV2SszHandler(3, allowPartialReturn: true,  _getBlobsV2, SszCodec.EncodeGetBlobsV3Response),
 
-            new GetPayloadBodiesByHashV1SszHandler(_bodiesByHashV1),
-            new GetPayloadBodiesByHashV2SszHandler(_bodiesByHashV2),
+            new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByHashV1, SszCodec.EncodePayloadBodiesV1Response),
+            new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByHashV2, SszCodec.EncodePayloadBodiesV2Response),
 
-            new GetPayloadBodiesByRangeV1SszHandler(_bodiesByRangeV1),
-            new GetPayloadBodiesByRangeV2SszHandler(_bodiesByRangeV2),
+            new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByRangeV1.Handle, SszCodec.EncodePayloadBodiesV1Response),
+            new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByRangeV2.Handle, SszCodec.EncodePayloadBodiesV2Response),
 
             new ClientVersionSszHandler(),
             new CapabilitiesSszHandler(_capabilities),

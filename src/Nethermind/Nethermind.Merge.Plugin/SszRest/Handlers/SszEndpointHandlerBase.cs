@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// </summary>
 public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 {
-    private const string OctetStream = "application/octet-stream";
+    protected const string OctetStream = "application/octet-stream";
 
     public abstract string HttpMethod { get; }
 
@@ -27,6 +27,20 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 
     /// <inheritdoc/>
     public abstract Task HandleAsync(HttpContext ctx, int version, string extra, byte[] body);
+
+    protected static bool TryParsePayloadId(string extra, out byte[] id, out string err)
+    {
+        if (extra.Length == 0)
+        {
+            id = [];
+            err = "Missing payload ID";
+            return false;
+        }
+        string hex = extra.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? extra[2..] : extra;
+        id = Convert.FromHexString(hex.AsSpan());
+        err = string.Empty;
+        return true;
+    }
 
     protected static Task WriteSszPooledAsync(HttpContext ctx, (byte[] buffer, int length) pooled)
         => WriteSszPooledAsync(ctx, pooled.buffer, pooled.length);
@@ -66,7 +80,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         await WriteSszPooledAsync(ctx, encode(result.Data));
     }
 
-    protected static async Task WriteErrorAsync(HttpContext ctx, int status, string message)
+    public static async Task WriteErrorAsync(HttpContext ctx, int status, string message)
     {
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "text/plain";

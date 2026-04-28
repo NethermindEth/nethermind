@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api.Extensions;
@@ -26,18 +28,23 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// </summary>
 public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcServiceConfigurer
 {
+    private static readonly Type[] SingletonHandlers =
+    [
+        typeof(NewPayloadSszHandler),
+        typeof(ForkchoiceUpdatedSszHandler),
+        typeof(ClientVersionSszHandler),
+        typeof(CapabilitiesSszHandler),
+        typeof(TransitionConfigurationSszHandler),
+    ];
+
     public void Configure(IServiceCollection services)
     {
         services.Bridge<ILogManager>(ctx);
         services.Bridge<IJsonRpcUrlCollection>(ctx);
         services.Bridge<IRpcAuthentication>(ctx);
         services.Bridge<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(ctx);
+
         services.Bridge<IAsyncHandler<byte[], ExecutionPayload?>>(ctx);
-        services.Bridge<IAsyncHandler<byte[], GetPayloadV2Result?>>(ctx);
-        services.Bridge<IAsyncHandler<byte[], GetPayloadV3Result?>>(ctx);
-        services.Bridge<IAsyncHandler<byte[], GetPayloadV4Result?>>(ctx);
-        services.Bridge<IAsyncHandler<byte[], GetPayloadV5Result?>>(ctx);
-        services.Bridge<IAsyncHandler<byte[], GetPayloadV6Result?>>(ctx);
 
         services.Bridge<IForkchoiceUpdatedHandler>(ctx);
 
@@ -55,30 +62,57 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
 
         services.AddSingleton<ISszProcessExitSource>(new SszProcessExitSource { ProcessExit = ctx.Resolve<IProcessExitSource>().Token });
 
-        services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler>();
+        void RegisterGetPayloadVersion<TResult>(int version, Func<TResult?, (byte[] buffer, int length)> encoder) where TResult : class
+        {
+            services.Bridge<IAsyncHandler<byte[], TResult?>>(ctx);
+            services.AddSingleton<ISszEndpointHandler>(
+                _ => new GetPayloadSszHandler<TResult>(version,
+                    ctx.Resolve<IAsyncHandler<byte[], TResult?>>(),
+                    encoder));
+        }
 
-        services.AddSingleton<ISszEndpointHandler, GetPayloadV1SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetPayloadV2SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetPayloadV3SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetPayloadV4SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetPayloadV5SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetPayloadV6SszHandler>();
+        void AddGetPayloadBodiesByHash<TResult>(int version, Func<IEnumerable<TResult?>, (byte[] buffer, int length)> encoder) where TResult : class =>
+            services.AddSingleton<ISszEndpointHandler>(
+                _ => new GetPayloadBodiesByHashSszHandler<TResult>(version,
+                    ctx.Resolve<IHandler<IReadOnlyList<Hash256>, IEnumerable<TResult?>>>(),
+                    encoder));
 
-        services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler>();
+        void AddGetPayloadBodiesByRange<TResult>(int version, Func<long, long, Task<ResultWrapper<IEnumerable<TResult?>>>> rangeHandle, Func<IEnumerable<TResult?>, (byte[] buffer, int length)> encoder) where TResult : class =>
+            services.AddSingleton<ISszEndpointHandler>(
+                _ => new GetPayloadBodiesByRangeSszHandler<TResult>(version, rangeHandle, encoder));
 
-        services.AddSingleton<ISszEndpointHandler, GetBlobsV1SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetBlobsV2SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetBlobsV3SszHandler>();
+        void AddGetBlobsV2(int version, bool allowPartialReturn, Func<IEnumerable<BlobAndProofV2?>, (byte[] buffer, int length)> encoder) =>
+            services.AddSingleton<ISszEndpointHandler>(
+                _ => new GetBlobsV2SszHandler(version,
+                    allowPartialReturn,
+                    ctx.Resolve<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
+                    encoder));
 
-        services.AddSingleton<ISszEndpointHandler, GetPayloadBodiesByHashV1SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetPayloadBodiesByHashV2SszHandler>();
+        services.AddSingleton<ISszEndpointHandler>(
+            _ => new GetPayloadSszHandler<ExecutionPayload>(1,
+                ctx.Resolve<IAsyncHandler<byte[], ExecutionPayload?>>(),
+                SszCodec.EncodeGetPayloadV1Response));
+        RegisterGetPayloadVersion<GetPayloadV2Result>(2, SszCodec.EncodeGetPayloadV2Response);
+        RegisterGetPayloadVersion<GetPayloadV3Result>(3, SszCodec.EncodeGetPayloadV3Response);
+        RegisterGetPayloadVersion<GetPayloadV4Result>(4, SszCodec.EncodeGetPayloadV4Response);
+        RegisterGetPayloadVersion<GetPayloadV5Result>(5, SszCodec.EncodeGetPayloadV5Response);
+        RegisterGetPayloadVersion<GetPayloadV6Result>(6, SszCodec.EncodeGetPayloadV6Response);
 
-        services.AddSingleton<ISszEndpointHandler, GetPayloadBodiesByRangeV1SszHandler>();
-        services.AddSingleton<ISszEndpointHandler, GetPayloadBodiesByRangeV2SszHandler>();
+        services.AddSingleton<ISszEndpointHandler>(
+            _ => new GetBlobsV1SszHandler(
+                ctx.Resolve<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>()));
 
-        services.AddSingleton<ISszEndpointHandler, ClientVersionSszHandler>();
-        services.AddSingleton<ISszEndpointHandler, CapabilitiesSszHandler>();
-        services.AddSingleton<ISszEndpointHandler, TransitionConfigurationSszHandler>();
+        AddGetBlobsV2(2, allowPartialReturn: false, SszCodec.EncodeGetBlobsV2Response);
+        AddGetBlobsV2(3, allowPartialReturn: true, SszCodec.EncodeGetBlobsV3Response);
+
+        AddGetPayloadBodiesByHash<ExecutionPayloadBodyV1Result>(1, SszCodec.EncodePayloadBodiesV1Response);
+        AddGetPayloadBodiesByHash<ExecutionPayloadBodyV2Result>(2, SszCodec.EncodePayloadBodiesV2Response);
+
+        AddGetPayloadBodiesByRange<ExecutionPayloadBodyV1Result>(1, ctx.Resolve<IGetPayloadBodiesByRangeV1Handler>().Handle, SszCodec.EncodePayloadBodiesV1Response);
+        AddGetPayloadBodiesByRange<ExecutionPayloadBodyV2Result>(2, ctx.Resolve<IGetPayloadBodiesByRangeV2Handler>().Handle, SszCodec.EncodePayloadBodiesV2Response);
+
+        foreach (Type handler in SingletonHandlers)
+            services.AddSingleton(typeof(ISszEndpointHandler), handler);
     }
 }
 
