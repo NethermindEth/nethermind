@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
@@ -539,6 +541,97 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
     }
+
+    [TestCase(false, false, TestName = "TopLevelCreate_Success")]
+    [TestCase(true, false, TestName = "TopLevelCreate_Revert")]
+    [TestCase(false, true, TestName = "TopLevelCreate_AddressCollision")]
+    public void Test_CallTrace_TopLevelCreate(bool revert, bool addressCollision)
+    {
+        byte[] initCode;
+        if (addressCollision)
+        {
+            initCode = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done;
+            Address deploymentAddress = ContractAddress.From(Sender, TestState.GetNonce(Sender));
+            TestState.CreateAccount(deploymentAddress, 0);
+            TestState.InsertCode(deploymentAddress, new byte[] { 0xEF }, SpecProvider.GenesisSpec);
+            TestState.Commit(SpecProvider.GenesisSpec);
+        }
+        else
+        {
+            initCode = revert
+                ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+                : Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        }
+
+        (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(null));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        if (addressCollision)
+        {
+            Assert.That(trace.CustomTracerResult, Is.Null,
+                "address-collision path never enters the EVM; no call frame should be produced");
+            return;
+        }
+
+        NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
+        Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
+        Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
+        if (revert)
+            Assert.That(frame.Error, Is.Not.Null, "expected error description on reverted CREATE");
+        else
+        {
+            Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
+            Assert.That(frame.To, Is.Not.Null, "expected deployed contract address");
+        }
+    }
+
+    [Test]
+    public void Test_CallTrace_MarkAsFailed_WithoutEvmError_NoCrash()
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).WithData([0x00]).TestObject;
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(null));
+
+        tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CREATE);
+        tracer.ReportActionEnd(40000, TestItem.AddressB, new byte[] { 0xEF });
+
+        Assert.That(
+            () => tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(60000, 60000), [], "deploy failed post-EVM"),
+            Throws.Nothing);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
+        Assert.That(frame, Is.Not.Null, "expected a top-level call frame (ReportAction populated _callStack)");
+        Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
+        Assert.That(frame.Error, Is.Null, "no EVM exception fired; Error must stay null when _error is null");
+    }
+
+    [Test]
+    public void Test_CallTrace_TopLevelCreate_WithLog_DeployContractFailure_LogsCleared()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.LOG0)
+            .PushData(0xEF)
+            .PushData(0)
+            .Op(Instruction.MSTORE8)
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
+        Assert.That(frame, Is.Not.Null, "expected a top-level call frame (EVM ran before deployment was rejected)");
+        Assert.That(frame!.Logs, Is.Null, "logs must be cleared on a failed CREATE frame even when _error is null");
+    }
+
 
     private byte[] CreateNestedCallsCode(bool revertParentCall = false, bool revertCreateCall = false)
     {

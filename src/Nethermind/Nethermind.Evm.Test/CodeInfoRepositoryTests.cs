@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
-using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using NSubstitute;
 using NUnit.Framework;
@@ -99,36 +98,6 @@ public class CodeInfoRepositoryTests
         sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address result);
 
         result.Should().Be(new Address(code.Slice(3, Address.Size)));
-    }
-
-    [TestCaseSource(nameof(DelegationCodeCases))]
-    public void GetExecutableCodeHash_CodeTryGetDelegation_ReturnsHashOfDelegated(byte[] code)
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
-        Address delegationAddress = new(code.Slice(3, Address.Size));
-        byte[] delegationCode = new byte[32];
-        stateProvider.CreateAccount(delegationAddress, 0);
-        stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);
-
-        EthereumCodeInfoRepository sut = new(stateProvider);
-
-        sut.GetExecutableCodeHash(TestItem.AddressA, _releaseSpec).Should().Be(Keccak.Compute(code).ValueHash256);
-    }
-
-    [TestCaseSource(nameof(NotDelegationCodeCases))]
-    public void GetExecutableCodeHash_CodeIsNotDelegation_ReturnsCodeHashOfAddress(byte[] code)
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
-
-        EthereumCodeInfoRepository sut = new(stateProvider);
-
-        sut.GetExecutableCodeHash(TestItem.AddressA, _releaseSpec).Should().Be(Keccak.Compute(code).ValueHash256);
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]

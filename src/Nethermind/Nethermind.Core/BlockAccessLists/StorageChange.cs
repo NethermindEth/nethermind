@@ -7,21 +7,21 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct StorageChange(ushort blockAccessIndex, UInt256 newValue) : IEquatable<StorageChange>, IIndexedChange
+public readonly struct StorageChange(int index, UInt256 value) : IEquatable<StorageChange>, IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    public int Index { get; init; } = index;
 
-    public UInt256 NewValue { get; init; } = newValue;
+    public UInt256 Value { get; init; } = value;
 
     public readonly bool Equals(StorageChange other) =>
-        BlockAccessIndex == other.BlockAccessIndex &&
-        NewValue.Equals(other.NewValue);
+        Index == other.Index &&
+        Value.Equals(other.Value);
 
     public override readonly bool Equals(object? obj) =>
         obj is StorageChange other && Equals(other);
 
     public override readonly int GetHashCode() =>
-        HashCode.Combine(BlockAccessIndex, NewValue);
+        HashCode.Combine(Index, Value);
 
     public static bool operator ==(StorageChange left, StorageChange right) =>
         left.Equals(right);
@@ -29,5 +29,5 @@ public readonly struct StorageChange(ushort blockAccessIndex, UInt256 newValue) 
     public static bool operator !=(StorageChange left, StorageChange right) =>
         !(left == right);
 
-    public override readonly string ToString() => $"{BlockAccessIndex}:{NewValue}";
+    public override readonly string ToString() => $"{Index}:{Value}";
 }

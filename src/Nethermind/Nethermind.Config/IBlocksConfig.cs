@@ -61,6 +61,16 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
     bool BuildBlocksOnMainState { get; set; }
 
+    [ConfigItem(
+        Description = "Parallelize transaction execution with Block level access lists.",
+        DefaultValue = "true")]
+    bool ParallelExecution { get; set; }
+
+    [ConfigItem(
+        Description = "Use parallel reads with Block level access lists.",
+        DefaultValue = "true")]
+    bool ParallelExecutionBatchRead { get; set; }
+
     byte[] GetExtraDataBytes();
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]

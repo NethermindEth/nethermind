@@ -37,7 +37,9 @@ public class Engine : IDisposable
 
     [ThreadStatic] private static Engine? _currentEngine;
 
-    private static readonly V8Runtime _runtime = new();
+    private const int V8MaxOldSpaceMb = 128;
+
+    private static readonly V8Runtime _runtime = new(new V8RuntimeConstraints { MaxOldSpaceSize = V8MaxOldSpaceMb });
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
     private static readonly LruCache<int, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
@@ -149,6 +151,8 @@ public class Engine : IDisposable
     /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
         ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToTypedScriptArray();
+
+    public void Interrupt() => V8Engine.Interrupt();
 
     public void Dispose()
     {
