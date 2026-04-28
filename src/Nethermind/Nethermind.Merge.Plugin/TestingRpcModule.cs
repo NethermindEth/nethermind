@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -33,6 +34,7 @@ public class TestingRpcModule(
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
+    IProcessExitSource processExitSource,
     ILogManager logManager)
     : ITestingRpcModule, IDisposable
 {
@@ -102,7 +104,15 @@ public class TestingRpcModule(
     public async Task<ResultWrapper<Hash256?>> testing_commitBlockV1(
         PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null)
     {
-        await _commitLock.WaitAsync().ConfigureAwait(false);
+        CancellationToken exitToken = processExitSource.Token;
+        try
+        {
+            await _commitLock.WaitAsync(exitToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return ResultWrapper<Hash256?>.Fail("node is shutting down", ErrorCodes.InternalError);
+        }
         try
         {
             BlockHeader? chainHead = blockTree.Head?.Header;
@@ -164,15 +174,18 @@ public class TestingRpcModule(
                     return ResultWrapper<Hash256?>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
                 }
 
-                using CancellationTokenSource cts = new(CommitHeadTimeout);
+                using CancellationTokenSource timeoutCts = new(CommitHeadTimeout);
+                using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, exitToken);
                 try
                 {
-                    await headAdvanced.Task.WaitAsync(cts.Token).ConfigureAwait(false);
+                    await headAdvanced.Task.WaitAsync(linkedCts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
                     return ResultWrapper<Hash256?>.Fail(
-                        $"block was suggested but did not become head within {CommitHeadTimeout.TotalSeconds:0}s",
+                        exitToken.IsCancellationRequested
+                            ? "node is shutting down"
+                            : $"block was suggested but did not become head within {CommitHeadTimeout.TotalSeconds:0}s",
                         ErrorCodes.InternalError);
                 }
             }
