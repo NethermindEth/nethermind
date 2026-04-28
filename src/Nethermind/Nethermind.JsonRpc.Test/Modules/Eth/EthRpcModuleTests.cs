@@ -1449,6 +1449,76 @@ public partial class EthRpcModuleTests
             .Should().Contain("0x0000000000000000000000000000000000000000000000000000000000000001");
     }
 
+    [Test]
+    public async Task Eth_createAccessList_returns_out_of_gas_when_al_intrinsic_cost_exceeds_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+
+        // Contract: PUSH1 1, SLOAD, POP, PUSH1 2, SLOAD, POP, STOP — touches 2 cold storage slots.
+        // optimize=true → AL = {0xc200...: [slot1, slot2]} (sender excluded, it has no storage).
+        // Pass 1 (cold, no AL): 21000 + 2×2100 + 10 ops ≈ 25,210 gas — fits in 0x6A50 (27,216).
+        // Pass 2 (warm + AL intrinsic 6200): intrinsic=27,200, 16 gas remain for execution → OOG on SLOAD.
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{contractAddr}\":{{\"code\":\"0x600154506002545000\"}}}}")!;
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"0x7f554713be84160fdf0178cc8df86f5aabd33397\",\"to\":\"{contractAddr}\",\"gas\":\"0x6A50\"}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, true);
+
+        JToken result = JToken.Parse(serialized)["result"]!;
+        result["error"]!.Value<string>().Should().Be("out of gas");
+        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        gasUsed.Should().BeLessOrEqualTo(0x6A50);
+        result["accessList"]!.ToArray().Should().NotBeEmpty();
+    }
+
+    // Mirrors the core cases from Geth's testAccessList in ethclient_test.go.
+    [Test]
+    public async Task Eth_createAccessList_gas_calculation_matches_geth_simple_transfer()
+    {
+        using Context ctx = await Context.Create();
+
+        // Plain ETH transfer (value=0 so no new-account charge). Sender and recipient are both
+        // pre-warmed as tx.origin / tx.to; no storage is touched → empty optimized access list.
+        // Geth: wantGas=21000, wantAL=`[]`
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gas":"0x5208"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
+
+        JToken result = JToken.Parse(serialized)["result"]!;
+        result["error"].Should().BeNull();
+        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        gasUsed.Should().Be(21_000);
+        result["accessList"]!.ToArray().Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_gas_calculation_reverting_sstore_returns_access_list_and_vm_error()
+    {
+        using Context ctx = await Context.Create();
+
+        // Contract creation that writes to storage (SSTORE slot 0x81) then reverts.
+        // Bytecode: PUSH1 0x80, PUSH1 0x80, PUSH1 0x80, PUSH1 0x81, SSTORE, REVERT
+        // This mirrors Geth's wantVMErr="execution reverted" + wantAL with 1 addr and 1 storage key.
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","gas":"0x186A0","data":"0x608060806080608155fd"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
+
+        JToken result = JToken.Parse(serialized)["result"]!;
+        result["error"]!.Value<string>().Should().Be("revert");
+        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        gasUsed.Should().BeGreaterThan(0);
+        // AL must contain the newly created contract address with storage key 0x81.
+        JToken[] accessList = result["accessList"]!.ToArray();
+        accessList.Should().HaveCount(1);
+        accessList[0]["storageKeys"]!.ToArray().Should().ContainSingle(
+            k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000081");
+    }
+
     [TestCase(null)]
     [TestCase(0)]
     public static void Should_handle_gasCap_as_max_if_null_or_zero(long? gasCap)
