@@ -36,7 +36,7 @@ on:
       workers:
         description: Parallel workers
         required: false
-        default: '1'
+        default: '8'
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -50,7 +50,7 @@ env:
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
   EEST_VERSION: ${{ inputs.eest_version || 'bal@v5.6.0' }}
   EEST_ARCHIVE: ${{ inputs.eest_archive || 'fixtures_bal.tar.gz' }}
-  WORKERS: ${{ inputs.workers || '1' }}
+  WORKERS: ${{ inputs.workers || '8' }}
   FILTER: ${{ inputs.filter || '' }}
 
 defaults:
@@ -162,8 +162,10 @@ jobs:
             FAILED=$(jq '[.[] | select(.pass == false)] | length' /tmp/nethtest-results.json)
           else
             echo "::warning::No JSON output — falling back to stderr log"
-            TOTAL=$(grep -cE "^(PASS|FAIL|EXCEPTION) " /tmp/nethtest-stderr.log 2>/dev/null || echo 0)
-            PASSED=$(grep -c "^PASS " /tmp/nethtest-stderr.log 2>/dev/null || echo 0)
+            # Strip ANSI color codes before parsing
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log > /tmp/nethtest-stderr-clean.log 2>/dev/null || true
+            TOTAL=$(grep -cE "^(PASS|FAIL|EXCEPTION) " /tmp/nethtest-stderr-clean.log 2>/dev/null || echo 0)
+            PASSED=$(grep -c "^PASS " /tmp/nethtest-stderr-clean.log 2>/dev/null || echo 0)
             FAILED=$(( TOTAL - PASSED ))
           fi
 
@@ -191,7 +193,7 @@ jobs:
               jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
                 | head -30 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
             else
-              grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-stderr.log 2>/dev/null \
+              grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-stderr-clean.log 2>/dev/null \
                 | sed 's/^[^ ]* [^ ]*//' | sort | uniq -c | sort -rn \
                 | head -30 | awk '{printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
                 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
@@ -205,7 +207,7 @@ jobs:
               jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name)"' /tmp/nethtest-results.json \
                 | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
             else
-              grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-stderr.log 2>/dev/null \
+              grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-stderr-clean.log 2>/dev/null \
                 | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
             fi
             echo '```' >> "$GITHUB_STEP_SUMMARY"
