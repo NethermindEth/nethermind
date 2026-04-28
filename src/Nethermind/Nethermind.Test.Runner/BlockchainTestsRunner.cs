@@ -107,7 +107,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
                     EthereumTestResult result = await RunTest(test, tracer: tracer);
                     testResults.Add(result);
                     if (suppressOutput)
-                        Console.Error.WriteLine($"{(result.Pass ? "PASS" : "FAIL")} {test.Name}");
+                        WriteStatus(result.Pass ? "PASS" : "FAIL", test.Name, result.Pass);
                     else if (!jsonOutput)
                     {
                         if (result.Pass)
@@ -120,7 +120,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
                 {
                     testResults.Add(new EthereumTestResult(test.Name, test.ForkName, ex.Message));
                     if (suppressOutput)
-                        Console.Error.WriteLine($"EXCEPTION {test.Name} — {ex.Message}");
+                        WriteStatus("EXCEPTION", $"{test.Name} — {ex.Message}", false);
                     else if (!jsonOutput)
                         WriteRed($"EXCEPTION: {ex.Message}");
                 }
@@ -153,5 +153,11 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine(text);
         Console.ForegroundColor = _defaultColor;
+    }
+
+    private static void WriteStatus(string prefix, string message, bool pass)
+    {
+        string color = pass ? "\x1b[32m" : "\x1b[31m";
+        Console.Error.WriteLine($"{color}{prefix}\x1b[0m {message}");
     }
 }

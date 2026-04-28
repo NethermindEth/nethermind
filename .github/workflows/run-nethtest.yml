@@ -139,33 +139,40 @@ jobs:
             --workers $WORKERS \
             --neverTrace \
             $FILTER_ARG \
-            > /tmp/nethtest-results.json
+            > /tmp/nethtest-results.json \
+            2> >(tee /tmp/nethtest-stderr.log >&2)
           rc=$?
           set -e
 
           echo "Exit code: $rc"
           echo "Results file size: $(wc -c < /tmp/nethtest-results.json 2>/dev/null || echo 0) bytes"
+          echo "Stderr log size: $(wc -l < /tmp/nethtest-stderr.log 2>/dev/null || echo 0) lines"
           if [ $rc -ne 0 ]; then
             echo "::warning::nethtest exited with code $rc"
-          fi
-          if [ ! -s /tmp/nethtest-results.json ]; then
-            echo "::error::nethtest produced no output"
-            exit 1
           fi
 
       - name: Parse results
         if: always()
         run: |
-          if [ ! -f /tmp/nethtest-results.json ]; then
-            echo "::error::No results file found"
-            exit 1
+          HAS_JSON=false
+          if [ -s /tmp/nethtest-results.json ] && jq empty /tmp/nethtest-results.json 2>/dev/null; then
+            HAS_JSON=true
+            TOTAL=$(jq 'length' /tmp/nethtest-results.json)
+            PASSED=$(jq '[.[] | select(.pass == true)] | length' /tmp/nethtest-results.json)
+            FAILED=$(jq '[.[] | select(.pass == false)] | length' /tmp/nethtest-results.json)
+          else
+            echo "::warning::No JSON output — falling back to stderr log"
+            TOTAL=$(grep -cE "^(PASS|FAIL|EXCEPTION) " /tmp/nethtest-stderr.log 2>/dev/null || echo 0)
+            PASSED=$(grep -c "^PASS " /tmp/nethtest-stderr.log 2>/dev/null || echo 0)
+            FAILED=$(( TOTAL - PASSED ))
           fi
 
-          TOTAL=$(jq 'length' /tmp/nethtest-results.json)
-          PASSED=$(jq '[.[] | select(.pass == true)] | length' /tmp/nethtest-results.json)
-          FAILED=$(jq '[.[] | select(.pass == false)] | length' /tmp/nethtest-results.json)
+          CRASHED=""
+          if [ "$HAS_JSON" = false ] && [ -f /tmp/nethtest-stderr.log ]; then
+            CRASHED=" (process crashed — results from stderr)"
+          fi
 
-          echo "## nethtest results" >> "$GITHUB_STEP_SUMMARY"
+          echo "## nethtest results${CRASHED}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
@@ -173,22 +180,34 @@ jobs:
           echo "| EEST version | \`$EEST_VERSION\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Workers | $WORKERS |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Total | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Passed | $PASSED |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Failed | $FAILED |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Passed | **$PASSED** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Failed | **$FAILED** |" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$FAILED" -gt 0 ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failures by error type" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
-              | head -30 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+            if [ "$HAS_JSON" = true ]; then
+              jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
+                | head -30 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+            else
+              grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-stderr.log 2>/dev/null \
+                | sed 's/^[^ ]* [^ ]*//' | sort | uniq -c | sort -rn \
+                | head -30 | awk '{printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
+                | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+            fi
 
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "<details><summary>Failed test names (first 100)</summary>" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name)"' /tmp/nethtest-results.json \
-              | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
+            if [ "$HAS_JSON" = true ]; then
+              jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name)"' /tmp/nethtest-results.json \
+                | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
+            else
+              grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-stderr.log 2>/dev/null \
+                | sort | head -100 >> "$GITHUB_STEP_SUMMARY"
+            fi
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             echo "</details>" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -214,6 +233,10 @@ jobs:
           echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED"
           if [ "$FAILED" -gt 0 ]; then
             echo "::error::$FAILED test(s) failed"
+            exit 1
+          fi
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "::error::No tests were executed"
             exit 1
           fi
 
