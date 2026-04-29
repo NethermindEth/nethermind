@@ -257,8 +257,8 @@ public class BlockAccessListBasedWorldStateTests
             balSetup: bal =>
             {
                 AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                ac.AddNonceChange(new NonceChange(-1, 0));
-                ac.AddBalanceChange(new BalanceChange(-1, 0));
+                ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 0));
+                ac.AddBalanceChange(new BalanceChange(Eip7928Constants.PrestateIndex, 0));
                 ac.ExistedBeforeBlock = false;
             });
         using (scope)
