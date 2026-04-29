@@ -32,14 +32,8 @@ public class SupportsCachingTests
     }
 
     [TestCaseSource(nameof(PrecompilesWithCachingEnabled))]
-    public void Precompile_SupportsCaching_ReturnsTrue_ByDefault(IPrecompile precompile)
-    {
-        Assert.That(precompile.SupportsCaching, Is.True);
-    }
+    public void Precompile_SupportsCaching_ReturnsTrue_ByDefault(IPrecompile precompile) => Assert.That(precompile.SupportsCaching, Is.True);
 
     [Test]
-    public void IdentityPrecompile_SupportsCaching_ReturnsFalse()
-    {
-        Assert.That(IdentityPrecompile.Instance.SupportsCaching, Is.False);
-    }
+    public void IdentityPrecompile_SupportsCaching_ReturnsFalse() => Assert.That(IdentityPrecompile.Instance.SupportsCaching, Is.False);
 }

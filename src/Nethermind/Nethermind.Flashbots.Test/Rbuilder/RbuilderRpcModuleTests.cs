@@ -50,10 +50,8 @@ public class RbuilderRpcModuleTests
     }
 
     [TearDown]
-    public async Task TearDown()
-    {
+    public async Task TearDown() =>
         await _container.DisposeAsync();
-    }
 
     [Test]
     public async Task Test_getCodeByHash()
@@ -89,7 +87,7 @@ public class RbuilderRpcModuleTests
     [Test]
     public async Task Test_calculateStateRoot()
     {
-        Dictionary<Address, AccountChange> accountDiff = new Dictionary<Address, AccountChange>();
+        Dictionary<Address, AccountChange> accountDiff = new();
         accountDiff[TestItem.AddressA] = new AccountChange()
         {
             Nonce = 10,

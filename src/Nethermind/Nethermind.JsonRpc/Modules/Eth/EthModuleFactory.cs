@@ -41,9 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
 
-        public override IEthRpcModule Create()
-        {
-            return new EthRpcModule(
+        public override IEthRpcModule Create() => new EthRpcModule(
                 config,
                 blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
@@ -61,6 +59,5 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 forkInfo,
                 logIndexConfig,
                 _secondsPerSlot);
-        }
     }
 }

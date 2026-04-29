@@ -15,10 +15,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private static readonly JumpDestinationAnalyzer? _emptyAnalyzer = new(Empty, skipAnalysis: true);
 
     // Empty
-    private CodeInfo()
-    {
-        _analyzer = null;
-    }
+    private CodeInfo() => _analyzer = null;
 
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
@@ -31,6 +28,13 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public CodeInfo(IPrecompile? precompile)
     {
         Precompile = precompile;
+        _analyzer = null;
+    }
+
+    protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
+    {
+        Precompile = precompile;
+        Code = code;
         _analyzer = null;
     }
 

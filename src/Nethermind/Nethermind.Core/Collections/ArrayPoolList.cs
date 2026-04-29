@@ -65,10 +65,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowObjectDisposed()
-        {
-            throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
-        }
+        static void ThrowObjectDisposed() => throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
     }
 
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
@@ -127,10 +124,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowMultiDimensionalArray()
-        {
-            throw new ArgumentException("Only single dimensional arrays are supported.", nameof(array));
-        }
+        static void ThrowMultiDimensionalArray() => throw new ArgumentException("Only single dimensional arrays are supported.", nameof(array));
     }
 
     public void ReduceCount(int count)
@@ -269,6 +263,37 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     {
         GuardDispose();
         return _array.AsSpan(0, _count);
+    }
+
+    /// <summary>
+    /// Transfers ownership of the underlying rented array to a new <see cref="ArrayPoolListRef{T}"/>
+    /// without copying. After this call the <see cref="ArrayPoolList{T}"/> is marked disposed and
+    /// its own <see cref="Dispose"/> becomes a no-op; the returned ref struct is responsible for
+    /// returning the array to the pool.
+    /// </summary>
+    public ArrayPoolListRef<T> ToRef()
+    {
+        GuardDispose();
+        if (_arrayPool != SafeArrayPool<T>.Shared)
+        {
+            ThrowUnsupportedPool();
+        }
+
+        T[] array = _array;
+        int capacity = _capacity;
+        int count = _count;
+
+        _array = [];
+        _capacity = 0;
+        _count = 0;
+        _disposed = true;
+
+        return new ArrayPoolListRef<T>(array, capacity, count);
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowUnsupportedPool() => throw new InvalidOperationException(
+            $"{nameof(ToRef)} is only supported when {nameof(ArrayPoolList<T>)} uses {nameof(SafeArrayPool<T>)}.Shared.");
     }
     public Memory<T> AsMemory()
     {

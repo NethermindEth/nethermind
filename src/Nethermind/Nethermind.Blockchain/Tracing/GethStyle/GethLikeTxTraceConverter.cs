@@ -22,7 +22,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             throw new JsonException("Custom tracer result object is not supported. Expected start of object");
         }
 
-        var trace = new GethLikeTxTrace();
+        GethLikeTxTrace trace = new();
 
         while (reader.Read())
         {

@@ -166,14 +166,18 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 10, MainnetSpecProvider.AmsterdamBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
-            ILogger logger = _logManager.GetClassLogger();
+            ILogger logger = _logManager.GetClassLogger<InvalidOpcodeTests>();
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
-                byte[] code = Prepare.EvmCode
-                    .Op((byte)i)
-                    .Done;
+                Instruction opcode = (Instruction)i;
+
+                // Provide an in-range EIP-8024 immediate so the test checks opcode validity rather
+                // than end-of-code immediate decoding or stack behavior.
+                byte[] code = opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE
+                    ? Prepare.EvmCode.Op((byte)i).Data(0x80).Done
+                    : Prepare.EvmCode.Op((byte)i).Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
                 TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);

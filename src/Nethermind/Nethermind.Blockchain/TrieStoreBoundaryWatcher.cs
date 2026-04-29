@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain
         {
             _trieStore = trieStore;
             _blockTree = blockTree;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<TrieStoreBoundaryWatcher>();
             _trieStore.ReorgBoundaryReached += OnReorgBoundaryReached;
         }
 
@@ -32,9 +32,6 @@ namespace Nethermind.Blockchain
             _blockTree.BestPersistedState = e.BlockNumber;
         }
 
-        public void Dispose()
-        {
-            _trieStore.ReorgBoundaryReached -= OnReorgBoundaryReached;
-        }
+        public void Dispose() => _trieStore.ReorgBoundaryReached -= OnReorgBoundaryReached;
     }
 }

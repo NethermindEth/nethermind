@@ -16,7 +16,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using DbMetrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -110,7 +109,7 @@ namespace Nethermind.Consensus.Processing
         private long _cachedContractsUsed;
 
         public ProcessingStats(IStateReader stateReader, ILogManager logManager, IBlocksConfig blocksConfig)
-            : this(stateReader, logManager.GetClassLogger(), logManager.GetClassLogger("SlowBlocks"),
+            : this(stateReader, logManager.GetClassLogger<ProcessingStats>(), logManager.GetLogger("SlowBlocks"),
                    slowBlockThresholdMs: blocksConfig.SlowBlockThresholdMs,
                    slowBlockPerTxThresholdMs: blocksConfig.SlowBlockPerTxThresholdMs)
         {
@@ -136,15 +135,15 @@ namespace Nethermind.Consensus.Processing
         public void CaptureStartStats()
         {
             // EVM counters — always captured (used by normal console reporting)
-            _startSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
-            _startSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
-            _startCallOps = Evm.Metrics.ThreadLocalCalls;
-            _startEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            _startCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
-            _startContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
-            _startCreateOps = Evm.Metrics.ThreadLocalCreates;
-            _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
-            _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
+            _startSLoadOps = Evm.Metrics.SloadOpcode;
+            _startSStoreOps = Evm.Metrics.SstoreOpcode;
+            _startCallOps = Evm.Metrics.Calls;
+            _startEmptyCalls = Evm.Metrics.EmptyCalls;
+            _startCachedContractsUsed = Evm.Metrics.CodeDbCache;
+            _startContractsAnalyzed = Evm.Metrics.ContractsAnalysed;
+            _startCreateOps = Evm.Metrics.Creates;
+            _startSelfDestructOps = Evm.Metrics.SelfDestructs;
+            _startOpCodes = Evm.Metrics.OpCodes;
 
             // Slow block diagnostics — skip when disabled (-1)
             if (_slowBlockThresholdMs < 0) return;
@@ -169,11 +168,11 @@ namespace Nethermind.Consensus.Processing
             _startCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
             _startStateHashTime = Evm.Metrics.ThreadLocalStateHashTime;
             _startCommitTime = Evm.Metrics.ThreadLocalCommitTime;
-            _startAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits;
-            _startAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads;
-            _startStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits;
-            _startStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
-            _startCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
+            _startAccountCacheHits = DbMetrics.StateTreeCache;
+            _startAccountCacheMisses = DbMetrics.StateTreeReads;
+            _startStorageCacheHits = DbMetrics.StorageTreeCache;
+            _startStorageCacheMisses = DbMetrics.StorageTreeReads;
+            _startCodeCacheHits = Evm.Metrics.CodeDbCache;
             _startCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads;
             _startEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet;
             _startEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared;
@@ -202,15 +201,15 @@ namespace Nethermind.Consensus.Processing
             blockData.StartCreateOps = _startCreateOps;
             blockData.StartSelfDestructOps = _startSelfDestructOps;
             blockData.ProcessingMicroseconds = blockProcessingTimeInMicros;
-            blockData.CurrentOpCodes = Evm.Metrics.ThreadLocalOpCodes;
-            blockData.CurrentSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
-            blockData.CurrentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
-            blockData.CurrentCallOps = Evm.Metrics.ThreadLocalCalls;
-            blockData.CurrentEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            blockData.CurrentCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
-            blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
-            blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
-            blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+            blockData.CurrentOpCodes = Evm.Metrics.MainThreadOpCodes;
+            blockData.CurrentSLoadOps = Evm.Metrics.MainThreadSLoadOpcode;
+            blockData.CurrentSStoreOps = Evm.Metrics.MainThreadSStoreOpcode;
+            blockData.CurrentCallOps = Evm.Metrics.MainThreadCalls;
+            blockData.CurrentEmptyCalls = Evm.Metrics.MainThreadEmptyCalls;
+            blockData.CurrentCachedContractsUsed = Evm.Metrics.MainThreadCodeDbCache;
+            blockData.CurrentContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
+            blockData.CurrentCreatesOps = Evm.Metrics.MainThreadCreates;
+            blockData.CurrentSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
 
             // Pre-compute deltas for slow block logging (done here on the block-processing thread)
             // Skip entirely when slow block logging is disabled (-1)
@@ -228,11 +227,11 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten - _startCodeBytesWritten;
                 blockData.DeltaStateHashTime = Evm.Metrics.ThreadLocalStateHashTime - _startStateHashTime;
                 blockData.DeltaCommitTime = Evm.Metrics.ThreadLocalCommitTime - _startCommitTime;
-                blockData.DeltaAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits - _startAccountCacheHits;
-                blockData.DeltaAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads - _startAccountCacheMisses;
-                blockData.DeltaStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits - _startStorageCacheHits;
-                blockData.DeltaStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads - _startStorageCacheMisses;
-                blockData.DeltaCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache - _startCodeCacheHits;
+                blockData.DeltaAccountCacheHits = DbMetrics.StateTreeCache - _startAccountCacheHits;
+                blockData.DeltaAccountCacheMisses = DbMetrics.StateTreeReads - _startAccountCacheMisses;
+                blockData.DeltaStorageCacheHits = DbMetrics.StateTreeCache - _startStorageCacheHits;
+                blockData.DeltaStorageCacheMisses = DbMetrics.StorageTreeReads - _startStorageCacheMisses;
+                blockData.DeltaCodeCacheHits = Evm.Metrics.CodeDbCache - _startCodeCacheHits;
                 blockData.DeltaCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads - _startCodeCacheMisses;
                 blockData.DeltaEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet - _startEip7702DelegationsSet;
                 blockData.DeltaEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared - _startEip7702DelegationsCleared;
@@ -467,7 +466,7 @@ namespace Nethermind.Consensus.Processing
                         > 3 => darkCyanText, // 5.625 MGas
                         _ => blueText
                     };
-                    var chunkColor = chunkMs switch
+                    string chunkColor = chunkMs switch
                     {
                         < 200 => greenText,
                         < 300 => darkGreenText,
@@ -490,7 +489,7 @@ namespace Nethermind.Consensus.Processing
                     > 0.5f => orangeText, // 15 MGas/s
                     _ => redText
                 };
-                var sstoreColor = chunkBlocks > 1 ? "" : chunkSstore switch
+                string sstoreColor = chunkBlocks > 1 ? "" : chunkSstore switch
                 {
                     > 3500 => redText,
                     > 2500 => orangeText,
@@ -499,7 +498,7 @@ namespace Nethermind.Consensus.Processing
                     > 900 when chunkCalls > 900 => whiteText,
                     _ => ""
                 };
-                var callsColor = chunkBlocks > 1 ? "" : chunkCalls switch
+                string callsColor = chunkBlocks > 1 ? "" : chunkCalls switch
                 {
                     > 3500 => redText,
                     > 2500 => orangeText,
@@ -508,7 +507,7 @@ namespace Nethermind.Consensus.Processing
                     > 900 when chunkSstore > 900 => whiteText,
                     _ => ""
                 };
-                var createsColor = chunkBlocks > 1 ? "" : chunkCreates switch
+                string createsColor = chunkBlocks > 1 ? "" : chunkCreates switch
                 {
                     > 300 => redText,
                     > 200 => orangeText,
@@ -517,8 +516,8 @@ namespace Nethermind.Consensus.Processing
                     _ => ""
                 };
 
-                var recoveryQueue = Metrics.RecoveryQueueSize;
-                var processingQueue = Metrics.ProcessingQueueSize;
+                long recoveryQueue = Metrics.RecoveryQueueSize;
+                long processingQueue = Metrics.ProcessingQueueSize;
 
                 _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0} " : $"{(isMev ? " mb" : "   ")} {rewards.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,8:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
                 string blobsOrBlocksPerSec = _showBlobs switch
@@ -718,7 +717,7 @@ namespace Nethermind.Consensus.Processing
 
         private class BlockDataPolicy() : IPooledObjectPolicy<BlockData>
         {
-            public BlockData Create() => new BlockData();
+            public BlockData Create() => new();
             public bool Return(BlockData data)
             {
                 // Release the object references so we don't hold them from being GC'd

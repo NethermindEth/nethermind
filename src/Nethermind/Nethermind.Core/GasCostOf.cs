@@ -67,7 +67,8 @@ namespace Nethermind.Core
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
         public const long PerAuthBaseCost = 12500; // eip-7702
-        public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7632
+        public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
+        public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
         // EIP-8037: Two-dimensional gas metering constants.
         // Devnet-3 keeps CPSB hardcoded and replaces it with dynamic CPSB in devnet-4.
@@ -82,6 +83,7 @@ namespace Nethermind.Core
         public const long PerAuthBaseRegular = 7_500;
         public const long PerAuthBaseState = 23 * CostPerStateByte;
         public const long PerEmptyAccountState = 112 * CostPerStateByte;
+        public const long BlockAccessListItem = 2_000; // eip-7928
 
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;

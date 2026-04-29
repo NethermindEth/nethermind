@@ -28,7 +28,6 @@ namespace Nethermind.Network
         public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
             new(Protocol.Eth, 68),
-            new(Protocol.NodeData, 1)
         };
 
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
@@ -61,7 +60,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ProtocolsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
             // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
             _factories = factories;
@@ -327,10 +326,7 @@ namespace Nethermind.Network
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
 
-        public void AddSupportedCapability(Capability capability)
-        {
-            _capabilities.Add(capability);
-        }
+        public void AddSupportedCapability(Capability capability) => _capabilities.Add(capability);
 
         public void RemoveSupportedCapability(Capability capability)
         {

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -16,6 +17,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
+
     private readonly dynamic _tracer;
     private readonly Log _log = new();
     private readonly IDisposable _blockTracer;
@@ -23,6 +27,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
+    private readonly CancellationTokenSource _cts;
+    private readonly IDisposable _ctsRegistration;
     private bool _resultConstructed;
     private Stack<long>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -55,6 +61,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         {
             _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
         }
+
+        TimeSpan timeout = options.Timeout ?? DefaultTimeout;
+        if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
+            throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
+        _cts = new CancellationTokenSource(timeout);
+        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new(_engine);
@@ -65,7 +77,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
-
+        _ctsRegistration.Dispose();
         _resultConstructed = true;
 
         return result;
@@ -250,6 +262,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void Dispose()
     {
         base.Dispose();
+        _ctsRegistration.Dispose();
+        _cts.Dispose();
 
         if (!_resultConstructed)
         {

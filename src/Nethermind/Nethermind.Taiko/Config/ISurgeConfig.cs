@@ -57,4 +57,5 @@ public interface ISurgeConfig : IConfig
 
     [ConfigItem(Description = "Enable TDX attestation support.", DefaultValue = "false")]
     bool TdxEnabled { get; set; }
+
 }

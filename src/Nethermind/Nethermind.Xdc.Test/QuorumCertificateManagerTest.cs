@@ -24,7 +24,7 @@ public class QuorumCertificateManagerTest
     [Test]
     public void VerifyCertificate_CertificateIsNull_ThrowsArgumentNullException()
     {
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
@@ -37,7 +37,7 @@ public class QuorumCertificateManagerTest
     [Test]
     public void VerifyCertificate_HeaderIsNull_ThrowsArgumentNullException()
     {
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
@@ -50,7 +50,7 @@ public class QuorumCertificateManagerTest
     public static IEnumerable<TestCaseData> QcCases()
     {
         XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData();
-        var keyBuilder = new PrivateKeyGenerator();
+        PrivateKeyGenerator keyBuilder = new();
         //Base valid control case
         PrivateKey[] keys = keyBuilder.Generate(20).ToArray();
         IEnumerable<Address> masterNodes = keys.Select(k => k.Address);
@@ -91,7 +91,7 @@ public class QuorumCertificateManagerTest
         xdcReleaseSpec.Gap.Returns(450);
         xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             specProvider,
@@ -108,8 +108,8 @@ public class QuorumCertificateManagerTest
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-        XdcConsensusContext context = new XdcConsensusContext();
-        var quorumCertificateManager = new QuorumCertificateManager(
+        XdcConsensusContext context = new();
+        QuorumCertificateManager quorumCertificateManager = new(
             context,
             Substitute.For<IBlockTree>(),
             specProvider,
@@ -127,11 +127,11 @@ public class QuorumCertificateManagerTest
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-        XdcConsensusContext context = new XdcConsensusContext();
+        XdcConsensusContext context = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader targetHeader = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData().TestObject;
         blockTree.FindHeader(Arg.Any<Hash256>()).Returns(targetHeader);
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             context,
             blockTree,
             specProvider,
@@ -151,11 +151,11 @@ public class QuorumCertificateManagerTest
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-        XdcConsensusContext context = new XdcConsensusContext();
+        XdcConsensusContext context = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader targetHeader = Build.A.XdcBlockHeader().TestObject;
         blockTree.FindHeader(Arg.Any<Hash256>()).Returns(targetHeader);
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             context,
             blockTree,
             specProvider,
@@ -174,11 +174,11 @@ public class QuorumCertificateManagerTest
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-        XdcConsensusContext context = new XdcConsensusContext();
+        XdcConsensusContext context = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader targetHeader = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData().TestObject;
         blockTree.FindHeader(Arg.Any<Hash256>()).Returns(targetHeader);
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             context,
             blockTree,
             specProvider,
@@ -202,11 +202,11 @@ public class QuorumCertificateManagerTest
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-        XdcConsensusContext context = new XdcConsensusContext();
+        XdcConsensusContext context = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader targetHeader = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData().TestObject;
         blockTree.FindHeader(Arg.Any<Hash256>()).Returns(targetHeader);
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             context,
             blockTree,
             specProvider,
@@ -247,10 +247,10 @@ public class QuorumCertificateManagerTest
         blockTree.FindHeader(parentHeader.Hash!).Returns(parentHeader);
         blockTree.FindHeader(targetHeader.Hash!).Returns(targetHeader);
 
-        XdcConsensusContext context = new XdcConsensusContext();
+        XdcConsensusContext context = new();
         context.HighestCommitBlock = new BlockRoundInfo(Hash256.Zero, 0, 1);
 
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             context,
             blockTree,
             specProvider,
@@ -289,11 +289,11 @@ public class QuorumCertificateManagerTest
         blockTree.FindHeader(parentHeader.Hash!).Returns(parentHeader);
         blockTree.FindHeader(targetHeader.Hash!).Returns(targetHeader);
 
-        XdcConsensusContext context = new XdcConsensusContext();
-        var startFinalizedBlock = new BlockRoundInfo(Hash256.Zero, 0, 1);
+        XdcConsensusContext context = new();
+        BlockRoundInfo startFinalizedBlock = new(Hash256.Zero, 0, 1);
         context.HighestCommitBlock = startFinalizedBlock;
 
-        var quorumCertificateManager = new QuorumCertificateManager(
+        QuorumCertificateManager quorumCertificateManager = new(
             context,
             blockTree,
             specProvider,

@@ -54,31 +54,22 @@ namespace Nethermind.Ethash.Test
         [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
         [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
-        public void London_calculation_should_not_be_equal_to_Berlin(long blocksAbove)
-        {
-            Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
+        public void London_calculation_should_not_be_equal_to_Berlin(long blocksAbove) => Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 Berlin.Instance, London.Instance);
-        }
 
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
         [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
         [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
-        public void ArrowGlacier_calculation_should_not_be_equal_to_London0(long blocksAbove)
-        {
-            Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
+        public void ArrowGlacier_calculation_should_not_be_equal_to_London0(long blocksAbove) => Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 London.Instance, ArrowGlacier.Instance);
-        }
 
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
-        public void GrayGlacier_calculation_should_not_be_equal_to_ArrowGlacier(long blocksAbove)
-        {
-            Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
+        public void GrayGlacier_calculation_should_not_be_equal_to_ArrowGlacier(long blocksAbove) => Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 ArrowGlacier.Instance, GrayGlacier.Instance);
-        }
 
         private void Calculation_should_not_be_equal_on_different_difficulty_hard_forks(
             long blocksAbove, IReleaseSpec firstHardfork, IReleaseSpec secondHardfork)

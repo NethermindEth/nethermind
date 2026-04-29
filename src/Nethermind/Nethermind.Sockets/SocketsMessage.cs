@@ -3,17 +3,10 @@
 
 namespace Nethermind.Sockets
 {
-    public class SocketsMessage
+    public class SocketsMessage(string type, string client, object data)
     {
-        public string Type { get; }
-        public string Client { get; }
-        public object Data { get; }
-
-        public SocketsMessage(string type, string client, object data)
-        {
-            Type = type;
-            Client = client;
-            Data = data;
-        }
+        public string Type { get; } = type;
+        public string Client { get; } = client;
+        public object Data { get; } = data;
     }
 }

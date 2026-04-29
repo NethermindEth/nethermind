@@ -146,7 +146,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        List<long> newHeadSequence = new List<long>();
+        List<long> newHeadSequence = new();
         ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
 
         await ctx.FastSyncUntilNoRequest(peerInfo);
@@ -210,7 +210,7 @@ public partial class BlockDownloaderTests
     [Test]
     public async Task Return_Null_On_InConsistentHeaderSequence()
     {
-        using ArrayPoolList<BlockHeader?> headers = new ArrayPoolList<BlockHeader?>(1);
+        using ArrayPoolList<BlockHeader?> headers = new(1);
         headers.Add(Build.A.EmptyBlockHeader);
         headers.Add(Build.A.EmptyBlockHeader);
 
@@ -248,7 +248,7 @@ public partial class BlockDownloaderTests
                 .AddSingleton<IBlockProcessingQueue>(blockProcessingQueue));
 
         Context ctx = node.Resolve<Context>();
-        var request = await ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+        BlocksRequest? request = await ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
             DownloaderOptions.Insert,
             0,
             CancellationToken.None);
@@ -263,9 +263,7 @@ public partial class BlockDownloaderTests
     {
         IBlockTree instance = CachedBlockTreeBuilder.OfLength(1024);
         await using IContainer node = CreateNode(builder =>
-        {
-            builder.AddSingleton<IBlockTree>(instance);
-        });
+            builder.AddSingleton<IBlockTree>(instance));
         Context ctx = node.Resolve<Context>();
 
         Response blockResponseOptions = Response.AllCorrect;
@@ -295,9 +293,7 @@ public partial class BlockDownloaderTests
     public async Task Ancestor_failure_blocks()
     {
         using IContainer node = CreateNode(builder =>
-        {
-            builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1));
-        });
+            builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1)));
         Context ctx = node.Resolve<Context>();
 
         Response responseOptions = Response.AllCorrect;
@@ -319,9 +315,7 @@ public partial class BlockDownloaderTests
     public async Task Can_sync_with_peer_when_it_times_out(int ignoredBlocks, bool mergeDownloader)
     {
         Action<ContainerBuilder> configurer = builder =>
-        {
             builder.AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>());
-        };
 
         await using IContainer node = mergeDownloader ? CreateMergeNode(configurer) : CreateNode(configurer);
         Context ctx = node.Resolve<Context>();
@@ -604,7 +598,7 @@ public partial class BlockDownloaderTests
 
         if (isMerge)
         {
-            var mergeContext = container.Resolve<PostMergeContext>();
+            PostMergeContext mergeContext = container.Resolve<PostMergeContext>();
             mergeContext.BeaconPivot.EnsurePivot(syncPeer.BlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None));
             mergeContext.InsertBeaconHeaderFrom(syncPeer, beaconPivotNumber, syncPivotNumber);
             mergeContext.BeaconPivot.ProcessDestination = syncPeer.BlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None);
@@ -613,13 +607,13 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        var req1 = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        BlocksRequest req1 = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
         req1.Should().NotBeNull();
         await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, req1, default);
 
         while (true)
         {
-            var req = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+            BlocksRequest? req = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
             if (req is null) break;
             await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, req, default);
             ctx.FastSyncFeedComponent.Feed.HandleResponse(req);
@@ -628,7 +622,7 @@ public partial class BlockDownloaderTests
         ctx.FastSyncFeedComponent.Feed.HandleResponse(req1);
 
         // Receipt for the first req
-        var finalReq = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        BlocksRequest finalReq = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
         await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, finalReq, default);
         ctx.FastSyncFeedComponent.Feed.HandleResponse(finalReq);
 
@@ -807,14 +801,12 @@ public partial class BlockDownloaderTests
         IncorrectReceiptRoot = 256
     }
 
-    private IContainer CreateFastSyncNode(int fastSyncLag = 1)
-    {
-        return CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+    private IContainer CreateFastSyncNode(int fastSyncLag = 1) =>
+        CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         }));
-    }
 
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
     {
@@ -885,10 +877,8 @@ public partial class BlockDownloaderTests
             BlockTree.NewBestSuggestedBlock += (sender, args) => _wasSuggested[args.Block.Hash!] = true;
         }
 
-        public void ConfigureBestPeer(ISyncPeer syncPeer)
-        {
+        public void ConfigureBestPeer(ISyncPeer syncPeer) =>
             ConfigureBestPeer(new PeerInfo(syncPeer));
-        }
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
@@ -923,20 +913,14 @@ public partial class BlockDownloaderTests
             }
         }
 
-        public Task FastSyncUntilNoRequest(PeerInfo peerInfo)
-        {
-            return SyncUntilNoRequest(FastSyncFeedComponent, peerInfo);
-        }
+        public Task FastSyncUntilNoRequest(PeerInfo peerInfo) =>
+            SyncUntilNoRequest(FastSyncFeedComponent, peerInfo);
 
-        public Task FullSyncUntilNoRequest(PeerInfo peerInfo)
-        {
-            return SyncUntilNoRequest(FullSyncFeedComponent, peerInfo);
-        }
+        public Task FullSyncUntilNoRequest(PeerInfo peerInfo) =>
+            SyncUntilNoRequest(FullSyncFeedComponent, peerInfo);
 
-        public void WasSuggested(Hash256 blockHash)
-        {
+        public void WasSuggested(Hash256 blockHash) =>
             _wasSuggested.TryGetValue(blockHash, out _).Should().BeTrue();
-        }
 
         public async Task FullDispatcherSync(long untilBestSuggestedHeaderIs, long timeoutMs = 10000)
         {
@@ -985,10 +969,8 @@ public partial class BlockDownloaderTests
             return FastSyncFeedComponent.Feed.HandleResponse(blockRequest, peerInfo);
         }
 
-        public virtual void ShouldFastSyncedUntil(long blockNumber)
-        {
+        public virtual void ShouldFastSyncedUntil(long blockNumber) =>
             BlockTree.BestSuggestedHeader!.Number.Should().Be(blockNumber);
-        }
 
         public void Deconstruct(out ResponseBuilder ResponseBuilder, out SyncFeedComponent<BlocksRequest> FastSyncFeedComponent, out SyncFeedComponent<BlocksRequest> FullSyncFeedComponent, out IForwardSyncController ForwardSyncController, out IBlockTree BlockTree, out InMemoryReceiptStorage ReceiptStorage, out ISyncPeerPool PeerPool)
         {
@@ -1054,10 +1036,8 @@ public partial class BlockDownloaderTests
             TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
         }
 
-        public void ExtendTree(long newLength)
-        {
+        public void ExtendTree(long newLength) =>
             BuildTree(newLength, _withReceipts);
-        }
 
         public Node Node { get; } = null!;
         public string ClientId { get; } = null!;
@@ -1121,57 +1101,35 @@ public partial class BlockDownloaderTests
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 
-        public void Disconnect(DisconnectReason reason, string details)
-        {
+        public void Disconnect(DisconnectReason reason, string details) =>
             DisconnectReason = reason;
-        }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
-        {
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
-        {
+        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public void NotifyOfNewBlock(Block block, SendBlockMode mode)
-        {
+        public void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
             throw new NotImplementedException();
-        }
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
-        {
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
             throw new NotImplementedException();
-        }
 
-        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
-        {
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-        {
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class =>
             throw new NotImplementedException();
-        }
 
-        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
-        {
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class =>
             throw new NotImplementedException();
-        }
     }
 
-    private class ResponseBuilder
+    private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
     {
-        private readonly IBlockTree _blockTree;
-        private readonly Dictionary<long, Hash256> _testHeaderMapping;
-
-        public ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
-        {
-            _blockTree = blockTree;
-            _testHeaderMapping = testHeaderMapping;
-        }
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
 
         public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
         {
@@ -1260,7 +1218,7 @@ public partial class BlockDownloaderTests
 
             for (int i = 0; i < blockHashes.Count; i++)
             {
-                if (consistent && _headers.TryGetValue(blockHashes[i], out var value))
+                if (consistent && _headers.TryGetValue(blockHashes[i], out BlockHeader? value))
                 {
                     blockHeaders[i] = value;
                 }
@@ -1269,7 +1227,7 @@ public partial class BlockDownloaderTests
                     blockHeaders[i] = Build.A.BlockHeader.WithNumber(blockHeaders[i - 1].Number + 1).WithHash(blockHashes[i]).TestObject;
                 }
                 _headers[blockHashes[i]] = blockHeaders[i];
-                var header = blockHeaders[i];
+                BlockHeader header = blockHeaders[i];
 
                 BlockBody body = consistent
                     ? _bodies[blockHashes[i]]
@@ -1334,6 +1292,6 @@ public partial class BlockDownloaderTests
         }
 
         public BlockHeader? GetHeader(Hash256 hash) =>
-            _headers.TryGetValue(hash, out var header) ? header : _blockTree.FindHeader(hash, BlockTreeLookupOptions.None)!;
+            _headers.TryGetValue(hash, out BlockHeader? header) ? header : _blockTree.FindHeader(hash, BlockTreeLookupOptions.None)!;
     }
 }

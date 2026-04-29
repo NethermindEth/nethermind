@@ -12,82 +12,73 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Metrics = Nethermind.Evm.Metrics;
 
-namespace Nethermind.Consensus.Processing
-{
-    public partial class BlockProcessor
-    {
-        public class BlockValidationTransactionsExecutor(
-            ITransactionProcessorAdapter transactionProcessor,
-            IWorldState stateProvider,
-            BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
-            : IBlockProcessor.IBlockTransactionsExecutor
-        {
-            private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+namespace Nethermind.Consensus.Processing;
 
-            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+public partial class BlockProcessor
+{
+    public class BlockValidationTransactionsExecutor(
+        ITransactionProcessorAdapter transactionProcessor,
+        IWorldState stateProvider,
+        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+        : IBlockProcessor.IBlockTransactionsExecutor
+    {
+        protected IWorldState _stateProvider = stateProvider;
+        protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
+
+        public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+
+        public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+        {
+            Metrics.ResetBlockStats();
+
+            bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+
+            bool capturePerTx = PerTxTimingCollector.IsEnabled;
+            if (capturePerTx)
             {
-                transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+                PerTxTimingCollector.Prepare(block.Transactions.Length);
             }
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                Metrics.ResetBlockStats();
+                Transaction currentTx = block.Transactions[i];
 
-                long? gasRemaining = _balBuilder?.GasUsed();
-                if (gasRemaining is not null)
-                {
-                    _balBuilder.ValidateBlockAccessList(block.Header, 0, gasRemaining!.Value);
-                }
-
-                bool capturePerTx = PerTxTimingCollector.IsEnabled;
+                long txStart = capturePerTx ? Stopwatch.GetTimestamp() : 0;
+                ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 if (capturePerTx)
                 {
-                    PerTxTimingCollector.Prepare(block.Transactions.Length);
+                    PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
                 }
 
-                for (int i = 0; i < block.Transactions.Length; i++)
+                if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
-                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
-                    Transaction currentTx = block.Transactions[i];
-
-                    long txStart = capturePerTx ? Stopwatch.GetTimestamp() : 0;
-                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
-                    if (capturePerTx)
-                    {
-                        PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
-                    }
-
-                    if (gasRemaining is not null)
-                    {
-                        gasRemaining -= currentTx.SpentGas;
-                        _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining!.Value);
-                    }
+                    ThrowInvalidBlockForGasLimit(block);
                 }
-                _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
-
-                return [.. receiptsTracer.TxReceipts];
             }
 
-            protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-            {
-                TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
-                if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
-            }
+            return [.. receiptsTracer.TxReceipts];
 
-            [DoesNotReturn, StackTraceHidden]
-            private void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
-            {
-                throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
-            }
+            [DebuggerHidden]
+            [DoesNotReturn]
+            static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
+        }
 
-            /// <summary>
-            /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>
-            /// </summary>
-            public interface ITransactionProcessedEventHandler
-            {
-                void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
-            }
+        protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+        {
+            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
+            if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+            _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        internal static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
+
+        /// <summary>
+        /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>
+        /// </summary>
+        public interface ITransactionProcessedEventHandler
+        {
+            void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
         }
     }
 }

@@ -14,10 +14,7 @@ namespace Nethermind.Core.Test.Builders
     {
         private readonly AccountDecoder _accountDecoder = new();
 
-        public TrieBuilder(INodeStorage db)
-        {
-            TestObjectInternal = new PatriciaTree(new RawScopedTrieStore(db), Keccak.EmptyTreeHash, true, LimboLogs.Instance);
-        }
+        public TrieBuilder(INodeStorage db) => TestObjectInternal = new PatriciaTree(new RawScopedTrieStore(db), Keccak.EmptyTreeHash, true, LimboLogs.Instance);
 
         public TrieBuilder WithAccountsByIndex(int start, int count)
         {

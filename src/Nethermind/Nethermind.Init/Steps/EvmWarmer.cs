@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -18,10 +19,10 @@ public class EvmWarmer(IOverridableEnvFactory envFactory, ILifetimeScope rootSco
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        var env = envFactory.Create();
-        using var envScope = env.BuildAndOverride(null, null);
+        IOverridableEnv env = envFactory.Create();
+        using IDisposable envScope = env.BuildAndOverride(null, null);
 
-        using var childContainerScope = rootScope.BeginLifetimeScope((builder) =>
+        using ILifetimeScope childContainerScope = rootScope.BeginLifetimeScope((builder) =>
         {
             builder.AddModule(env);
         });

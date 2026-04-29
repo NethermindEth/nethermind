@@ -37,17 +37,15 @@ public class DepositTransactionForRpcTests
     ];
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
-    }
 
     [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
         TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction);
         string serialized = _serializer.Serialize(rpcTransaction);
-        using var jsonDocument = JsonDocument.Parse(serialized);
+        using JsonDocument jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
         ValidateSchema(json);
     }
@@ -58,14 +56,14 @@ public class DepositTransactionForRpcTests
         json.GetProperty("sourceHash").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
         json.GetProperty("from").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
         json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-        var hasMint = json.TryGetProperty("mint", out var mint);
+        bool hasMint = json.TryGetProperty("mint", out JsonElement mint);
         if (hasMint)
         {
             mint.GetString()?.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         }
         json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("gas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        var hasIsSystemTx = json.TryGetProperty("isSystemTx", out var isSystemTx);
+        bool hasIsSystemTx = json.TryGetProperty("isSystemTx", out JsonElement isSystemTx);
         if (hasIsSystemTx)
         {
             isSystemTx.GetBoolean();
@@ -85,10 +83,10 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(MalformedJsonTransactions))]
     public void Rejects_malformed_transaction_missing_field((string missingField, string json) testCase)
     {
-        var rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
         rpcTx.Should().NotBeNull();
 
-        var toTransaction = () => rpcTx.ToTransaction();
+        Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();
         toTransaction.Should().Throw<ArgumentNullException>().WithParameterName(testCase.missingField);
     }
 
@@ -100,10 +98,10 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(ValidJsonTransactions))]
     public void Accepts_valid_transaction_missing_field((string missingField, string json) testCase)
     {
-        var rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
         rpcTx.Should().NotBeNull();
 
-        var toTransaction = () => rpcTx.ToTransaction();
+        Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();
         toTransaction.Should().NotThrow();
     }
 }

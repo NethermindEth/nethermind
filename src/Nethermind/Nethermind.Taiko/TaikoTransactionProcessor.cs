@@ -60,7 +60,7 @@ public class TaikoTransactionProcessor(
 
         if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
         {
-            var taikoSpec = (ITaikoReleaseSpec)spec;
+            ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
             if (taikoSpec.IsOntakeEnabled || taikoSpec.IsShastaEnabled)
             {
                 byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaBasefeeSharingPctg() : header.DecodeOntakeExtraData()) ?? 0;

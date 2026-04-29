@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
@@ -12,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -47,17 +48,24 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
+        ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
+            new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
+            stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            transactionsExecutor,
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
+            new ExecutionRequestsProcessor(transactionProcessor),
+            balManager);
+
         BranchProcessor branchProcessor = new(
             processor,
             HoodiSpecProvider.Instance,
@@ -127,7 +135,7 @@ public class BlockProcessorTests
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
         await testRpc.AddFunds(address, 1.Ether);
         await testRpc.AddBlock();
-        SemaphoreSlim suggestedBlockResetEvent = new SemaphoreSlim(0);
+        SemaphoreSlim suggestedBlockResetEvent = new(0);
         testRpc.BlockTree.NewHeadBlock += (_, _) =>
         {
             suggestedBlockResetEvent.Release(1);
@@ -135,7 +143,7 @@ public class BlockProcessorTests
 
         int branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
         ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
-        (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
+        Assert.That(await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10), Is.True);
         Assert.That((int)testRpc.BlockTree.BestKnownNumber, Is.EqualTo(branchLength - 1));
     }
 
@@ -155,7 +163,7 @@ public class BlockProcessorTests
 
         processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        eventFired.Should().BeTrue("TransactionsExecuted should fire after ProcessTransactions completes");
+        Assert.That(eventFired, Is.True, "TransactionsExecuted should fire after ProcessTransactions completes");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -173,7 +181,7 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        preWarmer.CapturedToken.IsCancellationRequested.Should().BeTrue(
+        Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True,
             "prewarmer CancellationToken should be cancelled via TransactionsExecuted event after tx processing");
     }
 
@@ -203,7 +211,8 @@ public class BlockProcessorTests
         IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block2.Header);
         processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        externalHandlerCallCount.Should().Be(1, "only the externally subscribed handler should fire, BranchProcessor should have unsubscribed");
+        Assert.That(externalHandlerCallCount, Is.EqualTo(1),
+            "only the externally subscribed handler should fire, BranchProcessor should have unsubscribed");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -220,7 +229,7 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        processedBlocks.Should().HaveCount(1, "block should process successfully without a prewarmer");
+        Assert.That(processedBlocks, Has.Length.EqualTo(1), "block should process successfully without a prewarmer");
     }
 
     [Test]
@@ -249,12 +258,12 @@ public class BlockProcessorTests
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
         WorldStateStab stateProvider = new();
 
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), WorldStateStab.GetUntrackedReader());
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
@@ -275,5 +284,57 @@ public class BlockProcessorTests
         }
 
         public CacheType ClearCaches() => default;
+        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
+        public void Dispose() { }
+    }
+
+    public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()
+    {
+        yield return new TestCaseData(ProcessingOptions.None, true)
+            .SetName("BlockValidationTransactionsExecutor_uses_block_gas_for_bal_validation_budget");
+        yield return new TestCaseData(ProcessingOptions.NoValidation, false)
+            .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
+    }
+
+    [TestCase(2000, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(long gasRemaining, bool shouldThrow)
+    {
+        // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        BlockAccessListManager balManager = new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+        // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(TestItem.AddressA);
+        suggestedBal.AddStorageRead(TestItem.AddressA, 1);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(gasRemaining)
+            .WithBlockAccessList(suggestedBal)
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+        // Generated BAL has the account but no storage reads
+        balManager.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressA);
+
+        if (shouldThrow)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => balManager.ValidateBlockAccessList(block, 0));
+        }
+        else
+        {
+            Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+        }
     }
 }

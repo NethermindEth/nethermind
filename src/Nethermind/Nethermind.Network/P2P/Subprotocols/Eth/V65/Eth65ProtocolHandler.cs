@@ -48,9 +48,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private const int MaxNumberOfTxsInOneMsg = 256;
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override void HandleMessageCore(ZeroPacket message)
         {
-            base.HandleMessage(message);
+            base.HandleMessageCore(message);
 
             int size = message.Content.ReadableBytes;
             switch (message.PacketType)
@@ -89,22 +89,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        protected virtual void Handle(NewPooledTransactionHashesMessage msg)
-        {
-            RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
-        }
+        protected virtual void Handle(NewPooledTransactionHashesMessage msg) => RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
 
         protected void AddNotifiedTransactions(IReadOnlyList<Hash256> hashes)
         {
             foreach (Hash256 hash in hashes)
             {
-                NotifiedTransactions.Set(hash);
+                if (hash is not null)
+                {
+                    NotifiedTransactions.Set(hash.ValueHash256);
+                }
             }
         }
 
         private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            using var message = msg;
+            using GetPooledTransactionsMessage message = msg;
             long startTime = Stopwatch.GetTimestamp();
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             if (Logger.IsTrace)

@@ -62,7 +62,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
     {
         // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
-        using var handle = Thread.CurrentThread.SetNormalPriority();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
         // Already in progress, wait for completion.
         resetEvent.Wait();
     }
@@ -74,7 +74,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         if (previous is null)
         {
             // Not already in progress, so start it.
-            var bitmap = CreateJumpDestinationBitmap();
+            long[] bitmap = CreateJumpDestinationBitmap();
             _jumpDestinationBitmap = bitmap;
             // Release the MRES to be GC'd
             Volatile.Write(ref _analysisComplete, bitmap);
@@ -384,7 +384,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
             if (Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null) is null)
             {
                 // Boost the priority of the thread as block processing may be waiting on this.
-                using var handle = Thread.CurrentThread.BoostPriority();
+                using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
 
                 _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
                 // Release the MRES to be GC'd

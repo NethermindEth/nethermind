@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
@@ -17,7 +16,7 @@ namespace Nethermind.Network.Test.Rlpx
         [SetUp]
         public void Setup()
         {
-            var (A, _) = NetTestVectors.GetSecretsPair();
+            (EncryptionSecrets A, EncryptionSecrets _) = NetTestVectors.GetSecretsPair();
 
             _frameCipher = new FrameCipher(A.AesSecret);
             _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);

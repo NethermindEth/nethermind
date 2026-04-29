@@ -16,6 +16,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -83,8 +84,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         yield return new TestFixtureParameters(DbMode.Flat, true);
     }
 
-    private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
-    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private const int ChainLength = 1000;
     private const int HeadPivotDistance = 500;
 
@@ -92,18 +93,120 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private PrivateKey _serverKey = TestItem.PrivateKeyA;
     private IContainer _server = null!;
 
-    private int AllocatePort()
+    private int AllocatePort() =>
+        Interlocked.Increment(ref _portNumber);
+
+    /// <summary>
+    /// Replace all entries in a block-keyed dictionary with a single entry at block 0
+    /// whose value is the sum of all original values. This preserves the cumulative effect
+    /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
+    /// </summary>
+    private static void RekeyDictionaryToGenesis(IDictionary<long, long>? dict)
     {
-        return Interlocked.Increment(ref _portNumber);
+        if (dict is null or { Count: 0 }) return;
+        long total = dict.Values.Sum();
+        dict.Clear();
+        dict[0] = total;
+    }
+
+    /// <summary>
+    /// Replace all entries in a block reward dictionary with a single entry at block 0
+    /// using the last (highest-block) reward value. This preserves the final block reward
+    /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
+    /// </summary>
+    private static void RekeyBlockRewardToGenesis(SortedDictionary<long, UInt256>? dict)
+    {
+        if (dict is null or { Count: 0 }) return;
+        UInt256 lastReward = dict.Values.Last();
+        dict.Clear();
+        dict[0] = lastReward;
+    }
+
+    /// <summary>
+    /// Activate all block-number-based forks from genesis so that biggestBlockTransition stays at 0,
+    /// preventing the "Chainspec file is misconfigured" warning in short test chains.
+    /// </summary>
+    private static void ActivateAllBlockTransitionsFromGenesis(ChainSpec spec)
+    {
+        // ChainSpec block-number properties (collected by BuildTransitions via EndsWith("BlockNumber"))
+        spec.HomesteadBlockNumber = 0;
+        spec.DaoForkBlockNumber = null; // Disable DAO fork — it requires specific extra data in headers
+        spec.TangerineWhistleBlockNumber = 0;
+        spec.SpuriousDragonBlockNumber = 0;
+        spec.ByzantiumBlockNumber = 0;
+        // ConstantinopleBlockNumber is null on mainnet (eip1283DisableTransition not set) - keep null
+        spec.ConstantinopleFixBlockNumber = 0;
+        spec.IstanbulBlockNumber = 0;
+        spec.BerlinBlockNumber = 0;
+        spec.LondonBlockNumber = 0;
+        spec.ArrowGlacierBlockNumber = 0;
+        spec.GrayGlacierBlockNumber = 0;
+
+        // ChainParameters block transitions (collected by BuildTransitions via EndsWith("Transition"))
+        ActivateAllParameterTransitionsFromGenesis(spec.Parameters);
+
+        // Ethash engine transitions and block-keyed dictionaries
+        ActivateAllEthashTransitionsFromGenesis(spec);
+    }
+
+    private static void ActivateAllParameterTransitionsFromGenesis(ChainParameters parameters)
+    {
+        parameters.MaxCodeSizeTransition = 0;
+        parameters.Eip150Transition = 0;
+        parameters.Eip152Transition = 0;
+        parameters.Eip160Transition = 0;
+        parameters.Eip161abcTransition = 0;
+        parameters.Eip161dTransition = 0;
+        parameters.Eip155Transition = 0;
+        parameters.Eip140Transition = 0;
+        parameters.Eip211Transition = 0;
+        parameters.Eip214Transition = 0;
+        // Always on, as the timestamp based fork activation always override block number based
+        // activation. However, the receipt message serializer does not check the block header of
+        // the receipt for timestamp, only block number therefore it will always not encode with
+        // Eip658, but the block builder always build with Eip658 as the latest fork activation
+        // uses timestamp which is < than now.
+        // TODO: Need to double check which code part does not pass in timestamp from header.
+        parameters.Eip658Transition = 0;
+        parameters.Eip145Transition = 0;
+        parameters.Eip1014Transition = 0;
+        parameters.Eip1052Transition = 0;
+        parameters.Eip1108Transition = 0;
+        parameters.Eip1344Transition = 0;
+        parameters.Eip1884Transition = 0;
+        parameters.Eip2028Transition = 0;
+        parameters.Eip2200Transition = 0;
+        parameters.Eip2565Transition = 0;
+        parameters.Eip2929Transition = 0;
+        parameters.Eip2930Transition = 0;
+        parameters.Eip1559Transition = 0;
+        parameters.Eip3198Transition = 0;
+        parameters.Eip3529Transition = 0;
+        parameters.Eip3541Transition = 0;
+    }
+
+    private static void ActivateAllEthashTransitionsFromGenesis(ChainSpec spec)
+    {
+        EthashChainSpecEngineParameters ethashParams = spec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ethashParams.HomesteadTransition = 0;
+        ethashParams.DaoHardforkTransition = null; // Disable DAO fork — it requires specific extra data in headers
+        ethashParams.Eip100bTransition = 0;
+        // Re-key block-number-keyed dictionaries to block 0 so they don't inflate
+        // biggestBlockTransition. Keep the values — clearing them breaks block rewards.
+        RekeyDictionaryToGenesis(ethashParams.DifficultyBombDelays);
+        RekeyBlockRewardToGenesis(ethashParams.BlockReward);
     }
 
     /// <summary>
     /// Common code for all node
     /// </summary>
-    private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
+    private Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer) =>
+        CreateNode(nodeKey, configurer, dbMode);
+
+    private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer, DbMode dbModeOverride)
     {
         IConfigProvider configProvider = new ConfigProvider();
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
@@ -125,12 +228,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Nonce = Eip7251TestConstants.Nonce
         };
 
-        // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
-        // message serializer does not check the block header of the receipt for timestamp, only block number therefore it will
-        // always not encode with Eip658, but the block builder always build with Eip658 as the latest fork activation
-        // uses timestamp which is < than now.
-        // TODO: Need to double check which code part does not pass in timestamp from header.
-        spec.Parameters.Eip658Transition = 0;
+        // Activate all block-number-based forks from genesis. The test builds a short chain
+        // (1000 blocks) with post-merge timestamps. Without this, the chainspec has block
+        // transitions at high mainnet block numbers (e.g. London at 12,965,000), causing a
+        // legitimate "Chainspec file is misconfigured" warning when GetSpec is called with
+        // low block numbers but high timestamps.
+        ActivateAllBlockTransitionsFromGenesis(spec);
 
         if (isPostMerge)
         {
@@ -144,7 +247,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         await configurer(configProvider, spec);
 
-        switch (dbMode)
+        switch (dbModeOverride)
         {
             case DbMode.Default:
                 // Um... nothing?
@@ -170,7 +273,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 }
         }
 
-        var builder = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
@@ -234,10 +337,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [OneTimeTearDown]
-    public async Task TearDownServer()
-    {
-        await _server.DisposeAsync();
-    }
+    public Task TearDownServer() =>
+        _server.DisposeAsync().AsTask();
 
     [Test]
     [Retry(5)]
@@ -263,6 +364,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task FastSync()
     {
+        // After the nodedata satellite protocol was removed, fast sync without snap can no longer
+        // retrieve state on eth >= 67 (no GetNodeData in those versions). The SnapSync test below
+        // covers fast sync with state retrieval via snap.
+        Assert.Ignore("Fast sync without snap is not supported for eth >= 67 after nodedata satellite removal");
+
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyC;
@@ -318,6 +424,32 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             networkConfig.FilterPeersByRecentIp = false;
             networkConfig.FilterDiscoveryNodesByRecentIp = false;
         });
+
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
+    }
+
+    [Test]
+    [Retry(5)]
+    public async Task SnapSync_HalfPathServer_HashClient()
+    {
+        if (dbMode != DbMode.Default) Assert.Ignore("This test only runs on the Default (HalfPath) server fixture");
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+
+        PrivateKey clientKey = TestItem.PrivateKeyD;
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+        {
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+            syncConfig.FastSync = true;
+            syncConfig.SnapSync = true;
+
+            await SetPivot(syncConfig, cancellationTokenSource.Token);
+
+            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
+            networkConfig.P2PPort = AllocatePort();
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+        }, DbMode.Hash);
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
@@ -378,7 +510,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
         {
             if (modeCheck(syncModeSelector.Current)) return;
-
             await Wait.ForEventCondition<SyncModeChangedEventArgs>(cancellationToken,
                 h => syncModeSelector.Changed += h,
                 h => syncModeSelector.Changed -= h,
@@ -441,10 +572,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken);
         }
 
-        public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
-        {
-            await preMergeTestEnv.WaitForSyncMode(modeCheck, cancellationToken);
-        }
+        public Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken) =>
+            preMergeTestEnv.WaitForSyncMode(modeCheck, cancellationToken);
     }
 
     private class SyncTestContext(
@@ -466,7 +595,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         private const bool VerifyTrieOnFinished = false;
         private const int DeployEveryNBlocks = 10;
 
-        private readonly BlockDecoder _blockDecoder = new BlockDecoder();
+        private readonly BlockDecoder _blockDecoder = new();
         private readonly ReceiptsMessageSerializer _receiptsMessageSerializer = new(specProvider);
 
         // Track deployed contracts for storage testing
@@ -493,34 +622,30 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             .ForInitOf(_runtimeCode)  // return runtime code
             .Done;
 
-        public async Task StartBlockProcessing(CancellationToken cancellationToken)
-        {
-            await runner.StartBlockProcessing(cancellationToken);
-        }
+        public Task StartBlockProcessing(CancellationToken cancellationToken) =>
+            runner.StartBlockProcessing(cancellationToken);
 
-        public async Task StartNetwork(CancellationToken cancellationToken)
-        {
-            await runner.StartNetwork(cancellationToken);
-        }
+        public Task StartNetwork(CancellationToken cancellationToken) =>
+            runner.StartNetwork(cancellationToken);
 
         private async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
         {
             IEnode serverEnode = server.Resolve<IEnode>();
-            Node serverNode = new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
+            Node serverNode = new(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
             if (!await rlpxHost.ConnectAsync(serverNode))
             {
                 throw new NetworkingException($"Failed to connect to {serverNode:s}", NetworkExceptionType.TargetUnreachable);
             }
         }
 
-        Dictionary<Address, UInt256> nonces = [];
+        private readonly Dictionary<Address, UInt256> _nonces = [];
 
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
             long gasLimit = 1_000_000;
 
-            nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
+            _nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
                     .WithCode(byteCode)
@@ -529,7 +654,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .WithGasPrice(10.GWei)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject)
                 .ToArray();
-            nonces[nodeKey.Address] = currentNonce;
+            _nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs(txs, cancellation);
         }
 
@@ -537,7 +662,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             long gasLimit = 200_000;
 
-            nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
+            _nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0) + 1, null);
 
             Transaction tx;
@@ -569,7 +694,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
             }
 
-            nonces[nodeKey.Address] = currentNonce;
+            _nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs([tx], cancellation);
         }
 
@@ -625,16 +750,14 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             stream1.AsSpan().ToArray().Should().BeEquivalentTo(stream2.AsSpan().ToArray());
         }
 
-        private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2)
-        {
+        private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>
             // The network encoding is not the same as storage encoding.
             EncodeReceipts(receipts1).Should().BeEquivalentTo(EncodeReceipts(receipts2));
-        }
 
         private byte[] EncodeReceipts(TxReceipt[] receipts)
         {
             TxReceipt[][] wrappedReceipts = new[] { receipts };
-            using ReceiptsMessage asReceiptsMessage = new ReceiptsMessage(wrappedReceipts.ToPooledList());
+            using ReceiptsMessage asReceiptsMessage = new(wrappedReceipts.ToPooledList());
 
             IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
             try
@@ -678,17 +801,17 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private class ImmediateDisconnectFailure : IDisconnectsAnalyzer
     {
         private string? DisconnectFailure = null;
-        private CancellationTokenSource _cts = new CancellationTokenSource();
+        private readonly CancellationTokenSource _cts = new();
 
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
         {
-            DisconnectFailure = $"{reason.ToString()} {details}";
+            DisconnectFailure = $"{reason} {details}";
             _cts.Cancel();
         }
 
         public async Task WatchForDisconnection(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
             try
             {
                 await act(cts.Token);
@@ -704,14 +827,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     internal class BlockProcessorExceptionDetector
     {
-        internal static void Configure(ContainerBuilder builder)
-        {
+        internal static void Configure(ContainerBuilder builder) =>
             builder.AddSingleton<BlockProcessorExceptionDetector>()
                 .AddDecorator<IBlockProcessor, BlockProcessorInterceptor>();
-        }
 
         private Exception? BlockProcessingFailure;
-        private CancellationTokenSource _cts = new CancellationTokenSource();
+        private CancellationTokenSource _cts = new();
 
         private void ReportException(Exception exception)
         {
@@ -719,9 +840,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             _cts.Cancel();
         }
 
+
         public async Task WatchForFailure(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
             try
             {
                 await act(cts.Token);

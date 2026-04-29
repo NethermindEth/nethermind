@@ -96,7 +96,7 @@ public class HelloMessageSerializerTests
     [TestCaseSource(nameof(CapabilitiesLimitCases))]
     public void Validates_capabilities_count(int capCount, bool shouldThrow)
     {
-        ArrayPoolList<Capability> CreateCapabilities(int count)
+        static ArrayPoolList<Capability> CreateCapabilities(int count)
         {
             ArrayPoolList<Capability> caps = new(count);
             for (int i = 0; i < count; i++)
