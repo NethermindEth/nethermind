@@ -126,52 +126,37 @@ public partial class BlockProcessor(
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        long commitStart = Stopwatch.GetTimestamp();
-        _stateProvider.Commit(spec, commitRoots: false);
-        Evm.Metrics.IncrementCommitTime(Stopwatch.GetElapsedTime(commitStart).Ticks);
+        CommitState(spec);
 
-        TxReceipt[] receipts;
-        receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
-        commitStart = Stopwatch.GetTimestamp();
-        _stateProvider.Commit(spec, commitRoots: false);
-        Evm.Metrics.IncrementCommitTime(Stopwatch.GetElapsedTime(commitStart).Ticks);
+        CommitState(spec);
 
-        long bloomsStart = Stopwatch.GetTimestamp();
         CalculateBlooms(receipts);
-        Evm.Metrics.IncrementBloomsTime(Stopwatch.GetElapsedTime(bloomsStart).Ticks);
 
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        long receiptsRootStart = Stopwatch.GetTimestamp();
-        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
-        Evm.Metrics.IncrementReceiptsRootTime(Stopwatch.GetElapsedTime(receiptsRootStart).Ticks);
+        SetReceiptsRoot(header, receipts, spec, block);
 
         ApplyMinerRewards(block, blockTracer, spec);
         _systemContractHandler.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-        commitStart = Stopwatch.GetTimestamp();
-        _stateProvider.Commit(spec, commitRoots: false);
-        Evm.Metrics.IncrementCommitTime(Stopwatch.GetElapsedTime(commitStart).Ticks);
+        CommitState(spec);
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
-        long storageMerkleStart = Stopwatch.GetTimestamp();
-        _stateProvider.Commit(spec, commitRoots: true);
-        long storageMerkleTicks = Stopwatch.GetElapsedTime(storageMerkleStart).Ticks;
-        Evm.Metrics.IncrementStateHashTime(storageMerkleTicks);
-        Evm.Metrics.IncrementStorageMerkleTime(storageMerkleTicks);
+        CommitStateAndStorageRoots(spec);
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
@@ -180,12 +165,7 @@ public partial class BlockProcessor(
 
         if (ShouldComputeStateRoot(header))
         {
-            long stateRootStart = Stopwatch.GetTimestamp();
-            _stateProvider.RecalculateStateRoot();
-            long stateRootTicks = Stopwatch.GetElapsedTime(stateRootStart).Ticks;
-            Evm.Metrics.IncrementStateHashTime(stateRootTicks);
-            Evm.Metrics.IncrementStateRootTime(stateRootTicks);
-            header.StateRoot = _stateProvider.StateRoot;
+            ComputeStateRoot(header);
         }
 
         _balManager.SetBlockAccessList(block);
@@ -195,8 +175,44 @@ public partial class BlockProcessor(
         return receipts;
     }
 
+    private void CommitState(IReleaseSpec spec)
+    {
+        long start = Stopwatch.GetTimestamp();
+        _stateProvider.Commit(spec, commitRoots: false);
+        Evm.Metrics.IncrementCommitTime(Stopwatch.GetElapsedTime(start).Ticks);
+    }
+
+    private void CommitStateAndStorageRoots(IReleaseSpec spec)
+    {
+        long start = Stopwatch.GetTimestamp();
+        _stateProvider.Commit(spec, commitRoots: true);
+        long ticks = Stopwatch.GetElapsedTime(start).Ticks;
+        Evm.Metrics.IncrementStateHashTime(ticks);
+        Evm.Metrics.IncrementStorageMerkleTime(ticks);
+    }
+
+    private void ComputeStateRoot(BlockHeader header)
+    {
+        long start = Stopwatch.GetTimestamp();
+        _stateProvider.RecalculateStateRoot();
+        long ticks = Stopwatch.GetElapsedTime(start).Ticks;
+        Evm.Metrics.IncrementStateHashTime(ticks);
+        Evm.Metrics.IncrementStateRootTime(ticks);
+        header.StateRoot = _stateProvider.StateRoot;
+    }
+
+    private static void SetReceiptsRoot(BlockHeader header, TxReceipt[] receipts, IReleaseSpec spec, Block block)
+    {
+        long start = Stopwatch.GetTimestamp();
+        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        Evm.Metrics.IncrementReceiptsRootTime(Stopwatch.GetElapsedTime(start).Ticks);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CalculateBlooms(TxReceipt[] receipts) => ParallelUnbalancedWork.For(
+    private static void CalculateBlooms(TxReceipt[] receipts)
+    {
+        long start = Stopwatch.GetTimestamp();
+        ParallelUnbalancedWork.For(
             0,
             receipts.Length,
             ParallelUnbalancedWork.DefaultOptions,
@@ -206,6 +222,8 @@ public partial class BlockProcessor(
                 receipts[i].CalculateBloom();
                 return receipts;
             });
+        Evm.Metrics.IncrementBloomsTime(Stopwatch.GetElapsedTime(start).Ticks);
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void SetAccountChanges(Block block)
