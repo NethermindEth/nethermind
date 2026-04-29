@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -14,17 +15,28 @@ using Nethermind.Core.Precompiles;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-[TestFixture]
-public class Eip7928Tests() : VirtualMachineTestsBase
+/// <summary>
+/// Tests for EIP-7928 Block Access Lists.
+/// Verifies that executing EVM code correctly records state accesses into a
+/// <see cref="BlockAccessList"/> via <see cref="TracedAccessWorldState"/>.
+/// </summary>
+[TestFixture(false)]
+[TestFixture(true)]
+public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 {
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
@@ -42,6 +54,31 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         .Op(Instruction.SLOAD)
         .Done;
 
+    /// <summary>
+    /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
+    /// and a matching <see cref="TransactionProcessor{EthereumGasPolicy}"/> wired to it.
+    /// </summary>
+    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessor(bool? parallelOverride = null)
+    {
+        bool useParallel = parallelOverride ?? parallel;
+        TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
+        ILogManager logManager = LimboLogs.Instance;
+        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
+        EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
+        EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
+        TransactionProcessor<EthereumGasPolicy> processor = new(
+            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: useParallel);
+        return (tracedState, processor);
+    }
+
+    private static void AssertPureAccountRead(AccountChanges? accountChanges)
+    {
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.BalanceChanges, Is.Empty);
+        Assert.That(accountChanges.NonceChanges, Is.Empty);
+        Assert.That(accountChanges.CodeChanges, Is.Empty);
+    }
+
     [TestCaseSource(nameof(CodeTestSource))]
     public async Task Constructs_BAL_when_processing_code(
         IEnumerable<AccountChanges> expected,
@@ -50,8 +87,8 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         bool revert)
     {
         InitWorldState(TestState, extraCode);
-        ParallelWorldState worldState = TestState as ParallelWorldState;
-        worldState.TracingEnabled = true;
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
 
         UInt256 value = _testAccountBalance;
 
@@ -69,10 +106,10 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
-        TransactionResult res = _processor.Execute(createTx, callOutputTracer);
-        BlockAccessList bal = worldState.GeneratedBlockAccessList;
+        TransactionResult res = processor.Execute(createTx, callOutputTracer);
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
         UInt256 newBalance = _accountBalance - gasUsed;
@@ -91,7 +128,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             Assert.That(res.TransactionExecuted);
             Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
             Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.AccountChanges.Count(), Is.EqualTo(expected.Count() + 2));
+            Assert.That(bal.AccountChanges, Has.Count.EqualTo(expected.Count() + 2));
         }
 
         foreach (AccountChanges expectedAccountChanges in expected)
@@ -110,8 +147,8 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         EvmExceptionType expectedException)
     {
         InitWorldState(TestState, extraCode);
-        ParallelWorldState worldState = TestState as ParallelWorldState;
-        worldState.TracingEnabled = true;
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
 
         Transaction templateTx = Build.A.Transaction
             .WithCode(code)
@@ -128,10 +165,10 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
-        TransactionResult res = _processor.Execute(createTx, callOutputTracer);
-        BlockAccessList bal = worldState.GeneratedBlockAccessList;
+        TransactionResult res = processor.Execute(createTx, callOutputTracer);
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
         AccountChanges accountChangesA = Build.An.AccountChanges
@@ -145,7 +182,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             Assert.That(res.EvmExceptionType, Is.EqualTo(expectedException));
             Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
             Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.AccountChanges.Count(), Is.EqualTo(expected.Count() + 2));
+            Assert.That(bal.AccountChanges, Has.Count.EqualTo(expected.Count() + 2));
         }
 
         foreach (AccountChanges expectedAccountChanges in expected)
@@ -935,4 +972,110 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             { TestName = "selfdestruct_stack_underflow" };
         }
     }
+
+    [Test]
+    [TestCase("0x0000000000000000000000000000000000000004", TestName = "Precompile")]
+    [TestCase("0x5000001000000000000000000000000000000004", TestName = "RandomAddress")]
+    public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
+    {
+        TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+
+        CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
+
+        repo.GetCachedCodeInfo(new(address), false, Amsterdam.Instance, out Address? delegationAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delegationAddress, Is.Null);
+            AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(new(address)));
+        }
+    }
+
+    [Test]
+    public void Tx_exceeding_block_gas_limit_rejected_in_parallel_mode()
+    {
+        (_, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor(parallelOverride: true);
+
+        TestState.CreateAccount(TestItem.AddressA, 10.Ether);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        long blockGasLimit = 100_000;
+        BlockHeader header = Build.A.BlockHeader
+            .WithGasLimit(blockGasLimit)
+            .WithNumber(1)
+            .TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(blockGasLimit + 1)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        TransactionResult result = processor.Execute(tx, NullTxTracer.Instance);
+
+        Assert.That(result, Is.EqualTo(TransactionResult.BlockGasLimitExceeded));
+    }
+
+    [Test]
+    public void CodeInfoRepository_getcachedcodeinfo_delegated_records_account_read_in_bal()
+    {
+        byte[] targetCode = [(byte)Instruction.STOP];
+        Address delegationTarget = TestItem.AddressC;
+        Address delegatedAccount = TestItem.AddressD;
+
+        TestState.CreateAccount(delegationTarget, 0);
+        TestState.InsertCode(delegationTarget, targetCode, SpecProvider.GenesisSpec);
+
+        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. delegationTarget.Bytes];
+        TestState.CreateAccount(delegatedAccount, 0);
+        TestState.InsertCode(delegatedAccount, delegationCode, SpecProvider.GenesisSpec);
+
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+
+        TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+
+        CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(targetCode));
+            // Both the delegated account and the delegation target are traced as account reads in the BAL
+            Assert.That(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(delegatedAccount), Is.Not.Null);
+            Assert.That(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(delegationTarget), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void CacheCodeInfoRepository_tracing_records_account_read_in_bal()
+    {
+        CacheCodeInfoRepository.Clear();
+
+        byte[] code = [(byte)Instruction.STOP];
+
+        // Set up state directly on TestState (the inner world state)
+        TestState.CreateAccount(TestItem.AddressB, 0);
+        TestState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+
+        TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+
+        CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(delegationAddress, Is.Null);
+            // GetCachedCodeInfo records a pure account read even through the cache layer
+            AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressB));
+        }
+    }
+
 }

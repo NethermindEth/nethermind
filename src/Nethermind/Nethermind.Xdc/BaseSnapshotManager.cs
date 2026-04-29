@@ -67,14 +67,18 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     {
         if (_blockTree.FindHeader(gapNumber) is not XdcBlockHeader gapBlockHeader)
             return null;
+        return GetSnapshot(gapBlockHeader.Hash);
+    }
 
-        TSnapshot? snapshot = _snapshotCache.Get(gapBlockHeader.Hash);
+    protected TSnapshot? GetSnapshot(Hash256 headerHash)
+    {
+        TSnapshot? snapshot = _snapshotCache.Get(headerHash);
         if (snapshot is not null)
         {
             return snapshot;
         }
 
-        Span<byte> key = gapBlockHeader.Hash.Bytes;
+        Span<byte> key = headerHash.Bytes;
         if (!_snapshotDb.KeyExists(key))
             return null;
         Span<byte> value = _snapshotDb.Get(key);
@@ -83,7 +87,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
         TSnapshot decoded = _snapshotDecoder.Decode(value);
         snapshot = decoded;
-        _snapshotCache.Set(gapBlockHeader.Hash, snapshot);
+        _snapshotCache.Set(headerHash, snapshot);
         return snapshot;
     }
 

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using NUnit.Framework;
+
 namespace Ethereum.Blockchain.Pyspec.Test.Amsterdam;
 
 // Blockchain tests
@@ -24,10 +26,20 @@ public class Eip7843BlockChainTests : AmsterdamBlockChainTestFixture<Eip7843Bloc
 public class Eip7843EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip7843EngineBlockChainTests>;
 
 [EipWildcard("eip7928_block_level_access_lists")]
-public class Eip7928BlockChainTests : AmsterdamBlockChainTestFixture<Eip7928BlockChainTests>;
+[TestFixture(false)]
+[TestFixture(true)]
+public class Eip7928BlockChainTests(bool parallel) : AmsterdamBlockChainTestFixture<Eip7928BlockChainTests>
+{
+    protected override bool? ParallelExecutionOverride => parallel;
+}
 
 [EipWildcard("eip7928_block_level_access_lists")]
-public class Eip7928EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip7928EngineBlockChainTests>;
+[TestFixture(false)]
+[TestFixture(true)]
+public class Eip7928EngineBlockChainTests(bool parallel) : AmsterdamEngineBlockChainTestFixture<Eip7928EngineBlockChainTests>
+{
+    protected override bool? ParallelExecutionOverride => parallel;
+}
 
 [EipWildcard("eip7954_increase_max_contract_size")]
 public class Eip7954BlockChainTests : AmsterdamBlockChainTestFixture<Eip7954BlockChainTests>;

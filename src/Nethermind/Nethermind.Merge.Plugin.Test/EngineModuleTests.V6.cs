@@ -397,8 +397,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task GetPayloadBodiesHashV2_returns_correctly()
     {
-        TestSpecProvider specProvider = new(Amsterdam.Instance);
-        using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
         List<Hash256> blockHashes = [];
         for (int i = 1; i < 5; i++)
@@ -424,8 +423,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task GetPayloadBodiesByRangeV2_returns_correctly()
     {
-        TestSpecProvider specProvider = new(Amsterdam.Instance);
-        using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
         for (int i = 1; i < 5; i++)
         {
@@ -439,6 +437,19 @@ public partial class EngineModuleTests
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
         }
+    }
+
+    [Test]
+    public virtual async Task Can_build_and_process_multiple_blocks_V6()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+
+        for (int i = 1; i < 5; i++)
+        {
+            await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
+        }
+
+        Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(4));
     }
 
     private async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
@@ -851,14 +862,14 @@ public partial class EngineModuleTests
             {
                 modifiedAccounts[senderAddress] = CloneAccountChanges(
                     validBal.GetAccountChanges(senderAddress)!,
-                    bc => bc.BlockAccessIndex == 1 ? new BalanceChange(1, bc.PostBalance + 1) : bc);
+                    bc => bc.Index == 1 ? new BalanceChange(1, bc.Value + 1) : bc);
             }
 
             if (errorKind is BalErrorKind.SurplusChange)
             {
-                SortedList<ushort, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
+                SortedList<int, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
                 modifiedAccounts[TestItem.AddressF] = new AccountChanges(
-                    TestItem.AddressF, new(), new SortedSet<StorageRead>(), new(), fakeNonce, new());
+                    TestItem.AddressF, new(), new SortedSet<UInt256>(), new(), fakeNonce, new());
             }
 
             if (errorKind is BalErrorKind.SurplusReads)
@@ -878,29 +889,29 @@ public partial class EngineModuleTests
         SortedList<UInt256, SlotChanges> storageChanges = new();
         foreach (SlotChanges sc in ac.StorageChanges)
         {
-            SortedList<ushort, StorageChange> changes = new();
-            foreach (KeyValuePair<ushort, StorageChange> kvp in sc.Changes)
+            SortedList<int, StorageChange> changes = new();
+            foreach (KeyValuePair<int, StorageChange> kvp in sc.Changes)
                 changes.Add(kvp.Key, kvp.Value);
 
-            storageChanges.Add(sc.Slot, sc with { Changes = changes });
+            storageChanges.Add(sc.Key, sc with { Changes = changes });
         }
 
-        SortedSet<StorageRead> storageReads = new(ac.StorageReads);
+        SortedSet<UInt256> storageReads = new(ac.StorageReads);
 
-        SortedList<ushort, BalanceChange> balanceChanges = new();
+        SortedList<int, BalanceChange> balanceChanges = new();
         foreach (BalanceChange bc in ac.BalanceChanges)
         {
             BalanceChange modified = balanceModifier?.Invoke(bc) ?? bc;
-            balanceChanges.Add(modified.BlockAccessIndex, modified);
+            balanceChanges.Add(modified.Index, modified);
         }
 
-        SortedList<ushort, NonceChange> nonceChanges = new();
+        SortedList<int, NonceChange> nonceChanges = new();
         foreach (NonceChange nc in ac.NonceChanges)
-            nonceChanges.Add(nc.BlockAccessIndex, nc);
+            nonceChanges.Add(nc.Index, nc);
 
-        SortedList<ushort, CodeChange> codeChanges = new();
+        SortedList<int, CodeChange> codeChanges = new();
         foreach (CodeChange cc in ac.CodeChanges)
-            codeChanges.Add(cc.BlockAccessIndex, cc);
+            codeChanges.Add(cc.Index, cc);
 
         return new AccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }

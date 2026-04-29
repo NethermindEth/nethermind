@@ -440,7 +440,7 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugDisconnectProtocolFailed(IProtocolHandler handler, Exception e)
-                => _logger.Error($"DEBUG/ERROR Failed to disconnect {handler.Name} correctly", e);
+                => _logger.DebugError($"Failed to disconnect {handler.Name} correctly", e);
         }
 
         private readonly Lock _sessionStateLock = new();
@@ -536,7 +536,7 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugNoDisconnectedSubscriptions()
-                => _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
+                => _logger.DebugError($"No subscriptions for session disconnected event on {this}");
         }
 
         private async Task DisconnectAsync(DisconnectType disconnectType)

@@ -43,6 +43,11 @@ namespace Nethermind.JsonRpc
         public const int InvalidInput = -32000;
 
         /// <summary>
+        /// EVM execution error (out of gas, insufficient funds during execution, etc.)
+        /// </summary>
+        public const int ExecutionError = -32003;
+
+        /// <summary>
         /// Requested resource not found
         /// </summary>
         public const int ResourceNotFound = -32000;
@@ -93,12 +98,12 @@ namespace Nethermind.JsonRpc
         public const int BlockTimestampNotIncreased = -38021;
 
         /// <summary>
-        /// Invalid RPC simulate call containing too many blocks
+        /// MovePrecompileToAddress referenced itself in replacement
         /// </summary>
-        public const int InvalidInputTooManyBlocks = -38026;
+        public const int MovePrecompileSelfReference = -38022;
 
         /// <summary>
-        /// Too many blocks for simulation
+        /// Too many blocks or calls — client limit exceeded
         /// </summary>
         public const int ClientLimitExceededError = -38026;
 
@@ -118,7 +123,12 @@ namespace Nethermind.JsonRpc
         public const int Default = -32000;
 
         /// <summary>
-        /// Invalid intrinsic gas. Miner premium is negative
+        /// Transaction maxFeePerGas is below the block base fee — eth_simulateV1 spec error
+        /// </summary>
+        public const int FeeCapBelowBaseFee = -38012;
+
+        /// <summary>
+        /// Transaction gas limit is below the intrinsic gas cost
         /// </summary>
         public const int IntrinsicGas = -38013;
 

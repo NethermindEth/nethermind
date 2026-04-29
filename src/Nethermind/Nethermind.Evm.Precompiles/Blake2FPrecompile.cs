@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
@@ -15,8 +16,10 @@ namespace Nethermind.Evm.Precompiles;
 public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 {
     private const int RequiredInputLength = 213;
+    private static readonly ReadOnlyMemory<byte> InvalidLengthInput = ReadOnlyMemory<byte>.Empty;
+    private static readonly ReadOnlyMemory<byte> InvalidFlagInput = new byte[RequiredInputLength].WithValueAt(212, 0xFF);
 
-    public static readonly Blake2FPrecompile Instance = new();
+    public static Blake2FPrecompile Instance { get; } = new();
 
     private Blake2FPrecompile() { }
 
@@ -25,6 +28,13 @@ public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
     public static string Name => "BLAKE2F";
 
     public long BaseGasCost(IReleaseSpec _) => 0;
+
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
+    {
+        if (inputData.Length != RequiredInputLength) return InvalidLengthInput;
+        if (inputData.Span[212] is not 0 and not 1) return InvalidFlagInput;
+        return inputData;
+    }
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
