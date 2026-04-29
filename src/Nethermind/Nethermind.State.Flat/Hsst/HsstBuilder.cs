@@ -20,7 +20,13 @@ namespace Nethermind.State.Flat.Hsst;
 ///   No data section. Leaf values are stored directly in the B-tree index.
 ///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
-///   [Value][ValueLength: LEB128][RemainingKeyLength: LEB128][RemainingKey]
+///   [Value][ValueLength: LEB128][KeyLength: LEB128][FullKey]
+/// MetadataStart points at the ValueLength LEB128. The leaf B-tree node also stores a
+/// separator (a min-length prefix of the full key) for binary-search navigation, but the
+/// data-region entry is self-describing — the full key lives in the entry tail and the
+/// reader does not need to consult the leaf to recover it. (LEB128 is forward-readable
+/// only: terminator is the first byte without the continuation bit; reading backward is
+/// not reliable, so the lengths sit after the value and the index aims at them.)
 /// </summary>
 public ref struct HsstBuilder<TWriter>
     where TWriter : IByteBufferWriter
@@ -133,20 +139,20 @@ public ref struct HsstBuilder<TWriter>
         int sepOffset = _separatorBuffer.Count;
         _separatorBuffer.AddRange(key[..sepLen]);
 
-        ReadOnlySpan<byte> remainingKey = key[sepLen..];
-
-        // Write [ValueLength: LEB128][RemainingKeyLength: LEB128][RemainingKey]
+        // Write [ValueLength: LEB128][KeyLength: LEB128][FullKey]. The full key lives in
+        // the data region so the entry is self-describing; the leaf separator above is
+        // kept purely to drive in-leaf binary search.
         Span<byte> leb = _writer.GetSpan(10);
         int lebLen = Leb128.Write(leb, 0, actualLen);
         _writer.Advance(lebLen);
 
         leb = _writer.GetSpan(10);
-        lebLen = Leb128.Write(leb, 0, remainingKey.Length);
+        lebLen = Leb128.Write(leb, 0, key.Length);
         _writer.Advance(lebLen);
 
-        if (remainingKey.Length > 0)
+        if (key.Length > 0)
         {
-            IByteBufferWriter.Copy(ref _writer, remainingKey);
+            IByteBufferWriter.Copy(ref _writer, key);
         }
 
         _entriesBuffer.Add(new HsstEntry(sepOffset, sepLen, metadataStart));

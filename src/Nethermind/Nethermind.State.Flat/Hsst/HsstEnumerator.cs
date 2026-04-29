@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Utils;
@@ -17,6 +16,11 @@ namespace Nethermind.State.Flat.Hsst;
 /// scopes which HSST is being enumerated. The enumerator owns one pin (the current leaf
 /// node) at a time; ancestors are re-loaded via the reader when ascending, so peak memory
 /// is one pinned node plus a small ancestor-end stack.
+///
+/// Both <c>Current.KeyBound</c> and <c>Current.ValueBound</c> are absolute reader offsets;
+/// callers slice them out of their own data span (or pin them via the reader). The
+/// enumerator never materialises the key into an internal buffer — the data-region entry
+/// already carries the full key and the bound points straight at it.
 /// </summary>
 public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
@@ -24,10 +28,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 {
     /// <summary>Maximum supported B-tree depth. Realistic trees stay ≤4; 16 is a hard ceiling.</summary>
     private const int MaxDepth = 16;
-    /// <summary>Inline buffer for reconstructed keys. Real-world HSST keys are ≤33 bytes; the
-    /// generous 1 KiB ceiling keeps the enumerator allocation-free for any realistic load while
-    /// still bounding the per-instance footprint.</summary>
-    private const int InlineKeyBytes = 1024;
 
     [InlineArray(MaxDepth)]
     private struct AncestorStack { private Ancestor _e0; }
@@ -37,9 +37,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         public long AbsEnd;
         public int LastIdx;
     }
-
-    [InlineArray(InlineKeyBytes)]
-    private struct InlineKeyBuf { private byte _e0; }
 
     private TReader _reader;
     private readonly long _hsstStart;
@@ -57,9 +54,8 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private long _leafAbsStart;
     private int _leafIdx;
 
-    // Reconstructed current entry
-    private InlineKeyBuf _keyBuf;
-    private int _keyLen;
+    // Current entry — both bounds are absolute reader offsets (Bound.Offset = reader-space).
+    private Bound _currentKeyBound;
     private Bound _currentValueBound;
 
     public HsstEnumerator(scoped in TReader reader, Bound bound)
@@ -109,18 +105,7 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         return AscendAndDescend();
     }
 
-    [UnscopedRef]
-    public readonly KeyValueEntry Current => new(KeySpan, _currentValueBound);
-
-    [UnscopedRef]
-    private readonly ReadOnlySpan<byte> KeySpan
-    {
-        get
-        {
-            ref readonly byte first = ref _keyBuf[0];
-            return MemoryMarshal.CreateReadOnlySpan(in first, _keyLen);
-        }
-    }
+    public readonly KeyValueEntry Current => new(_currentKeyBound, _currentValueBound);
 
     public void Dispose()
     {
@@ -209,29 +194,35 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     }
 
     /// <summary>
-    /// Materialise the current leaf entry: reconstruct the full key into <c>_keyBuf</c>
-    /// (separator + remainingKey for non-inline; full key for inline) and compute the value
-    /// bound (absolute offset+length within the reader).
+    /// Materialise the current leaf entry: compute the (key, value) bounds without copying any
+    /// bytes into the enumerator. For inline mode the key sits inside the leaf node's pinned
+    /// buffer; for non-inline mode both key and value live in the data region with metaStart
+    /// as the pivot.
     /// </summary>
     private void UpdateCurrent()
     {
-        ReadOnlySpan<byte> separator = _leafNode.GetKey(_leafIdx);
-
         if (_isInline)
         {
-            // Inline: leaf stores the full key + value directly. Copy key into buffer.
-            CopyKey(separator, default);
+            ReadOnlySpan<byte> nodeBytes = _leafPin.Buffer;
+            ref readonly byte nodeBytesRef = ref MemoryMarshal.GetReference(nodeBytes);
+
+            // Key span in the leaf — point a Bound at it via leaf abs-start + intra-node offset.
+            ReadOnlySpan<byte> keySpan = _leafNode.GetKey(_leafIdx);
+            int keyOffsetInNode = (int)Unsafe.ByteOffset(
+                ref Unsafe.AsRef(in nodeBytesRef),
+                ref Unsafe.AsRef(in MemoryMarshal.GetReference(keySpan)));
+            _currentKeyBound = new Bound(_leafAbsStart + keyOffsetInNode, keySpan.Length);
+
             ReadOnlySpan<byte> val = _leafNode.GetValue(_leafIdx);
             if (val.IsEmpty)
             {
                 _currentValueBound = new Bound(0, 0);
                 return;
             }
-            ReadOnlySpan<byte> nodeBytes = _leafPin.Buffer;
-            int offsetInNode = (int)Unsafe.ByteOffset(
-                ref Unsafe.AsRef(in MemoryMarshal.GetReference(nodeBytes)),
+            int valOffsetInNode = (int)Unsafe.ByteOffset(
+                ref Unsafe.AsRef(in nodeBytesRef),
                 ref Unsafe.AsRef(in MemoryMarshal.GetReference(val)));
-            _currentValueBound = new Bound(_leafAbsStart + offsetInNode, val.Length);
+            _currentValueBound = new Bound(_leafAbsStart + valOffsetInNode, val.Length);
             return;
         }
 
@@ -240,49 +231,20 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + _leafNode.Metadata.BaseOffset;
         long absMetaStart = _hsstStart + 1 + metaStart;
 
-        // Read ValueLength + RemainingKeyLength LEB128s (max 5 bytes each). This is the leading
-        // sequential read for each entry during enumeration, so use the readahead variant —
-        // paged/mmap readers can prefetch the next window here.
+        // Read ValueLength + KeyLength LEB128s (max 5 bytes each). This is the leading sequential
+        // read for each entry during enumeration, so use the readahead variant — paged/mmap
+        // readers can prefetch the next window here.
         Span<byte> lebBuf = stackalloc byte[10];
         int available = (int)Math.Min(10, _hsstEnd - absMetaStart);
         if (available <= 0 || !_reader.TryReadWithReadahead(absMetaStart, lebBuf[..available])) return;
         int pos = 0;
         int valueLength = Leb128.Read(lebBuf, ref pos);
-        int remainingKeyLength = Leb128.Read(lebBuf, ref pos);
-        long remainingKeyAbsStart = absMetaStart + pos;
+        int keyLength = Leb128.Read(lebBuf, ref pos);
+        long keyAbsStart = absMetaStart + pos;
 
-        ReadRemainingKey(separator, remainingKeyAbsStart, remainingKeyLength);
-
+        _currentKeyBound = new Bound(keyAbsStart, keyLength);
         _currentValueBound = new Bound(absMetaStart - valueLength, valueLength);
     }
-
-    private void CopyKey(ReadOnlySpan<byte> separator, ReadOnlySpan<byte> remaining)
-    {
-        int total = separator.Length + remaining.Length;
-        if (total > InlineKeyBytes) ThrowKeyTooLarge();
-        Span<byte> target = MemoryMarshal.CreateSpan(ref _keyBuf[0], InlineKeyBytes);
-        separator.CopyTo(target);
-        if (!remaining.IsEmpty)
-            remaining.CopyTo(target[separator.Length..]);
-        _keyLen = total;
-    }
-
-    private void ReadRemainingKey(ReadOnlySpan<byte> separator, long remainingKeyAbsStart, int remainingKeyLength)
-    {
-        int total = separator.Length + remainingKeyLength;
-        if (total > InlineKeyBytes) ThrowKeyTooLarge();
-        Span<byte> target = MemoryMarshal.CreateSpan(ref _keyBuf[0], InlineKeyBytes);
-        separator.CopyTo(target);
-        if (remainingKeyLength > 0)
-        {
-            Span<byte> remTarget = target.Slice(separator.Length, remainingKeyLength);
-            _reader.TryRead(remainingKeyAbsStart, remTarget);
-        }
-        _keyLen = total;
-    }
-
-    private static void ThrowKeyTooLarge() =>
-        throw new InvalidOperationException($"HsstEnumerator: key exceeds inline buffer ({InlineKeyBytes} bytes).");
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryLoadNode(long absEnd, out HsstIndex node, out long nodeAbsStart, out TPin pin)
@@ -326,13 +288,13 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 }
 
 /// <summary>
-/// One key/value pair yielded by <see cref="HsstEnumerator{TReader,TPin}.Current"/>.
-/// The <see cref="Key"/> span is valid until the next <c>MoveNext</c> call;
-/// <see cref="ValueBound"/> is an absolute reader offset+length and stays valid for the
-/// lifetime of the underlying reader.
+/// One key/value pair yielded by <see cref="HsstEnumerator{TReader,TPin}.Current"/>. Both
+/// fields are absolute reader offset+length tuples; callers slice them out of the underlying
+/// data span (or pin via the reader). Both bounds stay valid for the reader's lifetime —
+/// no per-MoveNext invalidation, since neither involves enumerator-owned storage.
 /// </summary>
-public readonly ref struct KeyValueEntry(ReadOnlySpan<byte> key, Bound valueBound)
+public readonly ref struct KeyValueEntry(Bound keyBound, Bound valueBound)
 {
-    public ReadOnlySpan<byte> Key { get; } = key;
+    public Bound KeyBound { get; } = keyBound;
     public Bound ValueBound { get; } = valueBound;
 }

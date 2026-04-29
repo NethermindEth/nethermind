@@ -525,10 +525,11 @@ public static class PersistedSnapshotBuilder
 
         while (e.MoveNext())
         {
+            KeyValueEntry cur = e.Current;
             // metaStart relative to column = ValueBound.Offset + ValueBound.Length
-            int metaStart = (int)(e.Current.ValueBound.Offset + e.Current.ValueBound.Length);
+            int metaStart = (int)(cur.ValueBound.Offset + cur.ValueBound.Length);
             NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffset + metaStart));
-            builder.Add(e.Current.Key, refBytes);
+            builder.Add(column.Slice((int)cur.KeyBound.Offset, cur.KeyBound.Length), refBytes);
         }
 
         builder.Build();
@@ -560,16 +561,17 @@ public static class PersistedSnapshotBuilder
 
             while (innerEnum.MoveNext())
             {
+                KeyValueEntry inner = innerEnum.Current;
                 // metaStart relative to column for the inner entry; add columnOffsetInSnapshot
                 // to land at the absolute snapshot offset NodeRef expects.
-                int metaStartInColumn = (int)(innerEnum.Current.ValueBound.Offset + innerEnum.Current.ValueBound.Length);
+                int metaStartInColumn = (int)(inner.ValueBound.Offset + inner.ValueBound.Length);
                 NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffsetInSnapshot + metaStartInColumn));
-                innerBuilder.Add(innerEnum.Current.Key, refBytes);
+                innerBuilder.Add(column.Slice((int)inner.KeyBound.Offset, inner.KeyBound.Length), refBytes);
             }
 
             innerBuilder.Build();
             innerBuilder.Dispose();
-            builder.FinishValueWrite(outerEnum.Current.Key);
+            builder.FinishValueWrite(column.Slice((int)outerEnum.Current.KeyBound.Offset, outerEnum.Current.KeyBound.Length));
         }
 
         builder.Build();

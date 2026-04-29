@@ -114,14 +114,16 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     if (!node.TryGetFloor(key, out ReadOnlySpan<byte> separator, out ReadOnlySpan<byte> metaBytes))
                         return false;
 
-                    // Exact-match early-out: stored key starts with separator, so input must too.
+                    // Cheap reject path: the stored full key starts with the leaf separator,
+                    // so the input must too. Saves a length-mismatch read in the common
+                    // exact-miss case.
                     if (exactMatch && !key.StartsWith(separator)) return false;
 
                     int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + node.Metadata.BaseOffset;
                     long absMetaStart = _bound.Offset + 1 + metaStart;
 
                     // Read up to 10 bytes from absMetaStart: enough for ValueLength (≤5) +
-                    // RemainingKeyLength (≤5) LEB128s. Both decoded eagerly when exactMatch is true.
+                    // KeyLength (≤5) LEB128s. KeyLength only consumed when exact-matching.
                     long available = _bound.Offset + _bound.Length - absMetaStart;
                     if (available <= 0) return false;
                     Span<byte> lebBuf = stackalloc byte[10];
@@ -133,24 +135,20 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
 
                     if (exactMatch)
                     {
-                        int remainingKeyLength = Leb128.Read(lebBuf, ref pos);
-                        int expectedRemaining = key.Length - separator.Length;
-                        if (remainingKeyLength != expectedRemaining) return false;
-                        if (remainingKeyLength > 0)
+                        int keyLength = Leb128.Read(lebBuf, ref pos);
+                        if (keyLength != key.Length) return false;
+
+                        // Compare the stored full key against the input in bounded-stack
+                        // chunks so arbitrarily long keys don't blow the stack.
+                        Span<byte> chunk = stackalloc byte[256];
+                        int compared = 0;
+                        while (compared < keyLength)
                         {
-                            // Compare remaining-key bytes against key[separator.Length..] in
-                            // bounded-stack chunks so arbitrarily long keys don't blow the stack.
-                            Span<byte> chunk = stackalloc byte[256];
-                            ReadOnlySpan<byte> expected = key[separator.Length..];
-                            int compared = 0;
-                            while (compared < remainingKeyLength)
-                            {
-                                int toRead = Math.Min(chunk.Length, remainingKeyLength - compared);
-                                Span<byte> chunkSlice = chunk[..toRead];
-                                if (!_reader.TryRead(absMetaStart + pos + compared, chunkSlice)) return false;
-                                if (!chunkSlice.SequenceEqual(expected.Slice(compared, toRead))) return false;
-                                compared += toRead;
-                            }
+                            int toRead = Math.Min(chunk.Length, keyLength - compared);
+                            Span<byte> chunkSlice = chunk[..toRead];
+                            if (!_reader.TryRead(absMetaStart + pos + compared, chunkSlice)) return false;
+                            if (!chunkSlice.SequenceEqual(key.Slice(compared, toRead))) return false;
+                            compared += toRead;
                         }
                     }
 
