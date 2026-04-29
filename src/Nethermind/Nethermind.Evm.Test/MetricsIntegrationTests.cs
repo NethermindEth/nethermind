@@ -21,8 +21,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// Verifies that EVM execution metrics (ZeroContentionCounter-based) are correctly
-/// incremented during transaction processing.
+/// Verifies that EVM execution metrics are correctly incremented during transaction processing.
 /// </summary>
 [TestFixture]
 public class MetricsIntegrationTests
@@ -67,15 +66,15 @@ public class MetricsIntegrationTests
         PrivateKey sender = TestItem.PrivateKeyA;
         _worldState.CreateAccount(sender.Address, 10.Ether);
 
-        long startReads = Metrics.ThreadLocalAccountReads;
-        long startWrites = Metrics.ThreadLocalAccountWrites;
+        long startReads = Metrics.AccountReads;
+        long startWrites = Metrics.AccountWrites;
 
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1.Ether)
             .WithGasLimit(21_000).SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.ThreadLocalAccountReads - startReads, Is.GreaterThanOrEqualTo(2));
-        Assert.That(Metrics.ThreadLocalAccountWrites - startWrites, Is.GreaterThanOrEqualTo(2));
+        Assert.That(Metrics.AccountReads - startReads, Is.GreaterThanOrEqualTo(2));
+        Assert.That(Metrics.AccountWrites - startWrites, Is.GreaterThanOrEqualTo(2));
     }
 
     [Test]
@@ -86,13 +85,13 @@ public class MetricsIntegrationTests
         _worldState.CreateAccount(sender.Address, 10.Ether);
         DeployCode(contract, Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.SLOAD).Op(Instruction.POP).Done);
 
-        long startReads = Metrics.ThreadLocalStorageReads;
+        long startReads = Metrics.StorageReads;
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.ThreadLocalStorageReads - startReads, Is.GreaterThanOrEqualTo(1));
+        Assert.That(Metrics.StorageReads - startReads, Is.GreaterThanOrEqualTo(1));
     }
 
     [Test]
@@ -103,13 +102,13 @@ public class MetricsIntegrationTests
         _worldState.CreateAccount(sender.Address, 10.Ether);
         DeployCode(contract, Prepare.EvmCode.PushData(42).Op(Instruction.PUSH0).Op(Instruction.SSTORE).Done);
 
-        long startWrites = Metrics.ThreadLocalStorageWrites;
+        long startWrites = Metrics.StorageWrites;
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.ThreadLocalStorageWrites - startWrites, Is.GreaterThanOrEqualTo(1));
+        Assert.That(Metrics.StorageWrites - startWrites, Is.GreaterThanOrEqualTo(1));
     }
 
     [Test]
@@ -122,13 +121,13 @@ public class MetricsIntegrationTests
         _worldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
         _worldState.Commit(Prague.Instance);
 
-        long startDeleted = Metrics.ThreadLocalStorageDeleted;
+        long startDeleted = Metrics.StorageDeleted;
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.ThreadLocalStorageDeleted - startDeleted, Is.EqualTo(1));
+        Assert.That(Metrics.StorageDeleted - startDeleted, Is.EqualTo(1));
     }
 
     [Test]
@@ -137,14 +136,14 @@ public class MetricsIntegrationTests
         PrivateKey sender = TestItem.PrivateKeyA;
         _worldState.CreateAccount(sender.Address, 10.Ether);
 
-        long startCodeWrites = Metrics.ThreadLocalCodeWrites;
+        long startCodeWrites = Metrics.CodeWrites;
 
         byte[] initCode = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done;
         Transaction tx = Build.A.Transaction.WithCode(initCode).WithGasLimit(100_000)
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.ThreadLocalCodeWrites - startCodeWrites, Is.GreaterThanOrEqualTo(1));
+        Assert.That(Metrics.CodeWrites - startCodeWrites, Is.GreaterThanOrEqualTo(1));
     }
 
     [Test]
@@ -156,14 +155,14 @@ public class MetricsIntegrationTests
         _worldState.CreateAccount(sender.Address, 1.Ether);
         DeployCode(codeSource, Prepare.EvmCode.Op(Instruction.STOP).Done);
 
-        long startSet = Metrics.ThreadLocalEip7702DelegationsSet;
+        long startSet = Metrics.Eip7702DelegationsSet;
 
         Transaction tx = Build.A.Transaction.WithType(TxType.SetCode).WithTo(signer.Address).WithGasLimit(100_000)
             .WithAuthorizationCode(_ecdsa.Sign(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.ThreadLocalEip7702DelegationsSet - startSet, Is.EqualTo(1));
+        Assert.That(Metrics.Eip7702DelegationsSet - startSet, Is.EqualTo(1));
     }
 
     [Test]
@@ -180,13 +179,13 @@ public class MetricsIntegrationTests
         _worldState.InsertCode(signer.Address, existingDelegation, Prague.Instance);
         _worldState.IncrementNonce(signer.Address);
 
-        long startCleared = Metrics.ThreadLocalEip7702DelegationsCleared;
+        long startCleared = Metrics.Eip7702DelegationsCleared;
 
         Transaction tx = Build.A.Transaction.WithType(TxType.SetCode).WithTo(signer.Address).WithGasLimit(100_000)
             .WithAuthorizationCode(_ecdsa.Sign(signer, _specProvider.ChainId, Address.Zero, 1))
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
         ExecuteTx(tx, CreateBlock(tx));
 
-        Assert.That(Metrics.ThreadLocalEip7702DelegationsCleared - startCleared, Is.EqualTo(1));
+        Assert.That(Metrics.Eip7702DelegationsCleared - startCleared, Is.EqualTo(1));
     }
 }

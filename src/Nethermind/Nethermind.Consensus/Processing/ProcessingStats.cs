@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using DbMetrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -156,30 +157,30 @@ namespace Nethermind.Consensus.Processing
                 PerTxTimingCollector.SetEnabled(true);
             }
 
-            _startAccountReads = Evm.Metrics.ThreadLocalAccountReads;
-            _startStorageReads = Evm.Metrics.ThreadLocalStorageReads;
-            _startCodeReads = Evm.Metrics.ThreadLocalCodeReads;
-            _startCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
-            _startAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
-            _startAccountDeleted = Evm.Metrics.ThreadLocalAccountDeleted;
-            _startStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
-            _startStorageDeleted = Evm.Metrics.ThreadLocalStorageDeleted;
-            _startCodeWrites = Evm.Metrics.ThreadLocalCodeWrites;
-            _startCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
-            _startStateHashTime = Evm.Metrics.ThreadLocalStateHashTime;
-            _startCommitTime = Evm.Metrics.ThreadLocalCommitTime;
+            _startAccountReads = Evm.Metrics.AccountReads;
+            _startStorageReads = Evm.Metrics.StorageReads;
+            _startCodeReads = Evm.Metrics.CodeReads;
+            _startCodeBytesRead = Evm.Metrics.CodeBytesRead;
+            _startAccountWrites = Evm.Metrics.AccountWrites;
+            _startAccountDeleted = Evm.Metrics.AccountDeleted;
+            _startStorageWrites = Evm.Metrics.StorageWrites;
+            _startStorageDeleted = Evm.Metrics.StorageDeleted;
+            _startCodeWrites = Evm.Metrics.CodeWrites;
+            _startCodeBytesWritten = Evm.Metrics.CodeBytesWritten;
+            _startStateHashTime = Evm.Metrics.StateHashTime;
+            _startCommitTime = Evm.Metrics.CommitTime;
             _startAccountCacheHits = DbMetrics.StateTreeCache;
             _startAccountCacheMisses = DbMetrics.StateTreeReads;
             _startStorageCacheHits = DbMetrics.StorageTreeCache;
             _startStorageCacheMisses = DbMetrics.StorageTreeReads;
             _startCodeCacheHits = Evm.Metrics.CodeDbCache;
-            _startCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads;
-            _startEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet;
-            _startEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared;
-            _startStorageMerkleTime = Evm.Metrics.ThreadLocalStorageMerkleTime;
-            _startStateRootTime = Evm.Metrics.ThreadLocalStateRootTime;
-            _startBloomsTime = Evm.Metrics.ThreadLocalBloomsTime;
-            _startReceiptsRootTime = Evm.Metrics.ThreadLocalReceiptsRootTime;
+            _startCodeCacheMisses = Evm.Metrics.CodeReads;
+            _startEip7702DelegationsSet = Evm.Metrics.Eip7702DelegationsSet;
+            _startEip7702DelegationsCleared = Evm.Metrics.Eip7702DelegationsCleared;
+            _startStorageMerkleTime = Evm.Metrics.StorageMerkleTime;
+            _startStateRootTime = Evm.Metrics.StateRootTime;
+            _startBloomsTime = Evm.Metrics.BloomsTime;
+            _startReceiptsRootTime = Evm.Metrics.ReceiptsRootTime;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -215,30 +216,30 @@ namespace Nethermind.Consensus.Processing
             // Skip entirely when slow block logging is disabled (-1)
             if (_slowBlockThresholdMs >= 0)
             {
-                blockData.DeltaAccountReads = Evm.Metrics.ThreadLocalAccountReads - _startAccountReads;
-                blockData.DeltaStorageReads = Evm.Metrics.ThreadLocalStorageReads - _startStorageReads;
-                blockData.DeltaCodeReads = Evm.Metrics.ThreadLocalCodeReads - _startCodeReads;
-                blockData.DeltaCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead - _startCodeBytesRead;
-                blockData.DeltaAccountWrites = Evm.Metrics.ThreadLocalAccountWrites - _startAccountWrites;
-                blockData.DeltaAccountDeleted = Evm.Metrics.ThreadLocalAccountDeleted - _startAccountDeleted;
-                blockData.DeltaStorageWrites = Evm.Metrics.ThreadLocalStorageWrites - _startStorageWrites;
-                blockData.DeltaStorageDeleted = Evm.Metrics.ThreadLocalStorageDeleted - _startStorageDeleted;
-                blockData.DeltaCodeWrites = Evm.Metrics.ThreadLocalCodeWrites - _startCodeWrites;
-                blockData.DeltaCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten - _startCodeBytesWritten;
-                blockData.DeltaStateHashTime = Evm.Metrics.ThreadLocalStateHashTime - _startStateHashTime;
-                blockData.DeltaCommitTime = Evm.Metrics.ThreadLocalCommitTime - _startCommitTime;
+                blockData.DeltaAccountReads = Evm.Metrics.AccountReads - _startAccountReads;
+                blockData.DeltaStorageReads = Evm.Metrics.StorageReads - _startStorageReads;
+                blockData.DeltaCodeReads = Evm.Metrics.CodeReads - _startCodeReads;
+                blockData.DeltaCodeBytesRead = Evm.Metrics.CodeBytesRead - _startCodeBytesRead;
+                blockData.DeltaAccountWrites = Evm.Metrics.AccountWrites - _startAccountWrites;
+                blockData.DeltaAccountDeleted = Evm.Metrics.AccountDeleted - _startAccountDeleted;
+                blockData.DeltaStorageWrites = Evm.Metrics.StorageWrites - _startStorageWrites;
+                blockData.DeltaStorageDeleted = Evm.Metrics.StorageDeleted - _startStorageDeleted;
+                blockData.DeltaCodeWrites = Evm.Metrics.CodeWrites - _startCodeWrites;
+                blockData.DeltaCodeBytesWritten = Evm.Metrics.CodeBytesWritten - _startCodeBytesWritten;
+                blockData.DeltaStateHashTime = Evm.Metrics.StateHashTime - _startStateHashTime;
+                blockData.DeltaCommitTime = Evm.Metrics.CommitTime - _startCommitTime;
                 blockData.DeltaAccountCacheHits = DbMetrics.StateTreeCache - _startAccountCacheHits;
                 blockData.DeltaAccountCacheMisses = DbMetrics.StateTreeReads - _startAccountCacheMisses;
                 blockData.DeltaStorageCacheHits = DbMetrics.StateTreeCache - _startStorageCacheHits;
                 blockData.DeltaStorageCacheMisses = DbMetrics.StorageTreeReads - _startStorageCacheMisses;
                 blockData.DeltaCodeCacheHits = Evm.Metrics.CodeDbCache - _startCodeCacheHits;
-                blockData.DeltaCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads - _startCodeCacheMisses;
-                blockData.DeltaEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet - _startEip7702DelegationsSet;
-                blockData.DeltaEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared - _startEip7702DelegationsCleared;
-                blockData.DeltaStorageMerkleTime = Evm.Metrics.ThreadLocalStorageMerkleTime - _startStorageMerkleTime;
-                blockData.DeltaStateRootTime = Evm.Metrics.ThreadLocalStateRootTime - _startStateRootTime;
-                blockData.DeltaBloomsTime = Evm.Metrics.ThreadLocalBloomsTime - _startBloomsTime;
-                blockData.DeltaReceiptsRootTime = Evm.Metrics.ThreadLocalReceiptsRootTime - _startReceiptsRootTime;
+                blockData.DeltaCodeCacheMisses = Evm.Metrics.CodeReads - _startCodeCacheMisses;
+                blockData.DeltaEip7702DelegationsSet = Evm.Metrics.Eip7702DelegationsSet - _startEip7702DelegationsSet;
+                blockData.DeltaEip7702DelegationsCleared = Evm.Metrics.Eip7702DelegationsCleared - _startEip7702DelegationsCleared;
+                blockData.DeltaStorageMerkleTime = Evm.Metrics.StorageMerkleTime - _startStorageMerkleTime;
+                blockData.DeltaStateRootTime = Evm.Metrics.StateRootTime - _startStateRootTime;
+                blockData.DeltaBloomsTime = Evm.Metrics.BloomsTime - _startBloomsTime;
+                blockData.DeltaReceiptsRootTime = Evm.Metrics.ReceiptsRootTime - _startReceiptsRootTime;
 
                 // Snapshot per-tx timing (copies array for ThreadPool use, null when disabled)
                 blockData.PerTxTicks = PerTxTimingCollector.Snapshot();

@@ -114,130 +114,125 @@ public class Metrics
     public static long MainThreadContractsAnalysed => _mainContractsAnalysed;
     public static void IncrementContractsAnalysed() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainContractsAnalysed : ref _otherContractsAnalysed);
 
-    // Cross-client execution metrics — same ZeroContentionCounter pattern as existing metrics.
-    // Each counter is a single ThreadLocal<BoxedLong>; Increment() is just _threadLocal.Value!._value += 1.
-
     [CounterMetric]
     [Description("Number of account reads during execution.")]
-    public static long AccountReads => _accountReads.GetTotalValue();
-    private static readonly ZeroContentionCounter _accountReads = new();
-    internal static long ThreadLocalAccountReads => _accountReads.ThreadLocalValue;
-    internal static void IncrementAccountReads() => _accountReads.Increment();
+    public static long AccountReads => _mainAccountReads + _otherAccountReads;
+    private static long _mainAccountReads;
+    private static long _otherAccountReads;
+    internal static void IncrementAccountReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountReads : ref _otherAccountReads);
 
     [CounterMetric]
     [Description("Number of storage slot reads during execution.")]
-    public static long StorageReads => _storageReads.GetTotalValue();
-    private static readonly ZeroContentionCounter _storageReads = new();
-    internal static long ThreadLocalStorageReads => _storageReads.ThreadLocalValue;
-    internal static void IncrementStorageReads() => _storageReads.Increment();
+    public static long StorageReads => _mainStorageReads + _otherStorageReads;
+    private static long _mainStorageReads;
+    private static long _otherStorageReads;
+    internal static void IncrementStorageReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageReads : ref _otherStorageReads);
 
     [CounterMetric]
     [Description("Number of code reads during execution.")]
-    public static long CodeReads => _codeReads.GetTotalValue();
-    private static readonly ZeroContentionCounter _codeReads = new();
-    internal static long ThreadLocalCodeReads => _codeReads.ThreadLocalValue;
-    internal static void IncrementCodeReads() => _codeReads.Increment();
+    public static long CodeReads => _mainCodeReads + _otherCodeReads;
+    private static long _mainCodeReads;
+    private static long _otherCodeReads;
+    internal static void IncrementCodeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeReads : ref _otherCodeReads);
 
     [CounterMetric]
     [Description("Total bytes of code read during execution.")]
-    public static long CodeBytesRead => _codeBytesRead.GetTotalValue();
-    private static readonly ZeroContentionCounter _codeBytesRead = new();
-    internal static long ThreadLocalCodeBytesRead => _codeBytesRead.ThreadLocalValue;
-    internal static void IncrementCodeBytesRead(int bytes) => _codeBytesRead.Increment(bytes);
+    public static long CodeBytesRead => _mainCodeBytesRead + _otherCodeBytesRead;
+    private static long _mainCodeBytesRead;
+    private static long _otherCodeBytesRead;
+    internal static void IncrementCodeBytesRead(int bytes) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesRead : ref _otherCodeBytesRead, bytes);
 
     [CounterMetric]
     [Description("Number of account writes during execution.")]
-    public static long AccountWrites => _accountWrites.GetTotalValue();
-    private static readonly ZeroContentionCounter _accountWrites = new();
-    internal static long ThreadLocalAccountWrites => _accountWrites.ThreadLocalValue;
-    internal static void IncrementAccountWrites() => _accountWrites.Increment();
+    public static long AccountWrites => _mainAccountWrites + _otherAccountWrites;
+    private static long _mainAccountWrites;
+    private static long _otherAccountWrites;
+    internal static void IncrementAccountWrites() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountWrites : ref _otherAccountWrites);
 
     [CounterMetric]
     [Description("Number of accounts deleted during execution.")]
-    public static long AccountDeleted => _accountDeleted.GetTotalValue();
-    private static readonly ZeroContentionCounter _accountDeleted = new();
-    internal static long ThreadLocalAccountDeleted => _accountDeleted.ThreadLocalValue;
-    internal static void IncrementAccountDeleted() => _accountDeleted.Increment();
+    public static long AccountDeleted => _mainAccountDeleted + _otherAccountDeleted;
+    private static long _mainAccountDeleted;
+    private static long _otherAccountDeleted;
+    internal static void IncrementAccountDeleted() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountDeleted : ref _otherAccountDeleted);
 
     [CounterMetric]
     [Description("Number of storage slot writes during execution.")]
-    public static long StorageWrites => _storageWrites.GetTotalValue();
-    private static readonly ZeroContentionCounter _storageWrites = new();
-    internal static long ThreadLocalStorageWrites => _storageWrites.ThreadLocalValue;
-    internal static void IncrementStorageWrites() => _storageWrites.Increment();
+    public static long StorageWrites => _mainStorageWrites + _otherStorageWrites;
+    private static long _mainStorageWrites;
+    private static long _otherStorageWrites;
+    internal static void IncrementStorageWrites() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageWrites : ref _otherStorageWrites);
 
     [CounterMetric]
     [Description("Number of storage slots deleted during execution.")]
-    public static long StorageDeleted => _storageDeleted.GetTotalValue();
-    private static readonly ZeroContentionCounter _storageDeleted = new();
-    internal static long ThreadLocalStorageDeleted => _storageDeleted.ThreadLocalValue;
-    internal static void IncrementStorageDeleted() => _storageDeleted.Increment();
+    public static long StorageDeleted => _mainStorageDeleted + _otherStorageDeleted;
+    private static long _mainStorageDeleted;
+    private static long _otherStorageDeleted;
+    internal static void IncrementStorageDeleted() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageDeleted : ref _otherStorageDeleted);
 
     [CounterMetric]
     [Description("Number of code writes during execution.")]
-    public static long CodeWrites => _codeWrites.GetTotalValue();
-    private static readonly ZeroContentionCounter _codeWrites = new();
-    internal static long ThreadLocalCodeWrites => _codeWrites.ThreadLocalValue;
-    internal static void IncrementCodeWrites() => _codeWrites.Increment();
+    public static long CodeWrites => _mainCodeWrites + _otherCodeWrites;
+    private static long _mainCodeWrites;
+    private static long _otherCodeWrites;
+    internal static void IncrementCodeWrites() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeWrites : ref _otherCodeWrites);
 
     [CounterMetric]
     [Description("Total bytes of code written during execution.")]
-    public static long CodeBytesWritten => _codeBytesWritten.GetTotalValue();
-    private static readonly ZeroContentionCounter _codeBytesWritten = new();
-    internal static long ThreadLocalCodeBytesWritten => _codeBytesWritten.ThreadLocalValue;
-    internal static void IncrementCodeBytesWritten(int bytes) => _codeBytesWritten.Increment(bytes);
+    public static long CodeBytesWritten => _mainCodeBytesWritten + _otherCodeBytesWritten;
+    private static long _mainCodeBytesWritten;
+    private static long _otherCodeBytesWritten;
+    internal static void IncrementCodeBytesWritten(int bytes) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesWritten : ref _otherCodeBytesWritten, bytes);
 
     [CounterMetric]
     [Description("Number of EIP-7702 delegations set during execution.")]
-    public static long Eip7702DelegationsSet => _eip7702DelegationsSet.GetTotalValue();
-    private static readonly ZeroContentionCounter _eip7702DelegationsSet = new();
-    internal static long ThreadLocalEip7702DelegationsSet => _eip7702DelegationsSet.ThreadLocalValue;
-    internal static void IncrementEip7702DelegationsSet() => _eip7702DelegationsSet.Increment();
+    public static long Eip7702DelegationsSet => _mainEip7702DelegationsSet + _otherEip7702DelegationsSet;
+    private static long _mainEip7702DelegationsSet;
+    private static long _otherEip7702DelegationsSet;
+    internal static void IncrementEip7702DelegationsSet() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsSet : ref _otherEip7702DelegationsSet);
 
     [CounterMetric]
     [Description("Number of EIP-7702 delegations cleared during execution.")]
-    public static long Eip7702DelegationsCleared => _eip7702DelegationsCleared.GetTotalValue();
-    private static readonly ZeroContentionCounter _eip7702DelegationsCleared = new();
-    internal static long ThreadLocalEip7702DelegationsCleared => _eip7702DelegationsCleared.ThreadLocalValue;
-    internal static void IncrementEip7702DelegationsCleared() => _eip7702DelegationsCleared.Increment();
+    public static long Eip7702DelegationsCleared => _mainEip7702DelegationsCleared + _otherEip7702DelegationsCleared;
+    private static long _mainEip7702DelegationsCleared;
+    private static long _otherEip7702DelegationsCleared;
+    internal static void IncrementEip7702DelegationsCleared() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsCleared : ref _otherEip7702DelegationsCleared);
 
-    // Timing metrics — accumulated via ZeroContentionCounter(long) in coarse-grained paths only
-    // (WorldStateMetricsDecorator, BlockProcessor — NOT per-read hot paths).
     [Description("Time spent on state hashing/merkleization (ticks). Sum of storage merkle + state root.")]
-    public static long StateHashTime => _stateHashTime.GetTotalValue();
-    private static readonly ZeroContentionCounter _stateHashTime = new();
-    internal static long ThreadLocalStateHashTime => _stateHashTime.ThreadLocalValue;
-    internal static void IncrementStateHashTime(long ticks) => _stateHashTime.Increment(ticks);
+    public static long StateHashTime => _mainStateHashTime + _otherStateHashTime;
+    private static long _mainStateHashTime;
+    private static long _otherStateHashTime;
+    internal static void IncrementStateHashTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateHashTime : ref _otherStateHashTime, ticks);
 
     [Description("Time spent committing state to storage (ticks).")]
-    public static long CommitTime => _commitTime.GetTotalValue();
-    private static readonly ZeroContentionCounter _commitTime = new();
-    internal static long ThreadLocalCommitTime => _commitTime.ThreadLocalValue;
-    internal static void IncrementCommitTime(long ticks) => _commitTime.Increment(ticks);
+    public static long CommitTime => _mainCommitTime + _otherCommitTime;
+    private static long _mainCommitTime;
+    private static long _otherCommitTime;
+    internal static void IncrementCommitTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCommitTime : ref _otherCommitTime, ticks);
 
     [Description("Time spent on storage trie merkleization — Commit(commitRoots: true) (ticks).")]
-    public static long StorageMerkleTime => _storageMerkleTime.GetTotalValue();
-    private static readonly ZeroContentionCounter _storageMerkleTime = new();
-    internal static long ThreadLocalStorageMerkleTime => _storageMerkleTime.ThreadLocalValue;
-    internal static void IncrementStorageMerkleTime(long ticks) => _storageMerkleTime.Increment(ticks);
+    public static long StorageMerkleTime => _mainStorageMerkleTime + _otherStorageMerkleTime;
+    private static long _mainStorageMerkleTime;
+    private static long _otherStorageMerkleTime;
+    internal static void IncrementStorageMerkleTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageMerkleTime : ref _otherStorageMerkleTime, ticks);
 
     [Description("Time spent on state root recalculation + commit tree (ticks).")]
-    public static long StateRootTime => _stateRootTime.GetTotalValue();
-    private static readonly ZeroContentionCounter _stateRootTime = new();
-    internal static long ThreadLocalStateRootTime => _stateRootTime.ThreadLocalValue;
-    internal static void IncrementStateRootTime(long ticks) => _stateRootTime.Increment(ticks);
+    public static long StateRootTime => _mainStateRootTime + _otherStateRootTime;
+    private static long _mainStateRootTime;
+    private static long _otherStateRootTime;
+    internal static void IncrementStateRootTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateRootTime : ref _otherStateRootTime, ticks);
 
     [Description("Time spent calculating bloom filters (ticks).")]
-    public static long BloomsTime => _bloomsTime.GetTotalValue();
-    private static readonly ZeroContentionCounter _bloomsTime = new();
-    internal static long ThreadLocalBloomsTime => _bloomsTime.ThreadLocalValue;
-    internal static void IncrementBloomsTime(long ticks) => _bloomsTime.Increment(ticks);
+    public static long BloomsTime => _mainBloomsTime + _otherBloomsTime;
+    private static long _mainBloomsTime;
+    private static long _otherBloomsTime;
+    internal static void IncrementBloomsTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainBloomsTime : ref _otherBloomsTime, ticks);
 
     [Description("Time spent calculating receipts root (ticks).")]
-    public static long ReceiptsRootTime => _receiptsRootTime.GetTotalValue();
-    private static readonly ZeroContentionCounter _receiptsRootTime = new();
-    internal static long ThreadLocalReceiptsRootTime => _receiptsRootTime.ThreadLocalValue;
-    internal static void IncrementReceiptsRootTime(long ticks) => _receiptsRootTime.Increment(ticks);
+    public static long ReceiptsRootTime => _mainReceiptsRootTime + _otherReceiptsRootTime;
+    private static long _mainReceiptsRootTime;
+    private static long _otherReceiptsRootTime;
+    internal static void IncrementReceiptsRootTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainReceiptsRootTime : ref _otherReceiptsRootTime, ticks);
 
     [GaugeMetric]
     [Description("The number of tasks currently scheduled in the background.")]
