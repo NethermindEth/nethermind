@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -16,22 +15,41 @@ public readonly record struct Bound(long Offset, int Length)
 }
 
 /// <summary>
-/// No-op pin handle for readers that can return zero-copy spans (e.g. <see cref="SpanByteReader"/>).
+/// Pin handle returned by <see cref="IHsstByteReader{TPin}.PinBuffer"/>: combines a
+/// disposable release primitive with the pinned <see cref="Buffer"/> span itself.
+/// Pin types are ref structs so the buffer's lifetime is tracked by the compiler.
 /// </summary>
-public struct NoOpPin : IDisposable
+public interface IBufferPin : IDisposable
 {
+    ReadOnlySpan<byte> Buffer { get; }
+}
+
+/// <summary>
+/// No-op pin for readers that can return zero-copy spans (e.g. <see cref="SpanByteReader"/>):
+/// holds the span directly, no release work.
+/// </summary>
+public readonly ref struct NoOpPin(ReadOnlySpan<byte> buffer) : IBufferPin
+{
+    public ReadOnlySpan<byte> Buffer { get; } = buffer;
     public void Dispose() { }
 }
 
 /// <summary>
-/// Pin handle that returns a pooled byte array on dispose. Used by copy-fallback readers
+/// Pin that returns a pooled byte array on dispose. Used by copy-fallback readers
 /// that rent a buffer to materialise the requested window.
 /// </summary>
-public struct PooledArrayPin : IDisposable
+public ref struct PooledArrayPin : IBufferPin
 {
     private byte[]? _pooledArray;
+    private readonly int _size;
 
-    internal PooledArrayPin(byte[] pooledArray) => _pooledArray = pooledArray;
+    private PooledArrayPin(byte[] pooledArray, int size)
+    {
+        _pooledArray = pooledArray;
+        _size = size;
+    }
+
+    public readonly ReadOnlySpan<byte> Buffer => _pooledArray.AsSpan(0, _size);
 
     public void Dispose()
     {
@@ -51,7 +69,7 @@ public struct PooledArrayPin : IDisposable
     {
         byte[] arr = ArrayPool<byte>.Shared.Rent(size);
         buffer = arr.AsSpan(0, size);
-        return new PooledArrayPin(arr);
+        return new PooledArrayPin(arr, size);
     }
 }
 
@@ -59,13 +77,14 @@ public struct PooledArrayPin : IDisposable
 /// Random-access byte source for <see cref="HsstReader{TReader,TPin}"/>, generic over the
 /// pin handle type so readers can return their own zero-allocation, non-virtual pin
 /// (no-op for in-memory, pooled-array for copy fallback, page refcount for paged stores, etc.).
+/// The pinned buffer is exposed via <see cref="IBufferPin.Buffer"/>.
 /// </summary>
 /// <typeparam name="TPin">
 /// Pin handle type returned by <see cref="PinBuffer"/>. Must be a struct implementing
-/// <see cref="IDisposable"/>; <c>allows ref struct</c> permits readers to return ref-struct
+/// <see cref="IBufferPin"/>; <c>allows ref struct</c> permits readers to return ref-struct
 /// pins (e.g. ones that hold a span directly).
 /// </typeparam>
-public interface IHsstByteReader<TPin> where TPin : struct, IDisposable, allows ref struct
+public interface IHsstByteReader<TPin> where TPin : struct, IBufferPin, allows ref struct
 {
     long Length { get; }
 
@@ -77,12 +96,10 @@ public interface IHsstByteReader<TPin> where TPin : struct, IDisposable, allows 
 
     /// <summary>
     /// Pin a window of <paramref name="size"/> bytes starting at <paramref name="offset"/>.
-    /// The returned span is valid until the returned pin is disposed.
-    /// Span-backed implementations return a slice directly with a no-op pin; readers that can't
-    /// produce a contiguous span (paged/streamed) rent a buffer, copy into it, and return a pin
-    /// that releases the buffer on dispose.
+    /// The pinned bytes are accessed via <see cref="IBufferPin.Buffer"/> and remain valid until
+    /// the returned pin is disposed.
     /// </summary>
-    TPin PinBuffer(long offset, long size, [UnscopedRef] out ReadOnlySpan<byte> buffer);
+    TPin PinBuffer(long offset, long size);
 }
 
 /// <summary>
@@ -105,11 +122,10 @@ public readonly ref struct SpanByteReader : IHsstByteReader<NoOpPin>
         return true;
     }
 
-    public NoOpPin PinBuffer(long offset, long size, [UnscopedRef] out ReadOnlySpan<byte> buffer)
+    public NoOpPin PinBuffer(long offset, long size)
     {
         if ((ulong)offset + (ulong)size > (ulong)_data.Length)
             throw new ArgumentOutOfRangeException(nameof(offset));
-        buffer = _data.Slice((int)offset, (int)size);
-        return default;
+        return new NoOpPin(_data.Slice((int)offset, (int)size));
     }
 }

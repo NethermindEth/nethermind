@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Utils;
@@ -21,7 +20,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// <see cref="SetBound"/> using the <c>out previousBound</c> parameter.
 /// </summary>
 public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound initialBound) : IDisposable
-    where TPin : struct, IDisposable, allows ref struct
+    where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
     private TReader _reader = reader;
@@ -65,8 +64,8 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
 
         while (true)
         {
-            TPin pin = TryLoadNode(currentAbsEnd, out HsstIndex node, out long nodeAbsStart, out ReadOnlySpan<byte> nodeBytes);
-            if (nodeBytes.IsEmpty) return false;
+            if (!TryLoadNode(currentAbsEnd, out HsstIndex node, out long nodeAbsStart, out TPin pin))
+                return false;
             using (pin)
             {
                 if (node.IsIntermediate)
@@ -91,6 +90,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                         _bound = new Bound(0, 0);
                         return true;
                     }
+                    ReadOnlySpan<byte> nodeBytes = pin.Buffer;
                     int offsetInNode = (int)Unsafe.ByteOffset(
                         ref Unsafe.AsRef(in MemoryMarshal.GetReference(nodeBytes)),
                         ref Unsafe.AsRef(in MemoryMarshal.GetReference(val)));
@@ -122,31 +122,31 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
 
     /// <summary>
     /// Load the index node whose exclusive end is <paramref name="absEnd"/> via the reader's
-    /// <see cref="IHsstByteReader{TPin}.PinBuffer"/>. Returns the parsed <see cref="HsstIndex"/>,
-    /// the node's absolute start offset, the backing span (used by callers to compute inline-value
-    /// offsets), and the pin the caller must dispose to release the window.
-    /// On failure, <paramref name="nodeBytes"/> is empty; the returned pin is still safe to dispose.
+    /// <see cref="IHsstByteReader{TPin}.PinBuffer"/>. On success outs the parsed <see cref="HsstIndex"/>,
+    /// the node's absolute start offset, and the pin (whose <see cref="IBufferPin.Buffer"/> backs
+    /// <paramref name="node"/>). The caller must dispose the pin once it's done with the node.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private TPin TryLoadNode(long absEnd, out HsstIndex node, out long nodeAbsStart, [UnscopedRef] out ReadOnlySpan<byte> nodeBytes)
+    private bool TryLoadNode(long absEnd, out HsstIndex node, out long nodeAbsStart, out TPin pin)
     {
         node = default;
         nodeAbsStart = 0;
-        nodeBytes = default;
+        pin = default;
 
-        if (absEnd < 1) return default;
+        if (absEnd < 1) return false;
 
         // Read the trailing MetadataLength byte
         Span<byte> oneByte = stackalloc byte[1];
-        if (!_reader.TryRead(absEnd - 1, oneByte)) return default;
+        if (!_reader.TryRead(absEnd - 1, oneByte)) return false;
         int metadataLen = oneByte[0];
 
         long metadataAbsStart = absEnd - 1 - metadataLen;
-        if (metadataAbsStart < 0) return default;
+        if (metadataAbsStart < 0) return false;
 
         int totalNodeSize;
-        using (TPin metaPin = _reader.PinBuffer(metadataAbsStart, metadataLen, out ReadOnlySpan<byte> metaSpan))
+        using (TPin metaPin = _reader.PinBuffer(metadataAbsStart, metadataLen))
         {
+            ReadOnlySpan<byte> metaSpan = metaPin.Buffer;
             int p = 0;
             byte flags = metaSpan[p++];
             int keyCount = Leb128.Read(metaSpan, ref p);
@@ -161,11 +161,11 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         }
 
         nodeAbsStart = absEnd - totalNodeSize;
-        if (nodeAbsStart < 0) return default;
+        if (nodeAbsStart < 0) return false;
 
-        TPin pin = _reader.PinBuffer(nodeAbsStart, totalNodeSize, out nodeBytes);
-        node = HsstIndex.ReadFromEnd(nodeBytes, totalNodeSize);
-        return pin;
+        pin = _reader.PinBuffer(nodeAbsStart, totalNodeSize);
+        node = HsstIndex.ReadFromEnd(pin.Buffer, totalNodeSize);
+        return true;
     }
 
     public void Dispose()
