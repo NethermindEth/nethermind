@@ -34,11 +34,11 @@ public sealed class ArenaReservation(IArenaManager arenaManager, int arenaId, lo
     internal IArenaWholeView OpenWholeView() => _arenaManager.OpenWholeView(this);
 
     /// <summary>
-    /// Construct a span-backed <see cref="SpanByteReader"/> over this reservation's bytes.
-    /// Reader-shaped APIs consume this; per-read pinning happens at the reader level, so
-    /// no whole-buffer session is required.
+    /// Construct an <see cref="ArenaByteReader"/> over this reservation's bytes. The reader
+    /// reports each read/pin to the arena's <see cref="PageClockCache"/> so least-recently-used
+    /// OS pages can be advised <c>MADV_DONTNEED</c> on eviction.
     /// </summary>
-    public SpanByteReader CreateReader() => new(GetSpanInternal());
+    public ArenaByteReader CreateReader() => new(GetSpanInternal(), _arenaManager.PageCache, ArenaId, Offset);
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 

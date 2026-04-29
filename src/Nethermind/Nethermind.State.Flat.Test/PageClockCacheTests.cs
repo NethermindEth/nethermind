@@ -1,0 +1,141 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using FluentAssertions;
+using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Storage;
+using NUnit.Framework;
+
+namespace Nethermind.State.Flat.Test;
+
+public class PageClockCacheTests
+{
+    [Test]
+    public void Touch_RepeatedSamePage_NeverEvicts()
+    {
+        List<(int arena, int page)> evictions = [];
+        PageClockCache cache = new(maxCapacity: 4, (a, p) => evictions.Add((a, p)));
+
+        for (int i = 0; i < 1000; i++)
+            cache.Touch(7, 42);
+
+        evictions.Should().BeEmpty();
+        cache.Count.Should().Be(1);
+        cache.ContainsPage(7, 42).Should().BeTrue();
+    }
+
+    [Test]
+    public void Touch_BeyondCapacity_EvictsLruPage()
+    {
+        List<(int arena, int page)> evictions = [];
+        PageClockCache cache = new(maxCapacity: 3, (a, p) => evictions.Add((a, p)));
+
+        cache.Touch(0, 0);
+        cache.Touch(0, 1);
+        cache.Touch(0, 2);
+        evictions.Should().BeEmpty();
+
+        cache.Touch(0, 3);
+        evictions.Should().ContainSingle().Which.Should().Be((0, 0));
+        cache.ContainsPage(0, 0).Should().BeFalse();
+        cache.ContainsPage(0, 3).Should().BeTrue();
+    }
+
+    [Test]
+    public void Touch_AccessedPage_SurvivesEvictionScan()
+    {
+        List<(int arena, int page)> evictions = [];
+        PageClockCache cache = new(maxCapacity: 2, (a, p) => evictions.Add((a, p)));
+
+        cache.Touch(0, 100); // slot 0
+        cache.Touch(0, 200); // slot 1
+        cache.Touch(0, 100); // marks slot 0 accessed
+
+        cache.Touch(0, 300); // forces eviction; slot 0 spared (accessed=true), slot 1 evicted
+        evictions.Should().ContainSingle().Which.Should().Be((0, 200));
+        cache.ContainsPage(0, 100).Should().BeTrue();
+        cache.ContainsPage(0, 200).Should().BeFalse();
+        cache.ContainsPage(0, 300).Should().BeTrue();
+    }
+
+    [Test]
+    public void MaxCapacityZero_TouchIsNoOp()
+    {
+        bool fired = false;
+        PageClockCache cache = new(maxCapacity: 0, (_, _) => fired = true);
+        cache.Touch(1, 1);
+        cache.Touch(2, 2);
+        fired.Should().BeFalse();
+        cache.Count.Should().Be(0);
+    }
+
+    [Test]
+    public void ArenaByteReader_TryRead_TouchesAllSpannedPages()
+    {
+        PageClockCache cache = new(maxCapacity: 1024);
+        int pageSize = Environment.SystemPageSize;
+        long baseOffset = pageSize - 8;
+        byte[] data = new byte[pageSize * 2];
+        ArenaByteReader reader = new(data, cache, arenaId: 9, baseOffset: baseOffset);
+
+        Span<byte> sink = stackalloc byte[16];
+        reader.TryRead(0, sink).Should().BeTrue();
+
+        int firstPage = (int)(baseOffset / pageSize);
+        int lastPage = (int)((baseOffset + 15) / pageSize);
+        firstPage.Should().NotBe(lastPage, "test setup must straddle a page boundary");
+        cache.ContainsPage(9, firstPage).Should().BeTrue();
+        cache.ContainsPage(9, lastPage).Should().BeTrue();
+    }
+
+    [Test]
+    public void ArenaByteReader_PinBuffer_TouchesAllSpannedPages()
+    {
+        PageClockCache cache = new(maxCapacity: 1024);
+        int pageSize = Environment.SystemPageSize;
+        byte[] data = new byte[pageSize * 3];
+        ArenaByteReader reader = new(data, cache, arenaId: 1, baseOffset: 0);
+
+        using NoOpPin pin = reader.PinBuffer(0, pageSize * 2 + 1);
+        pin.Buffer.Length.Should().Be(pageSize * 2 + 1);
+        cache.ContainsPage(1, 0).Should().BeTrue();
+        cache.ContainsPage(1, 1).Should().BeTrue();
+        cache.ContainsPage(1, 2).Should().BeTrue();
+    }
+
+    [Test]
+    public void ArenaByteReader_RepeatedSamePageReads_OnlyTouchOnce()
+    {
+        PageClockCache cache = new(maxCapacity: 16);
+        int pageSize = Environment.SystemPageSize;
+        byte[] data = new byte[pageSize * 2];
+        ArenaByteReader reader = new(data, cache, arenaId: 0, baseOffset: 0);
+
+        Span<byte> b = stackalloc byte[1];
+        for (int i = 0; i < 100; i++)
+            reader.TryRead(i, b);
+        // The memo should collapse 100 single-byte reads on page 0 into a single Touch call.
+        cache.TouchCount.Should().Be(1);
+
+        // Crossing into page 1 invalidates the memo and triggers exactly one new Touch.
+        reader.TryRead(pageSize, b);
+        cache.TouchCount.Should().Be(2);
+
+        // A third read still on page 1 hits the memo again.
+        reader.TryRead(pageSize + 4, b);
+        cache.TouchCount.Should().Be(2);
+    }
+
+    [Test]
+    public void ArenaByteReader_NullCache_DoesNotThrow()
+    {
+        byte[] data = new byte[64];
+        ArenaByteReader reader = new(data, cache: null, arenaId: 0, baseOffset: 0);
+        Span<byte> sink = stackalloc byte[8];
+        reader.TryRead(4, sink).Should().BeTrue();
+        using NoOpPin pin = reader.PinBuffer(0, 16);
+        pin.Buffer.Length.Should().Be(16);
+    }
+}

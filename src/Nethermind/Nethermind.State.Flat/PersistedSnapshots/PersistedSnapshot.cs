@@ -80,7 +80,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <see cref="ArenaReservation.CreateReader"/> so the storage layer owns the
     /// reader-construction policy.
     /// </summary>
-    internal SpanByteReader CreateReader() => _reservation.CreateReader();
+    internal ArenaByteReader CreateReader() => _reservation.CreateReader();
 
     /// <summary>
     /// Materialise the value at <paramref name="localBound"/> in this snapshot's bytes,
@@ -89,7 +89,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// </summary>
     internal byte[] ResolveValueAt(Bound localBound)
     {
-        SpanByteReader reader = _reservation.CreateReader();
+        ArenaByteReader reader = _reservation.CreateReader();
         if (!HasNodeRefs || _referencedSnapshots is null)
         {
             byte[] result = new byte[localBound.Length];
@@ -115,8 +115,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         Type = type;
         _reservation = reservation;
         _reservation.AcquireLease();
-        SpanByteReader bootReader = CreateReader();
-        HasNodeRefs = PersistedSnapshotReader.CheckHasNodeRefsFlag<SpanByteReader, NoOpPin>(in bootReader);
+        ArenaByteReader bootReader = CreateReader();
+        HasNodeRefs = PersistedSnapshotReader.CheckHasNodeRefsFlag<ArenaByteReader, NoOpPin>(in bootReader);
 
         if (referencedSnapshots is { Length: > 0 })
         {
@@ -138,8 +138,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             account = null;
             return false;
         }
-        SpanByteReader reader = CreateReader();
-        if (!PersistedSnapshotReader.TryGetAccount<SpanByteReader, NoOpPin>(in reader, address, out Bound b))
+        ArenaByteReader reader = CreateReader();
+        if (!PersistedSnapshotReader.TryGetAccount<ArenaByteReader, NoOpPin>(in reader, address, out Bound b))
         {
             account = null;
             return false;
@@ -165,8 +165,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             if (!_keyBloom.MightContain(addrKey) || !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, in index)))
                 return false;
         }
-        SpanByteReader reader = CreateReader();
-        if (!PersistedSnapshotReader.TryGetSlot<SpanByteReader, NoOpPin>(in reader, address, in index, out Bound b))
+        ArenaByteReader reader = CreateReader();
+        if (!PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(in reader, address, in index, out Bound b))
             return false;
         Span<byte> buf = stackalloc byte[32];
         Span<byte> raw = buf[..b.Length];
@@ -179,8 +179,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     {
         if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
             return false;
-        SpanByteReader reader = CreateReader();
-        return PersistedSnapshotReader.IsSelfDestructed<SpanByteReader, NoOpPin>(in reader, address);
+        ArenaByteReader reader = CreateReader();
+        return PersistedSnapshotReader.IsSelfDestructed<ArenaByteReader, NoOpPin>(in reader, address);
     }
 
     /// <summary>
@@ -192,14 +192,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     {
         if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
             return null;
-        SpanByteReader reader = CreateReader();
-        return PersistedSnapshotReader.TryGetSelfDestructFlag<SpanByteReader, NoOpPin>(in reader, address);
+        ArenaByteReader reader = CreateReader();
+        return PersistedSnapshotReader.TryGetSelfDestructFlag<ArenaByteReader, NoOpPin>(in reader, address);
     }
 
     public bool TryLoadStateNodeRlp(scoped in TreePath path, out byte[]? nodeRlp)
     {
-        SpanByteReader reader = CreateReader();
-        if (!PersistedSnapshotReader.TryLoadStateNodeRlp<SpanByteReader, NoOpPin>(in reader, in path, out Bound bound))
+        ArenaByteReader reader = CreateReader();
+        if (!PersistedSnapshotReader.TryLoadStateNodeRlp<ArenaByteReader, NoOpPin>(in reader, in path, out Bound bound))
         {
             nodeRlp = null;
             return false;
@@ -210,8 +210,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, out byte[]? nodeRlp)
     {
-        SpanByteReader reader = CreateReader();
-        if (!PersistedSnapshotReader.TryLoadStorageNodeRlp<SpanByteReader, NoOpPin>(in reader, address, in path, out Bound bound))
+        ArenaByteReader reader = CreateReader();
+        if (!PersistedSnapshotReader.TryLoadStorageNodeRlp<ArenaByteReader, NoOpPin>(in reader, address, in path, out Bound bound))
         {
             nodeRlp = null;
             return false;
@@ -237,7 +237,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// </summary>
     public byte[] ReadEntryValue(int valueLengthOffset)
     {
-        SpanByteReader reader = _reservation.CreateReader();
+        ArenaByteReader reader = _reservation.CreateReader();
         int valueLength = 0;
         int shift = 0;
         int pos = valueLengthOffset;

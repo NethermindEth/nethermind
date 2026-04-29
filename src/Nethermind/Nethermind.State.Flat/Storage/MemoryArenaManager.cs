@@ -65,6 +65,10 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void Touch(ArenaReservation reservation, int subOffset, int size) { }
 
+    public void AdviseDontNeedPage(int arenaId, int pageIdx) { }
+
+    public PageClockCache? PageCache => null;
+
     public void MarkDead(in SnapshotLocation location)
     {
         _deadBytes.TryGetValue(location.ArenaId, out long dead);

@@ -17,6 +17,12 @@ public sealed class ArenaManager : IArenaManager
     private const string ArenaFileExtension = ".bin";
     private const int DedicatedArenaThreshold = 512 * 1024 * 1024;
 
+    /// <summary>
+    /// Default page-cache budget in bytes (4 GiB). Converted to a page count at construction
+    /// time via <see cref="Environment.SystemPageSize"/> — 1,048,576 pages on a 4 KiB-page system.
+    /// </summary>
+    public const long DefaultPageCacheBytes = 4L * 1024 * 1024 * 1024;
+
     private readonly string _basePath;
     private readonly long _maxArenaSize;
     // Make it prefer earlier arena.
@@ -27,13 +33,22 @@ public sealed class ArenaManager : IArenaManager
     private readonly HashSet<int> _standaloneFiles = [];
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
+    private readonly PageClockCache? _pageCache;
     private int _nextArenaId;
 
-    public ArenaManager(string basePath, long maxArenaSize = 4L * 1024 * 1024 * 1024)
+    public PageClockCache? PageCache => _pageCache;
+
+    public ArenaManager(string basePath, long maxArenaSize = 4L * 1024 * 1024 * 1024, long pageCacheBytes = DefaultPageCacheBytes)
     {
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
         Directory.CreateDirectory(basePath);
+        int pageCacheCapacity = pageCacheBytes > 0
+            ? (int)Math.Min(int.MaxValue, pageCacheBytes / Environment.SystemPageSize)
+            : 0;
+        _pageCache = pageCacheCapacity > 0
+            ? new PageClockCache(pageCacheCapacity, AdviseDontNeedPage)
+            : null;
     }
 
     /// <summary>
@@ -209,6 +224,18 @@ public sealed class ArenaManager : IArenaManager
     {
         if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena))
             arena.Touch(reservation.Offset + subOffset, size);
+    }
+
+    public void AdviseDontNeedPage(int arenaId, int pageIdx)
+    {
+        int pageSize = Environment.SystemPageSize;
+        long offset = (long)pageIdx * pageSize;
+        ArenaFile? arena;
+        lock (_lock)
+        {
+            if (!_arenas.TryGetValue(arenaId, out arena)) return;
+        }
+        arena.AdviseDontNeed(offset, pageSize);
     }
 
     private ArenaFile GetOrCreateArena(int requiredSize)
