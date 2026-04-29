@@ -1,6 +1,7 @@
 using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
@@ -19,20 +20,10 @@ public class NethermindNodeTests
 
     private async Task StartContainerAsync(string[] commandOverride = null, bool waitForInit = true)
     {
-        var image = Environment.GetEnvironmentVariable("NETHERMIND_IMAGE") ?? "nethermindeth/nethermind:latest";
-        var defaultCommand = new[] { "--config", "sepolia", "--JsonRpc.Enabled", "true", "--JsonRpc.Host", "0.0.0.0", "--JsonRpc.Port", "8545", "--JsonRpc.EnginePort", "8551", "--JsonRpc.EngineHost", "0.0.0.0", "--JsonRpc.JwtSecretFile", "jwt.hex" };
-        var command = commandOverride ?? defaultCommand;
+        string[] defaultCommand = new[] { "--config", "sepolia", "--JsonRpc.Enabled", "true", "--JsonRpc.Host", "0.0.0.0", "--JsonRpc.Port", "8545", "--JsonRpc.EnginePort", "8551", "--JsonRpc.EngineHost", "0.0.0.0", "--JsonRpc.JwtSecretFile", "jwt.hex" };
+        string[] command = commandOverride ?? defaultCommand;
 
-        var builder = new ContainerBuilder()
-            .WithImage(image)
-            .WithCommand(command)
-            .WithPortBinding(8545, true)
-            .WithPortBinding(8551, true);
-
-        if (waitForInit)
-        {
-            builder = builder.WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Initialization Completed"));
-        }
+        ContainerBuilder builder = await Utils.BuildNethermindContainerAsync(command, waitForInit);
 
         _nethermindContainer = builder.Build();
 
@@ -61,10 +52,10 @@ public class NethermindNodeTests
         await StartContainerAsync();
         _nethermindContainer.State.Should().Be(TestcontainersStates.Running);
 
-        var rpcUrl = new Uri($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8545)}");
+        Uri rpcUrl = new($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8545)}");
 
-        using var rpcClient = new BasicJsonRpcClient(rpcUrl, new EthereumJsonSerializer(), LimboLogs.Instance);
-        var response = await rpcClient.Post("eth_blockNumber");
+        using BasicJsonRpcClient rpcClient = new(rpcUrl, new EthereumJsonSerializer(), LimboLogs.Instance);
+        string response = await rpcClient.Post("eth_blockNumber");
 
         response.Should().NotBeNullOrEmpty();
         response.Should().Contain("\"result\":");
@@ -75,7 +66,7 @@ public class NethermindNodeTests
     {
         await StartContainerAsync();
 
-        var cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
+        string cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
 
         cleanStdout.Should().Contain("Nethermind is starting up");
         cleanStdout.Should().Contain("Initialization Completed");
@@ -84,23 +75,23 @@ public class NethermindNodeTests
     [Test]
     public async Task Nethermind_ShouldFail_WhenNoConfigProvided()
     {
-        var commandWithoutConfig = new[] { "--config", "nonexistent.json" };
+        string[] commandWithoutConfig = new[] { "--config", "nonexistent.json" };
 
         await StartContainerAsync(commandWithoutConfig, waitForInit: false);
 
         await Task.Delay(2000);
 
-        var cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
-        var cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
+        string cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
+        string cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
 
-        var combinedLogs = cleanStdout + cleanStderr;
+        string combinedLogs = cleanStdout + cleanStderr;
         combinedLogs.Should().Contain("Configuration file not found");
     }
 
     [Test]
     public async Task Nethermind_ShouldProduceBlock_ViaEngineApi()
     {
-        var command = new[]
+        string[] command = new[]
         {
             "--config", "sepolia",
             "--JsonRpc.Enabled", "true",
@@ -120,16 +111,16 @@ public class NethermindNodeTests
         await StartContainerAsync(command);
         _nethermindContainer.State.Should().Be(TestcontainersStates.Running);
 
-        var execResult = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
+        ExecResult execResult = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
         execResult.ExitCode.Should().Be(0);
-        var jwtSecretHex = execResult.Stdout.Trim();
+        string jwtSecretHex = execResult.Stdout.Trim();
         jwtSecretHex.Should().NotBeNullOrEmpty();
 
-        var jwtToken = Utils.CreateJwtToken(jwtSecretHex);
+        string jwtToken = Utils.CreateJwtToken(jwtSecretHex);
 
-        var engineUrl = new Uri($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8551)}");
+        Uri engineUrl = new($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8551)}");
 
-        using var httpClient = new HttpClient { BaseAddress = engineUrl };
+        using HttpClient httpClient = new() { BaseAddress = engineUrl };
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
         httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -137,17 +128,17 @@ public class NethermindNodeTests
         await Utils.CreateBlocksAsync(httpClient, 1, 1, 1633267481L);
 
         // Verify block is produced using standard RPC
-        var currentBlockStr = await Utils.SendEngineRequestAsync(httpClient, "eth_blockNumber");
-        var currentBlock = currentBlockStr.GetValue<string>();
+        JsonNode currentBlockStr = await Utils.SendEngineRequestAsync(httpClient, "eth_blockNumber");
+        string currentBlock = currentBlockStr.GetValue<string>();
         currentBlock.Should().Be("0x1");
-        var result = await Utils.SendEngineRequestAsync(httpClient, "eth_syncing");
+        JsonNode result = await Utils.SendEngineRequestAsync(httpClient, "eth_syncing");
         result.GetValue<bool>().Should().Be(false);
     }
 
     [Test]
     public async Task Nethermind_ShouldProduceBlocks_DifferentVersions_ViaEngineApi()
     {
-        var command = new[]
+        string[] command = new[]
         {
             "--config", "sepolia",
             "--JsonRpc.Enabled", "true",
@@ -167,12 +158,12 @@ public class NethermindNodeTests
         await StartContainerAsync(command);
         _nethermindContainer.State.Should().Be(TestcontainersStates.Running);
 
-        var execResult = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
-        var jwtSecretHex = execResult.Stdout.Trim();
-        var jwtToken = Utils.CreateJwtToken(jwtSecretHex);
+        ExecResult execResult = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
+        string jwtSecretHex = execResult.Stdout.Trim();
+        string jwtToken = Utils.CreateJwtToken(jwtSecretHex);
 
-        var engineUrl = new Uri($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8551)}");
-        using var httpClient = new HttpClient { BaseAddress = engineUrl };
+        Uri engineUrl = new($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8551)}");
+        using HttpClient httpClient = new() { BaseAddress = engineUrl };
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
         httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -186,8 +177,8 @@ public class NethermindNodeTests
         await Utils.CreateBlocksAsync(httpClient, 100, 3, 1706655072L + 1200);
 
         // Verify total blocks
-        var currentBlockStr = await Utils.SendEngineRequestAsync(httpClient, "eth_blockNumber");
-        var currentBlock = currentBlockStr.GetValue<string>();
+        JsonNode currentBlockStr = await Utils.SendEngineRequestAsync(httpClient, "eth_blockNumber");
+        string currentBlock = currentBlockStr.GetValue<string>();
         // 300 blocks produced, 0x12c
         currentBlock.Should().Be("0x12c");
     }
