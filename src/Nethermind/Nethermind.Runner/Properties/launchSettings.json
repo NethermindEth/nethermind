@@ -128,7 +128,7 @@
     },
     "Xdc-archive": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdc-archive --data-dir .data",
+      "commandLineArgs": "-c xdc_archive --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
