@@ -88,6 +88,12 @@ public interface IWorldStateScopeProvider
         void HintSet(in UInt256 index, byte[]? value);
 
         /// <summary>
+        /// Hint that a slot is being written. Backends may use this to start asynchronous
+        /// trie warm-up for the slot path.
+        /// </summary>
+        void HintSet(in UInt256 index, byte[]? value);
+
+        /// <summary>
         /// Used by JS tracer. May not work on some database layout.
         /// </summary>
         /// <param name="hash"></param>
