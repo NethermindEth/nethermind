@@ -21,7 +21,13 @@ public class TaikoExtendedEthModule(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<TaikoExtendedEthModule>();
 
-    internal static readonly ResultWrapper<L1Origin?> L1OriginNotFound = ResultWrapper<L1Origin?>.Fail("not found");
+    // ResourceNotFound (-32000) instead of the default InternalError (-32603), and IsTemporary
+    // so the JsonRpc framework's SuppressWarning flag fires (JsonRpcService.cs:158 ->
+    // JsonRpcProcessor.cs:428). Without this, every cold-boot taiko_headL1Origin / taiko_l1OriginByID
+    // poll on a node that hasn't yet seen any L1 batches produces a loud "Error response handling
+    // JsonRpc..." WARN line on a known-transient miss.
+    internal static readonly ResultWrapper<L1Origin?> L1OriginNotFound =
+        ResultWrapper<L1Origin?>.Fail("not found", ErrorCodes.ResourceNotFound, isTemporary: true);
 
     /// <summary>
     /// Cached null-result for <c>taiko_lastL1OriginByBatchID</c>. Per alethia-reth and the Go
