@@ -343,13 +343,17 @@ public class AccountChanges : IEquatable<AccountChanges>
             return ExistedBeforeBlock;
         }
 
+        // When the account did not exist before the block, prestate entries at index -1
+        // are just default placeholders — they do not indicate account creation.
+        // Only changes at index >= 0 (i.e., from actual transactions) prove the account
+        // was created during this block.
         foreach (KeyValuePair<int, NonceChange> change in _nonceChanges)
         {
-            if (change.Key < blockAccessIndex)
+            if (change.Key >= 0 && change.Key < blockAccessIndex)
             {
                 return true;
             }
-            else
+            else if (change.Key >= blockAccessIndex)
             {
                 break;
             }
@@ -357,11 +361,11 @@ public class AccountChanges : IEquatable<AccountChanges>
 
         foreach (KeyValuePair<int, BalanceChange> change in _balanceChanges)
         {
-            if (change.Key < blockAccessIndex)
+            if (change.Key >= 0 && change.Key < blockAccessIndex)
             {
                 return true;
             }
-            else
+            else if (change.Key >= blockAccessIndex)
             {
                 break;
             }

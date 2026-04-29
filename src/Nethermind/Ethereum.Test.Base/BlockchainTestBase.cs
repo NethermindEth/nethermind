@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
@@ -55,6 +56,8 @@ public abstract class BlockchainTestBase
     /// Null means use the default config value.
     /// </summary>
     protected virtual bool? ParallelExecutionOverride => null;
+
+    protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
@@ -94,19 +97,7 @@ public abstract class BlockchainTestBase
         // [Parallelizable(ParallelScope.All)] so anything shared-mutable across tests would race.
         IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
         IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-        bool isPostMerge = test.Network != London.Instance &&
-                           test.Network != Berlin.Instance &&
-                           test.Network != MuirGlacier.Instance &&
-                           test.Network != Istanbul.Instance &&
-                           test.Network != ConstantinopleFix.Instance &&
-                           test.Network != Constantinople.Instance &&
-                           test.Network != Byzantium.Instance &&
-                           test.Network != SpuriousDragon.Instance &&
-                           test.Network != TangerineWhistle.Instance &&
-                           test.Network != Dao.Instance &&
-                           test.Network != Homestead.Instance &&
-                           test.Network != Frontier.Instance &&
-                           test.Network != Olympic.Instance;
+        bool isPostMerge = IsPostMergeSpec(test.Network);
         if (isPostMerge)
         {
             rewardCalculator = NoBlockRewards.Instance;
