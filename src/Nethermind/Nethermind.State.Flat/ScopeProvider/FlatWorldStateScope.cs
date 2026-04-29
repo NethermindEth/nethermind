@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -33,6 +34,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
     // tasks within the trie warmer's ring buffer.
     private int _hintSequenceId = 0;
+    private int _outstandingWarmups = 0;
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
 
@@ -79,8 +81,33 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
+    }
+
+    private void WaitForOutstandingWarmups()
+    {
+        SpinWait spinWait = new();
+        Stopwatch? stopwatch = null;
+        bool warned = false;
+        while (Volatile.Read(ref _outstandingWarmups) != 0)
+        {
+            if (!warned)
+            {
+                stopwatch ??= Stopwatch.StartNew();
+                if (stopwatch.ElapsedMilliseconds > 1000)
+                {
+                    warned = true;
+                    ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                    if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
+                }
+            }
+            if (spinWait.NextSpinWillYield)
+                Thread.Sleep(0);
+            else
+                spinWait.SpinOnce();
+        }
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
@@ -109,7 +136,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _snapshotBundle.SetAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
-            _warmer.PushAddressJob(this, address, _hintSequenceId);
+            if (_warmer.PushAddressJob(this, address, _hintSequenceId))
+                Interlocked.Increment(ref _outstandingWarmups);
         }
     }
 
@@ -119,14 +147,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+        try
+        {
+            if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
 
-        // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-        // this is just for warming up
-        _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+            // this is just for warming up
+            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
-        return true;
+            return true;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _outstandingWarmups);
+        }
     }
+
+    internal void IncrementOutstandingWarmups() => Interlocked.Increment(ref _outstandingWarmups);
+
+    internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => CreateStorageTreeImpl(address);
 

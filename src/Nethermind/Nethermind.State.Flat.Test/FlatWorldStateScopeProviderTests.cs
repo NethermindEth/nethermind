@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -809,6 +810,50 @@ public class FlatWorldStateScopeProviderTests
 
         // Slot from before self-destruct (in read-only snapshot) should be blocked
         Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+    }
+
+    #endregion
+
+    #region TrieWarmer dispose-safety tests
+
+    [Test]
+    public async Task Dispose_WaitsForOutstandingWarmups_BeforeDisposingBundle()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        // Simulate an in-flight warmup job by manually incrementing the counter.
+        scope.IncrementOutstandingWarmups();
+
+        bool disposeCompleted = false;
+        Task disposeTask = Task.Run(() =>
+        {
+            scope.Dispose();
+            disposeCompleted = true;
+        });
+
+        // Give Dispose enough time to reach the wait loop.
+        await Task.Delay(100);
+        Assert.That(disposeCompleted, Is.False, "Dispose should block while a warmup is in flight");
+
+        // Simulate the warmup completing — Dispose should now unblock.
+        scope.DecrementOutstandingWarmups();
+
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(disposeCompleted, Is.True, "Dispose should complete after the outstanding warmup finishes");
+    }
+
+    [Test]
+    public async Task Dispose_CompletesImmediately_WhenNoOutstandingWarmups()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Task disposeTask = Task.Run(() => scope.Dispose());
+
+        // Should complete well within 1 second when nothing is in flight.
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(disposeTask.IsCompletedSuccessfully, Is.True);
     }
 
     #endregion

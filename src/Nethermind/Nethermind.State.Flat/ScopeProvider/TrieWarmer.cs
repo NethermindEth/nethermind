@@ -284,16 +284,20 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+    public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
     {
         // Address is not single threaded. In which case, might as well use the same buffer.
-        if (_jobBufferMultiThreaded.TryEnqueue(new Job(scope, path, default, sequenceId))) MaybeWakeupFast();
+        bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(scope, path, default, sequenceId));
+        if (enqueued) MaybeWakeupFast();
+        return enqueued;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId)
+    public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId)
     {
-        if (_slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index.GetValueOrDefault(), sequenceId))) MaybeWakeupFast();
+        bool enqueued = _slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index.GetValueOrDefault(), sequenceId));
+        if (enqueued) MaybeWakeupFast();
+        return enqueued;
     }
 
     public void OnEnterScope()
