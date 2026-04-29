@@ -249,8 +249,15 @@ public static partial class EvmInstructions
         // Subtract the transfer value from the caller's balance.
         state.SubtractFromBalance(caller, in transferValue, spec);
 
-        // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        // Fast-path for calls to externally owned accounts (non-contracts).
+        // Skip when EIP-8037 is active AND we're transferring value to a non-existent target:
+        // the inner frame must run so PerEmptyAccountState can be charged (and OOG reverted)
+        // inside the call frame. FastCall would queue the state change to the parent and
+        // succeed the transfer, diverging from the spec which expects inner OOG → revert.
+        bool eip8037NewAccountTransfer = spec.IsEip8037Enabled
+            && !transferValue.IsZero
+            && !state.AccountExists(target);
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions && !eip8037NewAccountTransfer)
         {
             vm.ReturnDataBuffer = default;
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
