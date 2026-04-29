@@ -3,6 +3,14 @@
 testing_buildBlockV1/build-block-empty-transactions (nethermind)
 testing_buildBlockV1/build-block-with-transactions (nethermind)
 
+# eth_simulateV1 — execution-apis spec ↔ test fixture mismatches. Tracked in
+# https://github.com/NethermindEth/nethermind/issues/11412
+eth_simulateV1/ethSimulate-basefee-too-low-with-validation-38012 (nethermind)
+eth_simulateV1/ethSimulate-check-invalid-nonce (nethermind)
+eth_simulateV1/ethSimulate-gas-fees-and-value-error-38014-with-validation (nethermind)
+eth_simulateV1/ethSimulate-simple-no-funds-with-validation (nethermind)
+eth_simulateV1/ethSimulate-simple-no-funds-with-validation-without-nonces (nethermind)
+
 # graphql
 
 01_eth_blockNumber (nethermind)
