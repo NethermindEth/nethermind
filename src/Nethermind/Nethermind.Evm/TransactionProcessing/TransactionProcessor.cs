@@ -1142,11 +1142,6 @@ namespace Nethermind.Evm.TransactionProcessing
             long operationGas = spentGas - refund;
             long spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
 
-            if (spec.IsEip8037Enabled)
-            {
-                Console.Error.WriteLine($"[GAS-DEBUG] gasLimit={tx.GasLimit} remaining={TGasPolicy.GetRemainingGas(in gasAfterExecution)} reservoir={TGasPolicy.GetStateReservoir(in gasAfterExecution)} stateUsed={TGasPolicy.GetStateGasUsed(in gasAfterExecution)} spill={TGasPolicy.GetStateGasSpill(in gasAfterExecution)} spentGas={spentGas} refund={refund} opGas={operationGas} floor={floorGasLong} final={spentGasAfterFloor} selfDestructRef={selfDestructStateRefund} codeInsertRef={codeInsertRefunds}");
-            }
-
             if (ShouldRefundGas(tx, opts, in gasPrice))
                 PayRefund(tx, (ulong)(tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
