@@ -250,14 +250,7 @@ public static partial class EvmInstructions
         state.SubtractFromBalance(caller, in transferValue, spec);
 
         // Fast-path for calls to externally owned accounts (non-contracts).
-        // Skip when EIP-8037 is active AND we're transferring value to a non-existent target:
-        // the inner frame must run so PerEmptyAccountState can be charged (and OOG reverted)
-        // inside the call frame. FastCall would queue the state change to the parent and
-        // succeed the transfer, diverging from the spec which expects inner OOG → revert.
-        bool eip8037NewAccountTransfer = spec.IsEip8037Enabled
-            && !transferValue.IsZero
-            && !state.AccountExists(target);
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions && !eip8037NewAccountTransfer)
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
@@ -270,6 +263,17 @@ public static partial class EvmInstructions
         // Load call data from memory.
         if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
             goto OutOfGas;
+
+        // EIP-8037: when a CALL transfers value into a previously-empty target, record the
+        // account-creation BEFORE the inner frame's snapshot is taken. The charge then accrues
+        // to *this* (caller) frame's pending state-gas — caller has the budget; the inner only
+        // has the stipend (2300) and would OOG. Mirrors the FastCall path which already records
+        // on the caller's tracker. CREATE/CREATE2 inner frames keep the in-frame self-charge.
+        if (spec.IsEip8037Enabled && !transferValue.IsZero && !state.AccountExists(target))
+        {
+            vm.VmState.AccessTracker.RecordAccountCreated(target);
+        }
+
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,

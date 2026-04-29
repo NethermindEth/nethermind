@@ -1126,11 +1126,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             // Ensure the executing account has sufficient balance and exists in the world state.
             bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
-            // EIP-8037: top-level CREATE pays PerEmptyAccountState via intrinsic createStateCost.
-            // Top-level value transfers (CALL to a new EOA) are not charged the per-empty-account
-            // state cost — the spec keeps them at the basic 21000 gas. Inner CALLs/CREATEs that
-            // create accounts still incur the runtime charge here.
-            if (spec.IsEip8037Enabled && wasCreated && !vmState.IsTopLevel)
+            // EIP-8037: where to charge PerEmptyAccountState depends on the frame type:
+            //   - Top-level CREATE: handled via intrinsic createStateCost (already paid).
+            //   - Top-level CALL value transfer: spec keeps at basic 21000 (not charged).
+            //   - Inner CREATE: contract pays for itself — fire on inner frame.
+            //   - Inner CALL value transfer: the *caller* must pay (inner only has stipend gas).
+            //     For the FastCall path that's done at EvmInstructions.Call.cs by recording on
+            //     vm.VmState.AccessTracker (the caller). For full-frame CALL we'd need to fire
+            //     on the parent before the inner snapshot is taken; deferring that for now.
+            if (spec.IsEip8037Enabled && wasCreated && !vmState.IsTopLevel && vmState.ExecutionType.IsAnyCreate())
             {
                 vmState.AccessTracker.RecordAccountCreated(env.ExecutingAccount);
             }
