@@ -42,33 +42,37 @@ public class TestingRpcModuleTests
         Hash256? suggestedWithdrawalsRoot = null;
         (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule(
             onProcess: block => suggestedWithdrawalsRoot = block.Header.WithdrawalsRoot);
+        using (module)
+        {
+            PayloadAttributes payloadAttributes = CreateDefaultPayloadAttributes(parentHeader,
+                withdrawals: [new Withdrawal { Index = 0, ValidatorIndex = 0, Address = Address.Zero, AmountInGwei = 1 }]);
 
-        PayloadAttributes payloadAttributes = CreateDefaultPayloadAttributes(parentHeader,
-            withdrawals: [new Withdrawal { Index = 0, ValidatorIndex = 0, Address = Address.Zero, AmountInGwei = 1 }]);
+            ResultWrapper<object> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, [], []);
 
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
-
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().BeOfType<GetPayloadV5Result>();
-        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
-        payloadResult.ExecutionPayload.BlobGasUsed.Should().Be(0);
-        payloadResult.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
-        suggestedWithdrawalsRoot.Should().Be(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash);
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            result.Data.Should().BeOfType<GetPayloadV5Result>();
+            GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+            payloadResult.ExecutionPayload.BlobGasUsed.Should().Be(0);
+            payloadResult.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
+            suggestedWithdrawalsRoot.Should().Be(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash);
+        }
     }
 
     [Test]
     public async Task Json_rpc_accepts_omitted_extraData()
     {
         (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule();
+        using (module)
+        {
+            JsonRpcResponse response = await RpcTest.TestRequest<ITestingRpcModule>(
+                module,
+                nameof(ITestingRpcModule.testing_buildBlockV1),
+                parentHash,
+                CreateDefaultPayloadAttributes(parentHeader),
+                Array.Empty<byte[]>());
 
-        JsonRpcResponse response = await RpcTest.TestRequest<ITestingRpcModule>(
-            module,
-            nameof(ITestingRpcModule.testing_buildBlockV1),
-            parentHash,
-            CreateDefaultPayloadAttributes(parentHeader),
-            Array.Empty<byte[]>());
-
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+            response.Should().BeOfType<JsonRpcSuccessResponse>();
+        }
     }
 
     [TestCaseSource(nameof(BuildBlockV1ForkCases))]
@@ -80,52 +84,54 @@ public class TestingRpcModuleTests
         ulong? parentSlot = expectsSlotNumber ? 1UL : null;
         (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule(
             spec: spec, slotNumber: parentSlot);
-
-        Transaction[] transactions = BuildSignedTransactions(2);
-        byte[][] txRlps = EncodeTransactions(transactions, out string[] txHex);
-
-        ulong? slotNumber = expectsSlotNumber ? parentSlot!.Value + 1 : null;
-        PayloadAttributes payloadAttributes = CreateDefaultPayloadAttributes(parentHeader, slotNumber: slotNumber);
-
-        string json = await RpcTest.TestSerializedRequest<ITestingRpcModule>(
-            module,
-            nameof(ITestingRpcModule.testing_buildBlockV1),
-            parentHash,
-            payloadAttributes,
-            txRlps,
-            Array.Empty<byte>());
-
-        using JsonDocument doc = JsonDocument.Parse(json);
-        JsonElement root = doc.RootElement;
-        root.TryGetProperty("error", out _).Should().BeFalse();
-
-        JsonElement executionPayload = root.GetProperty("result").GetProperty("executionPayload");
-        JsonElement transactionsJson = executionPayload.GetProperty("transactions");
-
-        transactionsJson.GetArrayLength().Should().Be(txHex.Length);
-        for (int i = 0; i < txHex.Length; i++)
+        using (module)
         {
-            transactionsJson[i].GetString().Should().Be(txHex[i]);
-        }
+            Transaction[] transactions = BuildSignedTransactions(2);
+            byte[][] txRlps = EncodeTransactions(transactions, out string[] txHex);
 
-        if (expectsBlockAccessList)
-        {
-            executionPayload.TryGetProperty("blockAccessList", out JsonElement blockAccessList).Should().BeTrue();
-            blockAccessList.GetString().Should().NotBeNullOrEmpty();
-        }
-        else
-        {
-            executionPayload.TryGetProperty("blockAccessList", out _).Should().BeFalse();
-        }
+            ulong? slotNumber = expectsSlotNumber ? parentSlot!.Value + 1 : null;
+            PayloadAttributes payloadAttributes = CreateDefaultPayloadAttributes(parentHeader, slotNumber: slotNumber);
 
-        if (expectsSlotNumber)
-        {
-            executionPayload.TryGetProperty("slotNumber", out JsonElement slotNumberJson).Should().BeTrue();
-            slotNumberJson.GetString().Should().Be(slotNumber!.Value.ToHexString(skipLeadingZeros: true));
-        }
-        else
-        {
-            executionPayload.TryGetProperty("slotNumber", out _).Should().BeFalse();
+            string json = await RpcTest.TestSerializedRequest<ITestingRpcModule>(
+                module,
+                nameof(ITestingRpcModule.testing_buildBlockV1),
+                parentHash,
+                payloadAttributes,
+                txRlps,
+                Array.Empty<byte>());
+
+            using JsonDocument doc = JsonDocument.Parse(json);
+            JsonElement root = doc.RootElement;
+            root.TryGetProperty("error", out _).Should().BeFalse();
+
+            JsonElement executionPayload = root.GetProperty("result").GetProperty("executionPayload");
+            JsonElement transactionsJson = executionPayload.GetProperty("transactions");
+
+            transactionsJson.GetArrayLength().Should().Be(txHex.Length);
+            for (int i = 0; i < txHex.Length; i++)
+            {
+                transactionsJson[i].GetString().Should().Be(txHex[i]);
+            }
+
+            if (expectsBlockAccessList)
+            {
+                executionPayload.TryGetProperty("blockAccessList", out JsonElement blockAccessList).Should().BeTrue();
+                blockAccessList.GetString().Should().NotBeNullOrEmpty();
+            }
+            else
+            {
+                executionPayload.TryGetProperty("blockAccessList", out _).Should().BeFalse();
+            }
+
+            if (expectsSlotNumber)
+            {
+                executionPayload.TryGetProperty("slotNumber", out JsonElement slotNumberJson).Should().BeTrue();
+                slotNumberJson.GetString().Should().Be(slotNumber!.Value.ToHexString(skipLeadingZeros: true));
+            }
+            else
+            {
+                executionPayload.TryGetProperty("slotNumber", out _).Should().BeFalse();
+            }
         }
     }
 
@@ -147,18 +153,20 @@ public class TestingRpcModuleTests
             .Returns(new[] { mempoolTx });
 
         (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule(txSource: txSource);
+        using (module)
+        {
+            byte[][]? txRlps = useNull ? null : [];
+            ResultWrapper<object> result = await module.testing_buildBlockV1(
+                parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
-        byte[][]? txRlps = useNull ? null : Array.Empty<byte[]>();
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(
-            parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, Array.Empty<byte>());
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            ((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Should().HaveCount(expectedTxCount);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        ((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Should().HaveCount(expectedTxCount);
-
-        if (useNull)
-            txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), true);
-        else
-            txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
+            if (useNull)
+                txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), true);
+            else
+                txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
+        }
     }
 
     [Test]
@@ -175,27 +183,31 @@ public class TestingRpcModuleTests
                 processedBlock.Header.Hash ??= Keccak.Compute("produced");
                 return processedBlock;
             });
+        using (module)
+        {
+            byte[][] txRlps = EncodeTransactions(BuildSignedTransactions(2), out _);
 
-        byte[][] txRlps = EncodeTransactions(BuildSignedTransactions(2), out _);
+            ResultWrapper<object> result = await module.testing_buildBlockV1(
+                parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(
-            parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, Array.Empty<byte>());
-
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("expected 2 transactions but only 1 were included");
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.Result.Error.Should().Contain("expected 2 transactions but only 1 were included");
+        }
     }
 
     [Test]
     public async Task Returns_error_for_unknown_parent()
     {
         (TestingRpcModule module, _, BlockHeader parentHeader) = CreateDefaultTestingModule();
+        using (module)
+        {
+            Hash256 unknownHash = Keccak.Compute("unknown");
+            ResultWrapper<object> result = await module.testing_buildBlockV1(
+                unknownHash, CreateDefaultPayloadAttributes(parentHeader), null);
 
-        Hash256 unknownHash = Keccak.Compute("unknown");
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(
-            unknownHash, CreateDefaultPayloadAttributes(parentHeader), null);
-
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("unknown parent block");
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.Result.Error.Should().Contain("unknown parent block");
+        }
     }
 
     private static (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) CreateDefaultTestingModule(
@@ -433,20 +445,22 @@ public class TestingRpcModuleTests
     {
         (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) =
             CreateCommitTestingModule(suggestResult: AddBlockResult.Added);
+        using (module)
+        {
+            ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
+                CreateMinimalCommitPayloadAttributes(chainHeadHeader),
+                [],
+                []);
 
-        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
-            CreateMinimalCommitPayloadAttributes(chainHeadHeader),
-            Array.Empty<byte[]>(),
-            Array.Empty<byte>());
+            result.Result.ResultType.Should().Be(ResultType.Success);
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-
-        Block suggested = (Block)blockTree.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlockAsync))
-            .GetArguments()[0]!;
-        suggested.Header.Number.Should().Be(chainHeadHeader.Number + 1);
-        suggested.Hash.Should().NotBeNull();
-        result.Data.Should().Be(suggested.Hash!);
+            Block suggested = (Block)blockTree.ReceivedCalls()
+                .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlockAsync))
+                .GetArguments()[0]!;
+            suggested.Header.Number.Should().Be(chainHeadHeader.Number + 1);
+            suggested.Hash.Should().NotBeNull();
+            result.Data.Should().Be(suggested.Hash!);
+        }
     }
 
     [Test]
@@ -454,14 +468,16 @@ public class TestingRpcModuleTests
     {
         (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
             CreateCommitTestingModule(nullChainHead: true);
+        using (module)
+        {
+            ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
+                CreateMinimalCommitPayloadAttributes(chainHeadHeader),
+                [],
+                null);
 
-        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
-            CreateMinimalCommitPayloadAttributes(chainHeadHeader),
-            Array.Empty<byte[]>(),
-            null);
-
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        }
     }
 
     [Test]
@@ -469,13 +485,15 @@ public class TestingRpcModuleTests
     {
         (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
             CreateCommitTestingModule(suggestResult: AddBlockResult.InvalidBlock, fireNewHeadEvent: false);
+        using (module)
+        {
+            ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
+                CreateMinimalCommitPayloadAttributes(chainHeadHeader),
+                [],
+                null);
 
-        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(
-            CreateMinimalCommitPayloadAttributes(chainHeadHeader),
-            Array.Empty<byte[]>(),
-            null);
-
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+        }
     }
 }

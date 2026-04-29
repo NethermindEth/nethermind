@@ -42,7 +42,7 @@ public class TestingRpcModule(
 
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
 
-    public async Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
+    public async Task<ResultWrapper<object>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
     {
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
 
@@ -66,7 +66,7 @@ public class TestingRpcModule(
             }
             catch (RlpException e)
             {
-                return ResultWrapper<object?>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
+                return ResultWrapper<object>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
             }
 
             header.TxRoot = TxTrie.CalculateRoot(transactions);
@@ -84,19 +84,19 @@ public class TestingRpcModule(
                 {
                     string error = $"expected {transactions.Length} transactions but only {processedBlock.Transactions.Length} were included";
                     if (_logger.IsWarn) _logger.Warn($"testing_buildBlockV1 failed: {error}");
-                    return ResultWrapper<object?>.Fail(error, ErrorCodes.InvalidInput);
+                    return ResultWrapper<object>.Fail(error, ErrorCodes.InvalidInput);
                 }
 
                 object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, spec);
 
                 if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
-                return ResultWrapper<object?>.Success(getPayloadResult);
+                return ResultWrapper<object>.Success(getPayloadResult);
             }
 
-            return ResultWrapper<object?>.Fail("payload processing failed", ErrorCodes.InternalError);
+            return ResultWrapper<object>.Fail("payload processing failed", ErrorCodes.InternalError);
         }
 
-        return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
+        return ResultWrapper<object>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
     }
 
     private static readonly TimeSpan CommitHeadTimeout = TimeSpan.FromSeconds(30);
@@ -152,7 +152,10 @@ public class TestingRpcModule(
 
             // SuggestBlockAsync only enqueues; subscribe to NewHeadBlock before submitting
             // so we don't miss the head-advance signal on fast paths.
-            Hash256 expectedHash = processedBlock.Hash!;
+            Hash256? maybeHash = processedBlock.Hash;
+            if (maybeHash is null)
+                return ResultWrapper<Hash256?>.Fail("processed block has no hash", ErrorCodes.InternalError);
+            Hash256 expectedHash = maybeHash;
             TaskCompletionSource<bool> headAdvanced = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             void OnNewHead(object? _, BlockEventArgs args)

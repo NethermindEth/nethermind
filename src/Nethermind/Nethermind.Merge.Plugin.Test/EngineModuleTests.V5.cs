@@ -60,7 +60,7 @@ public partial class EngineModuleTests
             ParentBeaconBlockRoot = TestItem.KeccakB
         };
 
-        ResultWrapper<object?> buildResult = await testingRpcModule.testing_buildBlockV1(
+        ResultWrapper<object> buildResult = await testingRpcModule.testing_buildBlockV1(
             head.Hash!,
             payloadAttributes,
             [],
