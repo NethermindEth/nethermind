@@ -657,4 +657,49 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.FeeCapBelowBaseFee));
     }
 
+    /// <summary>
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11218.
+    /// eth_simulateV1 must return -38013 with the spec-mandated message when the transaction
+    /// gas limit is below the intrinsic gas cost.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_intrinsic_gas_returns_spec_error_code_and_message()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // Gas = 1 is below the intrinsic gas cost of 21_000 for a basic transfer.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { BaseFeePerGas = UInt256.Zero },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            Gas = 1,
+                            GasPrice = UInt256.Zero
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
+    }
+
 }
