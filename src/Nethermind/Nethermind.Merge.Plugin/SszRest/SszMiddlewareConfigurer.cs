@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -27,7 +28,7 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// Registered in Autofac by <c>BaseMergePluginModule</c>; called by
 /// <c>JsonRpcRunner</c> during web-host startup via <see cref="IJsonRpcServiceConfigurer"/>.
 /// </summary>
-public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcServiceConfigurer, IJsonRpcApplicationConfigurer
+public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcServiceConfigurer
 {
     private static readonly Type[] SingletonHandlers =
     [
@@ -38,21 +39,14 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         typeof(TransitionConfigurationSszHandler),
     ];
 
-    public void Configure(object applicationBuilder)
-    {
-        Microsoft.AspNetCore.Builder.IApplicationBuilder app =
-            (Microsoft.AspNetCore.Builder.IApplicationBuilder)applicationBuilder;
-        app.UseMiddleware<SszMiddleware>();
-    }
-
     public void Configure(IServiceCollection services)
     {
+        services.AddTransient<IStartupFilter, SszMiddlewareStartupFilter>();
+
         services.Bridge<ILogManager>(ctx);
         services.Bridge<IJsonRpcUrlCollection>(ctx);
         services.Bridge<IRpcAuthentication>(ctx);
         services.Bridge<IEngineRpcModule>(ctx);
-
-        services.Bridge<IAsyncHandler<byte[], ExecutionPayload?>>(ctx);
 
         services.Bridge<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(ctx);
 
@@ -68,14 +62,14 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
 
         services.AddSingleton<ISszProcessExitSource>(new SszProcessExitSource { ProcessExit = ctx.Resolve<IProcessExitSource>().Token });
 
-        void RegisterGetPayloadVersion<TResult>(int version, Func<TResult?, (byte[] buffer, int length)> encoder) where TResult : class
-        {
-            services.Bridge<IAsyncHandler<byte[], TResult?>>(ctx);
+        IEngineRpcModule engine = ctx.Resolve<IEngineRpcModule>();
+
+        void RegisterGetPayloadVersion<TResult>(
+            int version,
+            Func<byte[], Task<ResultWrapper<TResult?>>> engineCall,
+            Func<TResult, (byte[] buffer, int length)> encoder) where TResult : class =>
             services.AddSingleton<ISszEndpointHandler>(
-                _ => new GetPayloadSszHandler<TResult>(version,
-                    ctx.Resolve<IAsyncHandler<byte[], TResult?>>(),
-                    encoder));
-        }
+                _ => new GetPayloadSszHandler<TResult>(version, engineCall, encoder));
 
         void AddGetPayloadBodiesByHash<TResult>(
             int version,
@@ -105,15 +99,12 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
                     ctx.Resolve<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
                     encoder));
 
-        services.AddSingleton<ISszEndpointHandler>(
-            _ => new GetPayloadSszHandler<ExecutionPayload>(1,
-                ctx.Resolve<IAsyncHandler<byte[], ExecutionPayload?>>(),
-                SszCodec.EncodeGetPayloadV1Response));
-        RegisterGetPayloadVersion<GetPayloadV2Result>(2, SszCodec.EncodeGetPayloadV2Response);
-        RegisterGetPayloadVersion<GetPayloadV3Result>(3, SszCodec.EncodeGetPayloadV3Response);
-        RegisterGetPayloadVersion<GetPayloadV4Result>(4, SszCodec.EncodeGetPayloadV4Response);
-        RegisterGetPayloadVersion<GetPayloadV5Result>(5, SszCodec.EncodeGetPayloadV5Response);
-        RegisterGetPayloadVersion<GetPayloadV6Result>(6, SszCodec.EncodeGetPayloadV6Response);
+        RegisterGetPayloadVersion<ExecutionPayload>(1, engine.engine_getPayloadV1, SszCodec.EncodeGetPayloadV1Response);
+        RegisterGetPayloadVersion<GetPayloadV2Result>(2, engine.engine_getPayloadV2, SszCodec.EncodeGetPayloadV2Response);
+        RegisterGetPayloadVersion<GetPayloadV3Result>(3, engine.engine_getPayloadV3, SszCodec.EncodeGetPayloadV3Response);
+        RegisterGetPayloadVersion<GetPayloadV4Result>(4, engine.engine_getPayloadV4, SszCodec.EncodeGetPayloadV4Response);
+        RegisterGetPayloadVersion<GetPayloadV5Result>(5, engine.engine_getPayloadV5, SszCodec.EncodeGetPayloadV5Response);
+        RegisterGetPayloadVersion<GetPayloadV6Result>(6, engine.engine_getPayloadV6, SszCodec.EncodeGetPayloadV6Response);
 
         services.AddSingleton<ISszEndpointHandler>(
             _ => new GetBlobsV1SszHandler(
@@ -139,3 +130,12 @@ file static class ServiceCollectionExtensions
         => services.AddSingleton<T>(_ => ctx.Resolve<T>());
 }
 
+internal sealed class SszMiddlewareStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
+        app =>
+        {
+            app.UseMiddleware<SszMiddleware>();
+            next(app);
+        };
+}

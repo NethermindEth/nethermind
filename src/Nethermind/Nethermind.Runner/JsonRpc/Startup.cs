@@ -36,7 +36,6 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Api.Extensions;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
@@ -145,10 +144,6 @@ public class Startup : IStartup
         _jsonRpcConfig = jsonRpcConfig;
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
-        foreach (IJsonRpcApplicationConfigurer appConfigurer in app.ApplicationServices.GetServices<IJsonRpcApplicationConfigurer>())
-        {
-            appConfigurer.Configure(app);
-        }
 
         // Engine API fast lane: authenticated engine port POST requests bypass
         // routing, CORS, compression, and WebSocket middleware

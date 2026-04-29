@@ -114,6 +114,7 @@ public class SszGenerator : IIncrementalGenerator
 using Nethermind.Int256;
 using Nethermind.Merkleization;
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -294,21 +295,29 @@ internal static class SszCodecHelpers
         }
 
         int chunkCount = (value.Length + 31) / 32;
-        UInt256[] chunks = new UInt256[chunkCount];
-        int fullByteLength = value.Length / 32 * 32;
-        if (fullByteLength > 0)
+        UInt256[] chunks = ArrayPool<UInt256>.Shared.Rent(chunkCount);
+        try
         {
-            MemoryMarshal.Cast<byte, UInt256>(value[..fullByteLength]).CopyTo(chunks);
-        }
+            chunks.AsSpan(0, chunkCount).Clear();
+            int fullByteLength = value.Length / 32 * 32;
+            if (fullByteLength > 0)
+            {
+                MemoryMarshal.Cast<byte, UInt256>(value[..fullByteLength]).CopyTo(chunks);
+            }
 
-        if (fullByteLength != value.Length)
+            if (fullByteLength != value.Length)
+            {
+                Span<byte> lastChunk = stackalloc byte[32];
+                value[fullByteLength..].CopyTo(lastChunk);
+                chunks[chunkCount - 1] = new UInt256(lastChunk);
+            }
+
+            Merkle.MerkleizeProgressive(out root, chunks.AsSpan(0, chunkCount));
+        }
+        finally
         {
-            Span<byte> lastChunk = stackalloc byte[32];
-            value[fullByteLength..].CopyTo(lastChunk);
-            chunks[^1] = new UInt256(lastChunk);
+            ArrayPool<UInt256>.Shared.Return(chunks);
         }
-
-        Merkle.MerkleizeProgressive(out root, chunks);
     }
 
     internal static void MerkleizeProgressiveBasicList<T>(ReadOnlySpan<T> values, out UInt256 root)
@@ -322,9 +331,17 @@ internal static class SszCodecHelpers
     {
         BitArray bits = value ?? new BitArray(0);
         int byteLength = (bits.Length + 7) / 8;
-        byte[] bytes = new byte[byteLength];
-        bits.CopyTo(bytes, 0);
-        MerkleizeProgressiveBytes(bytes, out root);
+        byte[] bytes = ArrayPool<byte>.Shared.Rent(byteLength);
+        try
+        {
+            Array.Clear(bytes, 0, byteLength);
+            bits.CopyTo(bytes, 0);
+            MerkleizeProgressiveBytes(bytes.AsSpan(0, byteLength), out root);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(bytes);
+        }
         Merkle.MixIn(ref root, bits.Length);
     }
 }

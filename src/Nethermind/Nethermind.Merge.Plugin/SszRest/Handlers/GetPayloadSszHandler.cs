@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -15,7 +14,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// </summary>
 public sealed class GetPayloadSszHandler<TResult>(
     int version,
-    IAsyncHandler<byte[], TResult?> handler,
+    Func<byte[], Task<ResultWrapper<TResult?>>> engineCall,
     Func<TResult, (byte[] buffer, int length)> encode) : SszEndpointHandlerBase
     where TResult : class
 {
@@ -32,7 +31,7 @@ public sealed class GetPayloadSszHandler<TResult>(
             return;
         }
 
-        ResultWrapper<TResult?> result = await handler.HandleAsync(id);
+        ResultWrapper<TResult?> result = await engineCall(id);
 
         ctx.Response.Headers["Cache-Control"] = "no-store";
 

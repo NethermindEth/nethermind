@@ -24,7 +24,7 @@ using Nethermind.Sockets;
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules), typeof(HiveStep))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IJsonRpcApplicationConfigurer[] appConfigurers, IWebSocketsManager webSocketsManager) : IStep
+public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -90,7 +90,6 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             auth,
             api.LogManager,
             serviceConfigurers,
-            appConfigurers,
             api.TxPool,
             api.SpecProvider,
             api.ReceiptFinder,

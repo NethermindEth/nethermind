@@ -128,13 +128,20 @@ public static class SszCodec
                 w.ParentBeaconBlockRoot,
                 ExecutionRequestsFromWire(w.ExecutionRequests));
         }
-        NewPayloadV5RequestWire.Decode(buf, out NewPayloadV5RequestWire w5);
-        ExecutionPayloadV4 ep5 = ExecutionPayloadV4Ssz.Unwrap(w5.ExecutionPayload);
-        ep5.ParentBeaconBlockRoot = w5.ParentBeaconBlockRoot;
-        return (ep5,
-            HashesFromWire(w5.ExpectedBlobVersionedHashes),
-            w5.ParentBeaconBlockRoot,
-            ExecutionRequestsFromWire(w5.ExecutionRequests));
+        if (version == 5)
+        {
+            NewPayloadV5RequestWire.Decode(buf, out NewPayloadV5RequestWire w5);
+            ExecutionPayloadV4 ep5 = ExecutionPayloadV4Ssz.Unwrap(w5.ExecutionPayload);
+            ep5.ParentBeaconBlockRoot = w5.ParentBeaconBlockRoot;
+            return (ep5,
+                HashesFromWire(w5.ExpectedBlobVersionedHashes),
+                w5.ParentBeaconBlockRoot,
+                ExecutionRequestsFromWire(w5.ExecutionRequests));
+        }
+
+        throw new NotSupportedException(
+            $"Unsupported engine_newPayload SSZ wire version: {version}. " +
+            $"Add a dedicated decode branch for this version before adding handler support.");
     }
 
     public static (byte[] buffer, int length) EncodeGetPayloadV1Response(ExecutionPayload ep)

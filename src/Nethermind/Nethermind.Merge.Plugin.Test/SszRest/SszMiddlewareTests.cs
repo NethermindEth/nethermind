@@ -101,12 +101,12 @@ public class SszMiddlewareTests
             new NewPayloadSszHandler(_engineModule),
             new ForkchoiceUpdatedSszHandler(_engineModule),
 
-            new GetPayloadSszHandler<ExecutionPayload>(1, _getPayloadV1, SszCodec.EncodeGetPayloadV1Response),
-            new GetPayloadSszHandler<GetPayloadV2Result>(2, _getPayloadV2, SszCodec.EncodeGetPayloadV2Response),
-            new GetPayloadSszHandler<GetPayloadV3Result>(3, _getPayloadV3, SszCodec.EncodeGetPayloadV3Response),
-            new GetPayloadSszHandler<GetPayloadV4Result>(4, _getPayloadV4, SszCodec.EncodeGetPayloadV4Response),
-            new GetPayloadSszHandler<GetPayloadV5Result>(5, _getPayloadV5, SszCodec.EncodeGetPayloadV5Response),
-            new GetPayloadSszHandler<GetPayloadV6Result>(6, _getPayloadV6, SszCodec.EncodeGetPayloadV6Response),
+            new GetPayloadSszHandler<ExecutionPayload>(1, _getPayloadV1.AsFunc(), SszCodec.EncodeGetPayloadV1Response),
+            new GetPayloadSszHandler<GetPayloadV2Result>(2, _getPayloadV2.AsFunc(), SszCodec.EncodeGetPayloadV2Response),
+            new GetPayloadSszHandler<GetPayloadV3Result>(3, _getPayloadV3.AsFunc(), SszCodec.EncodeGetPayloadV3Response),
+            new GetPayloadSszHandler<GetPayloadV4Result>(4, _getPayloadV4.AsFunc(), SszCodec.EncodeGetPayloadV4Response),
+            new GetPayloadSszHandler<GetPayloadV5Result>(5, _getPayloadV5.AsFunc(), SszCodec.EncodeGetPayloadV5Response),
+            new GetPayloadSszHandler<GetPayloadV6Result>(6, _getPayloadV6.AsFunc(), SszCodec.EncodeGetPayloadV6Response),
 
             new GetBlobsV1SszHandler(_getBlobsV1),
             new GetBlobsV2SszHandler(2, allowPartialReturn: false, _getBlobsV2, SszCodec.EncodeGetBlobsV2Response),
@@ -468,7 +468,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Path_with_extra_segments_on_non_path_param_handler_returns_404()
+    public async Task Post_payloads_with_unknown_extra_returns_404_not_500()
     {
         DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads/foo/bar", []);
 

@@ -35,8 +35,10 @@ public sealed class NewPayloadSszHandler(IEngineRpcModule engineModule) : SszEnd
                 (ExecutionPayloadV3)payload, versionedHashes, beaconRoot),
             EngineApiVersions.NewPayload.V4 => await _engineModule.engine_newPayloadV4(
                 (ExecutionPayloadV3)payload, versionedHashes, beaconRoot, requests),
-            _ => await _engineModule.engine_newPayloadV5(
+            EngineApiVersions.NewPayload.V5 => await _engineModule.engine_newPayloadV5(
                 (ExecutionPayloadV4)payload, versionedHashes, beaconRoot, requests),
+            _ => ResultWrapper<PayloadStatusV1>.Fail(
+                $"Unsupported engine_newPayload version: {version}", ErrorCodes.MethodNotFound)
         };
 
         await WriteSszResultAsync(ctx, result, SszCodec.EncodePayloadStatus);

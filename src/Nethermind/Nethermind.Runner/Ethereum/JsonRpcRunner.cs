@@ -39,7 +39,6 @@ namespace Nethermind.Runner.Ethereum
         IRpcAuthentication rpcAuthentication,
         ILogManager logManager,
         IJsonRpcServiceConfigurer[] jsonRpcServices,
-        IJsonRpcApplicationConfigurer[] jsonRpcAppConfigurers,
         ITxPool txPool,
         ISpecProvider specProvider,
         IReceiptFinder receiptFinder,
@@ -56,7 +55,6 @@ namespace Nethermind.Runner.Ethereum
         private readonly IWebSocketsManager _webSocketsManager = webSocketsManager;
         private WebHost? _webApp;
         private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices = jsonRpcServices;
-        private readonly IJsonRpcApplicationConfigurer[] _jsonRpcAppConfigurers = jsonRpcAppConfigurers;
         private readonly ITxPool _txPool = txPool;
         private readonly ISpecProvider _specProvider = specProvider;
         private readonly IReceiptFinder _receiptFinder = receiptFinder;
@@ -101,10 +99,6 @@ namespace Nethermind.Runner.Ethereum
                     foreach (IJsonRpcServiceConfigurer configurer in _jsonRpcServices)
                     {
                         configurer.Configure(s);
-                    }
-                    foreach (IJsonRpcApplicationConfigurer appConfigurer in _jsonRpcAppConfigurers)
-                    {
-                        s.AddSingleton(appConfigurer);
                     }
                     s.AddSingleton<ApplicationLifetime>();
                     startup.ConfigureServices(s);
