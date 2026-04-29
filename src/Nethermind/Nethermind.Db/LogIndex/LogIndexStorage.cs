@@ -514,13 +514,14 @@ namespace Nethermind.Db.LogIndex
             return (min, max);
         }
 
-        private int? GetCompressionBoundary()
-        {
-            if (_maxBlock is null) return null;
-            if (_finalizedBlockProvider.FinalizedBlockNumber is { } finalized)
-                return finalized > int.MaxValue ? _maxBlock : (int)finalized;
-            return _maxBlock - _maxReorgDepth;
-        }
+        private int? GetCompressionBoundary() => _maxBlock is null
+            ? null
+            : _finalizedBlockProvider.FinalizedBlockNumber switch
+            {
+                null => _maxBlock - _maxReorgDepth,
+                > int.MaxValue => _maxBlock,
+                var finalized => (int)finalized
+            };
 
         private static bool IsBlockNewer(int next, int? lastMin, int? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin
