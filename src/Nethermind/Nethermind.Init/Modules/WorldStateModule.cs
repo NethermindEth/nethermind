@@ -19,13 +19,13 @@ public class WorldStateModule : Module
         builder
             // Stub: overridden by WorldStateDbDeciderModule which selects patricia or flat at runtime.
             .AddSingleton<IWorldStateManager>(_ => throw new InvalidOperationException(
-                $"No world state backend registered. Load {nameof(WorldStateDbDeciderModule)}."))
+                $"No world state backend registered. Load {nameof(WorldStateDbDeciderModule)} together with {nameof(PruningTrieStoreModule)} and {nameof(FlatWorldStateModule)}."))
 
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
 
             .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
             {
-                new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
+                new PersistedStateWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
             })
 
             // Prevent multiple concurrent verify trie.
