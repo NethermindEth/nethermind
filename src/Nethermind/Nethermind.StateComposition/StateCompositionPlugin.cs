@@ -115,22 +115,15 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
             return;
         }
 
-        _ = Task.Run(async () =>
-        {
-            try
+        FireAndForget.Run(
+            async () =>
             {
                 Result<StateCompositionStats> result =
                     await service.AnalyzeAsync(head, CancellationToken.None).ConfigureAwait(false);
-
                 if (!result.IsSuccess && logger.IsWarn)
                     logger.Warn($"StateComposition: bootstrap scan skipped: {result.Error}");
-            }
-            catch (Exception ex)
-            {
-                // Don't lift the IsError check into a `when` filter — it would leak the exception when logging is off.
-                if (logger.IsError)
-                    logger.Error("StateComposition: bootstrap scan failed", ex);
-            }
-        });
+            },
+            logger,
+            "StateComposition: bootstrap scan failed");
     }
 }

@@ -23,18 +23,10 @@ internal sealed partial class StateCompositionService
             // Plugin's startup bootstrap couldn't run (head was null at init); fire it now.
             BlockHeader? header = e.Block.Header;
             if (header?.StateRoot is null) return;
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await AnalyzeAsync(header, CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError)
-                        _logger.Error("StateComposition: deferred bootstrap scan failed", ex);
-                }
-            });
+            FireAndForget.Run(
+                () => AnalyzeAsync(header, CancellationToken.None),
+                _logger,
+                "StateComposition: deferred bootstrap scan failed");
             return;
         }
 
@@ -131,23 +123,16 @@ internal sealed partial class StateCompositionService
         BlockHeader? header = head?.Header ?? _blockTree.Head?.Header;
         if (header is null) return;
 
-        _ = Task.Run(async () =>
-        {
-            try
+        FireAndForget.Run(
+            async () =>
             {
                 Result<StateCompositionStats> result =
                     await AnalyzeAsync(header, CancellationToken.None).ConfigureAwait(false);
-
                 if (!result.IsSuccess && _logger.IsWarn)
                     _logger.Warn($"StateComposition: auto-rescan skipped: {result.Error}");
-            }
-            catch (Exception ex)
-            {
-                // Don't lift the IsError check into a `when` filter — it would leak the exception when logging is off.
-                if (_logger.IsError)
-                    _logger.Error("StateComposition: auto-rescan failed", ex);
-            }
-        });
+            },
+            _logger,
+            "StateComposition: auto-rescan failed");
     }
 
 }
