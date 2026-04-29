@@ -228,7 +228,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
-            using StackAccessTracker accessTracker = new();
+            using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
 
             int delegationRefunds = !spec.IsEip7702Enabled || !tx.HasAuthorizationList ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
@@ -825,7 +825,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (tracer.IsTracingAccess)
                 {
-                    tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
+                    tracer.ReportAccess(accessedItems.AllAccessedAddresses, accessedItems.AllAccessedStorageCells);
                 }
 
                 if (substate.ShouldRevert || substate.IsError)

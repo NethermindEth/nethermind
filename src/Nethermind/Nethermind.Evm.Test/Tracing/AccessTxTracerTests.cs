@@ -179,4 +179,111 @@ namespace Nethermind.Evm.Test.Tracing
             return tracer;
         }
     }
+
+    /// <summary>
+    /// Regression tests for issue #11209 – Bug 2:
+    /// Addresses/storage cells accessed inside a reverted sub-frame were silently dropped from the
+    /// access list because <see cref="JournalSet{T}.Restore"/> unwound the journaled set.
+    /// The non-journaled side-log on <see cref="StackAccessTracker"/> now preserves them.
+    /// </summary>
+    [TestFixture]
+    public class AccessTxTracerRevertedFrameTests : VirtualMachineTestsBase
+    {
+        protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
+
+        // Recipient code: CALL AddressC with 50 k gas, then REVERT (regardless of CALL outcome)
+        // This means AddressC is accessed during the call setup (ConsumeAccountAccessGas),
+        // but the outer frame reverts — the address must still appear in the access list.
+        [Test]
+        public void Reverted_call_target_address_is_still_captured_in_access_list()
+        {
+            // Code deployed at recipient: CALL AddressC, then REVERT
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressC, 50000)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.REVERT)
+                .Done;
+
+            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
+
+            Address[] addresses = tracer.AccessList!.Select(static t => t.Address).ToArray();
+            // AddressC must appear even though the outer frame reverts after the CALL returns
+            addresses.Should().Contain(TestItem.AddressC,
+                because: "addresses accessed inside reverted frames must survive for eth_createAccessList");
+        }
+
+        // AddressC's code does an SLOAD then REVERTs.
+        // The storage key must appear even though the frame reverts.
+        [Test]
+        public void Reverted_sub_frame_sload_storage_key_is_still_captured_in_access_list()
+        {
+            // Code at AddressC: SLOAD slot 7 then REVERT
+            byte[] addressCCode = Prepare.EvmCode
+                .PushData(7)
+                .Op(Instruction.SLOAD)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.REVERT)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, addressCCode, SpecProvider.GenesisSpec);
+            TestState.Commit(SpecProvider.GenesisSpec);
+            TestState.CommitTree(0);
+
+            // Recipient code: CALL AddressC then STOP
+            byte[] recipientCode = Prepare.EvmCode
+                .Call(TestItem.AddressC, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, recipientCode);
+
+            IEnumerable<(Address Address, IEnumerable<UInt256> StorageKeys)> list = tracer.AccessList!;
+            // AddressC slot 7 must appear despite the REVERT inside AddressC's sub-frame
+            list.Should().ContainSingle(e => e.Address == TestItem.AddressC)
+                .Which.StorageKeys.Should().Contain(new UInt256(7),
+                    because: "storage cells first accessed inside a reverted sub-frame must still be captured");
+        }
+
+        // Two-level scenario: outer frame COMMITs, inner frame REVERTs.
+        // Both the outer target (AddressC) and the inner target (AddressD) must appear.
+        [Test]
+        public void Outer_committed_and_inner_reverted_call_both_captured_in_access_list()
+        {
+            // AddressC code: CALL AddressD then REVERT
+            byte[] addressCCode = Prepare.EvmCode
+                .Call(TestItem.AddressD, 20000)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.REVERT)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, addressCCode, SpecProvider.GenesisSpec);
+            TestState.Commit(SpecProvider.GenesisSpec);
+            TestState.CommitTree(0);
+
+            // Recipient code: CALL AddressC (this succeeds at the EVM level but AddressC reverts internally)
+            byte[] recipientCode = Prepare.EvmCode
+                .Call(TestItem.AddressC, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, recipientCode);
+
+            Address[] addresses = tracer.AccessList!.Select(static t => t.Address).ToArray();
+            addresses.Should().Contain(TestItem.AddressC, because: "committed outer CALL target must be in access list");
+            addresses.Should().Contain(TestItem.AddressD, because: "address accessed inside inner reverted frame must still be in access list");
+        }
+
+        private AccessTxTracer ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, byte[] code)
+        {
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
+            AccessTxTracer tracer = new(addresses.Sender, addresses.Recipient, addresses.Miner);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+            return tracer;
+        }
+    }
 }
