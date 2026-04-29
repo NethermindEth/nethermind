@@ -13,8 +13,8 @@ public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvid
 {
     public ResultWrapper<TxPoolStatus> txpool_status()
     {
-        TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
-        TxPoolStatus poolStatus = new(poolInfo);
+        TxPoolCounts counts = txPoolInfoProvider.GetCounts();
+        TxPoolStatus poolStatus = new(counts);
 
         return ResultWrapper<TxPoolStatus>.Success(poolStatus);
     }
@@ -29,9 +29,9 @@ public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvid
     public ResultWrapper<TxPoolContentFrom> txpool_contentFrom(Address address)
     {
         ArgumentNullException.ThrowIfNull(address);
-        TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
+        TxPoolSenderInfo senderInfo = txPoolInfoProvider.GetSenderInfo(address);
         ulong chainId = specProvider.ChainId;
-        return ResultWrapper<TxPoolContentFrom>.Success(new TxPoolContentFrom(poolInfo, address, chainId));
+        return ResultWrapper<TxPoolContentFrom>.Success(new TxPoolContentFrom(senderInfo, chainId));
     }
 
     public ResultWrapper<TxPoolInspection> txpool_inspect()
