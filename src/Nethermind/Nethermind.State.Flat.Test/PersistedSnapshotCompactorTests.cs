@@ -153,27 +153,25 @@ public class PersistedSnapshotCompactorTests
         toMerge.Add(baseSnap1);
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
-        // Read merged bytes directly to verify metadata
+        // Read merged bytes directly to verify metadata. One reader over `merged`; meta-column
+        // sub-lookups reuse it via the metaBound from the outer TrySeek.
         SpanByteReader mergedReader = new(merged);
         HsstReader<SpanByteReader, NoOpPin> outerReader = new(in mergedReader);
         Assert.That(outerReader.TrySeek(PersistedSnapshot.MetadataTag, out _), Is.True);
         Bound metaBound = outerReader.GetBound();
-        ReadOnlySpan<byte> metaColumn = merged.AsSpan((int)metaBound.Offset, metaBound.Length);
-
-        SpanByteReader metaReader = new(metaColumn);
 
         // "noderefs" key with value [0x01]
-        HsstReader<SpanByteReader, NoOpPin> nodeRefsR = new(in metaReader);
+        HsstReader<SpanByteReader, NoOpPin> nodeRefsR = new(in mergedReader, metaBound);
         Assert.That(nodeRefsR.TrySeek("noderefs"u8, out _), Is.True);
         Bound nodeRefsBound = nodeRefsR.GetBound();
-        ReadOnlySpan<byte> nodeRefsValue = metaColumn.Slice((int)nodeRefsBound.Offset, nodeRefsBound.Length);
+        ReadOnlySpan<byte> nodeRefsValue = merged.AsSpan((int)nodeRefsBound.Offset, nodeRefsBound.Length);
         Assert.That(nodeRefsValue.ToArray(), Is.EqualTo(new byte[] { 0x01 }));
 
         // "ref_ids" key with both base snapshot IDs as LE int32s
-        HsstReader<SpanByteReader, NoOpPin> refIdsR = new(in metaReader);
+        HsstReader<SpanByteReader, NoOpPin> refIdsR = new(in mergedReader, metaBound);
         Assert.That(refIdsR.TrySeek("ref_ids"u8, out _), Is.True);
         Bound refIdsBound = refIdsR.GetBound();
-        ReadOnlySpan<byte> refIdsValue = metaColumn.Slice((int)refIdsBound.Offset, refIdsBound.Length);
+        ReadOnlySpan<byte> refIdsValue = merged.AsSpan((int)refIdsBound.Offset, refIdsBound.Length);
         Assert.That(refIdsValue.Length, Is.EqualTo(8)); // 2 IDs × 4 bytes
 
         // ReadRefIdsFromMetadata should return both IDs
