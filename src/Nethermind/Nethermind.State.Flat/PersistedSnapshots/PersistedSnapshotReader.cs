@@ -263,25 +263,25 @@ public static class PersistedSnapshotReader
         {
             _index = -1;
             ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
-            Hsst.Hsst outer = new(snapshotData);
-            if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
+            SpanByteReader reader = new(snapshotData);
+            HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+            if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _))
             {
                 _entries = [];
                 return;
             }
 
             List<KeyValuePair<AddressAsKey, bool>> list = [];
-            Hsst.IHsstReadahead? readahead = snapshot.CreateColumnReadahead(PersistedSnapshot.AccountColumnTag);
-            Hsst.Hsst addressLevel = new(column);
-            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator(readahead);
+            using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, r.GetBound());
             while (addrEnum.MoveNext())
             {
-                Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
-                Hsst.Hsst perAddr = new(addrEntry.Value);
-                if (perAddr.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue))
+                KeyValueEntry addrEntry = addrEnum.Current;
+                HsstReader<SpanByteReader, NoOpPin> perAddr = new(in reader, addrEntry.ValueBound);
+                if (perAddr.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
                 {
+                    Bound sdBound = perAddr.GetBound();
                     Address addr = new(addrEntry.Key.ToArray());
-                    bool isNew = !sdValue.IsEmpty && sdValue[0] == 0x01;
+                    bool isNew = sdBound.Length > 0 && snapshotData[(int)sdBound.Offset] == 0x01;
                     list.Add(new(addr, isNew));
                 }
             }
@@ -309,24 +309,25 @@ public static class PersistedSnapshotReader
         {
             _index = -1;
             ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
-            Hsst.Hsst outer = new(snapshotData);
-            if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
+            SpanByteReader reader = new(snapshotData);
+            HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+            if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _))
             {
                 _entries = [];
                 return;
             }
 
             List<KeyValuePair<AddressAsKey, Account?>> list = [];
-            Hsst.IHsstReadahead? readahead = snapshot.CreateColumnReadahead(PersistedSnapshot.AccountColumnTag);
-            Hsst.Hsst addressLevel = new(column);
-            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator(readahead);
+            using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, r.GetBound());
             while (addrEnum.MoveNext())
             {
-                Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
-                Hsst.Hsst perAddr = new(addrEntry.Value);
-                if (perAddr.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp))
+                KeyValueEntry addrEntry = addrEnum.Current;
+                HsstReader<SpanByteReader, NoOpPin> perAddr = new(in reader, addrEntry.ValueBound);
+                if (perAddr.TrySeek(PersistedSnapshot.AccountSubTag, out _))
                 {
+                    Bound rlpBound = perAddr.GetBound();
                     Address addr = new(addrEntry.Key.ToArray());
+                    ReadOnlySpan<byte> accountRlp = SliceFromBound(snapshotData, rlpBound);
                     Account? account = accountRlp.IsEmpty
                         ? null
                         : AccountDecoder.Slim.Decode(accountRlp);
@@ -357,43 +358,42 @@ public static class PersistedSnapshotReader
         {
             _index = -1;
             ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
-            Hsst.Hsst outer = new(snapshotData);
-            if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> column))
+            SpanByteReader reader = new(snapshotData);
+            HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+            if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _))
             {
                 _entries = [];
                 return;
             }
 
             List<KeyValuePair<(AddressAsKey, UInt256), SlotValue?>> list = [];
-            Hsst.IHsstReadahead? readahead = snapshot.CreateColumnReadahead(PersistedSnapshot.AccountColumnTag);
-            Hsst.Hsst addressLevel = new(column);
-            using Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator(readahead);
+            using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, r.GetBound());
             while (addrEnum.MoveNext())
             {
-                Hsst.Hsst.KeyValueEntry addrEntry = addrEnum.Current;
-                Hsst.Hsst perAddr = new(addrEntry.Value);
-                if (!perAddr.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotData))
+                KeyValueEntry addrEntry = addrEnum.Current;
+                HsstReader<SpanByteReader, NoOpPin> perAddr = new(in reader, addrEntry.ValueBound);
+                if (!perAddr.TrySeek(PersistedSnapshot.SlotSubTag, out _))
                     continue;
 
                 Address addr = new(addrEntry.Key.ToArray());
-                Hsst.Hsst prefixLevel = new(slotData);
-                using Hsst.Hsst.Enumerator prefixEnum = prefixLevel.GetEnumerator();
+                Bound slotBound = perAddr.GetBound();
+                using HsstEnumerator<SpanByteReader, NoOpPin> prefixEnum = new(in reader, slotBound);
                 while (prefixEnum.MoveNext())
                 {
-                    Hsst.Hsst.KeyValueEntry prefixEntry = prefixEnum.Current;
+                    KeyValueEntry prefixEntry = prefixEnum.Current;
                     byte[] prefixBytes = prefixEntry.Key.ToArray();
-                    Hsst.Hsst suffixLevel = new(prefixEntry.Value);
-                    using Hsst.Hsst.Enumerator suffixEnum = suffixLevel.GetEnumerator();
+                    using HsstEnumerator<SpanByteReader, NoOpPin> suffixEnum = new(in reader, prefixEntry.ValueBound);
                     while (suffixEnum.MoveNext())
                     {
-                        Hsst.Hsst.KeyValueEntry suffixEntry = suffixEnum.Current;
+                        KeyValueEntry suffixEntry = suffixEnum.Current;
                         byte[] slotKey = new byte[32];
                         prefixBytes.CopyTo(slotKey.AsSpan());
                         suffixEntry.Key.CopyTo(slotKey.AsSpan(SlotPrefixLength));
                         UInt256 slot = new(slotKey, isBigEndian: true);
-                        SlotValue? value = suffixEntry.Value.IsEmpty
+                        ReadOnlySpan<byte> suffixValue = SliceFromBound(snapshotData, suffixEntry.ValueBound);
+                        SlotValue? value = suffixValue.IsEmpty
                             ? null
-                            : SlotValue.FromSpanWithoutLeadingZero(suffixEntry.Value);
+                            : SlotValue.FromSpanWithoutLeadingZero(suffixValue);
                         list.Add(new((addr, slot), value));
                     }
                 }
@@ -422,51 +422,60 @@ public static class PersistedSnapshotReader
         {
             _index = -1;
             ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
-            Hsst.Hsst outer = new(snapshotData);
+            SpanByteReader reader = new(snapshotData);
             List<KeyValuePair<TreePath, TrieNode>> list = [];
 
             // Column 0x05: TopNodes (path length 0-5)
-            if (outer.TryGet(PersistedSnapshot.StateTopNodesTag, out ReadOnlySpan<byte> topColumn))
             {
-                Hsst.Hsst hsst = new(topColumn);
-                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator(snapshot.CreateColumnReadahead(PersistedSnapshot.StateTopNodesTag));
-                while (e.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StateTopNodesTag, out _))
                 {
-                    Hsst.Hsst.KeyValueEntry entry = e.Current;
-                    TreePath path = TreePath.DecodeWith3Byte(entry.Key);
-                    TryResolveNodeRef(entry.Value, out ReadOnlySpan<byte> resolved,
-                        snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                    list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    while (e.MoveNext())
+                    {
+                        KeyValueEntry entry = e.Current;
+                        TreePath path = TreePath.DecodeWith3Byte(entry.Key);
+                        ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, entry.ValueBound);
+                        TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
+                            snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                        list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    }
                 }
             }
 
             // Column 0x03: CompactNodes (path length 6-15)
-            if (outer.TryGet(PersistedSnapshot.StateNodeTag, out ReadOnlySpan<byte> compactColumn))
             {
-                Hsst.Hsst hsst = new(compactColumn);
-                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator(snapshot.CreateColumnReadahead(PersistedSnapshot.StateNodeTag));
-                while (e.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StateNodeTag, out _))
                 {
-                    Hsst.Hsst.KeyValueEntry entry = e.Current;
-                    TreePath path = DecodeCompactTreePath(entry.Key);
-                    TryResolveNodeRef(entry.Value, out ReadOnlySpan<byte> resolved,
-                        snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                    list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    while (e.MoveNext())
+                    {
+                        KeyValueEntry entry = e.Current;
+                        TreePath path = DecodeCompactTreePath(entry.Key);
+                        ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, entry.ValueBound);
+                        TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
+                            snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                        list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    }
                 }
             }
 
             // Column 0x06: Fallbacks (path length 16+)
-            if (outer.TryGet(PersistedSnapshot.StateNodeFallbackTag, out ReadOnlySpan<byte> fallbackColumn))
             {
-                Hsst.Hsst hsst = new(fallbackColumn);
-                using Hsst.Hsst.Enumerator e = hsst.GetEnumerator(snapshot.CreateColumnReadahead(PersistedSnapshot.StateNodeFallbackTag));
-                while (e.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StateNodeFallbackTag, out _))
                 {
-                    Hsst.Hsst.KeyValueEntry entry = e.Current;
-                    TreePath path = new(new ValueHash256(entry.Key[..32]), entry.Key[32]);
-                    TryResolveNodeRef(entry.Value, out ReadOnlySpan<byte> resolved,
-                        snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                    list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    while (e.MoveNext())
+                    {
+                        KeyValueEntry entry = e.Current;
+                        TreePath path = new(new ValueHash256(entry.Key[..32]), entry.Key[32]);
+                        ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, entry.ValueBound);
+                        TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
+                            snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                        list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                    }
                 }
             }
 
@@ -493,51 +502,53 @@ public static class PersistedSnapshotReader
         {
             _index = -1;
             ReadOnlySpan<byte> snapshotData = snapshot.GetSpan();
-            Hsst.Hsst outer = new(snapshotData);
+            SpanByteReader reader = new(snapshotData);
             List<KeyValuePair<(Hash256AsKey, TreePath), TrieNode>> list = [];
 
             // Column 0x07: StorageNode (path ≤15, compact 8-byte key)
-            if (outer.TryGet(PersistedSnapshot.StorageNodeTag, out ReadOnlySpan<byte> nodeColumn))
             {
-                Hsst.IHsstReadahead? storageNodeReadahead = snapshot.CreateColumnReadahead(PersistedSnapshot.StorageNodeTag);
-                Hsst.Hsst hashLevel = new(nodeColumn);
-                using Hsst.Hsst.Enumerator hashEnum = hashLevel.GetEnumerator(storageNodeReadahead);
-                while (hashEnum.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StorageNodeTag, out _))
                 {
-                    Hsst.Hsst.KeyValueEntry hashEntry = hashEnum.Current;
-                    Hash256 addressHash = DecodeAddressHash(hashEntry.Key);
-                    Hsst.Hsst innerHsst = new(hashEntry.Value);
-                    using Hsst.Hsst.Enumerator pathEnum = innerHsst.GetEnumerator(storageNodeReadahead);
-                    while (pathEnum.MoveNext())
+                    using HsstEnumerator<SpanByteReader, NoOpPin> hashEnum = new(in reader, r.GetBound());
+                    while (hashEnum.MoveNext())
                     {
-                        Hsst.Hsst.KeyValueEntry pathEntry = pathEnum.Current;
-                        TreePath path = DecodeCompactTreePath(pathEntry.Key);
-                        TryResolveNodeRef(pathEntry.Value, out ReadOnlySpan<byte> resolved,
-                            snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                        list.Add(new((addressHash, path), new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                        KeyValueEntry hashEntry = hashEnum.Current;
+                        Hash256 addressHash = DecodeAddressHash(hashEntry.Key);
+                        using HsstEnumerator<SpanByteReader, NoOpPin> pathEnum = new(in reader, hashEntry.ValueBound);
+                        while (pathEnum.MoveNext())
+                        {
+                            KeyValueEntry pathEntry = pathEnum.Current;
+                            TreePath path = DecodeCompactTreePath(pathEntry.Key);
+                            ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, pathEntry.ValueBound);
+                            TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
+                                snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                            list.Add(new((addressHash, path), new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                        }
                     }
                 }
             }
 
             // Column 0x08: StorageNodeFallback (path ≥16, 33-byte key)
-            if (outer.TryGet(PersistedSnapshot.StorageNodeFallbackTag, out ReadOnlySpan<byte> fallbackColumn))
             {
-                Hsst.IHsstReadahead? storageFallbackReadahead = snapshot.CreateColumnReadahead(PersistedSnapshot.StorageNodeFallbackTag);
-                Hsst.Hsst hashLevel = new(fallbackColumn);
-                using Hsst.Hsst.Enumerator hashEnum = hashLevel.GetEnumerator(storageFallbackReadahead);
-                while (hashEnum.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StorageNodeFallbackTag, out _))
                 {
-                    Hsst.Hsst.KeyValueEntry hashEntry = hashEnum.Current;
-                    Hash256 addressHash = DecodeAddressHash(hashEntry.Key);
-                    Hsst.Hsst innerHsst = new(hashEntry.Value);
-                    using Hsst.Hsst.Enumerator pathEnum = innerHsst.GetEnumerator(storageFallbackReadahead);
-                    while (pathEnum.MoveNext())
+                    using HsstEnumerator<SpanByteReader, NoOpPin> hashEnum = new(in reader, r.GetBound());
+                    while (hashEnum.MoveNext())
                     {
-                        Hsst.Hsst.KeyValueEntry pathEntry = pathEnum.Current;
-                        TreePath path = new(new ValueHash256(pathEntry.Key[..32]), pathEntry.Key[32]);
-                        TryResolveNodeRef(pathEntry.Value, out ReadOnlySpan<byte> resolved,
-                            snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
-                        list.Add(new((addressHash, path), new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                        KeyValueEntry hashEntry = hashEnum.Current;
+                        Hash256 addressHash = DecodeAddressHash(hashEntry.Key);
+                        using HsstEnumerator<SpanByteReader, NoOpPin> pathEnum = new(in reader, hashEntry.ValueBound);
+                        while (pathEnum.MoveNext())
+                        {
+                            KeyValueEntry pathEntry = pathEnum.Current;
+                            TreePath path = new(new ValueHash256(pathEntry.Key[..32]), pathEntry.Key[32]);
+                            ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, pathEntry.ValueBound);
+                            TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
+                                snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                            list.Add(new((addressHash, path), new TrieNode(NodeType.Unknown, resolved.ToArray())));
+                        }
                     }
                 }
             }
