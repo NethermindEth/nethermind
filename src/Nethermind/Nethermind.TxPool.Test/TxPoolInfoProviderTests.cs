@@ -155,6 +155,21 @@ public class TxPoolInfoProviderTests
     }
 
     [Test]
+    public void GetSenderInfo_WhenSenderHasOnlyBlobTransactions_ReturnsEmpty()
+    {
+        // Regression guard: if anyone re-introduces a blob lookup in GetSenderInfo, the blob
+        // mock here becomes live and the result stops being TxPoolSenderInfo.Empty, failing
+        // the assertion. Today the blob mock is unconsulted (matches geth's BlobPool.Content()
+        // empty-stub behaviour), so the empty result comes from the standard pool being empty.
+        _stateReader.GetNonce(_address).Returns((UInt256)0);
+        _txPool.GetPendingLightBlobTransactionsBySender(_address).Returns(BuildTransactions([0, 1]));
+
+        TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
+
+        senderInfo.Should().BeSameAs(TxPoolSenderInfo.Empty);
+    }
+
+    [Test]
     public void GetSenderInfo_WhenCalled_DoesNotScanFullPool()
     {
         _infoProvider.GetSenderInfo(_address);
