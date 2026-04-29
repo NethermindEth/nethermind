@@ -224,7 +224,7 @@ namespace Nethermind.Facade
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
             components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-            
+
             // Convergence loop: mirrors Geth's AccessList() — run with the current AL, discover touched
             // slots, repeat until the AL stabilises. Gas and error come from the final (warm) run,
             // so cold-read overcounting is eliminated and OOG due to AL intrinsic cost is surfaced.
