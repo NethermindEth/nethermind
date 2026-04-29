@@ -589,33 +589,23 @@ public class PersistenceManager(
         PersistedSnapshotScanner scanner = new(session, snapshot);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<AddressAsKey, bool> kv in scanner.SelfDestructedStorageAddresses)
+            foreach (PersistedSnapshotScanner.SelfDestructEntry entry in scanner.SelfDestructedStorageAddresses)
             {
-                if (kv.Value) continue;
-                batch.SelfDestruct(kv.Key);
+                if (entry.IsNew) continue;
+                batch.SelfDestruct(entry.Address);
             }
 
-            foreach (KeyValuePair<AddressAsKey, Account?> kv in scanner.Accounts)
-            {
-                batch.SetAccount(kv.Key, kv.Value);
-            }
+            foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
+                batch.SetAccount(entry.Address, entry.Account);
 
-            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in scanner.Storages)
-            {
-                ((Address addr, UInt256 slot), SlotValue? value) = kv;
-                batch.SetStorage(addr, slot, value);
-            }
+            foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
+                batch.SetStorage(entry.Address, entry.Slot, entry.Value);
 
-            foreach (KeyValuePair<TreePath, TrieNode> kv in scanner.StateNodes)
-            {
-                batch.SetStateTrieNode(kv.Key, kv.Value);
-            }
+            foreach (PersistedSnapshotScanner.StateNodeEntry entry in scanner.StateNodes)
+                batch.SetStateTrieNode(entry.Path, entry.Node);
 
-            foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in scanner.StorageNodes)
-            {
-                ((Hash256AsKey address, TreePath path), TrieNode node) = kv;
-                batch.SetStorageTrieNode(address, path, node);
-            }
+            foreach (PersistedSnapshotScanner.StorageNodeEntry entry in scanner.StorageNodes)
+                batch.SetStorageTrieNode(entry.AddressHash, entry.Path, entry.Node);
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
