@@ -230,7 +230,7 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaCommitTime = Evm.Metrics.CommitTime - _startCommitTime;
                 blockData.DeltaAccountCacheHits = DbMetrics.StateTreeCache - _startAccountCacheHits;
                 blockData.DeltaAccountCacheMisses = DbMetrics.StateTreeReads - _startAccountCacheMisses;
-                blockData.DeltaStorageCacheHits = DbMetrics.StateTreeCache - _startStorageCacheHits;
+                blockData.DeltaStorageCacheHits = DbMetrics.StorageTreeCache - _startStorageCacheHits;
                 blockData.DeltaStorageCacheMisses = DbMetrics.StorageTreeReads - _startStorageCacheMisses;
                 blockData.DeltaCodeCacheHits = Evm.Metrics.CodeDbCache - _startCodeCacheHits;
                 blockData.DeltaCodeCacheMisses = Evm.Metrics.CodeReads - _startCodeCacheMisses;

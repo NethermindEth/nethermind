@@ -6,16 +6,19 @@ using System;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Thread-static collector for per-transaction execution timing.
+/// Process-wide collector for per-transaction execution timing.
 /// Enabled by <see cref="ProcessingStats"/> when SlowBlockPerTxThresholdMs >= 0.
 /// The tx executor calls <see cref="Prepare"/> and <see cref="Record"/>;
 /// ProcessingStats snapshots via <see cref="Snapshot"/> after block execution.
+/// State is shared across threads so parallel tx workers can record into the
+/// array prepared on the block-processing thread; assumes a single block is
+/// being timing-collected at any moment.
 /// </summary>
 public static class PerTxTimingCollector
 {
-    [ThreadStatic] private static bool _enabled;
-    [ThreadStatic] private static long[]? _ticksPerTx;
-    [ThreadStatic] private static int _count;
+    private static bool _enabled;
+    private static long[]? _ticksPerTx;
+    private static int _count;
 
     /// <summary>Whether per-tx timing capture is active on this thread.</summary>
     public static bool IsEnabled => _enabled;

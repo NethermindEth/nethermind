@@ -58,6 +58,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
 
+    public override void Set(in StorageCell storageCell, byte[] newValue)
+    {
+        EvmMetrics.IncrementStorageWrites();
+        base.Set(in storageCell, newValue);
+    }
+
     /// <summary>
     /// Get the current value at the specified location
     /// </summary>

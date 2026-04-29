@@ -90,10 +90,6 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            public void SetupTxTimingMetrics(Block block) { }
-            public long StartTxTimer() => 0;
-            public void StopTxTimer(int i, long txStart) { }
-
             private TxAction ProcessTransaction(
                 Block block,
                 Transaction currentTx,

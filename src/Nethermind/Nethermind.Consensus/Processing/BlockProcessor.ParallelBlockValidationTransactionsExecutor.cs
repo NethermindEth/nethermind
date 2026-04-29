@@ -197,8 +197,5 @@ public partial class BlockProcessor
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
 
-        public void SetupTxTimingMetrics(Block block) { }
-        public long StartTxTimer() => 0;
-        public void StopTxTimer(int i, long txStart) { }
     }
 }

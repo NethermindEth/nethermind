@@ -9,7 +9,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
-using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State
 {
@@ -39,11 +38,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
-        {
-            EvmMetrics.IncrementStorageWrites();
-            PushUpdate(in storageCell, newValue);
-        }
+        public virtual void Set(in StorageCell storageCell, byte[] newValue) => PushUpdate(in storageCell, newValue);
 
         /// <summary>
         /// Creates a restartable snapshot.

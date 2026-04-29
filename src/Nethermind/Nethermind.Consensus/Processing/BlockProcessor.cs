@@ -126,7 +126,9 @@ public partial class BlockProcessor(
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
+        long commitStart = Stopwatch.GetTimestamp();
         _stateProvider.Commit(spec, commitRoots: false);
+        Evm.Metrics.IncrementCommitTime(Stopwatch.GetElapsedTime(commitStart).Ticks);
 
         TxReceipt[] receipts;
         receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
@@ -135,7 +137,9 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
+        commitStart = Stopwatch.GetTimestamp();
         _stateProvider.Commit(spec, commitRoots: false);
+        Evm.Metrics.IncrementCommitTime(Stopwatch.GetElapsedTime(commitStart).Ticks);
 
         long bloomsStart = Stopwatch.GetTimestamp();
         CalculateBlooms(receipts);
@@ -155,13 +159,19 @@ public partial class BlockProcessor(
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        commitStart = Stopwatch.GetTimestamp();
         _stateProvider.Commit(spec, commitRoots: false);
+        Evm.Metrics.IncrementCommitTime(Stopwatch.GetElapsedTime(commitStart).Ticks);
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
+        long storageMerkleStart = Stopwatch.GetTimestamp();
         _stateProvider.Commit(spec, commitRoots: true);
+        long storageMerkleTicks = Stopwatch.GetElapsedTime(storageMerkleStart).Ticks;
+        Evm.Metrics.IncrementStateHashTime(storageMerkleTicks);
+        Evm.Metrics.IncrementStorageMerkleTime(storageMerkleTicks);
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
@@ -170,7 +180,11 @@ public partial class BlockProcessor(
 
         if (ShouldComputeStateRoot(header))
         {
+            long stateRootStart = Stopwatch.GetTimestamp();
             _stateProvider.RecalculateStateRoot();
+            long stateRootTicks = Stopwatch.GetElapsedTime(stateRootStart).Ticks;
+            Evm.Metrics.IncrementStateHashTime(stateRootTicks);
+            Evm.Metrics.IncrementStateRootTime(stateRootTicks);
             header.StateRoot = _stateProvider.StateRoot;
         }
 

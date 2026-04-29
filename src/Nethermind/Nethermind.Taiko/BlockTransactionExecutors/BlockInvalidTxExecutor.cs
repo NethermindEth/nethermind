@@ -73,8 +73,4 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         block.TrySetTransactions([.. correctTransactions]);
         return [.. receiptsTracer.TxReceipts];
     }
-
-    public void SetupTxTimingMetrics(Block block) { }
-    public long StartTxTimer() => 0;
-    public void StopTxTimer(int i, long txStart) { }
 }
