@@ -13,6 +13,38 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class HsstTests
 {
+    // ----- Helpers wrapping HsstReader/HsstEnumerator so the original test
+    //       bodies stay close to their pre-migration shape.
+
+    /// <summary>Exact-match lookup. Returns false when <paramref name="key"/> isn't present.</summary>
+    private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
+    {
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(key, out _)) { value = []; return false; }
+        Bound b = r.GetBound();
+        value = data.Slice((int)b.Offset, b.Length).ToArray();
+        return true;
+    }
+
+    /// <summary>Walk the HSST and materialise every (key, value) pair as byte arrays.</summary>
+    private static List<(byte[] Key, byte[] Value)> Materialize(ReadOnlySpan<byte> data)
+    {
+        List<(byte[] Key, byte[] Value)> entries = [];
+        SpanByteReader reader = new(data);
+        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        while (e.MoveNext())
+        {
+            byte[] k = e.Current.Key.ToArray();
+            Bound vb = e.Current.ValueBound;
+            byte[] v = data.Slice((int)vb.Offset, vb.Length).ToArray();
+            entries.Add((k, v));
+        }
+        return entries;
+    }
+
+    private static int CountEntries(ReadOnlySpan<byte> data) => Materialize(data).Count;
+
     [TestCase(0, 1)]
     [TestCase(1, 1)]
     [TestCase(127, 1)]
@@ -40,9 +72,8 @@ public class HsstTests
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) => { });
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(0));
-        Assert.That(hsst.TryGet("hello"u8, out _), Is.False);
+        Assert.That(CountEntries(data), Is.EqualTo(0));
+        Assert.That(TryGet(data, "hello"u8, out _), Is.False);
     }
 
     [Test]
@@ -64,14 +95,13 @@ public class HsstTests
             builder.Add("key1"u8, "value1"u8);
         });
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(1));
+        Assert.That(CountEntries(data), Is.EqualTo(1));
 
-        Assert.That(hsst.TryGet("key1"u8, out ReadOnlySpan<byte> val), Is.True);
+        Assert.That(TryGet(data, "key1"u8, out byte[] val), Is.True);
         Assert.That(Encoding.UTF8.GetString(val), Is.EqualTo("value1"));
 
-        Assert.That(hsst.TryGet("key2"u8, out _), Is.False);
-        Assert.That(hsst.TryGet("key0"u8, out _), Is.False);
+        Assert.That(TryGet(data, "key2"u8, out _), Is.False);
+        Assert.That(TryGet(data, "key0"u8, out _), Is.False);
     }
 
     [TestCase(2)]
@@ -100,19 +130,18 @@ public class HsstTests
             }
         });
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(count));
+        Assert.That(CountEntries(data), Is.EqualTo(count));
 
         expected.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.Ordinal));
 
         foreach ((string key, string value) in expected)
         {
-            Assert.That(hsst.TryGet(Encoding.UTF8.GetBytes(key), out ReadOnlySpan<byte> val), Is.True, $"Key {key} not found");
+            Assert.That(TryGet(data, Encoding.UTF8.GetBytes(key), out byte[] val), Is.True, $"Key {key} not found");
             Assert.That(Encoding.UTF8.GetString(val), Is.EqualTo(value));
         }
 
-        Assert.That(hsst.TryGet("zzz_not_exist"u8, out _), Is.False);
-        Assert.That(hsst.TryGet(""u8, out _), Is.False);
+        Assert.That(TryGet(data, "zzz_not_exist"u8, out _), Is.False);
+        Assert.That(TryGet(data, ""u8, out _), Is.False);
     }
 
     [TestCase(1)]
@@ -139,15 +168,10 @@ public class HsstTests
         List<string> expectedKeys = entries.ConvertAll(e => e.Key);
         expectedKeys.Sort(StringComparer.Ordinal);
 
-        Hsst.Hsst hsst = new(data);
-
-        int idx = 0;
-        foreach (Hsst.Hsst.KeyValueEntry entry in hsst)
-        {
-            Assert.That(Encoding.UTF8.GetString(entry.Key), Is.EqualTo(expectedKeys[idx]));
-            idx++;
-        }
-        Assert.That(idx, Is.EqualTo(count));
+        List<(byte[] Key, byte[] Value)> actual = Materialize(data);
+        Assert.That(actual.Count, Is.EqualTo(count));
+        for (int i = 0; i < count; i++)
+            Assert.That(Encoding.UTF8.GetString(actual[i].Key), Is.EqualTo(expectedKeys[i]));
     }
 
     [Test]
@@ -165,16 +189,15 @@ public class HsstTests
             builder.Add(longKey, "x"u8);
         });
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(3));
+        Assert.That(CountEntries(data), Is.EqualTo(3));
 
-        Assert.That(hsst.TryGet("a"u8, out ReadOnlySpan<byte> v1), Is.True);
+        Assert.That(TryGet(data, "a"u8, out byte[] v1), Is.True);
         Assert.That(v1.Length, Is.EqualTo(0));
 
-        Assert.That(hsst.TryGet("b"u8, out ReadOnlySpan<byte> v2), Is.True);
-        Assert.That(v2.SequenceEqual(longValue), Is.True);
+        Assert.That(TryGet(data, "b"u8, out byte[] v2), Is.True);
+        Assert.That(v2.AsSpan().SequenceEqual(longValue), Is.True);
 
-        Assert.That(hsst.TryGet(longKey, out ReadOnlySpan<byte> v3), Is.True);
+        Assert.That(TryGet(data, longKey, out byte[] v3), Is.True);
         Assert.That(Encoding.UTF8.GetString(v3), Is.EqualTo("x"));
     }
 
@@ -202,23 +225,21 @@ public class HsstTests
             }
         });
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(count));
+        Assert.That(CountEntries(data), Is.EqualTo(count));
 
         foreach ((byte[] key, byte[] value) in entries)
         {
-            Assert.That(hsst.TryGet(key, out ReadOnlySpan<byte> val), Is.True);
-            Assert.That(val.SequenceEqual(value), Is.True);
+            Assert.That(TryGet(data, key, out byte[] val), Is.True);
+            Assert.That(val.AsSpan().SequenceEqual(value), Is.True);
         }
 
-        int idx = 0;
-        foreach (Hsst.Hsst.KeyValueEntry entry in hsst)
+        List<(byte[] Key, byte[] Value)> actual = Materialize(data);
+        Assert.That(actual.Count, Is.EqualTo(count));
+        for (int i = 0; i < count; i++)
         {
-            Assert.That(entry.Key.SequenceEqual(entries[idx].Key), Is.True);
-            Assert.That(entry.Value.SequenceEqual(entries[idx].Value), Is.True);
-            idx++;
+            Assert.That(actual[i].Key.AsSpan().SequenceEqual(entries[i].Key), Is.True);
+            Assert.That(actual[i].Value.AsSpan().SequenceEqual(entries[i].Value), Is.True);
         }
-        Assert.That(idx, Is.EqualTo(count));
     }
 
     /// <summary>
@@ -245,24 +266,22 @@ public class HsstTests
                 builder.Add(Convert.FromHexString(key), Convert.FromHexString(value));
         }, maxLeafEntries: 4);
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(hexEntries.Length));
+        Assert.That(CountEntries(data), Is.EqualTo(hexEntries.Length));
 
         foreach ((string key, string value) in hexEntries)
         {
             byte[] keyBytes = Convert.FromHexString(key);
-            Assert.That(hsst.TryGet(keyBytes, out ReadOnlySpan<byte> val), Is.True, $"Key {key} not found");
-            Assert.That(val.SequenceEqual(Convert.FromHexString(value)), Is.True);
+            Assert.That(TryGet(data, keyBytes, out byte[] val), Is.True, $"Key {key} not found");
+            Assert.That(val.AsSpan().SequenceEqual(Convert.FromHexString(value)), Is.True);
         }
 
-        int idx = 0;
-        foreach (Hsst.Hsst.KeyValueEntry entry in hsst)
+        List<(byte[] Key, byte[] Value)> actual = Materialize(data);
+        Assert.That(actual.Count, Is.EqualTo(hexEntries.Length));
+        for (int i = 0; i < hexEntries.Length; i++)
         {
-            Assert.That(entry.Key.SequenceEqual(Convert.FromHexString(hexEntries[idx].Key)), Is.True);
-            Assert.That(entry.Value.SequenceEqual(Convert.FromHexString(hexEntries[idx].Value)), Is.True);
-            idx++;
+            Assert.That(actual[i].Key.AsSpan().SequenceEqual(Convert.FromHexString(hexEntries[i].Key)), Is.True);
+            Assert.That(actual[i].Value.AsSpan().SequenceEqual(Convert.FromHexString(hexEntries[i].Value)), Is.True);
         }
-        Assert.That(idx, Is.EqualTo(hexEntries.Length));
     }
 
     [TestCase(100, 4, 32, 32, 42)]
@@ -299,24 +318,22 @@ public class HsstTests
                 builder.Add(key, value);
         }, maxLeafEntries);
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(deduped.Count));
+        Assert.That(CountEntries(data), Is.EqualTo(deduped.Count));
 
         foreach ((byte[] key, byte[] value) in deduped)
         {
-            Assert.That(hsst.TryGet(key, out ReadOnlySpan<byte> val), Is.True,
+            Assert.That(TryGet(data, key, out byte[] val), Is.True,
                 $"Key {BitConverter.ToString(key)} not found");
-            Assert.That(val.SequenceEqual(value), Is.True);
+            Assert.That(val.AsSpan().SequenceEqual(value), Is.True);
         }
 
-        int idx = 0;
-        foreach (Hsst.Hsst.KeyValueEntry entry in hsst)
+        List<(byte[] Key, byte[] Value)> actual = Materialize(data);
+        Assert.That(actual.Count, Is.EqualTo(deduped.Count));
+        for (int i = 0; i < deduped.Count; i++)
         {
-            Assert.That(entry.Key.SequenceEqual(deduped[idx].Key), Is.True);
-            Assert.That(entry.Value.SequenceEqual(deduped[idx].Value), Is.True);
-            idx++;
+            Assert.That(actual[i].Key.AsSpan().SequenceEqual(deduped[i].Key), Is.True);
+            Assert.That(actual[i].Value.AsSpan().SequenceEqual(deduped[i].Value), Is.True);
         }
-        Assert.That(idx, Is.EqualTo(deduped.Count));
     }
 
     [TestCase(100, 32, 32, 42, 0)]
@@ -351,14 +368,13 @@ public class HsstTests
                 builder.Add(key, value);
         }, minSeparatorLength: minSepLen);
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(deduped.Count));
+        Assert.That(CountEntries(data), Is.EqualTo(deduped.Count));
 
         foreach ((byte[] key, byte[] value) in deduped)
         {
-            Assert.That(hsst.TryGet(key, out ReadOnlySpan<byte> val), Is.True,
+            Assert.That(TryGet(data, key, out byte[] val), Is.True,
                 $"Key {BitConverter.ToString(key)} not found");
-            Assert.That(val.SequenceEqual(value), Is.True);
+            Assert.That(val.AsSpan().SequenceEqual(value), Is.True);
         }
 
         HashSet<byte[]> existingKeys = new(deduped.ConvertAll(e => e.Key), new ByteArrayComparer());
@@ -369,19 +385,18 @@ public class HsstTests
             byte[] randomKey = new byte[keyLen];
             negRng.NextBytes(randomKey);
             if (existingKeys.Contains(randomKey)) continue;
-            Assert.That(hsst.TryGet(randomKey, out _), Is.False,
+            Assert.That(TryGet(data, randomKey, out _), Is.False,
                 $"Non-existent key {BitConverter.ToString(randomKey)} falsely found");
             negChecked++;
         }
 
-        int idx = 0;
-        foreach (Hsst.Hsst.KeyValueEntry entry in hsst)
+        List<(byte[] Key, byte[] Value)> actual = Materialize(data);
+        Assert.That(actual.Count, Is.EqualTo(deduped.Count));
+        for (int i = 0; i < deduped.Count; i++)
         {
-            Assert.That(entry.Key.SequenceEqual(deduped[idx].Key), Is.True);
-            Assert.That(entry.Value.SequenceEqual(deduped[idx].Value), Is.True);
-            idx++;
+            Assert.That(actual[i].Key.AsSpan().SequenceEqual(deduped[i].Key), Is.True);
+            Assert.That(actual[i].Value.AsSpan().SequenceEqual(deduped[i].Value), Is.True);
         }
-        Assert.That(idx, Is.EqualTo(deduped.Count));
     }
 
     [TestCase(100, 4, 32, 32, 42, 30)]
@@ -413,14 +428,13 @@ public class HsstTests
                 builder.Add(key, value);
         }, maxLeafEntries: maxLeaf, minSeparatorLength: minSepLen);
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(deduped.Count));
+        Assert.That(CountEntries(data), Is.EqualTo(deduped.Count));
 
         foreach ((byte[] key, byte[] value) in deduped)
         {
-            Assert.That(hsst.TryGet(key, out ReadOnlySpan<byte> val), Is.True,
+            Assert.That(TryGet(data, key, out byte[] val), Is.True,
                 $"Key {BitConverter.ToString(key)} not found");
-            Assert.That(val.SequenceEqual(value), Is.True);
+            Assert.That(val.AsSpan().SequenceEqual(value), Is.True);
         }
 
         HashSet<byte[]> existingKeys = new(deduped.ConvertAll(e => e.Key), new ByteArrayComparer());
@@ -431,18 +445,17 @@ public class HsstTests
             byte[] randomKey = new byte[keyLen];
             negRng.NextBytes(randomKey);
             if (existingKeys.Contains(randomKey)) continue;
-            Assert.That(hsst.TryGet(randomKey, out _), Is.False);
+            Assert.That(TryGet(data, randomKey, out _), Is.False);
             negChecked++;
         }
 
-        int idx = 0;
-        foreach (Hsst.Hsst.KeyValueEntry entry in hsst)
+        List<(byte[] Key, byte[] Value)> actual = Materialize(data);
+        Assert.That(actual.Count, Is.EqualTo(deduped.Count));
+        for (int i = 0; i < deduped.Count; i++)
         {
-            Assert.That(entry.Key.SequenceEqual(deduped[idx].Key), Is.True);
-            Assert.That(entry.Value.SequenceEqual(deduped[idx].Value), Is.True);
-            idx++;
+            Assert.That(actual[i].Key.AsSpan().SequenceEqual(deduped[i].Key), Is.True);
+            Assert.That(actual[i].Value.AsSpan().SequenceEqual(deduped[i].Value), Is.True);
         }
-        Assert.That(idx, Is.EqualTo(deduped.Count));
     }
 
     [Test]
@@ -454,8 +467,7 @@ public class HsstTests
             builder.Add("key"u8, "value2"u8);
         });
 
-        Hsst.Hsst hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(2));
+        Assert.That(CountEntries(data), Is.EqualTo(2));
     }
 
     [Test]
@@ -471,15 +483,13 @@ public class HsstTests
             builder.Add([0x00], innerData);
         });
 
-        Hsst.Hsst outer = new(outerData);
-        Assert.That(outer.EntryCount, Is.EqualTo(1));
-        Assert.That(outer.TryGet([0x00], out ReadOnlySpan<byte> columnData), Is.True);
-        Assert.That(columnData.ToArray(), Is.EqualTo(innerData));
+        Assert.That(CountEntries(outerData), Is.EqualTo(1));
+        Assert.That(TryGet(outerData, [0x00], out byte[] columnData), Is.True);
+        Assert.That(columnData, Is.EqualTo(innerData));
 
-        Hsst.Hsst inner = new(columnData);
-        Assert.That(inner.EntryCount, Is.EqualTo(1));
-        Assert.That(inner.TryGet([0x01, 0x02], out ReadOnlySpan<byte> value), Is.True);
-        Assert.That(value.ToArray(), Is.EqualTo(new byte[] { 0xAA, 0xBB }));
+        Assert.That(CountEntries(columnData), Is.EqualTo(1));
+        Assert.That(TryGet(columnData, [0x01, 0x02], out byte[] value), Is.True);
+        Assert.That(value, Is.EqualTo(new byte[] { 0xAA, 0xBB }));
     }
 
     [Test]
@@ -512,17 +522,15 @@ public class HsstTests
             builder.Add([0x08], emptyInner);
         });
 
-        Hsst.Hsst outer = new(outerData);
-        Assert.That(outer.EntryCount, Is.EqualTo(9));
+        Assert.That(CountEntries(outerData), Is.EqualTo(9));
 
-        Assert.That(outer.TryGet([0x00], out ReadOnlySpan<byte> columnData), Is.True);
+        Assert.That(TryGet(outerData, [0x00], out byte[] columnData), Is.True);
         Assert.That(columnData.Length, Is.EqualTo(accountsInner.Length));
-        Assert.That(columnData.ToArray(), Is.EqualTo(accountsInner));
+        Assert.That(columnData, Is.EqualTo(accountsInner));
 
-        Hsst.Hsst inner = new(columnData);
-        Assert.That(inner.EntryCount, Is.EqualTo(1));
-        Assert.That(inner.TryGet(addr, out ReadOnlySpan<byte> value), Is.True);
-        Assert.That(value.ToArray(), Is.EqualTo(accountRlp));
+        Assert.That(CountEntries(columnData), Is.EqualTo(1));
+        Assert.That(TryGet(columnData, addr, out byte[] value), Is.True);
+        Assert.That(value, Is.EqualTo(accountRlp));
     }
 
     private sealed class ByteArrayComparer : IEqualityComparer<byte[]>
@@ -561,13 +569,12 @@ public class HsstTests
         }
         int len = writer.Written;
 
-        Hsst.Hsst outerHsst = new(buffer.AsSpan(0, len));
-        Assert.That(outerHsst.EntryCount, Is.EqualTo(1));
-        Assert.That(outerHsst.TryGet("tag"u8, out ReadOnlySpan<byte> innerData), Is.True);
-        Hsst.Hsst innerHsst = new(innerData);
-        Assert.That(innerHsst.EntryCount, Is.EqualTo(2));
-        Assert.That(innerHsst.TryGet("key1"u8, out ReadOnlySpan<byte> v1), Is.True);
-        Assert.That(v1.ToArray(), Is.EqualTo("val1"u8.ToArray()));
+        ReadOnlySpan<byte> outerSpan = buffer.AsSpan(0, len);
+        Assert.That(CountEntries(outerSpan), Is.EqualTo(1));
+        Assert.That(TryGet(outerSpan, "tag"u8, out byte[] innerData), Is.True);
+        Assert.That(CountEntries(innerData), Is.EqualTo(2));
+        Assert.That(TryGet(innerData, "key1"u8, out byte[] v1), Is.True);
+        Assert.That(v1, Is.EqualTo("val1"u8.ToArray()));
     }
 
     [Test]
@@ -606,14 +613,13 @@ public class HsstTests
         finally { outer.Dispose(); }
         int len = writer.Written;
 
-        Hsst.Hsst outerHsst = new(buffer.AsSpan(0, len));
-        Assert.That(outerHsst.EntryCount, Is.EqualTo(3));
-        Assert.That(outerHsst.TryGet([0x00], out ReadOnlySpan<byte> col0), Is.True, "col0");
-        Hsst.Hsst inner0 = new(col0);
-        Assert.That(inner0.EntryCount, Is.EqualTo(2));
-        Assert.That(inner0.TryGet("from"u8, out ReadOnlySpan<byte> fromVal), Is.True);
-        Assert.That(fromVal.ToArray(), Is.EqualTo("block0"u8.ToArray()));
-        Assert.That(outerHsst.TryGet([0x01], out ReadOnlySpan<byte> col1), Is.True, "col1");
-        Assert.That(outerHsst.TryGet([0x02], out ReadOnlySpan<byte> col2), Is.True, "col2");
+        ReadOnlySpan<byte> outerSpan = buffer.AsSpan(0, len);
+        Assert.That(CountEntries(outerSpan), Is.EqualTo(3));
+        Assert.That(TryGet(outerSpan, [0x00], out byte[] col0), Is.True, "col0");
+        Assert.That(CountEntries(col0), Is.EqualTo(2));
+        Assert.That(TryGet(col0, "from"u8, out byte[] fromVal), Is.True);
+        Assert.That(fromVal, Is.EqualTo("block0"u8.ToArray()));
+        Assert.That(TryGet(outerSpan, [0x01], out _), Is.True, "col1");
+        Assert.That(TryGet(outerSpan, [0x02], out _), Is.True, "col2");
     }
 }

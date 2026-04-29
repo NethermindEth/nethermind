@@ -13,7 +13,7 @@ internal static class HsstTestUtil
     /// <summary>
     /// Helper for tests: Create builder, execute action, dispose and return result.
     /// </summary>
-    public static byte[] BuildToArray(BuildAction buildAction, int maxLeafEntries = Hsst.Hsst.MaxLeafEntries, int minSeparatorLength = 0)
+    public static byte[] BuildToArray(BuildAction buildAction, int maxLeafEntries = HsstBuilder<PooledByteBufferWriter.Writer>.MaxLeafEntries, int minSeparatorLength = 0)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
         HsstBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), minSeparatorLength);

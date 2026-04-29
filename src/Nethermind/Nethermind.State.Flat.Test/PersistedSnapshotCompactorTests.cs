@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
@@ -153,16 +154,26 @@ public class PersistedSnapshotCompactorTests
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
         // Read merged bytes directly to verify metadata
-        Hsst.Hsst outer = new(merged);
-        Assert.That(outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaColumn), Is.True);
-        Hsst.Hsst meta = new(metaColumn);
+        SpanByteReader mergedReader = new(merged);
+        HsstReader<SpanByteReader, NoOpPin> outerReader = new(in mergedReader);
+        Assert.That(outerReader.TrySeek(PersistedSnapshot.MetadataTag, out _), Is.True);
+        Bound metaBound = outerReader.GetBound();
+        ReadOnlySpan<byte> metaColumn = merged.AsSpan((int)metaBound.Offset, metaBound.Length);
+
+        SpanByteReader metaReader = new(metaColumn);
 
         // "noderefs" key with value [0x01]
-        Assert.That(meta.TryGet("noderefs"u8, out ReadOnlySpan<byte> nodeRefsValue), Is.True);
+        HsstReader<SpanByteReader, NoOpPin> nodeRefsR = new(in metaReader);
+        Assert.That(nodeRefsR.TrySeek("noderefs"u8, out _), Is.True);
+        Bound nodeRefsBound = nodeRefsR.GetBound();
+        ReadOnlySpan<byte> nodeRefsValue = metaColumn.Slice((int)nodeRefsBound.Offset, nodeRefsBound.Length);
         Assert.That(nodeRefsValue.ToArray(), Is.EqualTo(new byte[] { 0x01 }));
 
         // "ref_ids" key with both base snapshot IDs as LE int32s
-        Assert.That(meta.TryGet("ref_ids"u8, out ReadOnlySpan<byte> refIdsValue), Is.True);
+        HsstReader<SpanByteReader, NoOpPin> refIdsR = new(in metaReader);
+        Assert.That(refIdsR.TrySeek("ref_ids"u8, out _), Is.True);
+        Bound refIdsBound = refIdsR.GetBound();
+        ReadOnlySpan<byte> refIdsValue = metaColumn.Slice((int)refIdsBound.Offset, refIdsBound.Length);
         Assert.That(refIdsValue.Length, Is.EqualTo(8)); // 2 IDs × 4 bytes
 
         // ReadRefIdsFromMetadata should return both IDs
