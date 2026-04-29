@@ -142,7 +142,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                 int i = _data.Index.GetNext();
                 while (i < _data.ToExclusive)
                 {
-                    if (_data.CancellationToken.IsCancellationRequested) return;
+                    // Stop pulling work once cancelled or another worker has faulted.
+                    if (_data.CancellationToken.IsCancellationRequested || _data.IsFaulted) return;
                     _data.Action(i);
                     i = _data.Index.GetNext();
                 }
@@ -207,13 +208,19 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public int ActiveThreads => Volatile.Read(ref _activeThreads);
 
         /// <summary>
+        /// Whether any worker has captured an exception. Used by workers to short-circuit
+        /// fetching new indices once the operation is already faulted.
+        /// </summary>
+        public bool IsFaulted => Volatile.Read(ref _exception) is not null;
+
+        /// <summary>
         /// Captures the first exception observed by any worker so it can be rethrown on the
         /// calling thread. Subsequent exceptions are dropped.
         /// </summary>
         public void CaptureException(Exception exception)
         {
             // Skip the (non-trivial) ExceptionDispatchInfo.Capture call once we already have one.
-            if (Volatile.Read(ref _exception) is not null) return;
+            if (IsFaulted) return;
 
             // Only the first exception wins; any later ones are discarded.
             Interlocked.CompareExchange(ref _exception, ExceptionDispatchInfo.Capture(exception), null);
@@ -222,7 +229,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// <summary>
         /// Rethrows the first captured exception (preserving its original stack trace), if any.
         /// </summary>
-        public void ThrowIfFaulted() => _exception?.Throw();
+        public void ThrowIfFaulted() => Volatile.Read(ref _exception)?.Throw();
 
         /// <summary>
         /// Marks a thread as completed.
@@ -321,13 +328,18 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public void Execute()
         {
             TLocal? value = default;
+            // Track Init success so a throwing Init does not leak into Finally with default(TLocal)
+            // — matches BCL Parallel.For<TLocal>, which only invokes localFinally when localInit ran.
+            bool initSucceeded = false;
             try
             {
                 value = _data.Init();
+                initSucceeded = true;
                 int i = _data.Index.GetNext();
                 while (i < _data.ToExclusive)
                 {
-                    if (_data.CancellationToken.IsCancellationRequested) return;
+                    // Stop pulling work once cancelled or another worker has faulted.
+                    if (_data.CancellationToken.IsCancellationRequested || _data.IsFaulted) return;
                     value = _data.Action(i, value);
                     i = _data.Index.GetNext();
                 }
@@ -340,15 +352,18 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             }
             finally
             {
-                // A throwing Finally must not skip MarkThreadCompleted, or the calling thread hangs
-                // on the semaphore. Capture and continue.
-                try
+                if (initSucceeded)
                 {
-                    _data.Finally(value!);
-                }
-                catch (Exception ex)
-                {
-                    _data.CaptureException(ex);
+                    // A throwing Finally must not skip MarkThreadCompleted, or the calling thread
+                    // hangs on the semaphore. Capture and continue.
+                    try
+                    {
+                        _data.Finally(value!);
+                    }
+                    catch (Exception ex)
+                    {
+                        _data.CaptureException(ex);
+                    }
                 }
                 _data.MarkThreadCompleted();
             }
