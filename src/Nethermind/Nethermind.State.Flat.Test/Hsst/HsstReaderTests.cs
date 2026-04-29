@@ -21,7 +21,7 @@ public class HsstReaderTests
 
     private static string ReadValue(ref SpanByteReader reader)
     {
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Span<byte> buf = new byte[r.GetBound().Length];
         r.GetValue(buf);
         return Encoding.UTF8.GetString(buf);
@@ -33,7 +33,7 @@ public class HsstReaderTests
     {
         byte[] data = BuildHsst(("a", "alpha"), ("b", "beta"), ("key1", "value1"), ("key2", "value2"));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         Assert.That(r.TrySeek(Encoding.UTF8.GetBytes(key), out _), Is.True);
         Span<byte> buf = new byte[r.GetBound().Length];
@@ -46,7 +46,7 @@ public class HsstReaderTests
     {
         byte[] data = BuildHsst(("b", "beta"), ("c", "gamma"));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         Assert.That(r.TrySeek("a"u8, out _), Is.False);
     }
@@ -56,7 +56,7 @@ public class HsstReaderTests
     {
         byte[] data = BuildHsst(("a", "alpha"), ("b", "beta"));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         Assert.That(r.TrySeek("z"u8, out _), Is.True);
         Span<byte> buf = new byte[r.GetBound().Length];
@@ -69,7 +69,7 @@ public class HsstReaderTests
     {
         byte[] data = BuildHsst(("a", "alpha"), ("c", "gamma"));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         // "b" is between "a" and "c" — floor is "a"
         Assert.That(r.TrySeek("b"u8, out _), Is.True);
@@ -83,7 +83,7 @@ public class HsstReaderTests
     {
         byte[] data = BuildHsst(("a", "alpha"), ("b", "beta"), ("c", "gamma"));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         // Seek to "a", save root bound
         r.TrySeek("a"u8, out Bound rootBound);
@@ -129,7 +129,7 @@ public class HsstReaderTests
 
             Assert.That(hsst.TryGet(keyBytes, out ReadOnlySpan<byte> spanVal), Is.True, $"Hsst.TryGet failed for {key}");
 
-            using HsstReader<SpanByteReader> r = new(in reader);
+            using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
             Bound root = r.GetBound();
             Assert.That(r.TrySeek(keyBytes, out _), Is.True, $"TrySeek failed for {key}");
             Span<byte> buf = new byte[r.GetBound().Length];
@@ -143,7 +143,7 @@ public class HsstReaderTests
     {
         byte[] data = BuildHsst(("key", "hello"));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         r.TrySeek("key"u8, out _);
         Assert.That(r.GetBound().Length, Is.EqualTo(5)); // "hello"
@@ -159,7 +159,7 @@ public class HsstReaderTests
     {
         byte[] data = BuildHsst(("a", "alpha"), ("b", "beta"));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         Bound original = r.GetBound();
         r.TrySeek("b"u8, out _);
@@ -185,7 +185,7 @@ public class HsstReaderTests
         });
 
         SpanByteReader reader = new(outerData);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         // Descend into "addr1"
         Assert.That(r.TrySeek("addr1"u8, out Bound outerBound), Is.True);
@@ -216,7 +216,7 @@ public class HsstReaderTests
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) => { });
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Assert.That(r.TrySeek("hello"u8, out _), Is.False);
     }
 
@@ -227,7 +227,7 @@ public class HsstReaderTests
             builder.Add("key"u8, "value"u8));
         Assert.That(data[0], Is.EqualTo(0x01));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Assert.That(r.TrySeek("key"u8, out _), Is.True);
     }
 
@@ -237,7 +237,7 @@ public class HsstReaderTests
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
             builder.Add("key1"u8, "value1"u8));
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         // Exact match
@@ -281,7 +281,7 @@ public class HsstReaderTests
         expected.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.Ordinal));
 
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         foreach ((string key, string value) in expected)
@@ -314,7 +314,7 @@ public class HsstReaderTests
         });
 
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         r.SetBound(root);
@@ -357,7 +357,7 @@ public class HsstReaderTests
         });
 
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         foreach ((byte[] key, byte[] value) in entries)
@@ -392,7 +392,7 @@ public class HsstReaderTests
         }, maxLeafEntries: 4);
 
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         foreach ((string key, string value) in hexEntries)
@@ -439,7 +439,7 @@ public class HsstReaderTests
         }, maxLeafEntries);
 
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         foreach ((byte[] key, byte[] value) in deduped)
@@ -485,7 +485,7 @@ public class HsstReaderTests
         }, minSeparatorLength: minSepLen);
 
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         foreach ((byte[] key, byte[] value) in deduped)
@@ -528,7 +528,7 @@ public class HsstReaderTests
         }, maxLeafEntries: maxLeaf, minSeparatorLength: minSepLen);
 
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         foreach ((byte[] key, byte[] value) in deduped)
@@ -550,7 +550,7 @@ public class HsstReaderTests
             builder.Add("key"u8, "value2"u8);
         });
         SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Assert.That(r.TrySeek("key"u8, out _), Is.True);
         Assert.That(r.GetBound().Length, Is.GreaterThan(0));
     }
@@ -565,7 +565,7 @@ public class HsstReaderTests
             builder.Add([0x00], innerData));
 
         SpanByteReader reader = new(outerData);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         Assert.That(r.TrySeek([0x00], out Bound outerBound), Is.True);
         Assert.That(r.TrySeek([0x01, 0x02], out _), Is.True);
@@ -596,7 +596,7 @@ public class HsstReaderTests
         });
 
         SpanByteReader reader = new(outerData);
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         Assert.That(r.TrySeek([0x00], out Bound outerBound), Is.True);
@@ -628,7 +628,7 @@ public class HsstReaderTests
         int len = writer.Written;
 
         SpanByteReader reader = new(buffer.AsSpan(0, len));
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         Assert.That(r.TrySeek("tag"u8, out _), Is.True);
         Bound innerBound = r.GetBound();
@@ -681,7 +681,7 @@ public class HsstReaderTests
         int len = writer.Written;
 
         SpanByteReader reader = new(buffer.AsSpan(0, len));
-        using HsstReader<SpanByteReader> r = new(in reader);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Bound root = r.GetBound();
 
         Assert.That(r.TrySeek([0x00], out Bound outerBound), Is.True, "col0");
@@ -699,12 +699,12 @@ public class HsstReaderTests
     }
 
     /// <summary>
-    /// Forces the copy/rent fallback path inside <see cref="HsstReader{TReader}.TryLoadNode"/>:
-    /// every <see cref="IHsstByteReader.PinBuffer"/> rents a pooled buffer and copies into it,
+    /// Forces the copy/rent fallback path inside <see cref="HsstReader{TReader,TPin}.TryLoadNode"/>:
+    /// every <see cref="IHsstByteReader{TPin}.PinBuffer"/> rents a pooled buffer and copies into it,
     /// instead of returning a zero-copy slice. Mirrors what a paged or stream-backed reader
     /// would do when a requested range can't be served as a contiguous span.
     /// </summary>
-    private struct CopyOnlyByteReader(byte[] data) : IHsstByteReader
+    private struct CopyOnlyByteReader(byte[] data) : IHsstByteReader<PooledArrayPin>
     {
         private readonly byte[] _data = data;
 
@@ -717,11 +717,11 @@ public class HsstReaderTests
             return true;
         }
 
-        public readonly BufferPin PinBuffer(long offset, long size, out ReadOnlySpan<byte> buffer)
+        public readonly PooledArrayPin PinBuffer(long offset, long size, out ReadOnlySpan<byte> buffer)
         {
             if ((ulong)offset + (ulong)size > (ulong)_data.Length)
                 throw new ArgumentOutOfRangeException(nameof(offset));
-            BufferPin pin = BufferPin.RentForCopy((int)size, out Span<byte> rented);
+            PooledArrayPin pin = PooledArrayPin.Rent((int)size, out Span<byte> rented);
             _data.AsSpan((int)offset, (int)size).CopyTo(rented);
             buffer = rented;
             return pin;
@@ -745,7 +745,7 @@ public class HsstReaderTests
         });
 
         CopyOnlyByteReader reader = new(data);
-        using HsstReader<CopyOnlyByteReader> r = new(in reader);
+        using HsstReader<CopyOnlyByteReader, PooledArrayPin> r = new(in reader);
         Bound root = r.GetBound();
 
         foreach ((string key, string value) in entries)
