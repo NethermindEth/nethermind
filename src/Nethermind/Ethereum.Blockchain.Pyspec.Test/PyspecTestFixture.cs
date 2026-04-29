@@ -3,15 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
@@ -29,12 +23,7 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
     protected override bool? ParallelExecutionBatchReadOverride => false;
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test)
-    {
-        LegacyStateTestFixtureGuard.SkipIfBuggyEelsConversion(test);
-        Eip2935FixtureGuard.SkipIfInconsistentHistoryStorage(test);
-        Assert.That((await RunTest(test)).Pass, Is.True);
-    }
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
@@ -58,136 +47,11 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestB
     public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test)
-    {
-        LegacyStateTestFixtureGuard.SkipIfBuggyEelsConversion(test);
-        Eip2935FixtureGuard.SkipIfInconsistentHistoryStorage(test);
-        Assert.That((await RunTest(test)).Pass, Is.True);
-    }
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             $"fixtures/blockchain_tests_engine/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("EngineBlockchainTests")}").LoadTests<BlockchainTest>();
-}
-
-/// <summary>
-/// Skips pyspec blockchain tests whose fixtures were produced by EELS's legacy state-test
-/// conversion path (<c>ported_static/.../*_from_state_test*</c>). For Amsterdam, that path
-/// emits a BAL that omits the EIP-2935 / EIP-4788 system pre-block SSTORE entries that the
-/// real client actually executes. Telltale signal in the fixture is the legacy difficulty
-/// value <c>0x20000</c> baked into the post-merge mixHash field — real prevRandao is
-/// effectively random and would never be exactly <c>0x...020000</c>.
-/// Track upstream EELS fix; remove when a BAL fixture release ships with the SSTOREs included.
-/// </summary>
-internal static class LegacyStateTestFixtureGuard
-{
-    private const string LegacyDifficultySentinelMixHashSuffix = "0000000000000000000000000000000000000000000000000000000000020000";
-
-    public static void SkipIfBuggyEelsConversion(BlockchainTest test)
-    {
-        if (!HasLegacyDifficultySentinel(test)) return;
-        Assert.Ignore($"Skipped — EELS ported_static fixture for '{test.Name}' omits system pre-block SSTOREs from the BAL (legacy state-test conversion bug).");
-    }
-
-    private static bool HasLegacyDifficultySentinel(BlockchainTest test)
-    {
-        if (test.Blocks is not null)
-        {
-            foreach (TestBlockJson block in test.Blocks)
-            {
-                if (Matches(block.BlockHeader?.MixHash))
-                    return true;
-            }
-        }
-
-        if (test.EngineNewPayloads is not null)
-        {
-            // Engine variant: the post-merge prevRandao field replaces mixHash on the wire,
-            // and EELS preserves the same legacy 0x...020000 sentinel through the conversion.
-            foreach (TestEngineNewPayloadsJson payload in test.EngineNewPayloads)
-            {
-                if (payload.Params is null || payload.Params.Length == 0) continue;
-                JsonElement param = payload.Params[0];
-                if (param.ValueKind != JsonValueKind.Object) continue;
-                if (!param.TryGetProperty("prevRandao", out JsonElement prevRandao)) continue;
-                if (Matches(prevRandao.GetString()))
-                    return true;
-            }
-        }
-
-        return false;
-
-        // Match `0x` + 64 hex chars ending with the legacy difficulty value 0x20000.
-        static bool Matches(string value)
-        {
-            if (value is null) return false;
-            string hex = value.StartsWith("0x", StringComparison.Ordinal) ? value[2..] : value;
-            return hex.Length == 64
-                && hex.EndsWith(LegacyDifficultySentinelMixHashSuffix, StringComparison.OrdinalIgnoreCase);
-        }
-    }
-}
-
-/// <summary>
-/// Skips EEST engine fixtures whose post-state history storage contradicts the
-/// payload chain. EIP-2935 stores <c>block.parent.hash</c> at slot
-/// <c>(block.number - 1) % HISTORY_SERVE_WINDOW</c>; some snøbal-devnet-4
-/// withdrawal-request fixtures contain stale values after the last-minute
-/// static-cpsb fixture rebuild.
-/// </summary>
-internal static class Eip2935FixtureGuard
-{
-    public static void SkipIfInconsistentHistoryStorage(BlockchainTest test)
-    {
-        if (!HasInconsistentHistoryStorage(test, out string detail)) return;
-
-        Assert.Ignore($"Skipped — EEST fixture for '{test.Name}' has inconsistent EIP-2935 history storage ({detail}).");
-    }
-
-    private static bool HasInconsistentHistoryStorage(BlockchainTest test, out string detail)
-    {
-        detail = null;
-        if (test.EngineNewPayloads is null || test.PostState is null)
-            return false;
-
-        Address historyAddress = Eip2935Constants.BlockHashHistoryAddress;
-        if (!test.PostState.TryGetValue(historyAddress, out AccountState historyState))
-            return false;
-
-        Dictionary<UInt256, (string BlockNumber, string ParentHash)> expectedHistory = new();
-        foreach (TestEngineNewPayloadsJson payload in test.EngineNewPayloads)
-        {
-            if (payload.Params is null || payload.Params.Length == 0) continue;
-
-            JsonElement executionPayload = payload.Params[0];
-            if (executionPayload.ValueKind != JsonValueKind.Object) continue;
-            if (!executionPayload.TryGetProperty("blockNumber", out JsonElement blockNumberElement)) continue;
-            if (!executionPayload.TryGetProperty("parentHash", out JsonElement parentHashElement)) continue;
-
-            string blockNumberHex = blockNumberElement.GetString();
-            string parentHash = parentHashElement.GetString();
-            if (blockNumberHex is null || parentHash is null) continue;
-
-            long blockNumber = Convert.ToInt64(blockNumberHex[2..], 16);
-            if (blockNumber == 0) continue;
-
-            UInt256 storageSlot = new((ulong)((blockNumber - 1) % Eip2935Constants.RingBufferSize));
-            expectedHistory[storageSlot] = (blockNumberHex, parentHash);
-        }
-
-        foreach ((UInt256 storageSlot, (string blockNumberHex, string parentHash)) in expectedHistory)
-        {
-            if (!historyState.Storage.TryGetValue(storageSlot, out byte[] storedValue)) continue;
-
-            string storedHash = Hash256.FromBytesWithPadding(storedValue).ToString(true);
-            if (string.Equals(storedHash, parentHash, StringComparison.OrdinalIgnoreCase)) continue;
-
-            detail = $"block {blockNumberHex} parentHash {parentHash}, post-state slot {storageSlot.ToString(CultureInfo.InvariantCulture)} has {storedHash}";
-            return true;
-        }
-
-        return false;
-    }
 }
 
 /// <summary>
