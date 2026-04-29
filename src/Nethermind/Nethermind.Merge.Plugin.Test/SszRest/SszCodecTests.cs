@@ -214,10 +214,10 @@ public class SszCodecTests
 
         NewPayloadV4RequestWire wire = new()
         {
-            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(SszTestData.MakeV3Payload()),
+            ExecutionPayload = new SszExecutionPayloadV3(SszTestData.MakeV3Payload()),
             ExpectedBlobVersionedHashes = [TestItem.KeccakA, TestItem.KeccakB],
             ParentBeaconBlockRoot = TestItem.KeccakC,
-            ExecutionRequests = [new SszTransaction { Data = executionRequest }]
+            ExecutionRequests = [new SszTransaction { Bytes = executionRequest }]
         };
 
         byte[] encoded = NewPayloadV4RequestWire.Encode(wire);
@@ -247,10 +247,10 @@ public class SszCodecTests
 
         NewPayloadV5RequestWire wire = new()
         {
-            ExecutionPayload = ExecutionPayloadV4Ssz.Wrap(SszTestData.MakeV4Payload(blockAccessList, slotNumber)),
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList, slotNumber)),
             ExpectedBlobVersionedHashes = [TestItem.KeccakA],
             ParentBeaconBlockRoot = TestItem.KeccakD,
-            ExecutionRequests = [new SszTransaction { Data = executionRequest }]
+            ExecutionRequests = [new SszTransaction { Bytes = executionRequest }]
         };
 
         byte[] encoded = NewPayloadV5RequestWire.Encode(wire);

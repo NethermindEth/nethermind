@@ -104,24 +104,24 @@ public static class SszCodec
         if (version <= 1)
         {
             NewPayloadV1RequestWire.Decode(buf, out NewPayloadV1RequestWire w);
-            return (ExecutionPayloadV1Ssz.Unwrap(w.ExecutionPayload), [], null, null);
+            return (w.ExecutionPayload.Unwrap(), [], null, null);
         }
         if (version == 2)
         {
             NewPayloadV2RequestWire.Decode(buf, out NewPayloadV2RequestWire w);
-            return (ExecutionPayloadSsz.Unwrap(w.ExecutionPayload), [], null, null);
+            return (w.ExecutionPayload.Unwrap(), [], null, null);
         }
         if (version == 3)
         {
             NewPayloadV3RequestWire.Decode(buf, out NewPayloadV3RequestWire w);
-            ExecutionPayloadV3 ep = ExecutionPayloadV3Ssz.Unwrap(w.ExecutionPayload);
+            ExecutionPayloadV3 ep = w.ExecutionPayload.Unwrap();
             ep.ParentBeaconBlockRoot = w.ParentBeaconBlockRoot;
             return (ep, HashesFromWire(w.ExpectedBlobVersionedHashes), w.ParentBeaconBlockRoot, null);
         }
         if (version == 4)
         {
             NewPayloadV4RequestWire.Decode(buf, out NewPayloadV4RequestWire w);
-            ExecutionPayloadV3 ep = ExecutionPayloadV3Ssz.Unwrap(w.ExecutionPayload);
+            ExecutionPayloadV3 ep = w.ExecutionPayload.Unwrap();
             ep.ParentBeaconBlockRoot = w.ParentBeaconBlockRoot;
             return (ep,
                 HashesFromWire(w.ExpectedBlobVersionedHashes),
@@ -131,7 +131,7 @@ public static class SszCodec
         if (version == 5)
         {
             NewPayloadV5RequestWire.Decode(buf, out NewPayloadV5RequestWire w5);
-            ExecutionPayloadV4 ep5 = ExecutionPayloadV4Ssz.Unwrap(w5.ExecutionPayload);
+            ExecutionPayloadV4 ep5 = w5.ExecutionPayload.Unwrap();
             ep5.ParentBeaconBlockRoot = w5.ParentBeaconBlockRoot;
             return (ep5,
                 HashesFromWire(w5.ExpectedBlobVersionedHashes),
@@ -145,19 +145,19 @@ public static class SszCodec
     }
 
     public static (byte[] buffer, int length) EncodeGetPayloadV1Response(ExecutionPayload ep)
-        => EncodePooled(ExecutionPayloadV1Ssz.Wrap(ep));
+        => EncodePooled(new SszExecutionPayloadV1(ep));
 
     public static (byte[] buffer, int length) EncodeGetPayloadV2Response(GetPayloadV2Result? r)
         => EncodePooled(new GetPayloadResponseV2Wire
         {
-            ExecutionPayload = ExecutionPayloadSsz.Wrap(r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayload(r!.ExecutionPayload),
             BlockValue = r.BlockValue
         });
 
     public static (byte[] buffer, int length) EncodeGetPayloadV3Response(GetPayloadV3Result? r)
         => EncodePooled(new GetPayloadResponseV3Wire
         {
-            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = BlobsBundleToV1Wire(r.BlobsBundle),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder
@@ -166,7 +166,7 @@ public static class SszCodec
     public static (byte[] buffer, int length) EncodeGetPayloadV4Response(GetPayloadV4Result? r)
         => EncodePooled(new GetPayloadResponseV4Wire
         {
-            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = BlobsBundleToV1Wire(r.BlobsBundle),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -176,7 +176,7 @@ public static class SszCodec
     public static (byte[] buffer, int length) EncodeGetPayloadV5Response(GetPayloadV5Result? r)
         => EncodePooled(new GetPayloadResponseV5Wire
         {
-            ExecutionPayload = ExecutionPayloadV3Ssz.Wrap(r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = BlobsBundleToV2Wire(r.BlobsBundle),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -186,7 +186,7 @@ public static class SszCodec
     public static (byte[] buffer, int length) EncodeGetPayloadV6Response(GetPayloadV6Result? r)
         => EncodePooled(new GetPayloadResponseV6Wire
         {
-            ExecutionPayload = ExecutionPayloadV4Ssz.Wrap(r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV4((ExecutionPayloadV4)r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = BlobsBundleToV2Wire(r.BlobsBundle),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -290,7 +290,7 @@ public static class SszCodec
                     Transactions = TxsToWire(b.Transactions),
                     Withdrawals = WithdrawalsToWire(b.Withdrawals),
                     BlockAccessList = b.BlockAccessList is not null
-                        ? [new SszTransaction { Data = b.BlockAccessList }] : []
+                        ? [new SszTransaction { Bytes = b.BlockAccessList }] : []
                 }]
             };
         }
@@ -420,7 +420,7 @@ public static class SszCodec
     {
         if (txs.Count == 0) return [];
         SszTransaction[] result = new SszTransaction[txs.Count];
-        for (int i = 0; i < result.Length; i++) result[i] = new SszTransaction { Data = txs[i] };
+        for (int i = 0; i < result.Length; i++) result[i] = new SszTransaction { Bytes = txs[i] };
         return result;
     }
 
@@ -472,13 +472,13 @@ public static class SszCodec
         => WrapBytes(proofs, b => new SszKzgCommitment { Bytes = b });
 
     private static SszTransaction[] ExecutionRequestsToWire(byte[][]? reqs)
-        => reqs is null ? [] : WrapBytes(reqs, data => new SszTransaction { Data = data });
+        => reqs is null ? [] : WrapBytes(reqs, data => new SszTransaction { Bytes = data });
 
     private static byte[][]? ExecutionRequestsFromWire(SszTransaction[]? reqs)
     {
         if (reqs is null || reqs.Length == 0) return null;
         byte[][] result = new byte[reqs.Length][];
-        for (int i = 0; i < reqs.Length; i++) result[i] = reqs[i].Data ?? [];
+        for (int i = 0; i < reqs.Length; i++) result[i] = reqs[i].Bytes ?? [];
         return result;
     }
 

@@ -22,7 +22,7 @@ public partial struct SszBytes8
 [SszContainer(isCollectionItself: true)]
 public partial struct SszTransaction
 {
-    [SszList(0x4000_0000)] public byte[]? Data { get; set; }
+    [SszList(0x4000_0000)] public byte[]? Bytes { get; set; }
 }
 
 [SszContainer]
@@ -126,19 +126,19 @@ public partial struct ForkchoiceUpdatedResponseWire
 [SszContainer]
 public partial struct NewPayloadV1RequestWire
 {
-    public ExecutionPayloadV1Ssz ExecutionPayload { get; set; }
+    public SszExecutionPayloadV1 ExecutionPayload { get; set; }
 }
 
 [SszContainer]
 public partial struct NewPayloadV2RequestWire
 {
-    public ExecutionPayloadSsz ExecutionPayload { get; set; }
+    public SszExecutionPayload ExecutionPayload { get; set; }
 }
 
 [SszContainer]
 public partial struct NewPayloadV3RequestWire
 {
-    public ExecutionPayloadV3Ssz ExecutionPayload { get; set; }
+    public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     [SszList(4096)] public Hash256[]? ExpectedBlobVersionedHashes { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
 }
@@ -146,7 +146,7 @@ public partial struct NewPayloadV3RequestWire
 [SszContainer]
 public partial struct NewPayloadV4RequestWire
 {
-    public ExecutionPayloadV3Ssz ExecutionPayload { get; set; }
+    public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     [SszList(4096)] public Hash256[]? ExpectedBlobVersionedHashes { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
@@ -155,7 +155,7 @@ public partial struct NewPayloadV4RequestWire
 [SszContainer]
 public partial struct NewPayloadV5RequestWire
 {
-    public ExecutionPayloadV4Ssz ExecutionPayload { get; set; }
+    public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     [SszList(4096)] public Hash256[]? ExpectedBlobVersionedHashes { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
@@ -192,14 +192,14 @@ public partial struct BlobsBundleV2Wire
 [SszContainer]
 public partial struct GetPayloadResponseV2Wire
 {
-    public ExecutionPayloadSsz ExecutionPayload { get; set; }
+    public SszExecutionPayload ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
 }
 
 [SszContainer]
 public partial struct GetPayloadResponseV3Wire
 {
-    public ExecutionPayloadV3Ssz ExecutionPayload { get; set; }
+    public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV1Wire BlobsBundle { get; set; }
     public bool ShouldOverrideBuilder { get; set; }
@@ -208,7 +208,7 @@ public partial struct GetPayloadResponseV3Wire
 [SszContainer]
 public partial struct GetPayloadResponseV4Wire
 {
-    public ExecutionPayloadV3Ssz ExecutionPayload { get; set; }
+    public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV1Wire BlobsBundle { get; set; }
     public bool ShouldOverrideBuilder { get; set; }
@@ -218,7 +218,7 @@ public partial struct GetPayloadResponseV4Wire
 [SszContainer]
 public partial struct GetPayloadResponseV5Wire
 {
-    public ExecutionPayloadV3Ssz ExecutionPayload { get; set; }
+    public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV2Wire BlobsBundle { get; set; }
     public bool ShouldOverrideBuilder { get; set; }
@@ -228,7 +228,7 @@ public partial struct GetPayloadResponseV5Wire
 [SszContainer]
 public partial struct GetPayloadResponseV6Wire
 {
-    public ExecutionPayloadV4Ssz ExecutionPayload { get; set; }
+    public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV2Wire BlobsBundle { get; set; }
     public bool ShouldOverrideBuilder { get; set; }

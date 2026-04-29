@@ -543,13 +543,13 @@ public class SszMiddlewareTests
     private static byte[] BuildMinimalV1NewPayloadRequest() =>
         NewPayloadV1RequestWire.Encode(new NewPayloadV1RequestWire
         {
-            ExecutionPayload = ExecutionPayloadV1Ssz.Wrap(SszTestData.MakeMinimalPayload())
+            ExecutionPayload = new SszExecutionPayloadV1(SszTestData.MakeMinimalPayload())
         });
 
     private static byte[] BuildMinimalV2NewPayloadRequest() =>
         NewPayloadV2RequestWire.Encode(new NewPayloadV2RequestWire
         {
-            ExecutionPayload = ExecutionPayloadSsz.Wrap(SszTestData.MakeMinimalPayload())
+            ExecutionPayload = new SszExecutionPayload(SszTestData.MakeMinimalPayload())
         });
 
     private static byte[] BuildForkchoiceRequest()
