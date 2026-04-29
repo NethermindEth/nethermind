@@ -192,7 +192,7 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
         }
 
         long snapshotSize = new FileInfo(snapshotPath).Length;
-        long required = snapshotSize * 2.5;
+        long required = (long)(snapshotSize * 2.5);
 
         foreach (IDriveInfo drive in drives)
         {
