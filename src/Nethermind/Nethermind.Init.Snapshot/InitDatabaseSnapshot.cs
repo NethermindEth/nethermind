@@ -107,6 +107,7 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
             return;
 
         TimeSpan retryDelay = TimeSpan.FromSeconds(InitialRetryDelaySeconds);
+        long lastSize = GetFileSize(destinationPath);
 
         while (true)
         {
@@ -126,6 +127,11 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
             }
             catch (Exception e) when (e is IOException or HttpRequestException)
             {
+                long currentSize = GetFileSize(destinationPath);
+                if (currentSize > lastSize)
+                    retryDelay = TimeSpan.FromSeconds(InitialRetryDelaySeconds);
+                lastSize = currentSize;
+
                 if (_logger.IsError)
                     _logger.Error($"Snapshot download failed. Retrying in {retryDelay.TotalSeconds}s. Error: {e}");
                 await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
@@ -134,6 +140,12 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
         }
 
         checkpoint.Advance(SnapshotStage.Downloaded);
+    }
+
+    private long GetFileSize(string path)
+    {
+        IFileInfo file = api.FileSystem.FileInfo.New(path);
+        return file.Exists ? file.Length : 0;
     }
 
     private async Task<bool> VerifyChecksumAsync(
