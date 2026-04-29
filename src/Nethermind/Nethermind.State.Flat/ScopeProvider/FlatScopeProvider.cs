@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -14,6 +15,7 @@ public class FlatScopeProvider(
     IFlatDbManager flatDbManager,
     IFlatDbConfig configuration,
     ITrieWarmer trieWarmer,
+    IProcessExitSource processExitSource,
     ResourcePool.Usage usage,
     ILogManager logManager,
     bool isReadOnly)
@@ -35,6 +37,7 @@ public class FlatScopeProvider(
             flatDbManager,
             configuration,
             trieWarmer,
+            processExitSource,
             logManager,
             isReadOnly: isReadOnly);
     }

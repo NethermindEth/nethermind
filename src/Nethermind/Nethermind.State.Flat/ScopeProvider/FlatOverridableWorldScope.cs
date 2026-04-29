@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -33,6 +34,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
+        IProcessExitSource processExitSource,
         ILogManager logManager)
     {
         GlobalStateReader = new OverridableStateReader(this);
@@ -45,6 +47,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             configuration,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
+            processExitSource,
             logManager);
     }
 
@@ -126,6 +129,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
+        IProcessExitSource processExitSource,
         ILogManager logManager)
         : IWorldStateScopeProvider
     {
@@ -143,6 +147,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 flatOverrideScope,
                 configuration,
                 trieWarmer,
+                processExitSource,
                 logManager);
         }
     }

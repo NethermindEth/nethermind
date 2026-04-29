@@ -5,6 +5,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -23,6 +25,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
     private readonly ILogManager _logManager;
+    private readonly CancellationToken _processExitToken;
     private readonly bool _isReadOnly;
 
     private readonly ConcurrencyController _concurrencyQuota;
@@ -45,6 +48,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatCommitTarget commitTarget,
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
+        IProcessExitSource processExitSource,
         ILogManager logManager,
         bool isReadOnly = false)
     {
@@ -73,6 +77,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _configuration = configuration;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
+        _processExitToken = processExitSource.Token;
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -86,27 +91,33 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnExitScope();
     }
 
+    // Exposed for tests to observe when the wait loop is entered.
+    internal Action? OnWaitingForWarmups;
+
     private void WaitForOutstandingWarmups()
     {
+        if (Volatile.Read(ref _outstandingWarmups) == 0) return;
+
+        OnWaitingForWarmups?.Invoke();
+
         SpinWait spinWait = new();
-        Stopwatch? stopwatch = null;
+        Stopwatch stopwatch = Stopwatch.StartNew();
         bool warned = false;
         while (Volatile.Read(ref _outstandingWarmups) != 0)
         {
-            if (!warned)
+            if (_processExitToken.IsCancellationRequested)
             {
-                stopwatch ??= Stopwatch.StartNew();
-                if (stopwatch.ElapsedMilliseconds > 1000)
-                {
-                    warned = true;
-                    ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                    if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
-                }
+                ILogger log = _logManager.GetClassLogger<FlatWorldStateScope>();
+                if (log.IsWarn) log.Warn($"TrieWarmer drain aborted on shutdown with {Volatile.Read(ref _outstandingWarmups)} outstanding warmups");
+                return;
             }
-            if (spinWait.NextSpinWillYield)
-                Thread.Sleep(0);
-            else
-                spinWait.SpinOnce();
+            if (!warned && stopwatch.ElapsedMilliseconds > 1000)
+            {
+                warned = true;
+                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
+            }
+            spinWait.SpinOnce();
         }
     }
 

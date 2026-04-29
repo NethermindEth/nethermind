@@ -814,8 +814,6 @@ public class FlatWorldStateScopeProviderTests
 
     #endregion
 
-    #region TrieWarmer dispose-safety tests
-
     [Test]
     public async Task Dispose_WaitsForOutstandingWarmups_BeforeDisposingBundle()
     {
@@ -825,6 +823,10 @@ public class FlatWorldStateScopeProviderTests
         // Simulate an in-flight warmup job by manually incrementing the counter.
         scope.IncrementOutstandingWarmups();
 
+        // Use the test hook to know precisely when Dispose has entered the wait loop.
+        ManualResetEventSlim waitEntered = new(false);
+        scope.OnWaitingForWarmups = () => waitEntered.Set();
+
         bool disposeCompleted = false;
         Task disposeTask = Task.Run(() =>
         {
@@ -832,9 +834,8 @@ public class FlatWorldStateScopeProviderTests
             disposeCompleted = true;
         });
 
-        // Give Dispose enough time to reach the wait loop.
-        await Task.Delay(100);
-        Assert.That(disposeCompleted, Is.False, "Dispose should block while a warmup is in flight");
+        Assert.That(waitEntered.Wait(5000), Is.True, "Dispose should enter the wait loop");
+        Assert.That(disposeCompleted, Is.False, "Dispose should still be blocking");
 
         // Simulate the warmup completing — Dispose should now unblock.
         scope.DecrementOutstandingWarmups();
@@ -851,11 +852,9 @@ public class FlatWorldStateScopeProviderTests
 
         Task disposeTask = Task.Run(() => scope.Dispose());
 
-        // Should complete well within 1 second when nothing is in flight.
+        // Should complete well within 5 seconds when nothing is in flight.
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(disposeTask.IsCompletedSuccessfully, Is.True);
     }
-
-    #endregion
 
 }

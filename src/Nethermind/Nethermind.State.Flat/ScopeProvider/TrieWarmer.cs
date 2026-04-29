@@ -300,20 +300,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         return enqueued;
     }
 
-    public void OnEnterScope()
-    {
-        // Drain any existing job
-        for (int i = 0; i < SlotBufferSize; i++)
-        {
-            if (!_slotJobBuffer.TryDequeue(out SlotJob _)) break;
-        }
-        for (int i = 0; i < BufferSize; i++)
-        {
-            if (!_jobBufferMultiThreaded.TryDequeue(out Job _)) break;
-        }
-
-        _primaryWorkerLatch.Set();
-    }
+    public void OnEnterScope() => _primaryWorkerLatch.Set();
 
     public void OnExitScope() { }
 
