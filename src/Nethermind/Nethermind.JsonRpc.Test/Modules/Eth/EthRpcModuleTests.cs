@@ -56,6 +56,7 @@ public partial class EthRpcModuleTests
     private const string TestAccountAddress = "0x0001020304050607080910111213141516171819";
     private const string SecondaryTestAddress = "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24";
     private const string BalanceOfCallData = "0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160";
+    private const string CreateAccessListSender = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
 
     private static readonly Address TestAccount = new(TestAccountAddress);
 
@@ -1458,6 +1459,20 @@ public partial class EthRpcModuleTests
             .Should().Contain("0x0000000000000000000000000000000000000000000000000000000000000001");
     }
 
+    private static async Task<(JToken Result, long GasUsed)> CallCreateAccessList(
+        Context ctx, string txJson, string? stateOverrideJson, bool optimize)
+    {
+        object tx = JsonSerializer.Deserialize<object>(txJson)!;
+        object? stateOverride = stateOverrideJson is null
+            ? null
+            : JsonSerializer.Deserialize<object>(stateOverrideJson);
+        string serialized = await ctx.Test.TestEthRpc(
+            "eth_createAccessList", tx, "latest", stateOverride, optimize);
+        JToken result = JToken.Parse(serialized)["result"]!;
+        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        return (result, gasUsed);
+    }
+
     [Test]
     public async Task Eth_createAccessList_returns_out_of_gas_when_al_intrinsic_cost_exceeds_gas_limit()
     {
@@ -1468,17 +1483,12 @@ public partial class EthRpcModuleTests
         // Pass 1 (cold, no AL): 21000 + 12 + 4200 + 4 = 25,216 gas — fits in 0x6A50 (27,216).
         // Pass 2 (warm + AL intrinsic 6200): intrinsic=27,200, 16 gas remain for execution → OOG on SLOAD.
         const string contractAddr = "0xc200000000000000000000000000000000000000";
-        object stateOverride = JsonSerializer.Deserialize<object>(
-            $"{{\"{contractAddr}\":{{\"code\":\"0x600154506002545000\"}}}}")!;
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x600154506002545000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","gas":"0x6A50"}""";
 
-        object transaction = JsonSerializer.Deserialize<object>(
-            $"{{\"from\":\"0x7f554713be84160fdf0178cc8df86f5aabd33397\",\"to\":\"{contractAddr}\",\"gas\":\"0x6A50\"}}")!;
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
 
-        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, true);
-
-        JToken result = JToken.Parse(serialized)["result"]!;
         result["error"]!.Value<string>().Should().Be("out of gas");
-        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
         gasUsed.Should().Be(0x6A50);
         result["accessList"]!.ToArray().Should().NotBeEmpty();
     }
@@ -1491,14 +1501,11 @@ public partial class EthRpcModuleTests
         // Plain ETH transfer (value=0 so no new-account charge). Sender and recipient are both
         // pre-warmed as tx.origin / tx.to; no storage is touched → empty optimized access list.
         // Geth: wantGas=21000, wantAL=`[]`
-        object transaction = JsonSerializer.Deserialize<object>(
-            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gas":"0x5208"}""")!;
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gas":"0x5208"}""";
 
-        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
 
-        JToken result = JToken.Parse(serialized)["result"]!;
         result["error"].Should().BeNull();
-        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
         gasUsed.Should().Be(21_000);
         result["accessList"]!.ToArray().Should().BeEmpty();
     }
@@ -1511,19 +1518,15 @@ public partial class EthRpcModuleTests
         // Contract creation that writes to storage (SSTORE slot 0x81) then reverts.
         // Bytecode: PUSH1 0x80, PUSH1 0x80, PUSH1 0x80, PUSH1 0x81, SSTORE, REVERT
         // This mirrors Geth's wantVMErr="execution reverted" + wantAL with 1 addr and 1 storage key.
-        object transaction = JsonSerializer.Deserialize<object>(
-            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","gas":"0x186A0","data":"0x608060806080608155fd"}""")!;
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","gas":"0x186A0","data":"0x608060806080608155fd"}""";
 
-        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
 
-        JToken result = JToken.Parse(serialized)["result"]!;
         result["error"]!.Value<string>().Should().Be("revert");
-        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
         gasUsed.Should().Be(77496);
         // AL must contain the newly created contract address with storage key 0x81.
         // Contract address is deterministic: keccak256(rlp([sender, nonce=0]))[12:]
-        Address expectedContract = ContractAddress.From(
-            new Address("0x7f554713be84160fdf0178cc8df86f5aabd33397"), UInt256.Zero);
+        Address expectedContract = ContractAddress.From(new Address(CreateAccessListSender), UInt256.Zero);
         JToken[] accessList = result["accessList"]!.ToArray();
         accessList.Should().HaveCount(1);
         accessList[0]["address"]!.Value<string>().Should()
@@ -1536,22 +1539,16 @@ public partial class EthRpcModuleTests
     public async Task Eth_createAccessList_optimize_false_includes_sender_in_access_list()
     {
         using Context ctx = await Context.Create();
-        const string senderAddr = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
         const string contractAddr = "0xc200000000000000000000000000000000000000";
-        object stateOverride = JsonSerializer.Deserialize<object>(
-            $"{{\"{contractAddr}\":{{\"code\":\"0x6001545000\"}}}}")!;
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x6001545000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}"}""";
 
-        object transaction = JsonSerializer.Deserialize<object>(
-            $"{{\"from\":\"{senderAddr}\",\"to\":\"{contractAddr}\"}}")!;
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: false);
 
-        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
-
-        JToken result = JToken.Parse(serialized)["result"]!;
         result["error"].Should().BeNull();
-        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
         gasUsed.Should().Be(27_805);
         JToken[] accessList = result["accessList"]!.ToArray();
-        accessList.Should().Contain(e => e["address"]!.Value<string>() == senderAddr);
+        accessList.Should().Contain(e => e["address"]!.Value<string>() == CreateAccessListSender);
         // Contract with slot 1 must also appear.
         accessList.Should().Contain(e =>
             e["address"]!.Value<string>() == contractAddr &&
