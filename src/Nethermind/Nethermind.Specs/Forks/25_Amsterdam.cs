@@ -8,7 +8,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO5.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Amsterdam";
         spec.IsEip7708Enabled = true;
