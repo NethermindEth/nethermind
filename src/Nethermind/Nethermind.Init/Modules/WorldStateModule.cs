@@ -17,9 +17,9 @@ public class WorldStateModule : Module
 {
     protected override void Load(ContainerBuilder builder) =>
         builder
-            // Stub: a backend module must override this. Load PruningTrieStoreModule or FlatWorldStateModule.
+            // Stub: overridden by WorldStateDbDeciderModule which selects patricia or flat at runtime.
             .AddSingleton<IWorldStateManager>(_ => throw new InvalidOperationException(
-                $"No world state backend registered. Load {nameof(PruningTrieStoreModule)} or {nameof(FlatWorldStateModule)}."))
+                $"No world state backend registered. Load {nameof(WorldStateDbDeciderModule)}."))
 
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Db;
@@ -12,22 +13,22 @@ namespace Nethermind.Init;
 
 internal sealed class FlatStateActivationPolicy(
     IFlatDbConfig flatDbConfig,
-    IPersistence flatPersistence,
-    [KeyFilter(DbNames.State)] IDb patriciaStateDb,
+    Lazy<IPersistence> flatPersistence,
+    [KeyFilter(DbNames.State)] Lazy<IDb> patriciaStateDb,
     ILogManager logManager)
 {
     private readonly bool _result = Compute(flatDbConfig, flatPersistence, patriciaStateDb, logManager.GetClassLogger<FlatStateActivationPolicy>());
 
     public bool ShouldTurnOnFlatDb() => _result;
 
-    private static bool Compute(IFlatDbConfig flatDbConfig, IPersistence flatPersistence, IDb patriciaStateDb, ILogger logger)
+    private static bool Compute(IFlatDbConfig flatDbConfig, Lazy<IPersistence> flatPersistence, Lazy<IDb> patriciaStateDb, ILogger logger)
     {
         if (!flatDbConfig.Enabled)
         {
             if (logger.IsInfo) logger.Info("State backend: patricia (flat DB disabled).");
             return false;
         }
-        using IPersistence.IPersistenceReader reader = flatPersistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = flatPersistence.Value.CreateReader();
         if (reader.CurrentState != StateId.PreGenesis)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (existing flat DB detected).");
@@ -38,7 +39,7 @@ internal sealed class FlatStateActivationPolicy(
             if (logger.IsInfo) logger.Info("State backend: flat (importing from patricia trie state).");
             return true;
         }
-        if (patriciaStateDb.GetAllKeys().Any())
+        if (patriciaStateDb.Value.GetAllKeys().Any())
         {
             if (logger.IsInfo) logger.Info("State backend: patricia (existing patricia state detected).");
             return false;
