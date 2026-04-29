@@ -1522,10 +1522,42 @@ public partial class EthRpcModuleTests
         long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
         gasUsed.Should().Be(77496);
         // AL must contain the newly created contract address with storage key 0x81.
+        // Contract address is deterministic: keccak256(rlp([sender, nonce=0]))[12:]
+        Address expectedContract = ContractAddress.From(
+            new Address("0x7f554713be84160fdf0178cc8df86f5aabd33397"), UInt256.Zero);
         JToken[] accessList = result["accessList"]!.ToArray();
         accessList.Should().HaveCount(1);
+        accessList[0]["address"]!.Value<string>().Should()
+            .Be(expectedContract.ToString().ToLowerInvariant());
         accessList[0]["storageKeys"]!.ToArray().Should().ContainSingle(
             k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000081");
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_optimize_false_includes_contract_storage_in_access_list()
+    {
+        using Context ctx = await Context.Create();
+
+        // CALL to a contract that reads storage slot 1. With optimize=false the AccessTxTracer is
+        // constructed without sender/recipient in the exclude list, exercising the non-optimized path.
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{contractAddr}\":{{\"code\":\"0x6001545000\"}}}}")!;
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"0x7f554713be84160fdf0178cc8df86f5aabd33397\",\"to\":\"{contractAddr}\"}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
+
+        JToken result = JToken.Parse(serialized)["result"]!;
+        result["error"].Should().BeNull();
+        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        gasUsed.Should().BeGreaterThan(0);
+        // Contract address with storage slot 1 must appear regardless of the optimize flag.
+        result["accessList"]!.ToArray().Should().Contain(e =>
+            e["address"]!.Value<string>() == contractAddr &&
+            e["storageKeys"]!.ToArray().Any(
+                k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000001"));
     }
 
     [TestCase(null)]
