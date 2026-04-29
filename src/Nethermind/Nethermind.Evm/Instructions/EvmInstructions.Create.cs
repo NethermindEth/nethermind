@@ -198,6 +198,10 @@ public static partial class EvmInstructions
         // Collision behaves as an immediate exceptional halt — burned callGas counts as block_regular.
         if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
         {
+            // EIP-7928: the collision target was touched (we read its existence/code/nonce/storage
+            // to detect the collision). It must appear in the BAL even though no state change is
+            // recorded — IsNonZeroAccount uses untracked *Internal getters that bypass the BAL.
+            state.AddAccountRead(contractAddress);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
         }
