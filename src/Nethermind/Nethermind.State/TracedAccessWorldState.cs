@@ -59,10 +59,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance + balanceChange;
-        if (!res || !balanceChange.IsZero)
-        {
-            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
-        }
+        // EIP-7928: BlockAccessList.AddBalanceChange must run even when the change is zero so that
+        // a touched-but-unchanged beneficiary (e.g. zero-priority-fee tx) is still recorded as an
+        // empty AccountChanges entry via the internal AddAccountRead path. Filtering at this level
+        // dropped that entry and produced BAL hashes that diverged from spec.
+        _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
 
         return res;
     }
