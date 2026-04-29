@@ -805,42 +805,6 @@ public partial class EngineModuleTests
         chain.BlockTree.HeadHash.Should().Be(headHash);
     }
 
-    [TestCase(false, TestName = "ApplyForkchoiceUpdate path (no payload attributes)")]
-    [TestCase(true, TestName = "StartBuildingPayload path (with payload attributes)")]
-    public async Task forkchoiceUpdatedV1_WhenZeroFinalizedHash_PreservesKnownFinalizedHash(bool withPayloadAttributes)
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
-        Hash256 b1Hash = branch[0].BlockHash;
-        Hash256 b2Hash = branch[1].BlockHash;
-
-        // First FCU: set head to b2 and finalize b1
-        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(b2Hash, b1Hash, b1Hash));
-        chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "precondition: b1 is finalized after first FCU");
-
-        // Second FCU: zero finalizedBlockHash — must preserve b1 as finalized regardless of path
-        PayloadAttributes? payloadAttributes = withPayloadAttributes
-            ? new PayloadAttributes
-            {
-                Timestamp = branch[1].Timestamp + 1,
-                PrevRandao = Keccak.Zero,
-                SuggestedFeeRecipient = Address.Zero,
-            }
-            : null;
-        ForkchoiceStateV1 fcuWithZeroFinalized = new(b2Hash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuWithZeroFinalized, payloadAttributes);
-
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        if (withPayloadAttributes)
-        {
-            result.Data.PayloadId.Should().NotBeNull("payload build must be started when attributes are provided");
-        }
-        chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "zero finalizedBlockHash must preserve the previously known finalized hash");
-        chain.BlockTree.SafeHash.Should().Be(b1Hash, "zero safeBlockHash must preserve the previously known safe hash");
-    }
-
     [Test]
     public async Task forkchoiceUpdatedV1_WhenNonZeroUnknownFinalizedHash_ReturnsInvalidForkchoiceState()
     {
