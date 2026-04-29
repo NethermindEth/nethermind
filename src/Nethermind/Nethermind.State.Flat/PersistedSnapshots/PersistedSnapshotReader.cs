@@ -280,7 +280,7 @@ public static class PersistedSnapshotReader
                 if (perAddr.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
                 {
                     Bound sdBound = perAddr.GetBound();
-                    Address addr = new(addrEntry.Key.ToArray());
+                    Address addr = new(SliceFromBound(snapshotData, addrEntry.KeyBound).ToArray());
                     bool isNew = sdBound.Length > 0 && snapshotData[(int)sdBound.Offset] == 0x01;
                     list.Add(new(addr, isNew));
                 }
@@ -326,7 +326,7 @@ public static class PersistedSnapshotReader
                 if (perAddr.TrySeek(PersistedSnapshot.AccountSubTag, out _))
                 {
                     Bound rlpBound = perAddr.GetBound();
-                    Address addr = new(addrEntry.Key.ToArray());
+                    Address addr = new(SliceFromBound(snapshotData, addrEntry.KeyBound).ToArray());
                     ReadOnlySpan<byte> accountRlp = SliceFromBound(snapshotData, rlpBound);
                     Account? account = accountRlp.IsEmpty
                         ? null
@@ -375,20 +375,20 @@ public static class PersistedSnapshotReader
                 if (!perAddr.TrySeek(PersistedSnapshot.SlotSubTag, out _))
                     continue;
 
-                Address addr = new(addrEntry.Key.ToArray());
+                Address addr = new(SliceFromBound(snapshotData, addrEntry.KeyBound).ToArray());
                 Bound slotBound = perAddr.GetBound();
                 using HsstEnumerator<SpanByteReader, NoOpPin> prefixEnum = new(in reader, slotBound);
                 while (prefixEnum.MoveNext())
                 {
                     KeyValueEntry prefixEntry = prefixEnum.Current;
-                    byte[] prefixBytes = prefixEntry.Key.ToArray();
+                    byte[] prefixBytes = SliceFromBound(snapshotData, prefixEntry.KeyBound).ToArray();
                     using HsstEnumerator<SpanByteReader, NoOpPin> suffixEnum = new(in reader, prefixEntry.ValueBound);
                     while (suffixEnum.MoveNext())
                     {
                         KeyValueEntry suffixEntry = suffixEnum.Current;
                         byte[] slotKey = new byte[32];
                         prefixBytes.CopyTo(slotKey.AsSpan());
-                        suffixEntry.Key.CopyTo(slotKey.AsSpan(SlotPrefixLength));
+                        SliceFromBound(snapshotData, suffixEntry.KeyBound).CopyTo(slotKey.AsSpan(SlotPrefixLength));
                         UInt256 slot = new(slotKey, isBigEndian: true);
                         ReadOnlySpan<byte> suffixValue = SliceFromBound(snapshotData, suffixEntry.ValueBound);
                         SlotValue? value = suffixValue.IsEmpty
@@ -434,7 +434,7 @@ public static class PersistedSnapshotReader
                     while (e.MoveNext())
                     {
                         KeyValueEntry entry = e.Current;
-                        TreePath path = TreePath.DecodeWith3Byte(entry.Key);
+                        TreePath path = TreePath.DecodeWith3Byte(SliceFromBound(snapshotData, entry.KeyBound));
                         ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, entry.ValueBound);
                         TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
                             snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
@@ -452,7 +452,7 @@ public static class PersistedSnapshotReader
                     while (e.MoveNext())
                     {
                         KeyValueEntry entry = e.Current;
-                        TreePath path = DecodeCompactTreePath(entry.Key);
+                        TreePath path = DecodeCompactTreePath(SliceFromBound(snapshotData, entry.KeyBound));
                         ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, entry.ValueBound);
                         TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
                             snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
@@ -470,7 +470,8 @@ public static class PersistedSnapshotReader
                     while (e.MoveNext())
                     {
                         KeyValueEntry entry = e.Current;
-                        TreePath path = new(new ValueHash256(entry.Key[..32]), entry.Key[32]);
+                        ReadOnlySpan<byte> entryKey = SliceFromBound(snapshotData, entry.KeyBound);
+                        TreePath path = new(new ValueHash256(entryKey[..32]), entryKey[32]);
                         ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, entry.ValueBound);
                         TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
                             snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
@@ -514,12 +515,12 @@ public static class PersistedSnapshotReader
                     while (hashEnum.MoveNext())
                     {
                         KeyValueEntry hashEntry = hashEnum.Current;
-                        Hash256 addressHash = DecodeAddressHash(hashEntry.Key);
+                        Hash256 addressHash = DecodeAddressHash(SliceFromBound(snapshotData, hashEntry.KeyBound));
                         using HsstEnumerator<SpanByteReader, NoOpPin> pathEnum = new(in reader, hashEntry.ValueBound);
                         while (pathEnum.MoveNext())
                         {
                             KeyValueEntry pathEntry = pathEnum.Current;
-                            TreePath path = DecodeCompactTreePath(pathEntry.Key);
+                            TreePath path = DecodeCompactTreePath(SliceFromBound(snapshotData, pathEntry.KeyBound));
                             ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, pathEntry.ValueBound);
                             TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
                                 snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
@@ -538,12 +539,13 @@ public static class PersistedSnapshotReader
                     while (hashEnum.MoveNext())
                     {
                         KeyValueEntry hashEntry = hashEnum.Current;
-                        Hash256 addressHash = DecodeAddressHash(hashEntry.Key);
+                        Hash256 addressHash = DecodeAddressHash(SliceFromBound(snapshotData, hashEntry.KeyBound));
                         using HsstEnumerator<SpanByteReader, NoOpPin> pathEnum = new(in reader, hashEntry.ValueBound);
                         while (pathEnum.MoveNext())
                         {
                             KeyValueEntry pathEntry = pathEnum.Current;
-                            TreePath path = new(new ValueHash256(pathEntry.Key[..32]), pathEntry.Key[32]);
+                            ReadOnlySpan<byte> pathKey = SliceFromBound(snapshotData, pathEntry.KeyBound);
+                            TreePath path = new(new ValueHash256(pathKey[..32]), pathKey[32]);
                             ReadOnlySpan<byte> rawValue = SliceFromBound(snapshotData, pathEntry.ValueBound);
                             TryResolveNodeRef(rawValue, out ReadOnlySpan<byte> resolved,
                                 snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);

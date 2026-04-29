@@ -35,8 +35,9 @@ public class HsstTests
         using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
         while (e.MoveNext())
         {
-            byte[] k = e.Current.Key.ToArray();
+            Bound kb = e.Current.KeyBound;
             Bound vb = e.Current.ValueBound;
+            byte[] k = data.Slice((int)kb.Offset, kb.Length).ToArray();
             byte[] v = data.Slice((int)vb.Offset, vb.Length).ToArray();
             entries.Add((k, v));
         }

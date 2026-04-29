@@ -16,14 +16,14 @@ at the *end* of the buffer and is read backward via the trailing
 
 ### Normal variant
 
-The data region is a packed sequence of variable-length entries, each laid out
-**value-first** so that decoding is forward-readable from a known
+The data region is a packed sequence of variable-length, **self-describing**
+entries laid out value-first so that decoding is forward-readable from a known
 `MetadataStart` cursor:
 
 ```
-[Value: V bytes][ValueLength: LEB128][RemainingKeyLength: LEB128][RemainingKey: K bytes]
+[Value: V bytes][ValueLength: LEB128][KeyLength: K bytes LEB128][FullKey: K bytes]
                 ^
-                MetadataStart
+                MetadataStart  (= the index pointer's target byte)
 ```
 
 `MetadataStart` is the byte offset (within the HSST buffer, *after* the version
@@ -31,12 +31,30 @@ byte) of the `ValueLength` LEB128. The leaf B-tree node stores this offset for
 every entry; readers seek into the leaf, take the metaStart pointer, then:
 
 1. Decode `ValueLength` (LEB128) — the value bytes live at
-   `[metaStart - ValueLength, metaStart)`.
-2. Decode `RemainingKeyLength` (LEB128).
-3. Read `RemainingKey` bytes — combined with the leaf's stored *separator*
-   they form the full stored key (`fullKey = separator + remainingKey`).
-   The B-tree uses minimum separators, so the separator is typically a prefix
-   of the full key with `RemainingKey` filling in the suffix.
+   `[MetadataStart - ValueLength, MetadataStart)`.
+2. Decode `KeyLength` (LEB128).
+3. The full key sits at `[MetadataStart + lebBytes, MetadataStart + lebBytes + KeyLength)`.
+
+**Why `MetadataStart` aims at `ValueLength` and not at the value.** LEB128 has
+a forward-only terminator (high-bit "continuation" chain): given a byte
+mid-stream you can't tell whether you're inside someone else's continuation
+run or sitting at the start of a fresh varint. So the format places the
+lengths *after* the value and aims the index pointer at the lengths' start;
+the value is back-derived from `MetadataStart - ValueLength`. Everything past
+the lengths is forward-decoded too. This is a load-bearing invariant — both
+the entry tail and the order in which the lengths appear must keep
+`MetadataStart` as the value↔lengths pivot.
+
+**Separator vs. full key.** The leaf B-tree node *also* stores a **separator**
+for each entry — a min-length prefix chosen against the entry's neighbours,
+used purely to drive in-leaf binary search. The data-region entry is
+self-describing (carries the full key), so the reader does not need to
+combine separator + suffix — it can read the full key directly from the
+entry tail. This costs `separator.Length` extra bytes per entry (the prefix
+is duplicated) in exchange for: simpler reader logic, no per-`MoveNext`
+key-buffer allocation in `HsstEnumerator`, and entries that can be decoded
+from just `(buffer, MetadataStart)` (which is exactly what `NodeRef`
+carries) without consulting any index.
 
 ### Inline variant
 
@@ -144,10 +162,11 @@ can't produce a contiguous span on demand.
 - `HsstReader.GetValue(output)` / `GetBound()` — extract the value at the
   current bound, either by copying into a span or by returning the absolute
   `(offset, length)` tuple.
-- `HsstEnumerator.MoveNext()` / `Current` — yields `(Key span, ValueBound)`
-  pairs in sorted order. `Key` lives in the enumerator's inline buffer and is
-  invalidated on the next `MoveNext`; `ValueBound` is an absolute
-  `(reader-offset, length)` tuple stable for the reader's lifetime.
+- `HsstEnumerator.MoveNext()` / `Current` — yields `(KeyBound, ValueBound)`
+  pairs in sorted order. Both bounds are absolute `(reader-offset, length)`
+  tuples stable for the reader's lifetime — the enumerator never copies key
+  bytes into an internal buffer; the data-region entry already carries the
+  full key, and the bound points straight at it.
 
 ## Where to look in code
 

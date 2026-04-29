@@ -30,7 +30,8 @@ public class HsstEnumeratorTests
         using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
 
         Assert.That(e.MoveNext(), Is.True);
-        Assert.That(Encoding.UTF8.GetString(e.Current.Key), Is.EqualTo("key1"));
+        Bound k = e.Current.KeyBound;
+        Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, k.Length)), Is.EqualTo("key1"));
         Bound v = e.Current.ValueBound;
         Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)v.Offset, v.Length)), Is.EqualTo("value1"));
         Assert.That(e.MoveNext(), Is.False);
@@ -63,7 +64,8 @@ public class HsstEnumeratorTests
         while (e.MoveNext())
         {
             (string expectedKey, string expectedValue) = entries[idx];
-            Assert.That(Encoding.UTF8.GetString(e.Current.Key), Is.EqualTo(expectedKey),
+            Bound k = e.Current.KeyBound;
+            Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, k.Length)), Is.EqualTo(expectedKey),
                 $"Key mismatch at idx {idx}");
             Bound v = e.Current.ValueBound;
             Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)v.Offset, v.Length)), Is.EqualTo(expectedValue),
@@ -109,7 +111,8 @@ public class HsstEnumeratorTests
         int idx = 0;
         while (e.MoveNext())
         {
-            Assert.That(e.Current.Key.SequenceEqual(deduped[idx].Key), Is.True,
+            Bound k = e.Current.KeyBound;
+            Assert.That(data.AsSpan((int)k.Offset, k.Length).SequenceEqual(deduped[idx].Key), Is.True,
                 $"Key mismatch at idx {idx}");
             Bound v = e.Current.ValueBound;
             Assert.That(data.AsSpan((int)v.Offset, v.Length).SequenceEqual(deduped[idx].Value), Is.True,
@@ -144,14 +147,16 @@ public class HsstEnumeratorTests
         Dictionary<string, List<string>> seenSubtags = [];
         while (outerEnum.MoveNext())
         {
-            string addr = Encoding.UTF8.GetString(outerEnum.Current.Key);
+            Bound ak = outerEnum.Current.KeyBound;
+            string addr = Encoding.UTF8.GetString(outer.AsSpan((int)ak.Offset, ak.Length));
             seenAddrs.Add(addr);
             List<string> subs = [];
 
             using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, outerEnum.Current.ValueBound);
             while (innerEnum.MoveNext())
             {
-                string sub = Encoding.UTF8.GetString(innerEnum.Current.Key);
+                Bound sk = innerEnum.Current.KeyBound;
+                string sub = Encoding.UTF8.GetString(outer.AsSpan((int)sk.Offset, sk.Length));
                 Bound v = innerEnum.Current.ValueBound;
                 string val = Encoding.UTF8.GetString(outer.AsSpan((int)v.Offset, v.Length));
                 subs.Add($"{sub}={val}");

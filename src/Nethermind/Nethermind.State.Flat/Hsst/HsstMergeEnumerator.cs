@@ -85,17 +85,19 @@ public sealed class HsstMergeEnumerator : IDisposable
             ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
 
     /// <summary>
-    /// Decode an entry's <c>(remainingKey, value)</c> at <paramref name="metadataStart"/> within
-    /// <paramref name="data"/>. Entry format: <c>[Value][ValueLength: LEB128][RemainingKeyLength: LEB128][RemainingKey]</c>.
+    /// Decode an entry's <c>(fullKey, value)</c> at <paramref name="metadataStart"/> within
+    /// <paramref name="data"/>. Entry format: <c>[Value][ValueLength: LEB128][KeyLength: LEB128][FullKey]</c>.
+    /// metaStart points at the <c>ValueLength</c> LEB128 (value sits before, lengths + key sit
+    /// after) — LEB128 has a forward-only terminator so it can't be reliably read backward.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ReadEntry(ReadOnlySpan<byte> data, int metadataStart,
-        out ReadOnlySpan<byte> remainingKey, out ReadOnlySpan<byte> value)
+        out ReadOnlySpan<byte> fullKey, out ReadOnlySpan<byte> value)
     {
         int pos = metadataStart;
         int valueLength = Leb128.Read(data, ref pos);
         int keyLength = Leb128.Read(data, ref pos);
-        remainingKey = data.Slice(pos, keyLength);
+        fullKey = data.Slice(pos, keyLength);
         value = data.Slice(metadataStart - valueLength, valueLength);
     }
 
@@ -105,16 +107,18 @@ public sealed class HsstMergeEnumerator : IDisposable
     {
         if (++_index >= _entries.Length) return false;
         (int sepOff, int sepLen, int metaOrValOff, _) = _entries[_index];
-        data.Slice(sepOff, sepLen).CopyTo(_keyBuffer.AsSpan());
         if (_isInline)
         {
+            // Inline mode: separator IS the full key; copy from the leaf section.
+            data.Slice(sepOff, sepLen).CopyTo(_keyBuffer.AsSpan());
             _keyLength = sepLen;
         }
         else
         {
-            ReadEntry(data, 1 + metaOrValOff, out ReadOnlySpan<byte> remainingKey, out _);
-            remainingKey.CopyTo(_keyBuffer.AsSpan(sepLen));
-            _keyLength = sepLen + remainingKey.Length;
+            // Non-inline: data-region entry carries the full key — copy it directly.
+            ReadEntry(data, 1 + metaOrValOff, out ReadOnlySpan<byte> fullKey, out _);
+            fullKey.CopyTo(_keyBuffer.AsSpan());
+            _keyLength = fullKey.Length;
         }
         return true;
     }
