@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -44,6 +45,10 @@ public class SlowBlockIntegrationTests
     [SetUp]
     public void Setup()
     {
+        // Mark the test thread as the block-processing thread so EVM Increment* calls
+        // route to _main, matching MainThread* deltas read by ProcessingStats.
+        ProcessingThread.IsBlockProcessingThread = true;
+
         _specProvider = new TestSpecProvider(Prague.Instance);
         _worldState = TestWorldStateFactory.CreateForTest();
         _scope = _worldState.BeginScope(IWorldState.PreGenesis);
@@ -59,7 +64,11 @@ public class SlowBlockIntegrationTests
     }
 
     [TearDown]
-    public void TearDown() => _scope.Dispose();
+    public void TearDown()
+    {
+        _scope.Dispose();
+        ProcessingThread.IsBlockProcessingThread = false;
+    }
 
     private Block CreateBlock(params Transaction[] txs) =>
         Build.A.Block.WithNumber(long.MaxValue).WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)

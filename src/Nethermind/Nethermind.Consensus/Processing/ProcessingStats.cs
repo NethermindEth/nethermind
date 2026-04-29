@@ -135,16 +135,18 @@ namespace Nethermind.Consensus.Processing
 
         public void CaptureStartStats()
         {
-            // EVM counters — always captured (used by normal console reporting)
-            _startSLoadOps = Evm.Metrics.SloadOpcode;
-            _startSStoreOps = Evm.Metrics.SstoreOpcode;
-            _startCallOps = Evm.Metrics.Calls;
-            _startEmptyCalls = Evm.Metrics.EmptyCalls;
-            _startCachedContractsUsed = Evm.Metrics.CodeDbCache;
-            _startContractsAnalyzed = Evm.Metrics.ContractsAnalysed;
-            _startCreateOps = Evm.Metrics.Creates;
-            _startSelfDestructOps = Evm.Metrics.SelfDestructs;
-            _startOpCodes = Evm.Metrics.OpCodes;
+            // EVM counters — always captured (used by normal console reporting).
+            // Read MainThread* so deltas are consistent with the MainThread* values read in UpdateStats
+            // and don't include increments from background threads (prewarmer, etc.).
+            _startSLoadOps = Evm.Metrics.MainThreadSLoadOpcode;
+            _startSStoreOps = Evm.Metrics.MainThreadSStoreOpcode;
+            _startCallOps = Evm.Metrics.MainThreadCalls;
+            _startEmptyCalls = Evm.Metrics.MainThreadEmptyCalls;
+            _startCachedContractsUsed = Evm.Metrics.MainThreadCodeDbCache;
+            _startContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
+            _startCreateOps = Evm.Metrics.MainThreadCreates;
+            _startSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
+            _startOpCodes = Evm.Metrics.MainThreadOpCodes;
 
             // Slow block diagnostics — skip when disabled (-1)
             if (_slowBlockThresholdMs < 0) return;
