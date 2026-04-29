@@ -222,13 +222,13 @@ namespace Nethermind.Synchronization
                     });
                 }
 
-                if (syncConfig.DownloadAccessListsInFastSync)
+                if (syncConfig.DownloadBlockAccessListsInFastSync)
                 {
                     Task blockAccessListsTask = oldBlockAccessListsComponent.Dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
                         if (t.IsFaulted)
                         {
-                            if (_logger.IsError) _logger.Error("Fast access lists sync failed", t.Exception);
+                            if (_logger.IsError) _logger.Error("Fast block access lists sync failed", t.Exception);
                         }
                         else
                         {
@@ -461,8 +461,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         ConfigureSingletonSyncFeed<BlockAccessListsSyncBatch, BlockAccessListsSyncFeed, BlockAccessListsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
 
         if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
-            !syncConfig.DownloadBodiesInFastSync ||
-            !syncConfig.DownloadAccessListsInFastSync)
+            !syncConfig.DownloadBlockAccessListsInFastSync)
         {
             serviceCollection.AddSingleton<ISyncFeed<BlockAccessListsSyncBatch>, NoopSyncFeed<BlockAccessListsSyncBatch>>();
         }

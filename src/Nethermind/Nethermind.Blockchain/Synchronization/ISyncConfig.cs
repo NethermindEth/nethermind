@@ -42,7 +42,7 @@ public interface ISyncConfig : IConfig
     bool DownloadReceiptsInFastSync { get; set; }
 
     [ConfigItem(Description = "Whether to download block access lists in the Fast sync mode.", DefaultValue = "true")]
-    bool DownloadAccessListsInFastSync { get; set; }
+    bool DownloadBlockAccessListsInFastSync { get; set; }
 
     [ConfigItem(Description = "The total difficulty of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string PivotTotalDifficulty { get; }
@@ -88,20 +88,19 @@ public interface ISyncConfig : IConfig
     public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
     [ConfigItem(Description = $$"""
-        The earliest block access list downloaded with fast sync when `{{nameof(DownloadAccessListsInFastSync)}}` is set to `true`.
-        The calculated barrier is floored by `{{nameof(AncientBodiesBarrier)}}` so access lists are not downloaded for blocks whose bodies are skipped.
+        The earliest block access list downloaded with fast sync when `{{nameof(DownloadBlockAccessListsInFastSync)}}` is set to `true`.
         The actual value is determined as follows:
 
         ```
-        max{ 1, min{ PivotNumber, max{ AncientBodiesBarrier, AncientAccessListsBarrier } } }
+        max{ 1, min{ PivotNumber, AncientBlockAccessListsBarrier } }
         ```
 
         """,
         DefaultValue = "0")]
-    public long AncientAccessListsBarrier { get; set; }
+    public long AncientBlockAccessListsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientAccessListsBarrier)));
+    public long AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }

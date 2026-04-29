@@ -280,9 +280,7 @@ namespace Nethermind.Synchronization.Blocks
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
-            int blockAccessListsRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
-                ?? GethSyncLimits.MaxBodyFetch;
+            int? blockAccessListsRequestSize = null;
             int receiptsRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
@@ -310,10 +308,17 @@ namespace Nethermind.Synchronization.Blocks
                     bodiesOnly = true;
                 }
 
-                if (entry.NeedAccessListDownload && blockAccessListsToDownload.Count < blockAccessListsRequestSize)
+                if (entry.NeedAccessListDownload)
                 {
-                    entry.MarkAccessListRequestSent();
-                    blockAccessListsToDownload.Add(blockHeader);
+                    blockAccessListsRequestSize ??=
+                        (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
+                        ?? GethSyncLimits.MaxBodyFetch;
+
+                    if (blockAccessListsToDownload.Count < blockAccessListsRequestSize.Value)
+                    {
+                        entry.MarkAccessListRequestSent();
+                        blockAccessListsToDownload.Add(blockHeader);
+                    }
                 }
 
                 if (
@@ -330,7 +335,7 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     break;
                 }
-                if (blockAccessListsToDownload.Count >= blockAccessListsRequestSize)
+                if (blockAccessListsRequestSize is not null && blockAccessListsToDownload.Count >= blockAccessListsRequestSize.Value)
                 {
                     break;
                 }

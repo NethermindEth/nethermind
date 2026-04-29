@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.BeaconHeaders) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
-        public static bool HaveNotSyncedAccessListsYet(this SyncMode syncMode) =>
+        public static bool HaveNotSyncedBlockAccessListsYet(this SyncMode syncMode) =>
             syncMode.HasFlag(SyncMode.FastBlocks) ||
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||

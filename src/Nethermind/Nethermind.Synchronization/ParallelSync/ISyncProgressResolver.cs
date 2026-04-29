@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         bool IsFastBlocksReceiptsFinished();
 
-        bool IsFastBlocksAccessListsFinished();
+        bool IsFastBlockAccessListsFinished();
 
         bool IsLoadingBlocksFromDb();
 

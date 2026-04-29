@@ -13,8 +13,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             state switch
             {
                 FastBlocksState.None => SyncMode.FastHeaders,
-                FastBlocksState.FinishedHeaders => isFullSync ? SyncMode.FastBodies : SyncMode.None,
-                FastBlocksState.FinishedBodies => isFullSync ? SyncMode.FastReceipts : SyncMode.None,
+                FastBlocksState.FinishedHeaders => isFullSync ? SyncMode.FastBodies | SyncMode.FastBlockAccessLists : SyncMode.None,
+                FastBlocksState.FinishedBodies => isFullSync ? SyncMode.FastReceipts | SyncMode.FastBlockAccessLists : SyncMode.None,
                 FastBlocksState.FinishedReceipts => isFullSync ? SyncMode.FastBlockAccessLists : SyncMode.None,
                 _ => SyncMode.None,
             };
@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 _syncProgressResolver.IsFastBlocksHeadersFinished().Returns(returns >= FastBlocksState.FinishedHeaders);
                 _syncProgressResolver.IsFastBlocksBodiesFinished().Returns(returns >= FastBlocksState.FinishedBodies);
                 _syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(returns >= FastBlocksState.FinishedReceipts);
-                _syncProgressResolver.IsFastBlocksAccessListsFinished().Returns(returns >= FastBlocksState.FinishedAccessLists);
+                _syncProgressResolver.IsFastBlockAccessListsFinished().Returns(returns >= FastBlocksState.FinishedBlockAccessLists);
             }
         }
     }

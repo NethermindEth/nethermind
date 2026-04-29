@@ -54,11 +54,11 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
         private bool FastBodiesEnabled => FastSyncEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastSyncEnabled && _syncConfig.DownloadReceiptsInFastSync;
-        private bool FastBlockAccessListsEnabled => FastSyncEnabled && _syncConfig.DownloadAccessListsInFastSync;
+        private bool FastBlockAccessListsEnabled => FastSyncEnabled && _syncConfig.DownloadBlockAccessListsInFastSync;
         private bool FastBlocksHeadersFinished => !FastSyncEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
         private bool FastBlocksBodiesFinished => !FastBodiesEnabled || _syncProgressResolver.IsFastBlocksBodiesFinished();
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
-        private bool FastBlocksAccessListsFinished => !FastBlockAccessListsEnabled || _syncProgressResolver.IsFastBlocksAccessListsFinished();
+        private bool FastBlockAccessListsFinished => !FastBlockAccessListsEnabled || _syncProgressResolver.IsFastBlockAccessListsFinished();
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
         private int TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
@@ -535,20 +535,20 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInFastBlockAccessListsMode(Snapshot best)
         {
-            bool fastBlockAccessListsNotFinished = !FastBlocksAccessListsFinished;
-            bool fastBodiesFinished = FastBlocksBodiesFinished;
+            bool fastBlockAccessListsNotFinished = !FastBlockAccessListsFinished;
+            bool fastHeadersFinished = FastBlocksHeadersFinished;
             bool notInStateSync = !best.IsInStateSync;
             bool stateSyncFinished = best.StateDownloaded;
 
             // fast blocks access lists can run if there are peers until it is done
-            // fast blocks access lists can run in parallel with full sync when bodies are finished
-            bool result = fastBlockAccessListsNotFinished && fastBodiesFinished && notInStateSync && stateSyncFinished;
+            // fast blocks access lists can run in parallel with full sync when headers and state are finished
+            bool result = fastBlockAccessListsNotFinished && fastHeadersFinished && notInStateSync && stateSyncFinished;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("BLOCK_ACCESS_LISTS",
                     (nameof(fastBlockAccessListsNotFinished), fastBlockAccessListsNotFinished),
-                    (nameof(fastBodiesFinished), fastBodiesFinished),
+                    (nameof(fastHeadersFinished), fastHeadersFinished),
                     (nameof(notInStateSync), notInStateSync),
                     (nameof(stateSyncFinished), stateSyncFinished));
             }

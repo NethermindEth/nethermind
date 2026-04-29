@@ -1,15 +1,17 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Network.Config;
 using Nethermind.State;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -70,5 +72,28 @@ public class SynchronizerModuleTests
         SyncPeerPool pool = container.Resolve<SyncPeerPool>();
 
         Assert.That(pool.PeerMaxCount, Is.EqualTo(75));
+    }
+
+    [Test]
+    public void Block_access_lists_feed_should_be_active_when_fast_bodies_are_disabled()
+    {
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            DownloadHeadersInFastSync = true,
+            DownloadBodiesInFastSync = false,
+            DownloadBlockAccessListsInFastSync = true
+        };
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider(syncConfig)))
+            .AddModule(new SynchronizerModule(syncConfig))
+            .AddSingleton(Substitute.For<ITreeSync>())
+            .AddSingleton(Substitute.For<IWorldStateManager>())
+            .Build();
+
+        ISyncFeed<BlockAccessListsSyncBatch> feed = container.Resolve<ISyncFeed<BlockAccessListsSyncBatch>>();
+
+        Assert.That(feed, Is.TypeOf<BlockAccessListsSyncFeed>());
     }
 }

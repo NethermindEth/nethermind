@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
         [TestCase(FastBlocksState.FinishedReceipts)]
-        [TestCase(FastBlocksState.FinishedAccessLists)]
+        [TestCase(FastBlocksState.FinishedBlockAccessLists)]
         public void Just_after_finishing_state_sync_and_fast_blocks(FastBlocksState fastBlocksState) => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeJustFinishedStateSyncAndFastBlocks(fastBlocksState)
                 .When_FastSync_NoSnapSync_Configured()
@@ -263,7 +263,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
         [TestCase(FastBlocksState.FinishedReceipts)]
-        [TestCase(FastBlocksState.FinishedAccessLists)]
+        [TestCase(FastBlocksState.FinishedBlockAccessLists)]
         public void When_just_started_full_sync_with_fast_blocks(FastBlocksState fastBlocksState) => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeJustStartedFullSyncProcessing(fastBlocksState)
                 .AndGoodPeersAreKnown()

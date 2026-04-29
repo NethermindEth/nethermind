@@ -46,14 +46,14 @@ public class SyncPointers : ISyncPointers
         }
     }
 
-    private long? _lowestInsertedAccessListBlock;
+    private long? _lowestInsertedBlockAccessListBlock;
 
-    public long? LowestInsertedAccessListBlockNumber
+    public long? LowestInsertedBlockAccessListBlockNumber
     {
-        get => _lowestInsertedAccessListBlock;
+        get => _lowestInsertedBlockAccessListBlock;
         set
         {
-            _lowestInsertedAccessListBlock = value;
+            _lowestInsertedBlockAccessListBlock = value;
             if (value.HasValue)
             {
                 // Keccak.Zero is a metadata sentinel inside the BAL DB, matching the receipts pointer pattern.
@@ -79,7 +79,7 @@ public class SyncPointers : ISyncPointers
         _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBytes).DecodeLong();
 
         byte[] lowestBalBytes = _blockAccessListsDb.Get(Keccak.Zero);
-        _lowestInsertedAccessListBlock = lowestBalBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBalBytes).DecodeLong();
+        _lowestInsertedBlockAccessListBlock = lowestBalBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBalBytes).DecodeLong();
 
         // When not storing receipt, set the lowest inserted receipt to 0 so that old receipt will finish immediately
         if (!receiptConfig.StoreReceipts)

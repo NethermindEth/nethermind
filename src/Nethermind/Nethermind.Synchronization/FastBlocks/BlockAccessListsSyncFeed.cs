@@ -27,9 +27,9 @@ namespace Nethermind.Synchronization.FastBlocks;
 
 public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatch?>
 {
-    protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedAccessListBlockNumber;
+    protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
-    protected override long SyncConfigBarrierCalc => _syncConfig.AncientAccessListsBarrierCalc;
+    protected override long SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
     protected override Func<bool> HasPivot =>
         () => _blockAccessListStore.HasBlock(_blockTree.SyncPivot.BlockHash);
 
@@ -45,8 +45,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private SyncStatusList _syncStatusList;
 
-    private bool ShouldFinish => !_syncConfig.DownloadAccessListsInFastSync || AllDownloaded;
-    private bool AllDownloaded => (_syncPointers.LowestInsertedAccessListBlockNumber ?? long.MaxValue) <= _barrier;
+    private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || AllDownloaded;
+    private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? long.MaxValue) <= _barrier;
 
     public override bool IsFinished => AllDownloaded;
     public override string FeedName => nameof(BlockAccessListsSyncFeed);
@@ -81,24 +81,24 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     public override void InitializeFeed()
     {
-        if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientAccessListsBarrierCalc)
+        if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientBlockAccessListsBarrierCalc)
         {
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-            _barrier = _syncConfig.AncientAccessListsBarrierCalc;
-            if (_logger.IsInfo) _logger.Info($"Changed pivot in access lists sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
+            _barrier = _syncConfig.AncientBlockAccessListsBarrierCalc;
+            if (_logger.IsInfo) _logger.Info($"Changed pivot in block access lists sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
             ResetSyncStatusList();
             InitializeMetadataDb();
         }
         base.InitializeFeed();
-        _syncReport.FastBlocksAccessLists.Reset(0, _pivotNumber - _syncConfig.AncientAccessListsBarrierCalc);
+        _syncReport.FastBlockAccessLists.Reset(0, _pivotNumber - _syncConfig.AncientBlockAccessListsBarrierCalc);
     }
 
     private void ResetSyncStatusList() =>
         _syncStatusList = new SyncStatusList(
             _blockTree,
             _pivotNumber,
-            _syncPointers.LowestInsertedAccessListBlockNumber,
-            _syncConfig.AncientAccessListsBarrier);
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber,
+            _syncConfig.AncientBlockAccessListsBarrier);
 
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.FastBlockAccessLists & ~SyncMode.FastBlocks;
@@ -121,8 +121,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private void PostFinishCleanUp()
     {
-        _syncReport.FastBlocksAccessLists.Update(_pivotNumber);
-        _syncReport.FastBlocksAccessLists.MarkEnd();
+        _syncReport.FastBlockAccessLists.Update(_pivotNumber);
+        _syncReport.FastBlockAccessLists.MarkEnd();
     }
 
     public override async Task<BlockAccessListsSyncBatch?> PrepareRequest(CancellationToken token = default)
@@ -138,7 +138,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             while (!_syncStatusList.TryGetInfosForBatch(requestSize, _blockAccessListDownloadStrategy, out infos))
             {
                 token.ThrowIfCancellationRequested();
-                _syncPointers.LowestInsertedAccessListBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
+                _syncPointers.LowestInsertedBlockAccessListBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
                 UpdateSyncReport();
             }
 
@@ -151,7 +151,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             }
         }
 
-        _syncPointers.LowestInsertedAccessListBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
+        _syncPointers.LowestInsertedBlockAccessListBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
 
         return batch;
     }
@@ -167,7 +167,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 return SyncResponseHandlingResult.InternalError;
             }
 
-            int added = InsertAccessLists(batch);
+            int added = InsertBlockAccessLists(batch);
             return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
         }
         catch (Exception)
@@ -214,7 +214,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         return true;
     }
 
-    private int InsertAccessLists(BlockAccessListsSyncBatch batch)
+    private int InsertBlockAccessLists(BlockAccessListsSyncBatch batch)
     {
         bool hasBreachedProtocol = false;
         int validResponsesCount = 0;
@@ -292,8 +292,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     }
     private void UpdateSyncReport()
     {
-        _syncReport.FastBlocksAccessLists.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
-        _syncReport.FastBlocksAccessLists.CurrentQueued = _syncStatusList.QueueSize;
+        _syncReport.FastBlockAccessLists.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
+        _syncReport.FastBlockAccessLists.CurrentQueued = _syncStatusList.QueueSize;
     }
 
     private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport) : IBlockDownloadStrategy
@@ -330,7 +330,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 return true;
             }
 
-            syncReport.FastBlocksAccessLists.IncrementSkipped();
+            syncReport.FastBlockAccessLists.IncrementSkipped();
             return false;
         }
     }
