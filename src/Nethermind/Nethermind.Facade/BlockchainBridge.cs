@@ -228,7 +228,8 @@ namespace Nethermind.Facade
             // Convergence loop: mirrors Geth's AccessList() — run with the current AL, discover touched
             // slots, repeat until the AL stabilises. Gas and error come from the final (warm) run,
             // so cold-read overcounting is eliminated and OOG due to AL intrinsic cost is surfaced.
-            AccessList? prevAl = null;
+            // Start from the caller-supplied AL so user-provided entries are preserved and counted.
+            AccessList? prevAl = tx.AccessList;
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
