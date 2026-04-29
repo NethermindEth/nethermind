@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -8,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
@@ -271,15 +273,12 @@ internal static class PersistedSnapshotUtils
         try
         {
             ReadOnlySpan<byte> compactedData = compactedSnapshot.GetSpan();
-            Hsst.Hsst outer = new(compactedData);
+            SpanByteReader reader = new(compactedData);
 
             // Determine if this compacted snapshot has NodeRefs by checking metadata flag
             bool hasNodeRefs = false;
-            if (outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaCol))
-            {
-                Hsst.Hsst metaHsst = new(metaCol);
-                hasNodeRefs = metaHsst.TryGet("noderefs"u8, out _);
-            }
+            if (TryGet(compactedData, PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaCol))
+                hasNodeRefs = TryGet(metaCol, "noderefs"u8, out _);
 
             // Build transitive lookup including referenced snapshots from compacted sources
             Dictionary<int, PersistedSnapshot> snapshotLookup = [];
@@ -294,19 +293,21 @@ internal static class PersistedSnapshotUtils
             }
 
             // Unified Account Column (0x01): address → per-address HSST { slots, self-destruct, account }
-            if (outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> accountColumn))
             {
+                HsstReader<SpanByteReader, NoOpPin> outerReader = new(in reader);
+                if (outerReader.TrySeek(PersistedSnapshot.AccountColumnTag, out _))
+                {
                 Span<byte> slotBytes = stackalloc byte[32];
-                Hsst.Hsst addressLevel = new(accountColumn);
-                Hsst.Hsst.Enumerator addrEnum = addressLevel.GetEnumerator();
+                Bound accountColumnBound = outerReader.GetBound();
+                using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
                 while (addrEnum.MoveNext())
                 {
                     ReadOnlySpan<byte> addrKey = addrEnum.Current.Key;
                     Address address = new(addrKey.ToArray());
-                    Hsst.Hsst perAddr = new(addrEnum.Current.Value);
+                    ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
 
                     // Validate account sub-tag (0x03)
-                    if (perAddr.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp))
+                    if (TryGet(perAddrSpan, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp))
                     {
                         Account? bundleAccount = bundle.GetAccount(address);
                         if (accountRlp.IsEmpty)
@@ -329,7 +330,7 @@ internal static class PersistedSnapshotUtils
                     }
 
                     // Validate self-destruct sub-tag (0x02)
-                    if (perAddr.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue))
+                    if (TryGet(perAddrSpan, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue))
                     {
                         bool actual = !sdValue.IsEmpty; // true = new account (0x01), false = destructed (empty)
 
@@ -351,21 +352,22 @@ internal static class PersistedSnapshotUtils
                     }
 
                     // Validate storage sub-tag (0x01)
-                    if (perAddr.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotData))
+                    if (TryGetBound(perAddrSpan, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
                     {
-                        Hsst.Hsst prefixLevel = new(slotData);
-                        Hsst.Hsst.Enumerator prefixEnum = prefixLevel.GetEnumerator();
+                        // slotOff/slotLen are relative to perAddrSpan; reframe to compactedData
+                        long perAddrAbs = addrEnum.Current.ValueBound.Offset;
+                        Bound slotBound = new(perAddrAbs + slotOff, slotLen);
+                        using HsstEnumerator<SpanByteReader, NoOpPin> prefixEnum = new(in reader, slotBound);
                         while (prefixEnum.MoveNext())
                         {
                             ReadOnlySpan<byte> prefixKey = prefixEnum.Current.Key;
-                            ReadOnlySpan<byte> suffixData = prefixEnum.Current.Value;
+                            Bound suffixBound = prefixEnum.Current.ValueBound;
 
-                            Hsst.Hsst suffixLevel = new(suffixData);
-                            Hsst.Hsst.Enumerator suffixEnum = suffixLevel.GetEnumerator();
+                            using HsstEnumerator<SpanByteReader, NoOpPin> suffixEnum = new(in reader, suffixBound);
                             while (suffixEnum.MoveNext())
                             {
                                 ReadOnlySpan<byte> suffixKey = suffixEnum.Current.Key;
-                                ReadOnlySpan<byte> slotValue = suffixEnum.Current.Value;
+                                ReadOnlySpan<byte> slotValue = SliceFromBound(compactedData, suffixEnum.Current.ValueBound);
 
                                 prefixKey.CopyTo(slotBytes);
                                 suffixKey.CopyTo(slotBytes[30..]);
@@ -380,115 +382,129 @@ internal static class PersistedSnapshotUtils
                         }
                     }
                 }
+                }
             }
 
             // StateTopNodes (0x05): key = 3-byte encoded TreePath (length 0-5)
-            if (outer.TryGet(PersistedSnapshot.StateTopNodesTag, out ReadOnlySpan<byte> topNodeColumn))
             {
-                Hsst.Hsst topHsst = new(topNodeColumn);
-                Hsst.Hsst.Enumerator e = topHsst.GetEnumerator();
-                while (e.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StateTopNodesTag, out _))
                 {
-                    ReadOnlySpan<byte> key = e.Current.Key;
-                    ReadOnlySpan<byte> value = ResolveNodeRefForValidation(e.Current.Value, snapshotLookup, hasNodeRefs);
-                    TreePath path = DecodeWith3Byte(key);
+                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    while (e.MoveNext())
+                    {
+                        ReadOnlySpan<byte> key = e.Current.Key;
+                        ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, e.Current.ValueBound);
+                        ReadOnlySpan<byte> value = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
+                        TreePath path = DecodeWith3Byte(key);
 
-                    byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
-                    if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                        throw new InvalidOperationException($"StateTopNode path {path}: RLP mismatch. Got {value.ToHexString()}, Expected: {bundleRlp?.ToHexString()}");
+                        byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
+                        if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
+                            throw new InvalidOperationException($"StateTopNode path {path}: RLP mismatch. Got {value.ToHexString()}, Expected: {bundleRlp?.ToHexString()}");
+                    }
                 }
             }
 
             // StateNodes (0x03): key = 8-byte encoded TreePath (length 6-15)
-            if (outer.TryGet(PersistedSnapshot.StateNodeTag, out ReadOnlySpan<byte> stateNodeColumn))
             {
-                Hsst.Hsst stateHsst = new(stateNodeColumn);
-                Hsst.Hsst.Enumerator e = stateHsst.GetEnumerator();
-                while (e.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StateNodeTag, out _))
                 {
-                    ReadOnlySpan<byte> key = e.Current.Key;
-                    ReadOnlySpan<byte> value = ResolveNodeRefForValidation(e.Current.Value, snapshotLookup, hasNodeRefs);
-                    TreePath path = DecodeWith8Byte(key);
+                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    while (e.MoveNext())
+                    {
+                        ReadOnlySpan<byte> key = e.Current.Key;
+                        ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, e.Current.ValueBound);
+                        ReadOnlySpan<byte> value = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
+                        TreePath path = DecodeWith8Byte(key);
 
-                    byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
-                    if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                        throw new InvalidOperationException($"StateNode path length {path.Length}: RLP mismatch");
+                        byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
+                        if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
+                            throw new InvalidOperationException($"StateNode path length {path.Length}: RLP mismatch");
+                    }
                 }
             }
 
             // StateNodeFallback (0x06): key = 33 bytes (32-byte path + 1-byte length)
-            if (outer.TryGet(PersistedSnapshot.StateNodeFallbackTag, out ReadOnlySpan<byte> fallbackColumn))
             {
-                Hsst.Hsst fallbackHsst = new(fallbackColumn);
-                Hsst.Hsst.Enumerator e = fallbackHsst.GetEnumerator();
-                while (e.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StateNodeFallbackTag, out _))
                 {
-                    ReadOnlySpan<byte> key = e.Current.Key;
-                    ReadOnlySpan<byte> value = ResolveNodeRefForValidation(e.Current.Value, snapshotLookup, hasNodeRefs);
-                    TreePath path = new(new Hash256(key[..32].ToArray()), key[32]);
+                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    while (e.MoveNext())
+                    {
+                        ReadOnlySpan<byte> key = e.Current.Key;
+                        ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, e.Current.ValueBound);
+                        ReadOnlySpan<byte> value = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
+                        TreePath path = new(new Hash256(key[..32].ToArray()), key[32]);
 
-                    byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
-                    if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                        throw new InvalidOperationException($"StateNodeFallback path length {key[32]}: RLP mismatch");
+                        byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
+                        if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
+                            throw new InvalidOperationException($"StateNodeFallback path length {key[32]}: RLP mismatch");
+                    }
                 }
             }
 
             // StorageNodes (0x07): nested HSST. addr hash prefix(20) → 8-byte encoded TreePath → RLP/NodeRef
-            if (outer.TryGet(PersistedSnapshot.StorageNodeTag, out ReadOnlySpan<byte> storageNodeColumn))
             {
-                Span<byte> fullHashBytes = stackalloc byte[32];
-                Hsst.Hsst addrLevel = new(storageNodeColumn);
-                Hsst.Hsst.Enumerator addrEnum = addrLevel.GetEnumerator();
-                while (addrEnum.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StorageNodeTag, out _))
                 {
-                    ReadOnlySpan<byte> addrHashPrefix = addrEnum.Current.Key;
-                    ReadOnlySpan<byte> innerData = addrEnum.Current.Value;
-
-                    fullHashBytes.Clear();
-                    addrHashPrefix.CopyTo(fullHashBytes);
-                    Hash256 addrHash = new(fullHashBytes.ToArray());
-
-                    Hsst.Hsst innerHsst = new(innerData);
-                    Hsst.Hsst.Enumerator innerEnum = innerHsst.GetEnumerator();
-                    while (innerEnum.MoveNext())
+                    Span<byte> fullHashBytes = stackalloc byte[32];
+                    using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, r.GetBound());
+                    while (addrEnum.MoveNext())
                     {
-                        ReadOnlySpan<byte> pathKey = innerEnum.Current.Key;
-                        ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(innerEnum.Current.Value, snapshotLookup, hasNodeRefs);
-                        TreePath path = DecodeWith8Byte(pathKey);
+                        ReadOnlySpan<byte> addrHashPrefix = addrEnum.Current.Key;
+                        Bound innerBound = addrEnum.Current.ValueBound;
 
-                        byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
-                        if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                            throw new InvalidOperationException($"StorageNode {addrHash} path length {path.Length}: RLP mismatch");
+                        fullHashBytes.Clear();
+                        addrHashPrefix.CopyTo(fullHashBytes);
+                        Hash256 addrHash = new(fullHashBytes.ToArray());
+
+                        using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerBound);
+                        while (innerEnum.MoveNext())
+                        {
+                            ReadOnlySpan<byte> pathKey = innerEnum.Current.Key;
+                            ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, innerEnum.Current.ValueBound);
+                            ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
+                            TreePath path = DecodeWith8Byte(pathKey);
+
+                            byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
+                            if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
+                                throw new InvalidOperationException($"StorageNode {addrHash} path length {path.Length}: RLP mismatch");
+                        }
                     }
                 }
             }
 
             // StorageNodeFallback (0x08): nested HSST. addr hash prefix(20) → 33-byte TreePath → RLP/NodeRef
-            if (outer.TryGet(PersistedSnapshot.StorageNodeFallbackTag, out ReadOnlySpan<byte> storageNodeFallbackColumn))
             {
-                Span<byte> fullHashBytesFb = stackalloc byte[32];
-                Hsst.Hsst addrLevel = new(storageNodeFallbackColumn);
-                Hsst.Hsst.Enumerator addrEnum = addrLevel.GetEnumerator();
-                while (addrEnum.MoveNext())
+                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                if (r.TrySeek(PersistedSnapshot.StorageNodeFallbackTag, out _))
                 {
-                    ReadOnlySpan<byte> addrHashPrefix = addrEnum.Current.Key;
-                    ReadOnlySpan<byte> innerData = addrEnum.Current.Value;
-
-                    fullHashBytesFb.Clear();
-                    addrHashPrefix.CopyTo(fullHashBytesFb);
-                    Hash256 addrHash = new(fullHashBytesFb.ToArray());
-
-                    Hsst.Hsst innerHsst = new(innerData);
-                    Hsst.Hsst.Enumerator innerEnum = innerHsst.GetEnumerator();
-                    while (innerEnum.MoveNext())
+                    Span<byte> fullHashBytesFb = stackalloc byte[32];
+                    using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, r.GetBound());
+                    while (addrEnum.MoveNext())
                     {
-                        ReadOnlySpan<byte> pathKey = innerEnum.Current.Key;
-                        ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(innerEnum.Current.Value, snapshotLookup, hasNodeRefs);
-                        TreePath path = new(new Hash256(pathKey[..32].ToArray()), pathKey[32]);
+                        ReadOnlySpan<byte> addrHashPrefix = addrEnum.Current.Key;
+                        Bound innerBound = addrEnum.Current.ValueBound;
 
-                        byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
-                        if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                            throw new InvalidOperationException($"StorageNodeFallback {addrHash} path length {pathKey[32]}: RLP mismatch");
+                        fullHashBytesFb.Clear();
+                        addrHashPrefix.CopyTo(fullHashBytesFb);
+                        Hash256 addrHash = new(fullHashBytesFb.ToArray());
+
+                        using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerBound);
+                        while (innerEnum.MoveNext())
+                        {
+                            ReadOnlySpan<byte> pathKey = innerEnum.Current.Key;
+                            ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, innerEnum.Current.ValueBound);
+                            ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
+                            TreePath path = new(new Hash256(pathKey[..32].ToArray()), pathKey[32]);
+
+                            byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
+                            if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
+                                throw new InvalidOperationException($"StorageNodeFallback {addrHash} path length {pathKey[32]}: RLP mismatch");
+                        }
                     }
                 }
             }
@@ -521,6 +537,33 @@ internal static class PersistedSnapshotUtils
             throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found during validation");
         return PersistedSnapshot.ResolveValue(snapshot.GetSpan(), nodeRef.ValueLengthOffset);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out ReadOnlySpan<byte> value)
+    {
+        SpanByteReader r = new(data);
+        HsstReader<SpanByteReader, NoOpPin> hsst = new(in r);
+        if (!hsst.TrySeek(key, out _)) { value = default; return false; }
+        Bound b = hsst.GetBound();
+        value = data.Slice((int)b.Offset, b.Length);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryGetBound(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out int offset, out int length)
+    {
+        SpanByteReader r = new(data);
+        HsstReader<SpanByteReader, NoOpPin> hsst = new(in r);
+        if (!hsst.TrySeek(key, out _)) { offset = 0; length = 0; return false; }
+        Bound b = hsst.GetBound();
+        offset = (int)b.Offset;
+        length = b.Length;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> SliceFromBound(ReadOnlySpan<byte> data, Bound b) =>
+        data.Slice((int)b.Offset, b.Length);
 
     private static TreePath DecodeWith3Byte(ReadOnlySpan<byte> key) =>
         TreePath.DecodeWith3Byte(key);
