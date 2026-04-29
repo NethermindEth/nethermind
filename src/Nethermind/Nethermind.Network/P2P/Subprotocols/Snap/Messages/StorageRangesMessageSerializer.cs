@@ -95,21 +95,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths) CalculateLengths(StorageRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
+            IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? slots = message.Slots;
+            int slotsCount = slots?.Count ?? 0;
 
             int allSlotsLength = 0;
-            int[] accountSlotsLengths = new int[message.Slots.Count];
+            int[] accountSlotsLengths = slotsCount == 0 ? [] : new int[slotsCount];
 
-            if (message.Slots is null || message.Slots.Count == 0)
+            if (slots is not null && slotsCount != 0)
             {
-                allSlotsLength = 1;
-            }
-            else
-            {
-                for (int i = 0; i < message.Slots.Count; i++)
+                for (int i = 0; i < slotsCount; i++)
                 {
                     int accountSlotsLength = 0;
 
-                    IOwnedReadOnlyList<PathWithStorageSlot> accountSlots = message.Slots[i];
+                    IOwnedReadOnlyList<PathWithStorageSlot> accountSlots = slots[i];
                     foreach (ref readonly PathWithStorageSlot slot in accountSlots.AsSpan())
                     {
                         int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
