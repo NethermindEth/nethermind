@@ -89,8 +89,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+          key: nuget-v2-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-v2-${{ runner.os }}-
 
       - name: ${{ matrix.project }}
         id: test
