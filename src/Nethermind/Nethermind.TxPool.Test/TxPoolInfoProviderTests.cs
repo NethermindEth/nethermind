@@ -65,7 +65,7 @@ public class TxPoolInfoProviderTests
     }
 
     [Test]
-    public void GetInfo_WhenSenderHasStandardAndBlobTransactions_MergesByNonce()
+    public void GetInfo_WhenSenderHasStandardAndBlobTransactions_OmitsBlobs()
     {
         _stateReader.GetNonce(_address).Returns((UInt256)0);
         Transaction[] standard = BuildTransactions([0, 2]);
@@ -77,13 +77,12 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending[_address].Keys.Should().BeEquivalentTo(new ulong[] { 0, 1, 2, 3 },
-            "blob and standard txs share one nonce sequence per sender");
-        info.Queued.Should().NotContainKey(_address, "the merged sequence has no gap");
+        info.Pending[_address].Keys.Should().BeEquivalentTo(new ulong[] { 0 });
+        info.Queued[_address].Keys.Should().BeEquivalentTo(new ulong[] { 2 });
     }
 
     [Test]
-    public void GetInfo_WhenSenderHasOnlyBlobTransactions_AppearsInResult()
+    public void GetInfo_WhenSenderHasOnlyBlobTransactions_DoesNotAppearInResult()
     {
         _stateReader.GetNonce(_address).Returns((UInt256)0);
         Transaction[] blobs = BuildTransactions([0, 1]);
@@ -92,8 +91,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending[_address].Keys.Should().BeEquivalentTo(new ulong[] { 0, 1 },
-            "blob-only senders must still be reported by GetInfo");
+        info.Pending.Should().NotContainKey(_address);
+        info.Queued.Should().NotContainKey(_address);
     }
 
     // Inputs are always nonce-sorted: TxDistinctSortedPool's group comparer puts
@@ -141,7 +140,7 @@ public class TxPoolInfoProviderTests
     }
 
     [Test]
-    public void GetSenderInfo_WhenSenderHasStandardAndBlobTransactions_MergesByNonce()
+    public void GetSenderInfo_WhenSenderHasStandardAndBlobTransactions_OmitsBlobs()
     {
         _stateReader.GetNonce(_address).Returns((UInt256)0);
         _txPool.GetPendingTransactionsBySender(_address).Returns(BuildTransactions([0, 2]));
@@ -149,9 +148,19 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Pending.Keys.Should().BeEquivalentTo(new ulong[] { 0, 1, 2, 3 },
-            "blob and standard txs share one nonce sequence per sender");
-        senderInfo.Queued.Should().BeEmpty();
+        senderInfo.Pending.Keys.Should().BeEquivalentTo(new ulong[] { 0 });
+        senderInfo.Queued.Keys.Should().BeEquivalentTo(new ulong[] { 2 });
+    }
+
+    [Test]
+    public void GetSenderInfo_WhenSenderHasOnlyBlobTransactions_ReturnsEmpty()
+    {
+        _stateReader.GetNonce(_address).Returns((UInt256)0);
+        _txPool.GetPendingLightBlobTransactionsBySender(_address).Returns(BuildTransactions([0, 1]));
+
+        TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
+
+        senderInfo.Should().BeSameAs(TxPoolSenderInfo.Empty);
     }
 
     [Test]
