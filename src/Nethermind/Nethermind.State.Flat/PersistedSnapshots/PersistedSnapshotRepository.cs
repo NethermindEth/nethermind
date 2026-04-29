@@ -77,7 +77,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         PersistedSnapshot[]? referencedSnapshots = null;
         if (entry.Type == PersistedSnapshotType.Linked)
         {
-            int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(reservation.GetSpan());
+            using WholeReadSession refIdsSession = reservation.BeginWholeReadSession();
+            int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(refIdsSession.GetSpan());
             if (refIds is { Length: > 0 })
             {
                 List<PersistedSnapshot> refs = [];

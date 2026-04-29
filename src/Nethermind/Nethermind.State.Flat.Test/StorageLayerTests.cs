@@ -158,7 +158,8 @@ public class StorageLayerTests
         }
 
         // Read back and verify
-        Assert.That(manager.Open(location).GetSpan().ToArray(), Is.EqualTo(data));
+        using (WholeReadSession session = manager.Open(location).BeginWholeReadSession())
+            Assert.That(session.GetSpan().ToArray(), Is.EqualTo(data));
         Assert.That(location.Size, Is.EqualTo(data.Length));
     }
 

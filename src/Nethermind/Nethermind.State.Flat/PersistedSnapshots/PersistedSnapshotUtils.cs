@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -269,7 +270,8 @@ internal static class PersistedSnapshotUtils
 
         try
         {
-            ReadOnlySpan<byte> compactedData = compactedSnapshot.GetSpan();
+            using WholeReadSession compactedSession = compactedSnapshot.BeginWholeReadSession();
+            ReadOnlySpan<byte> compactedData = compactedSession.GetSpan();
             SpanByteReader reader = new(compactedData);
 
             // Determine if this compacted snapshot has NodeRefs by checking metadata flag
@@ -517,7 +519,10 @@ internal static class PersistedSnapshotUtils
     {
         List<string> base64List = [];
         for (int i = 0; i < snapshots.Count; i++)
-            base64List.Add(Convert.ToBase64String(snapshots[i].GetSpan()));
+        {
+            using WholeReadSession session = snapshots[i].BeginWholeReadSession();
+            base64List.Add(Convert.ToBase64String(session.GetSpan()));
+        }
         File.WriteAllText(filename, JsonSerializer.Serialize(base64List));
     }
 

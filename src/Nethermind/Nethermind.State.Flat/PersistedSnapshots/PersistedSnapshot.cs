@@ -69,7 +69,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     internal ArenaReservation Reservation => _reservation;
 
-    public ReadOnlySpan<byte> GetSpan() => _reservation.GetSpan();
+    /// <summary>
+    /// Begin a scoped whole-buffer read over this snapshot's reservation. Forwards to
+    /// <see cref="ArenaReservation.BeginWholeReadSession"/>.
+    /// </summary>
+    public WholeReadSession BeginWholeReadSession() => _reservation.BeginWholeReadSession();
 
     /// <summary>
     /// Construct a reader over this snapshot's bytes. Delegates to

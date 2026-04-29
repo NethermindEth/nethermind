@@ -18,14 +18,25 @@ public sealed class ArenaReservation(IArenaManager arenaManager, int arenaId, lo
     internal long Offset { get; } = offset;
     public int Size { get; internal set; } = size;
 
-    public ReadOnlySpan<byte> GetSpan() => _arenaManager.GetSpan(this);
+    /// <summary>
+    /// Direct span access used internally by <see cref="WholeReadSession"/> and the reader
+    /// path. External consumers go through <see cref="BeginWholeReadSession"/> so that the
+    /// span's lifetime is bounded by an explicit Begin/End scope.
+    /// </summary>
+    internal ReadOnlySpan<byte> GetSpanInternal() => _arenaManager.GetSpan(this);
+
+    /// <summary>
+    /// Begin a scoped whole-buffer read. The returned session holds a lease on this
+    /// reservation; disposing it releases the lease.
+    /// </summary>
+    public WholeReadSession BeginWholeReadSession() => new(this);
 
     /// <summary>
     /// Construct a span-backed <see cref="SpanByteReader"/> over this reservation's bytes.
-    /// Reader-shaped APIs consume this rather than poking at <see cref="GetSpan"/> directly,
-    /// keeping the read path on the reader abstraction end-to-end.
+    /// Reader-shaped APIs consume this; per-read pinning happens at the reader level, so
+    /// no whole-buffer session is required.
     /// </summary>
-    public SpanByteReader CreateReader() => new(GetSpan());
+    public SpanByteReader CreateReader() => new(GetSpanInternal());
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 
