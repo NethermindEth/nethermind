@@ -451,7 +451,8 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     internal static void ConvertFullToLinked<TWriter>(PersistedSnapshot fullSnapshot, ref TWriter writer) where TWriter : IByteBufferWriter
     {
-        ReadOnlySpan<byte> snapshotData = fullSnapshot.GetSpan();
+        using WholeReadSession session = fullSnapshot.BeginWholeReadSession();
+        ReadOnlySpan<byte> snapshotData = session.GetSpan();
         using HsstBuilder<TWriter> outerBuilder = new(ref writer);
 
         byte[][] tags = [
@@ -692,12 +693,14 @@ public static class PersistedSnapshotBuilder
         HsstMergeEnumerator[] enums = new HsstMergeEnumerator[n];
         bool[] hasMore = new bool[n];
         (int Offset, int Length)[] columnBounds = new (int, int)[n];
+        WholeReadSession[] sessions = new WholeReadSession[n];
 
         try
         {
             for (int i = 0; i < n; i++)
             {
-                ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
+                sessions[i] = snapshots[i].BeginWholeReadSession();
+                ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
                 if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
@@ -727,7 +730,7 @@ public static class PersistedSnapshotBuilder
                 if (minIdx < 0) break;
 
                 ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
-                ReadOnlySpan<byte> colSpan = snapshots[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
+                ReadOnlySpan<byte> colSpan = sessions[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
                 (int valOff, int valLen) = enums[minIdx].GetCurrentValueBound(colSpan);
                 builder.Add(minKey, colSpan.Slice(valOff, valLen));
 
@@ -738,12 +741,12 @@ public static class PersistedSnapshotBuilder
                     if (i == minIdx || !hasMore[i]) continue;
                     if (enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
                     {
-                        ReadOnlySpan<byte> cs = snapshots[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
+                        ReadOnlySpan<byte> cs = sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
                         hasMore[i] = enums[i].MoveNext(cs);
                     }
                 }
                 {
-                    ReadOnlySpan<byte> cs = snapshots[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
+                    ReadOnlySpan<byte> cs = sessions[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
                     hasMore[minIdx] = enums[minIdx].MoveNext(cs);
                 }
             }
@@ -753,6 +756,7 @@ public static class PersistedSnapshotBuilder
         finally
         {
             for (int i = 0; i < n; i++) enums[i]?.Dispose();
+            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
 
@@ -910,12 +914,14 @@ public static class PersistedSnapshotBuilder
         HsstMergeEnumerator[] enums = new HsstMergeEnumerator[n];
         bool[] hasMore = new bool[n];
         (int Offset, int Length)[] columnBounds = new (int, int)[n];
+        WholeReadSession[] sessions = new WholeReadSession[n];
 
         try
         {
             for (int i = 0; i < n; i++)
             {
-                ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
+                sessions[i] = snapshots[i].BeginWholeReadSession();
+                ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
                 if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
@@ -924,12 +930,13 @@ public static class PersistedSnapshotBuilder
             }
 
             NWayNestedStreamingMerge(enums, hasMore, n,
-                i => snapshots[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length),
+                i => sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length),
                 ref writer, outerMinSep, innerMinSep, innerInline);
         }
         finally
         {
             for (int i = 0; i < n; i++) enums[i]?.Dispose();
+            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
 
@@ -945,12 +952,14 @@ public static class PersistedSnapshotBuilder
         HsstMergeEnumerator[] enums = new HsstMergeEnumerator[n];
         bool[] hasMore = new bool[n];
         (int Offset, int Length)[] columnBounds = new (int, int)[n];
+        WholeReadSession[] sessions = new WholeReadSession[n];
 
         try
         {
             for (int i = 0; i < n; i++)
             {
-                ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
+                sessions[i] = snapshots[i].BeginWholeReadSession();
+                ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
                 if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
@@ -990,7 +999,7 @@ public static class PersistedSnapshotBuilder
                 if (matchCount == 1)
                 {
                     int srcIdx = matchingSources[0];
-                    ReadOnlySpan<byte> colSpan = snapshots[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
+                    ReadOnlySpan<byte> colSpan = sessions[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
                     (int valOff, int valLen) = enums[srcIdx].GetCurrentValueBound(colSpan);
                     builder.Add(minKey, colSpan.Slice(valOff, valLen));
                     if (bloom is not null)
@@ -1013,7 +1022,7 @@ public static class PersistedSnapshotBuilder
                         bloom.Add(addrKey);
                     }
                     NWayMergePerAddressHsst(
-                        enums, matchingSources, matchCount, snapshots, columnBounds,
+                        enums, matchingSources, matchCount, sessions, columnBounds,
                         ref perAddrWriter, bloom, addrKey);
                     builder.FinishValueWrite(minKey);
                 }
@@ -1021,7 +1030,7 @@ public static class PersistedSnapshotBuilder
                 for (int j = 0; j < matchCount; j++)
                 {
                     int i = matchingSources[j];
-                    ReadOnlySpan<byte> cs = snapshots[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
+                    ReadOnlySpan<byte> cs = sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
                     hasMore[i] = enums[i].MoveNext(cs);
                 }
             }
@@ -1031,6 +1040,7 @@ public static class PersistedSnapshotBuilder
         finally
         {
             for (int i = 0; i < n; i++) enums[i]?.Dispose();
+            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
 
@@ -1042,7 +1052,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     private static void NWayMergePerAddressHsst<TWriter>(
         HsstMergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
-        PersistedSnapshotList snapshots, (int Offset, int Length)[] columnBounds,
+        WholeReadSession[] sessions, (int Offset, int Length)[] columnBounds,
         ref TWriter writer, BloomFilter? bloom = null, ulong addrBloomKey = 0) where TWriter : IByteBufferWriter
     {
         // Get per-address HSST bounds (absolute offset from snapshot start) for each matching source
@@ -1050,7 +1060,7 @@ public static class PersistedSnapshotBuilder
         for (int j = 0; j < matchCount; j++)
         {
             int srcIdx = matchingSources[j];
-            ReadOnlySpan<byte> colSpan = snapshots[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
+            ReadOnlySpan<byte> colSpan = sessions[srcIdx].GetSpan().Slice(columnBounds[srcIdx].Offset, columnBounds[srcIdx].Length);
             (int valOff, int valLen) = outerEnums[srcIdx].GetCurrentValueBound(colSpan);
             perAddrBounds[j] = (columnBounds[srcIdx].Offset + valOff, valLen);
         }
@@ -1061,7 +1071,7 @@ public static class PersistedSnapshotBuilder
         int destructBarrier = -1;
         for (int j = 0; j < matchCount; j++)
         {
-            ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+            ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
             if (TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal) && sdVal.IsEmpty)
                 destructBarrier = j;
         }
@@ -1074,7 +1084,7 @@ public static class PersistedSnapshotBuilder
         {
             for (int j = slotStart; j < matchCount; j++)
             {
-                ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan()
+                ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan()
                     .Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
                 if (TryGet(perAddr, PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
                     AddSlotKeysToBloom(slotSection, addrBloomKey, bloom);
@@ -1087,7 +1097,7 @@ public static class PersistedSnapshotBuilder
             (int Offset, int Length)[] slotBounds = new (int, int)[matchCount - slotStart];
             for (int j = slotStart; j < matchCount; j++)
             {
-                ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
                 if (TryGetBound(perAddr, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
                 {
                     slotSources[slotSourceCount] = j;
@@ -1098,7 +1108,7 @@ public static class PersistedSnapshotBuilder
 
             if (slotSourceCount == 1)
             {
-                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, snapshots[matchingSources[slotSources[0]]].GetSpan().Slice(slotBounds[0].Offset, slotBounds[0].Length));
+                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, sessions[matchingSources[slotSources[0]]].GetSpan().Slice(slotBounds[0].Offset, slotBounds[0].Length));
             }
             else if (slotSourceCount > 1)
             {
@@ -1109,7 +1119,7 @@ public static class PersistedSnapshotBuilder
                 {
                     for (int j = 0; j < slotSourceCount; j++)
                     {
-                        ReadOnlySpan<byte> slotSpan = snapshots[matchingSources[slotSources[j]]].GetSpan().Slice(slotBounds[j].Offset, slotBounds[j].Length);
+                        ReadOnlySpan<byte> slotSpan = sessions[matchingSources[slotSources[j]]].GetSpan().Slice(slotBounds[j].Offset, slotBounds[j].Length);
                         slotEnums[j] = new HsstMergeEnumerator(slotSpan, isInline: false);
                         slotHasMore[j] = slotEnums[j].MoveNext(slotSpan);
                     }
@@ -1117,7 +1127,7 @@ public static class PersistedSnapshotBuilder
                     ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                     NWayNestedStreamingMerge(
                         slotEnums, slotHasMore, slotSourceCount,
-                        j => snapshots[matchingSources[slotSources[j]]].GetSpan().Slice(slotBounds[j].Offset, slotBounds[j].Length),
+                        j => sessions[matchingSources[slotSources[j]]].GetSpan().Slice(slotBounds[j].Offset, slotBounds[j].Length),
                         ref slotWriter,
                         outerMinSep: 2, innerMinSep: 2, innerInline: true);
                     perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
@@ -1136,7 +1146,7 @@ public static class PersistedSnapshotBuilder
 
             for (int j = 0; j < matchCount; j++)
             {
-                ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
                 if (!TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)) continue;
 
                 if (!hasSd)
@@ -1162,7 +1172,7 @@ public static class PersistedSnapshotBuilder
         {
             for (int j = matchCount - 1; j >= 0; j--)
             {
-                ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
                 if (TryGet(perAddr, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account))
                 {
                     perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, account);
@@ -1183,8 +1193,10 @@ public static class PersistedSnapshotBuilder
         PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> refIds) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
-        ReadOnlySpan<byte> oldestData = snapshots[0].GetSpan();
-        ReadOnlySpan<byte> newestData = snapshots[n - 1].GetSpan();
+        using WholeReadSession oldestSession = snapshots[0].BeginWholeReadSession();
+        using WholeReadSession newestSession = snapshots[n - 1].BeginWholeReadSession();
+        ReadOnlySpan<byte> oldestData = oldestSession.GetSpan();
+        ReadOnlySpan<byte> newestData = newestSession.GetSpan();
 
         TryGet(oldestData, PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> oldestMeta);
         TryGet(newestData, PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> newestMeta);

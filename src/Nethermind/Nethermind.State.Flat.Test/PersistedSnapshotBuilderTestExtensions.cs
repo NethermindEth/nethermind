@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Storage;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -28,7 +29,11 @@ internal static class PersistedSnapshotBuilderTestExtensions
     public static byte[] NWayMergeSnapshots(PersistedSnapshotList snapshots)
     {
         if (snapshots.Count == 0) throw new ArgumentException("Cannot merge empty snapshot list");
-        if (snapshots.Count == 1) return snapshots[0].GetSpan().ToArray();
+        if (snapshots.Count == 1)
+        {
+            using WholeReadSession session = snapshots[0].BeginWholeReadSession();
+            return session.GetSpan().ToArray();
+        }
 
         HashSet<int> referencedIds = new();
         for (int i = 0; i < snapshots.Count; i++)
