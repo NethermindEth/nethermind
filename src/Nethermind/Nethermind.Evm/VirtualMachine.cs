@@ -1134,9 +1134,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             //     For the FastCall path that's done at EvmInstructions.Call.cs by recording on
             //     vm.VmState.AccessTracker (the caller). For full-frame CALL we'd need to fire
             //     on the parent before the inner snapshot is taken; deferring that for now.
-            if (spec.IsEip8037Enabled && wasCreated && !vmState.IsTopLevel && vmState.ExecutionType.IsAnyCreate())
+            if (spec.IsEip8037Enabled && wasCreated && vmState.ExecutionType.IsAnyCreate())
             {
-                vmState.AccessTracker.RecordAccountCreated(env.ExecutingAccount);
+                if (vmState.IsTopLevel)
+                {
+                    // Top-level CREATE pays via intrinsic createStateCost — don't record a
+                    // state change (would double-charge), but DO mark the account as created
+                    // so GetSelfDestructStateRefund can refund it if the initcode selfdestructs.
+                    vmState.AccessTracker.MarkAccountCreatedForRefund(env.ExecutingAccount);
+                }
+                else
+                {
+                    vmState.AccessTracker.RecordAccountCreated(env.ExecutingAccount);
+                }
             }
 
             // For contract creation calls, increment the nonce if the specification requires it.

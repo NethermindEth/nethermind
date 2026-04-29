@@ -87,6 +87,9 @@ public struct StackAccessTracker() : IDisposable
     public readonly void RecordAccountCreated(Address address)
         => _trackingState.StateGas.RecordAccountCreated(address);
 
+    public readonly void MarkAccountCreatedForRefund(Address address)
+        => _trackingState.StateGas.MarkAccountCreatedForRefund(address);
+
     public readonly void RecordCodeDeposit(Address address, int codeLength)
         => _trackingState.StateGas.RecordCodeDeposit(address, codeLength);
 
