@@ -3,6 +3,7 @@
 
 using System;
 using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
@@ -21,11 +22,14 @@ internal class WorldStateDbDeciderModule : Module
         builder
             .AddSingleton<FlatStateActivationPolicy>()
 
-            .AddSingleton<IWorldStateManager, FlatStateActivationPolicy, Func<FlatWorldStateManager>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
-                (policy, flatFactory, patriciaFactory) =>
-                    policy.ShouldTurnOnFlatDb()
-                        ? flatFactory()
-                        : patriciaFactory().WorldStateManager)
+            .AddSingleton<IWorldStateManager, FlatStateActivationPolicy, ISyncConfig, Func<FlatWorldStateManager>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
+                (policy, syncConfig, flatFactory, patriciaFactory) =>
+                {
+                    if (!policy.ShouldTurnOnFlatDb()) return patriciaFactory().WorldStateManager;
+                    // Flat state can always serve snap requests; set before InitializeNetwork registers capabilities.
+                    syncConfig.SnapServingEnabled ??= true;
+                    return flatFactory();
+                })
 
             .AddSingleton<IPruningTrieStateAdminRpcModule, FlatStateActivationPolicy, Func<FlatWorldStateModule.PruningTrieStateAdminRpcModuleStub>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
                 (policy, flatFactory, patriciaFactory) =>

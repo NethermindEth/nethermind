@@ -19,7 +19,6 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// </summary>
 public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
 {
-    // Flat state can always serve snap requests. Enable it by default unless the user explicitly disabled it.
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
 
     public void EnsureInitialize()
