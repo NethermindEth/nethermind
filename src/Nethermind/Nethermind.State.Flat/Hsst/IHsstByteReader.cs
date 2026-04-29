@@ -95,6 +95,14 @@ public interface IHsstByteReader<TPin> where TPin : struct, IBufferPin, allows r
     bool TryRead(long offset, scoped Span<byte> output);
 
     /// <summary>
+    /// Like <see cref="TryRead"/>, but signals the implementation that this read is part of a
+    /// forward-sequential scan: paged/mmap-backed readers may use it as a hint to prefetch
+    /// upcoming pages (e.g. <c>madvise(MADV_WILLNEED)</c> on a sliding window). Span-backed
+    /// readers may treat it identically to <see cref="TryRead"/>.
+    /// </summary>
+    bool TryReadWithReadahead(long offset, scoped Span<byte> output);
+
+    /// <summary>
     /// Pin a window of <paramref name="size"/> bytes starting at <paramref name="offset"/>.
     /// The pinned bytes are accessed via <see cref="IBufferPin.Buffer"/> and remain valid until
     /// the returned pin is disposed.
@@ -121,6 +129,9 @@ public readonly ref struct SpanByteReader : IHsstByteReader<NoOpPin>
         _data.Slice((int)offset, output.Length).CopyTo(output);
         return true;
     }
+
+    /// <summary>In-memory data is already paged in; readahead is a no-op delegate to <see cref="TryRead"/>.</summary>
+    public bool TryReadWithReadahead(long offset, scoped Span<byte> output) => TryRead(offset, output);
 
     public NoOpPin PinBuffer(long offset, long size)
     {
