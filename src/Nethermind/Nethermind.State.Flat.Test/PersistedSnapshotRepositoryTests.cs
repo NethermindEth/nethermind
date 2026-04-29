@@ -64,11 +64,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.From, Is.EqualTo(s0));
         Assert.That(persisted.To, Is.EqualTo(s1));
-        Assert.That(persisted.TryGetAccount(TestItem.AddressA, out ReadOnlySpan<byte> accountRlp), Is.True);
-
-        Rlp.ValueDecoderContext ctx = new(accountRlp);
-        Account decoded = AccountDecoder.Slim.Decode(ref ctx)!;
-        Assert.That(decoded.Balance, Is.EqualTo((UInt256)1000));
+        Assert.That(persisted.TryGetAccount(TestItem.AddressA, out Account? decoded), Is.True);
+        Assert.That(decoded!.Balance, Is.EqualTo((UInt256)1000));
         persisted.Dispose();
     }
 
@@ -102,8 +99,8 @@ public class PersistedSnapshotRepositoryTests
 
         // The newest snapshot (s1→s2) should have rlp2 at the path
         Assert.That(repo.TryLeaseSnapshotTo(s2, out PersistedSnapshot? newest), Is.True);
-        Assert.That(newest!.TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> result), Is.True);
-        Assert.That(result.ToArray(), Is.EqualTo(rlp2));
+        Assert.That(newest!.TryLoadStateNodeRlp(path, out byte[]? result), Is.True);
+        Assert.That(result, Is.EqualTo(rlp2));
         newest.Dispose();
     }
 

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
@@ -134,43 +134,47 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         }
     }
 
-    public bool TryGetAccount(Address address, [UnscopedRef] out ReadOnlySpan<byte> accountRlp)
+    public bool TryGetAccount(Address address, out Account? account)
     {
         if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
         {
-            accountRlp = default;
+            account = null;
             return false;
         }
-        ReadOnlySpan<byte> data = GetSpan();
-        SpanByteReader reader = new(data);
+        SpanByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryGetAccount<SpanByteReader, NoOpPin>(in reader, address, out Bound b))
         {
-            accountRlp = default;
+            account = null;
             return false;
         }
-        accountRlp = data.Slice((int)b.Offset, b.Length);
+        if (b.Length == 0)
+        {
+            account = null;
+            return true;
+        }
+        Span<byte> buf = b.Length <= 256 ? stackalloc byte[256] : new byte[b.Length];
+        Span<byte> rlp = buf[..b.Length];
+        reader.TryRead(b.Offset, rlp);
+        Rlp.ValueDecoderContext ctx = new(rlp);
+        account = AccountDecoder.Slim.Decode(ref ctx);
         return true;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, [UnscopedRef] out ReadOnlySpan<byte> slotValue)
+    public bool TryGetSlot(Address address, in UInt256 index, ref SlotValue slotValue)
     {
         if (_keyBloom is not null)
         {
             ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(address);
             if (!_keyBloom.MightContain(addrKey) || !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, in index)))
-            {
-                slotValue = default;
                 return false;
-            }
         }
-        ReadOnlySpan<byte> data = GetSpan();
-        SpanByteReader reader = new(data);
+        SpanByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryGetSlot<SpanByteReader, NoOpPin>(in reader, address, in index, out Bound b))
-        {
-            slotValue = default;
             return false;
-        }
-        slotValue = data.Slice((int)b.Offset, b.Length);
+        Span<byte> buf = stackalloc byte[32];
+        Span<byte> raw = buf[..b.Length];
+        reader.TryRead(b.Offset, raw);
+        slotValue = SlotValue.FromSpanWithoutLeadingZero(raw);
         return true;
     }
 
@@ -195,25 +199,27 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return PersistedSnapshotReader.TryGetSelfDestructFlag<SpanByteReader, NoOpPin>(in reader, address);
     }
 
-    public bool TryLoadStateNodeRlp(scoped in TreePath path, out ReadOnlySpan<byte> nodeRlp)
+    public bool TryLoadStateNodeRlp(scoped in TreePath path, out byte[]? nodeRlp)
     {
-        if (!PersistedSnapshotReader.TryLoadStateNodeRlp(GetSpan(), in path, out Bound bound))
+        SpanByteReader reader = CreateReader();
+        if (!PersistedSnapshotReader.TryLoadStateNodeRlp<SpanByteReader, NoOpPin>(in reader, in path, out Bound bound))
         {
-            nodeRlp = default;
+            nodeRlp = null;
             return false;
         }
-        nodeRlp = ResolveValueAt(bound);
+        nodeRlp = ResolveValueAt(bound).ToArray();
         return true;
     }
 
-    public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, out ReadOnlySpan<byte> nodeRlp)
+    public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, out byte[]? nodeRlp)
     {
-        if (!PersistedSnapshotReader.TryLoadStorageNodeRlp(GetSpan(), address, in path, out Bound bound))
+        SpanByteReader reader = CreateReader();
+        if (!PersistedSnapshotReader.TryLoadStorageNodeRlp<SpanByteReader, NoOpPin>(in reader, address, in path, out Bound bound))
         {
-            nodeRlp = default;
+            nodeRlp = null;
             return false;
         }
-        nodeRlp = ResolveValueAt(bound);
+        nodeRlp = ResolveValueAt(bound).ToArray();
         return true;
     }
 
