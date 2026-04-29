@@ -24,4 +24,6 @@ public interface ISszEndpointHandler
     /// has already been validated and the request body has been read.
     /// </summary>
     Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body);
+
+    bool AcceptsPathExtra => false;
 }

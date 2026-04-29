@@ -22,6 +22,7 @@ public sealed class GetPayloadSszHandler<TResult>(
     public override string HttpMethod => "GET";
     public override string Resource => "payloads";
     public override int? Version => version;
+    public override bool AcceptsPathExtra => true;
 
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {

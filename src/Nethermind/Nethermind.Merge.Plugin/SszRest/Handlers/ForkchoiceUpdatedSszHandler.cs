@@ -4,19 +4,22 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
 /// Handles <c>POST /engine/v{N}/forkchoice</c>, the SSZ-REST equivalent of
 /// <c>engine_forkchoiceUpdatedV{N}</c>.
+/// Routes through <see cref="IEngineRpcModule"/> so that single-flight
+/// locking, metrics, and the engine request tracker are applied identically
+/// to the JSON-RPC path.
 /// </summary>
-public sealed class ForkchoiceUpdatedSszHandler(IForkchoiceUpdatedHandler handler) : SszEndpointHandlerBase
+public sealed class ForkchoiceUpdatedSszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
-    private readonly IForkchoiceUpdatedHandler _handler = handler;
+    private readonly IEngineRpcModule _engineModule = engineModule;
 
     public override string HttpMethod => "POST";
     public override string Resource => "forkchoice";
@@ -28,7 +31,13 @@ public sealed class ForkchoiceUpdatedSszHandler(IForkchoiceUpdatedHandler handle
 
         await WriteSszResultAsync(
             ctx,
-            await _handler.Handle(state, attrs, version),
+            await (version switch
+            {
+                <= EngineApiVersions.Fcu.V1 => _engineModule.engine_forkchoiceUpdatedV1(state, attrs),
+                EngineApiVersions.Fcu.V2 => _engineModule.engine_forkchoiceUpdatedV2(state, attrs),
+                EngineApiVersions.Fcu.V3 => _engineModule.engine_forkchoiceUpdatedV3(state, attrs),
+                _ => _engineModule.engine_forkchoiceUpdatedV4(state, attrs),
+            }),
             SszCodec.EncodeForkchoiceUpdatedResponse);
     }
 }

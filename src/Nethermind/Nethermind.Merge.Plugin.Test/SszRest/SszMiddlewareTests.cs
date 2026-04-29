@@ -30,8 +30,8 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 [TestFixture]
 public class SszMiddlewareTests
 {
-    private IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayload = null!;
-    private IForkchoiceUpdatedHandler _forkchoiceUpdated = null!;
+    private IEngineRpcModule _engineModule = null!;
+
     private IAsyncHandler<byte[], ExecutionPayload?> _getPayloadV1 = null!;
     private IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadV2 = null!;
     private IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadV3 = null!;
@@ -62,8 +62,8 @@ public class SszMiddlewareTests
     [SetUp]
     public void SetUp()
     {
-        _newPayload = Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>();
-        _forkchoiceUpdated = Substitute.For<IForkchoiceUpdatedHandler>();
+        _engineModule = Substitute.For<IEngineRpcModule>();
+
         _getPayloadV1 = Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>();
         _getPayloadV2 = Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>();
         _getPayloadV3 = Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>();
@@ -98,7 +98,8 @@ public class SszMiddlewareTests
 
         ISszEndpointHandler[] handlers =
         [
-            new NewPayloadSszHandler(_newPayload),
+            new NewPayloadSszHandler(_engineModule),
+            new ForkchoiceUpdatedSszHandler(_engineModule),
 
             new GetPayloadSszHandler<ExecutionPayload>(1, _getPayloadV1, SszCodec.EncodeGetPayloadV1Response),
             new GetPayloadSszHandler<GetPayloadV2Result>(2, _getPayloadV2, SszCodec.EncodeGetPayloadV2Response),
@@ -106,8 +107,6 @@ public class SszMiddlewareTests
             new GetPayloadSszHandler<GetPayloadV4Result>(4, _getPayloadV4, SszCodec.EncodeGetPayloadV4Response),
             new GetPayloadSszHandler<GetPayloadV5Result>(5, _getPayloadV5, SszCodec.EncodeGetPayloadV5Response),
             new GetPayloadSszHandler<GetPayloadV6Result>(6, _getPayloadV6, SszCodec.EncodeGetPayloadV6Response),
-
-            new ForkchoiceUpdatedSszHandler(_forkchoiceUpdated),
 
             new GetBlobsV1SszHandler(_getBlobsV1),
             new GetBlobsV2SszHandler(2, allowPartialReturn: false, _getBlobsV2, SszCodec.EncodeGetBlobsV2Response),
@@ -180,10 +179,10 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task NewPayload_v1_calls_handler_and_returns_200()
+    public async Task NewPayload_v1_calls_engine_module_and_returns_200()
     {
         PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
-        _newPayload.HandleAsync(Arg.Any<ExecutionPayload>())
+        _engineModule.engine_newPayloadV1(Arg.Any<ExecutionPayload>())
             .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
 
         byte[] body = BuildMinimalV1NewPayloadRequest();
@@ -193,7 +192,24 @@ public class SszMiddlewareTests
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
         ctx.Response.ContentType.Should().Contain(OctetStream);
-        await _newPayload.Received(1).HandleAsync(Arg.Any<ExecutionPayload>());
+        await _engineModule.Received(1).engine_newPayloadV1(Arg.Any<ExecutionPayload>());
+    }
+
+    [Test]
+    public async Task NewPayload_v2_routes_to_v2_not_v1()
+    {
+        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+        _engineModule.engine_newPayloadV2(Arg.Any<ExecutionPayload>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+
+        byte[] body = BuildMinimalV2NewPayloadRequest();
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        await _engineModule.Received(1).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
+        await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
     [Test]
@@ -226,15 +242,23 @@ public class SszMiddlewareTests
     }
 
     [TestCase("/engine/v1/forkchoice", 1)]
+    [TestCase("/engine/v2/forkchoice", 2)]
+    [TestCase("/engine/v3/forkchoice", 3)]
     [TestCase("/engine/v4/forkchoice", 4)]
-    public async Task Forkchoice_calls_handler_with_correct_version(string path, int expectedVersion)
+    public async Task Forkchoice_calls_correct_engine_module_version(string path, int version)
     {
-        _forkchoiceUpdated
-            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<int>())
-            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result
-            {
-                PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
-            }));
+        ForkchoiceUpdatedV1Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+        };
+        _engineModule.engine_forkchoiceUpdatedV1(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+        _engineModule.engine_forkchoiceUpdatedV2(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+        _engineModule.engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+        _engineModule.engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
         byte[] body = BuildForkchoiceRequest();
         DefaultHttpContext ctx = MakePostContext(path, body);
@@ -242,8 +266,15 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        await _forkchoiceUpdated.Received(1)
-            .Handle(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), expectedVersion);
+
+        int v1Calls = version == 1 ? 1 : 0;
+        int v2Calls = version == 2 ? 1 : 0;
+        int v3Calls = version == 3 ? 1 : 0;
+        int v4Calls = version == 4 ? 1 : 0;
+        await _engineModule.Received(v1Calls).engine_forkchoiceUpdatedV1(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
+        await _engineModule.Received(v2Calls).engine_forkchoiceUpdatedV2(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
+        await _engineModule.Received(v3Calls).engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
+        await _engineModule.Received(v4Calls).engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
     }
 
     [Test]
@@ -396,7 +427,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Authentication_failure_returns_401_and_does_not_call_handler()
+    public async Task Authentication_failure_returns_401_and_does_not_call_engine_module()
     {
         _auth.Authenticate(Arg.Any<string>()).Returns(false);
 
@@ -406,11 +437,11 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
-        await _newPayload.DidNotReceive().HandleAsync(Arg.Any<ExecutionPayload>());
+        await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
     [Test]
-    public async Task Oversized_body_returns_413_without_calling_handler()
+    public async Task Oversized_body_returns_413_without_calling_engine_module()
     {
         const int MaxBodySize = 16 * 1024 * 1024;
         DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", []);
@@ -420,7 +451,7 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
-        await _newPayload.DidNotReceive().HandleAsync(Arg.Any<ExecutionPayload>());
+        await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
     [Test]
@@ -434,6 +465,17 @@ public class SszMiddlewareTests
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
         nextInvoked.Should().BeFalse("SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
+    }
+
+    [Test]
+    public async Task Path_with_extra_segments_on_non_path_param_handler_returns_404()
+    {
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads/foo/bar", []);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
     [Test]
@@ -502,6 +544,12 @@ public class SszMiddlewareTests
         NewPayloadV1RequestWire.Encode(new NewPayloadV1RequestWire
         {
             ExecutionPayload = ExecutionPayloadV1Ssz.Wrap(SszTestData.MakeMinimalPayload())
+        });
+
+    private static byte[] BuildMinimalV2NewPayloadRequest() =>
+        NewPayloadV2RequestWire.Encode(new NewPayloadV2RequestWire
+        {
+            ExecutionPayload = ExecutionPayloadSsz.Wrap(SszTestData.MakeMinimalPayload())
         });
 
     private static byte[] BuildForkchoiceRequest()

@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
@@ -51,17 +52,13 @@ public static class SszCodec
         SszBytes8[]? pidList = null;
         if (resp.PayloadId is not null)
         {
-            string hex = resp.PayloadId.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                ? resp.PayloadId[2..] : resp.PayloadId;
-
-            byte[] padded = new byte[8];
-            try
-            {
-                byte[] decoded = Convert.FromHexString(hex);
-                decoded.AsSpan(0, Math.Min(decoded.Length, 8)).CopyTo(padded);
-            }
-            catch (FormatException) { }
-
+            ReadOnlySpan<char> hex = resp.PayloadId.AsSpan();
+            if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
+            if (hex.Length != 16)
+                throw new InvalidOperationException($"Invalid payload id '{resp.PayloadId}': expected 16 hex chars, got {hex.Length}");
+            Span<byte> stack = stackalloc byte[8];
+            Bytes.FromHexString(hex, stack);
+            byte[] padded = stack.ToArray();
             pidList = [new SszBytes8 { Bytes = padded }];
         }
 
@@ -263,8 +260,8 @@ public static class SszCodec
             {
                 Body = [new()
                 {
-                    Transactions = TxsToWire((byte[][])b.Transactions),
-                    Withdrawals = WithdrawalsToWire((Withdrawal[]?)b.Withdrawals)
+                    Transactions = TxsToWire(b.Transactions),
+                    Withdrawals = WithdrawalsToWire(b.Withdrawals)
                 }]
             };
         }
@@ -283,8 +280,8 @@ public static class SszCodec
             {
                 Body = [new()
                 {
-                    Transactions = TxsToWire((byte[][])b.Transactions),
-                    Withdrawals = WithdrawalsToWire((Withdrawal[]?)b.Withdrawals),
+                    Transactions = TxsToWire(b.Transactions),
+                    Withdrawals = WithdrawalsToWire(b.Withdrawals),
                     BlockAccessList = b.BlockAccessList is not null
                         ? [new SszTransaction { Data = b.BlockAccessList }] : []
                 }]
@@ -378,45 +375,53 @@ public static class SszCodec
         ValidationError = ps.ValidationError is not null ? Encoding.UTF8.GetBytes(ps.ValidationError) : []
     };
 
-    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV1Wire pa) => new()
+    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV1Wire pa) =>
+        BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient);
+
+    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV2Wire pa) =>
+        BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
+            withdrawals: WithdrawalsFromWire(pa.Withdrawals));
+
+    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV3Wire pa) =>
+        BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
+            withdrawals: WithdrawalsFromWire(pa.Withdrawals),
+            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot is { Length: 1 } ? pa.ParentBeaconBlockRoot[0] : null);
+
+    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) =>
+        BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
+            withdrawals: WithdrawalsFromWire(pa.Withdrawals),
+            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot is { Length: 1 } ? pa.ParentBeaconBlockRoot[0] : null,
+            slotNumber: pa.SlotNumber);
+
+    private static PayloadAttributes BuildPayloadAttributes(
+        ulong timestamp,
+        Hash256 prevRandao,
+        Address suggestedFeeRecipient,
+        Withdrawal[]? withdrawals = null,
+        Hash256? parentBeaconBlockRoot = null,
+        ulong? slotNumber = null) => new()
     {
-        Timestamp = pa.Timestamp,
-        PrevRandao = pa.PrevRandao,
-        SuggestedFeeRecipient = pa.SuggestedFeeRecipient
+        Timestamp = timestamp,
+        PrevRandao = prevRandao,
+        SuggestedFeeRecipient = suggestedFeeRecipient,
+        Withdrawals = withdrawals,
+        ParentBeaconBlockRoot = parentBeaconBlockRoot,
+        SlotNumber = slotNumber
     };
 
-    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV2Wire pa) => new()
+    private static SszTransaction[] TxsToWire(IReadOnlyList<byte[]> txs)
     {
-        Timestamp = pa.Timestamp,
-        PrevRandao = pa.PrevRandao,
-        SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
-        Withdrawals = WithdrawalsFromWire(pa.Withdrawals)
-    };
+        if (txs.Count == 0) return [];
+        SszTransaction[] result = new SszTransaction[txs.Count];
+        for (int i = 0; i < result.Length; i++) result[i] = new SszTransaction { Data = txs[i] };
+        return result;
+    }
 
-    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV3Wire pa) => new()
+    private static WithdrawalWire[] WithdrawalsToWire(IReadOnlyList<Withdrawal>? ws)
     {
-        Timestamp = pa.Timestamp,
-        PrevRandao = pa.PrevRandao,
-        SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
-        Withdrawals = WithdrawalsFromWire(pa.Withdrawals),
-        ParentBeaconBlockRoot = pa.ParentBeaconBlockRoot is { Length: 1 } ? pa.ParentBeaconBlockRoot[0] : null
-    };
-
-    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) => new()
-    {
-        Timestamp = pa.Timestamp,
-        PrevRandao = pa.PrevRandao,
-        SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
-        Withdrawals = WithdrawalsFromWire(pa.Withdrawals),
-        ParentBeaconBlockRoot = pa.ParentBeaconBlockRoot is { Length: 1 } ? pa.ParentBeaconBlockRoot[0] : null,
-        SlotNumber = pa.SlotNumber
-    };
-
-    private static WithdrawalWire[] WithdrawalsToWire(Withdrawal[]? ws)
-    {
-        if (ws is null || ws.Length == 0) return [];
-        WithdrawalWire[] result = new WithdrawalWire[ws.Length];
-        for (int i = 0; i < ws.Length; i++)
+        if (ws is null || ws.Count == 0) return [];
+        WithdrawalWire[] result = new WithdrawalWire[ws.Count];
+        for (int i = 0; i < ws.Count; i++)
             result[i] = new WithdrawalWire
             {
                 Index = ws[i].Index,
@@ -441,9 +446,6 @@ public static class SszCodec
             };
         return result;
     }
-
-    private static SszTransaction[] TxsToWire(byte[][] txs)
-        => WrapBytes(txs, data => new SszTransaction { Data = data });
 
     private static byte[]?[] HashesFromWire(Hash256[]? hashes)
     {
@@ -486,16 +488,21 @@ public static class SszCodec
     }
 
     private static BlobsBundleV1Wire BlobsBundleToV1Wire(BlobsBundleV1? b)
-    {
-        if (b is null) return new() { Commitments = [], Proofs = [], Blobs = [] };
-        (SszKzgCommitment[] c, SszKzgCommitment[] p, SszBlob[] bl) = BuildBlobBundleArrays(b.Commitments, b.Proofs, b.Blobs);
-        return new() { Commitments = c, Proofs = p, Blobs = bl };
-    }
+        => BuildBlobsBundleWire(b?.Commitments, b?.Proofs, b?.Blobs,
+            (c, p, bl) => new BlobsBundleV1Wire { Commitments = c, Proofs = p, Blobs = bl });
 
     private static BlobsBundleV2Wire BlobsBundleToV2Wire(BlobsBundleV2? b)
+        => BuildBlobsBundleWire(b?.Commitments, b?.Proofs, b?.Blobs,
+            (c, p, bl) => new BlobsBundleV2Wire { Commitments = c, Proofs = p, Blobs = bl });
+
+    private static T BuildBlobsBundleWire<T>(
+        byte[][]? commitments, byte[][]? proofs, byte[][]? blobs,
+        Func<SszKzgCommitment[], SszKzgCommitment[], SszBlob[], T> factory)
+        where T : new()
     {
-        if (b is null) return new() { Commitments = [], Proofs = [], Blobs = [] };
-        (SszKzgCommitment[] c, SszKzgCommitment[] p, SszBlob[] bl) = BuildBlobBundleArrays(b.Commitments, b.Proofs, b.Blobs);
-        return new() { Commitments = c, Proofs = p, Blobs = bl };
+        if (commitments is null) return new T();
+        (SszKzgCommitment[] c, SszKzgCommitment[] p, SszBlob[] bl) =
+            BuildBlobBundleArrays(commitments, proofs!, blobs!);
+        return factory(c, p, bl);
     }
 }

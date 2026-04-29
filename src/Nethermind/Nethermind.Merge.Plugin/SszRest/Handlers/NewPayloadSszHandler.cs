@@ -8,7 +8,6 @@ using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -16,24 +15,30 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// Handles <c>POST /engine/v{N}/payloads</c>, the SSZ-REST equivalent of
 /// <c>engine_newPayloadV{N}</c>.
 /// </summary>
-public sealed class NewPayloadSszHandler(IAsyncHandler<ExecutionPayload, PayloadStatusV1> handler) : SszEndpointHandlerBase
+public sealed class NewPayloadSszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
-    private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _handler = handler;
+    private readonly IEngineRpcModule _engineModule = engineModule;
 
     public override string HttpMethod => "POST";
     public override string Resource => "payloads";
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
-        (ExecutionPayload payload, byte[]?[] _, Hash256? beaconRoot, byte[][]? requests) =
+        (ExecutionPayload payload, byte[]?[] versionedHashes, Hash256? beaconRoot, byte[][]? requests) =
             SszCodec.DecodeNewPayloadRequest(body.Span, version);
 
-        if (version >= EngineApiVersions.NewPayload.V3)
-            payload.ParentBeaconBlockRoot = beaconRoot;
+        ResultWrapper<PayloadStatusV1> result = version switch
+        {
+            <= EngineApiVersions.NewPayload.V1 => await _engineModule.engine_newPayloadV1(payload),
+            EngineApiVersions.NewPayload.V2 => await _engineModule.engine_newPayloadV2(payload),
+            EngineApiVersions.NewPayload.V3 => await _engineModule.engine_newPayloadV3(
+                (ExecutionPayloadV3)payload, versionedHashes, beaconRoot),
+            EngineApiVersions.NewPayload.V4 => await _engineModule.engine_newPayloadV4(
+                (ExecutionPayloadV3)payload, versionedHashes, beaconRoot, requests),
+            _ => await _engineModule.engine_newPayloadV5(
+                (ExecutionPayloadV4)payload, versionedHashes, beaconRoot, requests),
+        };
 
-        payload.ExecutionRequests = requests;
-
-        ResultWrapper<PayloadStatusV1> result = await _handler.HandleAsync(payload);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodePayloadStatus);
     }
 }

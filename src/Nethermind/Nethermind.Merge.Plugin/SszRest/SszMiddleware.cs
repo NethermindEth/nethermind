@@ -149,7 +149,7 @@ public sealed class SszMiddleware(
                 return false;
         }
 
-        pathSegment = span.ToString().ToLowerInvariant();
+        pathSegment = span.ToString();
         return true;
     }
 
@@ -162,7 +162,7 @@ public sealed class SszMiddleware(
         ReadOnlySpan<char> pathSpan = pathSegment.AsSpan();
 
         ISszEndpointHandler? fallback = null;
-        string fallbackExtra = string.Empty;
+        ReadOnlySpan<char> fallbackExtraSpan = default;
 
         foreach (KeyValuePair<(string Method, string Resource), List<ISszEndpointHandler>> kvp in _routes)
         {
@@ -170,17 +170,19 @@ public sealed class SszMiddleware(
 
             ReadOnlySpan<char> resourceSpan = kvp.Key.Resource.AsSpan();
 
-            string pathExtra;
-            if (pathSpan.Length == resourceSpan.Length &&
-                pathSpan.Equals(resourceSpan, StringComparison.Ordinal))
+            ReadOnlySpan<char> tailSpan;
+            bool hasExtra;
+            if (MemoryExtensions.Equals(pathSpan, resourceSpan, StringComparison.OrdinalIgnoreCase))
             {
-                pathExtra = string.Empty;
+                tailSpan = default;
+                hasExtra = false;
             }
             else if (pathSpan.Length > resourceSpan.Length &&
                      pathSpan[resourceSpan.Length] == '/' &&
-                     pathSpan.StartsWith(resourceSpan, StringComparison.Ordinal))
+                     pathSpan.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
             {
-                pathExtra = pathSpan[(resourceSpan.Length + 1)..].ToString();
+                tailSpan = pathSpan[(resourceSpan.Length + 1)..];
+                hasExtra = true;
             }
             else
             {
@@ -189,17 +191,19 @@ public sealed class SszMiddleware(
 
             foreach (ISszEndpointHandler candidate in kvp.Value)
             {
+                if (hasExtra && !candidate.AcceptsPathExtra) continue;
+
                 if (candidate.Version == version)
                 {
                     handler = candidate;
-                    extra = pathExtra;
+                    extra = hasExtra ? tailSpan.ToString() : string.Empty;
                     return true;
                 }
 
                 if (candidate.Version is null)
                 {
                     fallback = candidate;
-                    fallbackExtra = pathExtra;
+                    fallbackExtraSpan = tailSpan;
                 }
             }
         }
@@ -207,7 +211,7 @@ public sealed class SszMiddleware(
         if (fallback is not null)
         {
             handler = fallback;
-            extra = fallbackExtra;
+            extra = fallbackExtraSpan.IsEmpty ? string.Empty : fallbackExtraSpan.ToString();
             return true;
         }
 
@@ -268,7 +272,7 @@ public sealed class SszMiddleware(
                         result = ArrayPool<byte>.Shared.Rent(Math.Max(needed, 4096));
                     else if (result.Length < needed)
                     {
-                        byte[] larger = ArrayPool<byte>.Shared.Rent(needed);
+                        byte[] larger = ArrayPool<byte>.Shared.Rent(Math.Max(needed, result.Length * 2));
                         result.AsSpan(0, written).CopyTo(larger);
                         ArrayPool<byte>.Shared.Return(result);
                         result = larger;

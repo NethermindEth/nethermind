@@ -26,6 +26,8 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 
     public virtual int? Version => null;
 
+    public virtual bool AcceptsPathExtra => false;
+
     /// <inheritdoc/>
     public abstract Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body);
 
@@ -103,7 +105,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         await ctx.Response.WriteAsync(message);
     }
 
-    protected static IReadOnlyList<T?> AsReadOnlyList<T>(IEnumerable<T?> source)
+    internal static IReadOnlyList<T?> AsReadOnlyList<T>(IEnumerable<T?> source)
     {
         if (source is IReadOnlyList<T?> list) return list;
         List<T?> result = [.. source];
