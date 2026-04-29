@@ -18,5 +18,5 @@ namespace Nethermind.Taiko;
 public sealed class TaikoSynchronizerModule : Module
 {
     protected override void Load(ContainerBuilder builder) =>
-        builder.AddSingleton<ITotalDifficultyStrategy>(new ZeroTotalDifficultyStrategy());
+        builder.AddSingleton<ITotalDifficultyStrategy, ZeroTotalDifficultyStrategy>();
 }
