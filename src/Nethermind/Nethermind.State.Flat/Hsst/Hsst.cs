@@ -9,15 +9,6 @@ using Nethermind.Core.Utils;
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
-/// Receives span-relative byte offset hints from an HSST iterator so the caller
-/// can warm pages ahead of current consumption.
-/// </summary>
-public interface IHsstReadahead
-{
-    void HintPosition(int dataOffset);
-}
-
-/// <summary>
 /// Hierarchical Static Sorted Table. A compact binary format for persisted snapshots.
 ///
 /// Normal layout: [Version: u8 = 0x01][Data Region][Index Region (B-tree)]
@@ -244,19 +235,16 @@ public readonly ref struct Hsst
     }
 
     public Enumerator GetEnumerator() => new(_data);
-    public Enumerator GetEnumerator(IHsstReadahead? readahead) => new(_data, readahead);
 
     public ref struct Enumerator : IDisposable
     {
         private readonly ReadOnlySpan<byte> _data;
         private readonly bool _isInline;
         private readonly (byte[] Key, int MetadataStart, byte[]? InlineValue)[] _leafEntries;
-        private readonly IHsstReadahead? _readahead;
         private int _currentIndex;
 
-        public Enumerator(ReadOnlySpan<byte> data, IHsstReadahead? readahead = null)
+        public Enumerator(ReadOnlySpan<byte> data)
         {
-            _readahead = readahead;
             _data = data;
             _currentIndex = -1;
             _isInline = data.Length >= 1 && (data[0] & 0x80) != 0;
@@ -307,9 +295,7 @@ public readonly ref struct Hsst
         public bool MoveNext()
         {
             _currentIndex++;
-            if (_currentIndex >= _leafEntries.Length) return false;
-            _readahead?.HintPosition(_leafEntries[_currentIndex].MetadataStart);
-            return true;
+            return _currentIndex < _leafEntries.Length;
         }
 
         /// <summary>
@@ -350,16 +336,14 @@ public readonly ref struct Hsst
         // Per-leaf-entry: separator offset+length in data, and metadata/value offset+length
         private readonly (int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)[] _entries;
         private readonly bool _isInline;
-        private readonly IHsstReadahead? _readahead;
         private int _index = -1;
 
         // Single reusable key buffer
         private readonly byte[] _keyBuffer;
         private int _keyLength;
 
-        public MergeEnumerator(scoped ReadOnlySpan<byte> hsstData, bool isInline, int maxKeyLength = 64, IHsstReadahead? readahead = null)
+        public MergeEnumerator(scoped ReadOnlySpan<byte> hsstData, bool isInline, int maxKeyLength = 64)
         {
-            _readahead = readahead;
             _keyBuffer = new byte[maxKeyLength];
             _isInline = isInline;
 
@@ -420,7 +404,6 @@ public readonly ref struct Hsst
         {
             if (++_index >= _entries.Length) return false;
             (int sepOff, int sepLen, int metaOrValOff, _) = _entries[_index];
-            _readahead?.HintPosition(metaOrValOff);
             data.Slice(sepOff, sepLen).CopyTo(_keyBuffer.AsSpan());
             if (_isInline)
             {

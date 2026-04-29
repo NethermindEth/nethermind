@@ -170,17 +170,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public PersistedSnapshotReader.StateNodeEnumerable StateNodes => new(this);
     public PersistedSnapshotReader.StorageNodeEnumerable StorageNodes => new(this);
 
-    internal Hsst.IHsstReadahead? CreateColumnReadahead(ReadOnlySpan<byte> tag)
-    {
-        Hsst.Hsst outer = new(GetSpan());
-        if (!outer.TryGetBound(tag, out int columnOffset, out int columnLength))
-            return null;
-        return new ArenaReadahead(_reservation, columnOffset, columnLength);
-    }
-
-    internal Hsst.IHsstReadahead CreateColumnReadahead(int columnOffset, int columnLength)
-        => new ArenaReadahead(_reservation, columnOffset, columnLength);
-
     internal long KeyBloomCount => _keyBloom?.Count ?? 0;
 
     internal void AttachKeyBloom(BloomFilter bloom) => _keyBloom = bloom;
