@@ -34,6 +34,7 @@ namespace Nethermind.Synchronization.FastBlocks
             long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
             return cutoffBlockNumber is null ? clamped : long.Max(clamped, cutoffBlockNumber.Value);
         }
+
         protected override Func<bool> HasPivot =>
             () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _blockTree.SyncPivot.BlockNumber;
 

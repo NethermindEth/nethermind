@@ -41,6 +41,7 @@ namespace Nethermind.Synchronization.FastBlocks
             long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
             return cutoffBlockNumber is null ? clamped : long.Max(clamped, cutoffBlockNumber.Value);
         }
+
         protected override Func<bool> HasPivot =>
             () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
 
