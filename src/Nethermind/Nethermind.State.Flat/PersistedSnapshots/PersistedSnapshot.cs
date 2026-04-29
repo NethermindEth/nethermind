@@ -255,14 +255,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return result;
     }
 
-    // --- Snapshot-matching enumerable properties ---
-
-    public PersistedSnapshotReader.SelfDestructEnumerable SelfDestructedStorageAddresses => new(this);
-    public PersistedSnapshotReader.AccountEnumerable Accounts => new(this);
-    public PersistedSnapshotReader.StorageEnumerable Storages => new(this);
-    public PersistedSnapshotReader.StateNodeEnumerable StateNodes => new(this);
-    public PersistedSnapshotReader.StorageNodeEnumerable StorageNodes => new(this);
-
     internal long KeyBloomCount => _keyBloom?.Count ?? 0;
 
     internal void AttachKeyBloom(BloomFilter bloom) => _keyBloom = bloom;
