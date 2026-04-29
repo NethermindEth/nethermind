@@ -75,6 +75,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void HintGet(in UInt256 index, byte[]? value) => storageTree.HintGet(in index, value);
 
+        public void HintSet(in UInt256 index, byte[]? value) => storageTree.HintSet(in index, value);
+
         public byte[] Get(in ValueHash256 hash)
         {
             byte[]? bytes = storageTree.Get(in hash);
