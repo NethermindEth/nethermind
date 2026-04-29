@@ -49,7 +49,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
     /// <paramref name="previousBound"/>. Returns false if no entry has exactly <paramref name="key"/>.
     /// Use <see cref="TrySeekFloor"/> for floor (largest entry ≤ key) semantics.
     /// </summary>
-    public bool TrySeek(ReadOnlySpan<byte> key, out Bound previousBound) =>
+    public bool TrySeek(scoped ReadOnlySpan<byte> key, out Bound previousBound) =>
         TrySeekCore(key, exactMatch: true, out previousBound);
 
     /// <summary>
@@ -58,10 +58,10 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
     /// and returns the prior bound via <paramref name="previousBound"/>. Returns false if the HSST
     /// is empty or <paramref name="key"/> precedes every entry.
     /// </summary>
-    public bool TrySeekFloor(ReadOnlySpan<byte> key, out Bound previousBound) =>
+    public bool TrySeekFloor(scoped ReadOnlySpan<byte> key, out Bound previousBound) =>
         TrySeekCore(key, exactMatch: false, out previousBound);
 
-    private bool TrySeekCore(ReadOnlySpan<byte> key, bool exactMatch, out Bound previousBound)
+    private bool TrySeekCore(scoped ReadOnlySpan<byte> key, bool exactMatch, out Bound previousBound)
     {
         previousBound = _bound;
 
