@@ -212,7 +212,7 @@ public class PersistedSnapshotTests
         PersistedSnapshotList list = new(2);
         list.Add(p1);
         list.Add(p2);
-        ReadOnlySpan<byte> result = default;
+        byte[]? result = null;
         bool found = false;
         for (int i = list.Count - 1; i >= 0; i--)
         {
@@ -225,7 +225,7 @@ public class PersistedSnapshotTests
 
         // Should return the newest (p2) value
         Assert.That(found, Is.True);
-        Assert.That(result.ToArray(), Is.EqualTo(rlp2));
+        Assert.That(result, Is.EqualTo(rlp2));
     }
 
     [Test]
@@ -281,16 +281,19 @@ public class PersistedSnapshotTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s2, PersistedSnapshotType.Full, merged);
 
         // addrA slot 1 should be overridden to val3
-        Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, out ReadOnlySpan<byte> slot1), Is.True);
-        Assert.That(slot1[0], Is.EqualTo(0x03));
+        SlotValue slot1 = default;
+        Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, ref slot1), Is.True);
+        Assert.That(slot1.ToEvmBytes()[0], Is.EqualTo(0x03));
 
         // addrA slot 2 should be val2 (from newer)
-        Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, out ReadOnlySpan<byte> slot2), Is.True);
-        Assert.That(slot2[0], Is.EqualTo(0x02));
+        SlotValue slot2 = default;
+        Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, ref slot2), Is.True);
+        Assert.That(slot2.ToEvmBytes()[0], Is.EqualTo(0x02));
 
         // addrB slot 5 should be val2 (from older, carried through)
-        Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, out ReadOnlySpan<byte> slot5), Is.True);
-        Assert.That(slot5[0], Is.EqualTo(0x02));
+        SlotValue slot5 = default;
+        Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, ref slot5), Is.True);
+        Assert.That(slot5.ToEvmBytes()[0], Is.EqualTo(0x02));
     }
 
     [Test]
@@ -320,8 +323,9 @@ public class PersistedSnapshotTests
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
-        Assert.That(persisted.TryGetSlot(addr, (UInt256)1, out ReadOnlySpan<byte> slot), Is.True);
-        Assert.That(slot.Length, Is.EqualTo(0), "Null slot should override value after merge");
+        SlotValue slot = default;
+        Assert.That(persisted.TryGetSlot(addr, (UInt256)1, ref slot), Is.True);
+        Assert.That(slot.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot should override value after merge");
     }
 
     [Test]
@@ -351,8 +355,9 @@ public class PersistedSnapshotTests
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
-        Assert.That(persisted.TryGetSlot(addr, (UInt256)1, out ReadOnlySpan<byte> slot), Is.True);
-        Assert.That(slot.Length, Is.GreaterThan(0), "Value should override null slot after merge");
+        SlotValue slot = default;
+        Assert.That(persisted.TryGetSlot(addr, (UInt256)1, ref slot), Is.True);
+        Assert.That(slot.ToEvmBytes().Length, Is.GreaterThan(0), "Value should override null slot after merge");
     }
 
     [Test]
@@ -382,11 +387,13 @@ public class PersistedSnapshotTests
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
-        Assert.That(persisted.TryGetSlot(addr, (UInt256)1, out ReadOnlySpan<byte> slot1), Is.True);
-        Assert.That(slot1.Length, Is.EqualTo(0), "Null slot from older should be preserved");
+        SlotValue slot1 = default;
+        Assert.That(persisted.TryGetSlot(addr, (UInt256)1, ref slot1), Is.True);
+        Assert.That(slot1.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot from older should be preserved");
 
-        Assert.That(persisted.TryGetSlot(addr, (UInt256)2, out ReadOnlySpan<byte> slot2), Is.True);
-        Assert.That(slot2.Length, Is.GreaterThan(0), "Value from newer should be present");
+        SlotValue slot2 = default;
+        Assert.That(persisted.TryGetSlot(addr, (UInt256)2, ref slot2), Is.True);
+        Assert.That(slot2.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
     }
 
     [Test]

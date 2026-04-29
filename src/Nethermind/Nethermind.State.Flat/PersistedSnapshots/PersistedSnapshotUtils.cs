@@ -174,18 +174,16 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
                 Address address = kv.Key;
-                if (!persisted.TryGetAccount(address, out ReadOnlySpan<byte> rlp))
+                if (!persisted.TryGetAccount(address, out Account? acc))
                     throw new InvalidOperationException($"Account {address} not found in persisted snapshot");
 
                 if (kv.Value is null)
                 {
-                    if (!rlp.IsEmpty)
+                    if (acc is not null)
                         throw new InvalidOperationException($"Account {address} should be null but has RLP data");
                 }
                 else
                 {
-                    Rlp.ValueDecoderContext ctx = new(rlp);
-                    Account? acc = AccountDecoder.Slim.Decode(ref ctx);
                     if (acc is null || acc.Balance != kv.Value.Balance || acc.Nonce != kv.Value.Nonce
                         || acc.CodeHash != kv.Value.CodeHash || acc.StorageRoot != kv.Value.StorageRoot)
                     {
@@ -198,13 +196,12 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
-                if (!persisted.TryGetSlot(addr, slot, out ReadOnlySpan<byte> slotBytes))
+                SlotValue slotValue = default;
+                if (!persisted.TryGetSlot(addr, slot, ref slotValue))
                     throw new InvalidOperationException($"Storage {addr}:{slot} not found in persisted snapshot");
 
-                ReadOnlySpan<byte> expected = kv.Value.HasValue
-                    ? kv.Value.Value.AsReadOnlySpan.WithoutLeadingZeros()
-                    : [];
-                if (!slotBytes.SequenceEqual(expected))
+                SlotValue expected = kv.Value ?? default;
+                if (!slotValue.AsReadOnlySpan.SequenceEqual(expected.AsReadOnlySpan))
                     throw new InvalidOperationException($"Storage {addr}:{slot} mismatch");
             }
 
@@ -222,9 +219,9 @@ internal static class PersistedSnapshotUtils
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                 TreePath path = kv.Key;
-                if (!persisted.TryLoadStateNodeRlp(path, out ReadOnlySpan<byte> nodeRlp))
+                if (!persisted.TryLoadStateNodeRlp(path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp.SequenceEqual(kv.Value.FullRlp.AsSpan()))
+                if (!nodeRlp!.AsSpan().SequenceEqual(kv.Value.FullRlp.AsSpan()))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} RLP mismatch");
             }
 
@@ -233,9 +230,9 @@ internal static class PersistedSnapshotUtils
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                 (Hash256 hash, TreePath path) = kv.Key.Key;
-                if (!persisted.TryLoadStorageNodeRlp(hash, path, out ReadOnlySpan<byte> nodeRlp))
+                if (!persisted.TryLoadStorageNodeRlp(hash, path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp.SequenceEqual(kv.Value.FullRlp.AsSpan()))
+                if (!nodeRlp!.AsSpan().SequenceEqual(kv.Value.FullRlp.AsSpan()))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} RLP mismatch");
             }
         }
