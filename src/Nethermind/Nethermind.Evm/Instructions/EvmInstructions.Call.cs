@@ -249,6 +249,32 @@ public static partial class EvmInstructions
         // Subtract the transfer value from the caller's balance.
         state.SubtractFromBalance(caller, in transferValue, spec);
 
+        // EIP-8037: when a CALL would create a new account (value transfer to nonexistent target),
+        // the new-account state cost (PerEmptyAccountState) accrues on the caller's frame because
+        // the inner frame only has the stipend. If caller's reservoir + remaining regular + the
+        // gas about to be forwarded (which the FastCall path returns immediately, since target has
+        // no code) can't cover the cost, the *caller's frame* reverts — the spec treats this as a
+        // state-gas-insufficient failure, surfaced as REVERT (status=0 with partial gas refund)
+        // rather than OOG (full gas burn). gasLimitUl is included because the forwarded gas comes
+        // straight back via UpdateGasUp on the FastCall path that handles nonexistent targets.
+        if (spec.IsEip8037Enabled && !transferValue.IsZero && !state.AccountExists(target))
+        {
+            long newAccountStateCost = TGasPolicy.GetNewAccountStateCost(in gas);
+            long callerBudget = TGasPolicy.GetStateReservoir(in gas) + TGasPolicy.GetRemainingGas(in gas) + gasLimitUl;
+            if (callerBudget < newAccountStateCost)
+            {
+                state.Restore(snapshot);
+                TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+                vm.ReturnData = Array.Empty<byte>();
+                if (TTracingInst.IsActive)
+                {
+                    vm.TxTracer.ReportOperationError(EvmExceptionType.OutOfGas);
+                    vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
+                }
+                return EvmExceptionType.Revert;
+            }
+        }
+
         // Fast-path for calls to externally owned accounts (non-contracts).
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
@@ -264,11 +290,9 @@ public static partial class EvmInstructions
         if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
             goto OutOfGas;
 
-        // EIP-8037: when a CALL transfers value into a previously-empty target, record the
-        // account-creation BEFORE the inner frame's snapshot is taken. The charge then accrues
-        // to *this* (caller) frame's pending state-gas — caller has the budget; the inner only
-        // has the stipend (2300) and would OOG. Mirrors the FastCall path which already records
-        // on the caller's tracker. CREATE/CREATE2 inner frames keep the in-frame self-charge.
+        // EIP-8037: record account-creation on the caller's tracker so the deferred charge
+        // accrues here (the inner only has stipend gas). FastCall path records inside FastCall.
+        // The pre-flight budget check above guarantees caller can afford the charge at frame end.
         if (spec.IsEip8037Enabled && !transferValue.IsZero && !state.AccountExists(target))
         {
             vm.VmState.AccessTracker.RecordAccountCreated(target);
