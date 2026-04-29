@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+using System;
+using System.Reflection;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Init.Steps;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -15,27 +18,31 @@ namespace Nethermind.Runner.Test.Init;
 
 public class ExitOnInvalidBlockTests
 {
-    [Test]
-    public void CallExit_OnInvalidBlock()
+    [TestCase(true, 1)]
+    [TestCase(false, 0)]
+    public void InvalidBlock_TriggersExit_OnlyWhenConfigured(bool exitOnInvalidBlock, int expectedExitCalls)
     {
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(Substitute.For<IBlockchainProcessor>());
-
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
 
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new InitConfig()
+            .AddModule(new TestNethermindModule(new InitConfig
             {
-                ExitOnInvalidBlock = true
+                ExitOnInvalidBlock = exitOnInvalidBlock
             }))
-            .AddSingleton<IMainProcessingContext>(mainProcessingContext)
             .AddSingleton<IProcessExitSource>(processExitSource)
             .Build();
 
-        container.Resolve<ExitOnInvalidBlock>().Execute(default);
+        IBlockchainProcessor processor = container.Resolve<IMainProcessingContext>().BlockchainProcessor;
+        RaiseInvalidBlock(processor);
 
-        mainProcessingContext.BlockchainProcessor.InvalidBlock += Raise.EventWith(null, new IBlockchainProcessor.InvalidBlockEventArgs());
+        processExitSource.Received(expectedExitCalls).Exit(ExitCodes.InvalidBlock);
+    }
 
-        processExitSource.Received().Exit(-1);
+    private static void RaiseInvalidBlock(IBlockchainProcessor processor)
+    {
+        FieldInfo field = processor.GetType().GetField(nameof(IBlockchainProcessor.InvalidBlock), BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"InvalidBlock event field not found on {processor.GetType().FullName}");
+        EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? handler = (EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>?)field.GetValue(processor);
+        handler?.Invoke(processor, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = Build.A.Block.TestObject });
     }
 }

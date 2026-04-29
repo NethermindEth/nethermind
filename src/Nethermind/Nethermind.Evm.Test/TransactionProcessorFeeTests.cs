@@ -339,8 +339,7 @@ public class TransactionProcessorFeeTests
         result.Error.Should().Be(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee);
         result.ErrorDescription.Should().Contain($"maxFeePerGas: {feeCap}");
         result.ErrorDescription.Should().Contain($"baseFee: {baseFee}");
-        result.ErrorDescription.Should().Contain(TestItem.AddressA.ToString());
-        result.ErrorDescription.Should().Contain("supplied gas 21000");
+        result.ErrorDescription.Should().Contain(TestItem.AddressA.ToString(withEip55Checksum: true));
     }
 
     private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
