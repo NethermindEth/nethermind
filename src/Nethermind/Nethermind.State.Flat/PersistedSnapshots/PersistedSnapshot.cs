@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
@@ -70,6 +71,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public ReadOnlySpan<byte> GetSpan() => _reservation.GetSpan();
 
+    /// <summary>
+    /// Construct an in-memory <see cref="SpanByteReader"/> over this snapshot's bytes.
+    /// Reader-shaped APIs (instance methods, the 5 enumerators, anything in
+    /// <see cref="PersistedSnapshotReader"/>) consume this rather than poking at
+    /// <see cref="GetSpan"/> directly, so the read path is the reader abstraction
+    /// end-to-end.
+    /// </summary>
+    internal SpanByteReader CreateReader() => new(GetSpan());
+
     public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
@@ -79,7 +89,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         Type = type;
         _reservation = reservation;
         _reservation.AcquireLease();
-        HasNodeRefs = PersistedSnapshotReader.CheckHasNodeRefsFlag(GetSpan());
+        SpanByteReader bootReader = CreateReader();
+        HasNodeRefs = PersistedSnapshotReader.CheckHasNodeRefsFlag<SpanByteReader, NoOpPin>(in bootReader);
 
         if (referencedSnapshots is { Length: > 0 })
         {
@@ -101,7 +112,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             accountRlp = default;
             return false;
         }
-        return PersistedSnapshotReader.TryGetAccount(GetSpan(), address, out accountRlp);
+        ReadOnlySpan<byte> data = GetSpan();
+        SpanByteReader reader = new(data);
+        if (!PersistedSnapshotReader.TryGetAccount<SpanByteReader, NoOpPin>(in reader, address, out Bound b))
+        {
+            accountRlp = default;
+            return false;
+        }
+        accountRlp = data.Slice((int)b.Offset, b.Length);
+        return true;
     }
 
     public bool TryGetSlot(Address address, in UInt256 index, [UnscopedRef] out ReadOnlySpan<byte> slotValue)
@@ -115,14 +134,23 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 return false;
             }
         }
-        return PersistedSnapshotReader.TryGetSlot(GetSpan(), address, in index, out slotValue);
+        ReadOnlySpan<byte> data = GetSpan();
+        SpanByteReader reader = new(data);
+        if (!PersistedSnapshotReader.TryGetSlot<SpanByteReader, NoOpPin>(in reader, address, in index, out Bound b))
+        {
+            slotValue = default;
+            return false;
+        }
+        slotValue = data.Slice((int)b.Offset, b.Length);
+        return true;
     }
 
     public bool IsSelfDestructed(Address address)
     {
         if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
             return false;
-        return PersistedSnapshotReader.IsSelfDestructed(GetSpan(), address);
+        SpanByteReader reader = CreateReader();
+        return PersistedSnapshotReader.IsSelfDestructed<SpanByteReader, NoOpPin>(in reader, address);
     }
 
     /// <summary>
@@ -134,7 +162,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     {
         if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
             return null;
-        return PersistedSnapshotReader.TryGetSelfDestructFlag(GetSpan(), address);
+        SpanByteReader reader = CreateReader();
+        return PersistedSnapshotReader.TryGetSelfDestructFlag<SpanByteReader, NoOpPin>(in reader, address);
     }
 
     public bool TryLoadStateNodeRlp(scoped in TreePath path, out ReadOnlySpan<byte> nodeRlp) =>
@@ -147,8 +176,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// Read the "ref_ids" list from a snapshot's metadata column.
     /// Returns null if the metadata or "ref_ids" key is missing.
     /// </summary>
-    public static int[]? ReadRefIdsFromMetadata(ReadOnlySpan<byte> snapshotData) =>
-        PersistedSnapshotReader.ReadRefIdsFromMetadata(snapshotData);
+    public static int[]? ReadRefIdsFromMetadata(ReadOnlySpan<byte> snapshotData)
+    {
+        SpanByteReader reader = new(snapshotData);
+        return PersistedSnapshotReader.ReadRefIdsFromMetadata<SpanByteReader, NoOpPin>(in reader);
+    }
 
     /// <summary>
     /// Resolve a NodeRef by reading the entry value from the referenced snapshot.
