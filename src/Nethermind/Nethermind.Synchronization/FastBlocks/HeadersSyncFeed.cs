@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -23,6 +24,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.State.Repositories;
 using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
@@ -37,6 +39,8 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncConfig _syncConfig;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
+        private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+        private readonly IHeaderStore _headerStore;
         private FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Headers, 0, false);
 
         private readonly Lock _handlerLock = new();
@@ -155,6 +159,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncReport? syncReport,
             IPoSSwitcher? poSSwitcher,
             ILogManager? logManager,
+            IChainLevelInfoRepository? chainLevelInfoRepository,
+            IHeaderStore? headerStore,
             ITotalDifficultyStrategy? totalDifficultyStrategy = null,
             bool alwaysStartHeaderSync = false)
         {
@@ -164,6 +170,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(logManager));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _headerStore = headerStore ?? throw new ArgumentNullException(nameof(headerStore));
             _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
             _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
 
@@ -544,37 +552,26 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <returns></returns>
         private HeadersSyncBatch? ProcessPersistedPortion(HeadersSyncBatch batch)
         {
-            // This only check for the last header though, which is fine as headers are so small, the time it take
-            // to download one is more or less the same as the whole batch. So many small batch is slower than
-            // less large batch.
-            BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (lastHeader is null) return batch;
+            ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(batch.EndNumber);
+            // Don't worry about fork — `InsertHeaders` will check for fork and retry if not on the right fork.
+            Hash256? seedHash = level?.BlockInfos is { Length: > 0 } infos ? infos[0].BlockHash : null;
+            if (seedHash is null) return batch;
 
-            using ArrayPoolList<BlockHeader> headers = new(1);
-            headers.Add(lastHeader);
-            for (long i = batch.EndNumber - 1; i >= batch.StartNumber; i--)
-            {
-                // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
-                BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, i);
-                if (nextHeader is null) break;
-                headers.Add(nextHeader);
-                lastHeader = nextHeader;
-            }
+            using IOwnedReadOnlyList<BlockHeader> headers =
+                _headerStore.FindReversedHeaders(batch.EndNumber, seedHash, batch.RequestSize);
 
-            headers.AsSpan().Reverse();
+            if (headers.Count == 0) return batch;
+
             int newRequestSize = batch.RequestSize - headers.Count;
-            if (headers.Count > 0)
-            {
-                using HeadersSyncBatch newBatchToProcess = new();
-                newBatchToProcess.StartNumber = lastHeader.Number;
-                newBatchToProcess.RequestSize = headers.Count;
-                newBatchToProcess.Response = headers;
-                if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
-                InsertHeaders(newBatchToProcess);
-                MarkDirty();
-                HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
-                HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
-            }
+            using HeadersSyncBatch newBatchToProcess = new();
+            newBatchToProcess.StartNumber = headers[0].Number;
+            newBatchToProcess.RequestSize = headers.Count;
+            newBatchToProcess.Response = headers;
+            if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
+            InsertHeaders(newBatchToProcess);
+            MarkDirty();
+            HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
+            HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
 
             if (newRequestSize == 0) return null;
 
