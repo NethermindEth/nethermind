@@ -13,7 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State.Healing;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -26,7 +25,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Synchronization.Trie;
 
 namespace Nethermind.Synchronization
 {
@@ -409,6 +407,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<ProgressTracker>()
+            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<ISnapProvider, SnapProvider>()
             .AddSingleton<ISimpleSyncFeed<SnapSyncBatch>, SnapSyncFeed>()
             .AddSingleton<ISyncDownloader<SnapSyncBatch>, SnapSyncDownloader>()
@@ -466,6 +465,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<IStateSyncPivot, StateSyncPivot>()
+            .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
             .AddSingleton<TreeSync>()
             .AddSingleton<ISimpleSyncFeed<StateSyncBatch>, StateSyncFeed>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()
