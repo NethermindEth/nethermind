@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Storage;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -13,13 +14,16 @@ internal static class PersistedSnapshotBloomBuilder
 {
     internal static BloomFilter Build(PersistedSnapshot snapshot, double bitsPerKey)
     {
+        using WholeReadSession session = snapshot.BeginWholeReadSession();
+        PersistedSnapshotScanner scanner = new(session, snapshot);
+
         // Pass 1: count keys to size the bloom accurately.
         long capacity = 0;
-        foreach (KeyValuePair<AddressAsKey, Account?> _ in snapshot.Accounts)
+        foreach (KeyValuePair<AddressAsKey, Account?> _ in scanner.Accounts)
             capacity++;
-        foreach (KeyValuePair<AddressAsKey, bool> _ in snapshot.SelfDestructedStorageAddresses)
+        foreach (KeyValuePair<AddressAsKey, bool> _ in scanner.SelfDestructedStorageAddresses)
             capacity++;
-        foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> _ in snapshot.Storages)
+        foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> _ in scanner.Storages)
             capacity += 2; // address key + (address, slot) key
 
         if (capacity == 0)
@@ -28,13 +32,13 @@ internal static class PersistedSnapshotBloomBuilder
         BloomFilter bloom = new(capacity, bitsPerKey);
 
         // Pass 2: add keys.
-        foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
+        foreach (KeyValuePair<AddressAsKey, Account?> kv in scanner.Accounts)
             bloom.Add(AddressKey((Address)kv.Key));
 
-        foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
+        foreach (KeyValuePair<AddressAsKey, bool> kv in scanner.SelfDestructedStorageAddresses)
             bloom.Add(AddressKey((Address)kv.Key));
 
-        foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
+        foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in scanner.Storages)
         {
             Address addr = (Address)kv.Key.Item1;
             ulong addrKey = AddressKey(addr);

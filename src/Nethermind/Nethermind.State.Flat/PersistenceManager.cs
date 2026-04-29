@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Prometheus;
@@ -584,31 +585,33 @@ public class PersistenceManager(
     {
         long sw = Stopwatch.GetTimestamp();
 
+        using WholeReadSession session = snapshot.BeginWholeReadSession();
+        PersistedSnapshotScanner scanner = new(session, snapshot);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<AddressAsKey, bool> kv in snapshot.SelfDestructedStorageAddresses)
+            foreach (KeyValuePair<AddressAsKey, bool> kv in scanner.SelfDestructedStorageAddresses)
             {
                 if (kv.Value) continue;
                 batch.SelfDestruct(kv.Key);
             }
 
-            foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in scanner.Accounts)
             {
                 batch.SetAccount(kv.Key, kv.Value);
             }
 
-            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
+            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in scanner.Storages)
             {
                 ((Address addr, UInt256 slot), SlotValue? value) = kv;
                 batch.SetStorage(addr, slot, value);
             }
 
-            foreach (KeyValuePair<TreePath, TrieNode> kv in snapshot.StateNodes)
+            foreach (KeyValuePair<TreePath, TrieNode> kv in scanner.StateNodes)
             {
                 batch.SetStateTrieNode(kv.Key, kv.Value);
             }
 
-            foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in snapshot.StorageNodes)
+            foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in scanner.StorageNodes)
             {
                 ((Hash256AsKey address, TreePath path), TrieNode node) = kv;
                 batch.SetStorageTrieNode(address, path, node);
