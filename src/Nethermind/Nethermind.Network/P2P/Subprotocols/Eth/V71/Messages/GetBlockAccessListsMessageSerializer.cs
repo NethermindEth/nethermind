@@ -6,13 +6,14 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 
 public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlockAccessListsMessage>
 {
     private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockAccessListsMessage>(
-        128, nameof(GetBlockAccessListsMessage.Hashes));
+        GethSyncLimits.MaxBodyFetch, nameof(GetBlockAccessListsMessage.Hashes));
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetBlockAccessListsMessage message)
     {
