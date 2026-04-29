@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
@@ -141,7 +142,7 @@ public static class PersistedSnapshotReader
         NodeRef nodeRef = NodeRef.Read(value);
         if (!referencedSnapshots.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snapshot))
             throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found");
-        Hsst.Hsst.ReadEntry(snapshot.GetSpan(), nodeRef.ValueLengthOffset, out _, out resolved);
+        resolved = DecodeValueAt(snapshot.GetSpan(), nodeRef.ValueLengthOffset);
     }
 
     internal static bool CheckHasNodeRefsFlag(ReadOnlySpan<byte> data)
@@ -170,10 +171,21 @@ public static class PersistedSnapshotReader
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static byte[] ResolveValue(ReadOnlySpan<byte> snapshotData, int valueLengthOffset)
+    internal static byte[] ResolveValue(ReadOnlySpan<byte> snapshotData, int valueLengthOffset) =>
+        DecodeValueAt(snapshotData, valueLengthOffset).ToArray();
+
+    /// <summary>
+    /// Decode the value bytes for a non-inline HSST entry whose metadata starts at
+    /// <paramref name="metadataStart"/>. Entry layout: <c>[Value][ValueLength: LEB128][...]</c>.
+    /// Reads the LEB128 forward, then the value lives in the <paramref name="valueLength"/>
+    /// bytes immediately preceding <paramref name="metadataStart"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> DecodeValueAt(ReadOnlySpan<byte> data, int metadataStart)
     {
-        Hsst.Hsst.ReadEntry(snapshotData, valueLengthOffset, out _, out ReadOnlySpan<byte> value);
-        return value.ToArray();
+        int pos = metadataStart;
+        int valueLength = Leb128.Read(data, ref pos);
+        return data.Slice(metadataStart - valueLength, valueLength);
     }
 
     private static bool TryGetFromColumn(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> entityKey, scoped out ReadOnlySpan<byte> value)
