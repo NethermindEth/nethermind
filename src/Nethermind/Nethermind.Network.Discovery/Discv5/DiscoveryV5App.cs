@@ -444,6 +444,16 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         {
             await _discv5Protocol.StopAsync();
         }
+        // `Lantern.Discv5.WireProtocol.Table.TableManager.StopTableManagerAsync` passes its
+        // `_refreshTask`/`_pingTask` fields directly to `Task.WhenAll` without a null check.
+        // When shutdown races a still-running `InitAsync` (e.g. an early Ctrl-C before
+        // bootstrap pings finish) those fields are still null and the call throws
+        // `ArgumentException("tasks")`. The race is benign — discovery never finished
+        // starting — so surface it quietly instead of as a noisy stack trace.
+        catch (ArgumentException ex) when (ex.ParamName == "tasks")
+        {
+            if (_logger.IsDebug) _logger.Debug("discv5 stopped before initialization completed; skipping background task wait.");
+        }
         catch (Exception ex)
         {
             if (_logger.IsWarn) _logger.Warn($"Error when attempting to stop discv5: {ex}");

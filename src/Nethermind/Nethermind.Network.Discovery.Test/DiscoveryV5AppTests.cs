@@ -188,6 +188,13 @@ public class DiscoveryV5AppTests
         Assert.That(queue.Count, Is.EqualTo(0));
     }
 
+    // Regression: shutting down before `IDiscv5Protocol.InitAsync` finishes used to surface
+    // `ArgumentException("tasks")` from Lantern's TableManager (its background task fields
+    // are still null at that point). DiscoveryV5App must absorb it.
+    [Test]
+    public void StopAsync_Should_Not_Throw_When_Stopped_Before_Init() =>
+        Assert.DoesNotThrowAsync(_discoveryV5App.StopAsync);
+
     [Test]
     public void TryEnqueueNewEnr_Should_Respect_Pending_Cap()
     {
