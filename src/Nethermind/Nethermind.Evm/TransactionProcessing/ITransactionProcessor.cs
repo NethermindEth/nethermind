@@ -17,6 +17,10 @@ public interface ITransactionProcessor
     void SetBlockExecutionContext(BlockHeader blockHeader);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
 
+    /// <summary>
+    /// Call transaction, no validations, don't commit state
+    /// Will NOT charge gas from sender account
+    /// </summary>
     TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
         => Process(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
 
@@ -108,6 +112,7 @@ public static class ITransactionProcessorExtensions
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
         return transactionProcessor.BuildUp(transaction, txTracer);
     }
+
     public static TransactionResult Trace(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
     {
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
