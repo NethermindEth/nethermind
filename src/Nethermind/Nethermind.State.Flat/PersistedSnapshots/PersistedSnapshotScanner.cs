@@ -27,9 +27,9 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     private readonly WholeReadSession _session = session;
     private readonly PersistedSnapshot _snapshot = snapshot;
 
-    public SelfDestructEnumerable SelfDestructedStorageAddresses => new(_snapshot, _session.GetSpan());
-    public AccountEnumerable Accounts => new(_snapshot, _session.GetSpan());
-    public StorageEnumerable Storages => new(_snapshot, _session.GetSpan());
+    public SelfDestructEnumerable SelfDestructedStorageAddresses => new(_session.GetSpan());
+    public AccountEnumerable Accounts => new(_session.GetSpan());
+    public StorageEnumerable Storages => new(_session.GetSpan());
     public StateNodeEnumerable StateNodes => new(_snapshot, _session.GetSpan());
     public StorageNodeEnumerable StorageNodes => new(_snapshot, _session.GetSpan());
 
@@ -37,11 +37,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     private static ReadOnlySpan<byte> Slice(ReadOnlySpan<byte> data, Bound b) =>
         data.Slice((int)b.Offset, b.Length);
 
-    public readonly ref struct SelfDestructEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
+    public readonly ref struct SelfDestructEnumerable(ReadOnlySpan<byte> data)
     {
-        private readonly PersistedSnapshot _snapshot = snapshot;
         private readonly ReadOnlySpan<byte> _data = data;
-        public readonly SelfDestructEnumerator GetEnumerator() => new(_snapshot, _data);
+        public readonly SelfDestructEnumerator GetEnumerator() => new(_data);
     }
 
     public ref struct SelfDestructEnumerator : IDisposable
@@ -51,7 +50,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private HsstEnumerator<SpanByteReader, NoOpPin> _addrEnum;
         private KeyValuePair<AddressAsKey, bool> _current;
 
-        public SelfDestructEnumerator(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
+        public SelfDestructEnumerator(ReadOnlySpan<byte> data)
         {
             _data = data;
             _reader = new SpanByteReader(data);
@@ -81,11 +80,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         public void Dispose() => _addrEnum.Dispose();
     }
 
-    public readonly ref struct AccountEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
+    public readonly ref struct AccountEnumerable(ReadOnlySpan<byte> data)
     {
-        private readonly PersistedSnapshot _snapshot = snapshot;
         private readonly ReadOnlySpan<byte> _data = data;
-        public readonly AccountEnumerator GetEnumerator() => new(_snapshot, _data);
+        public readonly AccountEnumerator GetEnumerator() => new(_data);
     }
 
     public ref struct AccountEnumerator : IDisposable
@@ -95,7 +93,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private HsstEnumerator<SpanByteReader, NoOpPin> _addrEnum;
         private KeyValuePair<AddressAsKey, Account?> _current;
 
-        public AccountEnumerator(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
+        public AccountEnumerator(ReadOnlySpan<byte> data)
         {
             _data = data;
             _reader = new SpanByteReader(data);
@@ -126,11 +124,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         public void Dispose() => _addrEnum.Dispose();
     }
 
-    public readonly ref struct StorageEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
+    public readonly ref struct StorageEnumerable(ReadOnlySpan<byte> data)
     {
-        private readonly PersistedSnapshot _snapshot = snapshot;
         private readonly ReadOnlySpan<byte> _data = data;
-        public readonly StorageEnumerator GetEnumerator() => new(_snapshot, _data);
+        public readonly StorageEnumerator GetEnumerator() => new(_data);
     }
 
     public ref struct StorageEnumerator : IDisposable
@@ -145,7 +142,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private Bound _curPrefixBound;
         private KeyValuePair<(AddressAsKey, UInt256), SlotValue?> _current;
 
-        public StorageEnumerator(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
+        public StorageEnumerator(ReadOnlySpan<byte> data)
         {
             _data = data;
             _reader = new SpanByteReader(data);
