@@ -185,6 +185,7 @@ namespace Nethermind.Db.LogIndex
         private readonly ILogger _logger;
 
         private readonly int _maxReorgDepth;
+        private readonly IFinalizedBlockProvider _finalizedBlockProvider;
 
         private readonly AllMergeOperators _mergeOperators;
         private readonly ICompressor _compressor;
@@ -222,13 +223,14 @@ namespace Nethermind.Db.LogIndex
         private bool _stopped;
         private bool _disposed;
 
-        public LogIndexStorage(IDbFactory dbFactory, ILogManager logManager, ILogIndexConfig config)
+        public LogIndexStorage(IDbFactory dbFactory, ILogManager logManager, ILogIndexConfig config, IFinalizedBlockProvider finalizedBlockProvider)
         {
             try
             {
                 Enabled = config.Enabled;
 
                 _maxReorgDepth = config.MaxReorgDepth!.Value;
+                _finalizedBlockProvider = finalizedBlockProvider;
 
                 _logger = logManager.GetClassLogger<LogIndexStorage>();
 
@@ -512,7 +514,13 @@ namespace Nethermind.Db.LogIndex
             return (min, max);
         }
 
-        private int? GetLastReorgableBlockNumber() => _maxBlock - _maxReorgDepth;
+        private int? GetCompressionBoundary()
+        {
+            if (_maxBlock is null) return null;
+            if (_finalizedBlockProvider.FinalizedBlockNumber is { } finalized)
+                return checked((int)finalized);
+            return _maxBlock - _maxReorgDepth;
+        }
 
         private static bool IsBlockNewer(int next, int? lastMin, int? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin
@@ -935,7 +943,7 @@ namespace Nethermind.Db.LogIndex
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
         {
-            if (GetLastReorgableBlockNumber() is not { } lastCompressBlock)
+            if (GetCompressionBoundary() is not { } lastCompressBlock)
                 return Span<byte>.Empty;
 
             int lastCompressIndex = LastBlockSearch(data, lastCompressBlock, false);

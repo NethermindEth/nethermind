@@ -80,7 +80,10 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "Enable tracking of past key to reduce database and pruning cache growth", DefaultValue = "true")]
     bool TrackPastKeys { get; set; }
 
-    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
+    [ConfigItem(Description = "Controls in-memory dirty-state retention and snap-serving depth. " +
+                             "On post-Merge networks the reorg window is determined dynamically from the finalized block " +
+                             "rather than this value; PruningBoundary is used only as the fallback floor before the first " +
+                             "finalized block is established, and as the minimum dirty-node cache depth for memory pressure management.", DefaultValue = "64")]
     int PruningBoundary { get; set; }
 
     [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]

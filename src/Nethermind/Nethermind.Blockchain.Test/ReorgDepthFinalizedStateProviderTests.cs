@@ -26,17 +26,70 @@ public class ReorgDepthFinalizedStateProviderTests
     }
 
     [Test]
-    public void FinalizedBlockNumber_ReturnsCorrectValue()
+    public void FinalizedBlockNumber_FallsBackToBestKnownMinusMaxDepth_WhenFinalizedHashIsNull()
     {
-        // Arrange
         long bestKnownNumber = 1000;
         _blockTree.BestKnownNumber.Returns(bestKnownNumber);
+        _blockTree.FinalizedHash.Returns((Hash256?)null);
 
-        // Act
         long result = _provider.FinalizedBlockNumber;
 
-        // Assert
         result.Should().Be(bestKnownNumber - Reorganization.MaxDepth);
+    }
+
+    [Test]
+    public void FinalizedBlockNumber_ReturnsHeaderNumber_WhenFinalizedHashAndHeaderAreKnown()
+    {
+        const long finalizedNumber = 950;
+        Hash256 finalizedHash = TestItem.KeccakA;
+        BlockHeader finalizedHeader = Build.A.BlockHeader.WithNumber(finalizedNumber).TestObject;
+
+        _blockTree.FinalizedHash.Returns(finalizedHash);
+        _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(finalizedHeader);
+
+        long result = _provider.FinalizedBlockNumber;
+
+        result.Should().Be(finalizedNumber);
+    }
+
+    [Test]
+    public void FinalizedBlockNumber_FallsBack_WhenFinalizedHeaderCannotBeFound()
+    {
+        const long bestKnownNumber = 1000;
+        Hash256 finalizedHash = TestItem.KeccakA;
+
+        _blockTree.BestKnownNumber.Returns(bestKnownNumber);
+        _blockTree.FinalizedHash.Returns(finalizedHash);
+        _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns((BlockHeader?)null);
+
+        long result = _provider.FinalizedBlockNumber;
+
+        result.Should().Be(bestKnownNumber - Reorganization.MaxDepth);
+    }
+
+    [Test]
+    public void FinalizedBlockNumber_FallsBack_WhenFinalizedHashIsZero()
+    {
+        const long bestKnownNumber = 1000;
+
+        _blockTree.BestKnownNumber.Returns(bestKnownNumber);
+        _blockTree.FinalizedHash.Returns(Keccak.Zero);
+
+        long result = _provider.FinalizedBlockNumber;
+
+        result.Should().Be(bestKnownNumber - Reorganization.MaxDepth);
+        _blockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
+    }
+
+    [Test]
+    public void FinalizedBlockNumber_FallsBack_DoesNotGoNegative()
+    {
+        // Below Reorganization.MaxDepth (=64) the formula bestKnownNumber - 64 would be negative;
+        // FinalizedBlockNumber must clamp to 0.
+        _blockTree.BestKnownNumber.Returns(10);
+        _blockTree.FinalizedHash.Returns((Hash256?)null);
+
+        _provider.FinalizedBlockNumber.Should().Be(0);
     }
 
     [Test]
@@ -55,42 +108,19 @@ public class ReorgDepthFinalizedStateProviderTests
         _blockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
     }
 
-    [Test]
-    public void GetFinalizedStateRootAt_ReturnsStateRoot_WhenBlockNumberIsFinalized()
+    [TestCase(900, TestName = "Inside the finalized window")]
+    [TestCase(1000 - 64, TestName = "Exactly at the boundary (bestKnown - MaxDepth)")]
+    public void GetFinalizedStateRootAt_ReturnsStateRoot_WhenBlockIsAtOrBelowFinalizedBoundary(long blockNumber)
     {
-        // Arrange
-        long bestKnownNumber = 1000;
-        long blockNumber = 900;
+        const long bestKnownNumber = 1000;
         Hash256 expectedStateRoot = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(expectedStateRoot).TestObject;
 
         _blockTree.BestKnownNumber.Returns(bestKnownNumber);
         _blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical).Returns(header);
 
-        // Act
         Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
 
-        // Assert
-        result.Should().Be(expectedStateRoot);
-        _blockTree.Received(1).FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-    }
-
-    [Test]
-    public void GetFinalizedStateRootAt_AtBoundary_ReturnsStateRoot()
-    {
-        // Arrange
-        long bestKnownNumber = 1000;
-        long blockNumber = bestKnownNumber - Reorganization.MaxDepth; // Exactly at the boundary
-        Hash256 expectedStateRoot = TestItem.KeccakD;
-        BlockHeader header = Build.A.BlockHeader.WithStateRoot(expectedStateRoot).TestObject;
-
-        _blockTree.BestKnownNumber.Returns(bestKnownNumber);
-        _blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical).Returns(header);
-
-        // Act
-        Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
-
-        // Assert
         result.Should().Be(expectedStateRoot);
         _blockTree.Received(1).FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
     }

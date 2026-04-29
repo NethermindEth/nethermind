@@ -19,6 +19,7 @@ using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Taiko.Rpc;
@@ -51,6 +52,7 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
+            Substitute.For<IWorldStateManager>(),
             Substitute.For<ILogManager>()
         );
 
@@ -100,6 +102,7 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
+            Substitute.For<IWorldStateManager>(),
             Substitute.For<ILogManager>()
         );
 
@@ -121,5 +124,54 @@ public class TaikoEngineApiTests
         {
             Assert.That(result.Result.Error, Does.Contain("Invalid payload timestamp"));
         }
+    }
+
+    [Test]
+    public async Task ShouldProceedWithReorg_Override_BypassesTooDeepReorgError()
+    {
+        // Taiko overrides ShouldProceedWithReorg to always proceed (return true). Without the
+        // override, an FCU to a block whose state has been evicted (HasStateForBlock == false)
+        // would return -38006 Too deep reorg. With the override, it must proceed regardless.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+
+        Block headBlock = Build.A.Block.WithNumber(100).TestObject;
+        Block deepAncestor = Build.A.Block.WithNumber(33).TestObject;
+
+        blockTree.FindBlock(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor);
+        blockTree.GetInfo(deepAncestor.Number, deepAncestor.Hash!).Returns(
+            (new BlockInfo(deepAncestor.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
+        blockTree.Head.Returns(headBlock);
+        blockTree.HeadHash.Returns(headBlock.Hash!);
+        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+        blockTree.IsMainChain(Arg.Any<Hash256>()).Returns(true);
+        blockTree.FindHeader(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor.Header);
+
+        // Simulate state being unavailable for the reorg target — base handler would return -38006.
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CanReorgOn(deepAncestor.Header).Returns(false);
+
+        TaikoForkchoiceUpdatedHandler handler = new(
+            blockTree,
+            Substitute.For<IManualBlockFinalizationManager>(),
+            Substitute.For<IPoSSwitcher>(),
+            Substitute.For<IPayloadPreparationService>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            Substitute.For<IBlockCacheService>(),
+            Substitute.For<IInvalidChainTracker>(),
+            Substitute.For<IMergeSyncController>(),
+            Substitute.For<IBeaconPivot>(),
+            Substitute.For<IPeerRefresher>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<ISyncPeerPool>(),
+            new MergeConfig(),
+            worldStateManager,
+            Substitute.For<ILogManager>()
+        );
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(
+            new ForkchoiceStateV1(deepAncestor.Hash!, Keccak.Zero, Keccak.Zero), null, 1);
+
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        blockTree.Received().UpdateMainChain(Arg.Any<IReadOnlyList<Block>>(), true, true);
     }
 }

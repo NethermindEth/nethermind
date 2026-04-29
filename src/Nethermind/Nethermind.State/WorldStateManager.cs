@@ -70,4 +70,6 @@ public class WorldStateManager : IWorldStateManager
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
 
     public void FlushCache(CancellationToken cancellationToken) => _trieStore.PersistCache(cancellationToken);
+
+    public bool CanReorgOn(BlockHeader header) => GlobalStateReader.HasStateForBlock(header);
 }
