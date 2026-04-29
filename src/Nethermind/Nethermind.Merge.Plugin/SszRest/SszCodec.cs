@@ -400,14 +400,14 @@ public static class SszCodec
         Withdrawal[]? withdrawals = null,
         Hash256? parentBeaconBlockRoot = null,
         ulong? slotNumber = null) => new()
-    {
-        Timestamp = timestamp,
-        PrevRandao = prevRandao,
-        SuggestedFeeRecipient = suggestedFeeRecipient,
-        Withdrawals = withdrawals,
-        ParentBeaconBlockRoot = parentBeaconBlockRoot,
-        SlotNumber = slotNumber
-    };
+        {
+            Timestamp = timestamp,
+            PrevRandao = prevRandao,
+            SuggestedFeeRecipient = suggestedFeeRecipient,
+            Withdrawals = withdrawals,
+            ParentBeaconBlockRoot = parentBeaconBlockRoot,
+            SlotNumber = slotNumber
+        };
 
     private static SszTransaction[] TxsToWire(IReadOnlyList<byte[]> txs)
     {
