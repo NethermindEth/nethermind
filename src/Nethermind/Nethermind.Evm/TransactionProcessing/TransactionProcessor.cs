@@ -54,45 +54,6 @@ namespace Nethermind.Evm.TransactionProcessing
             BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
     }
 
-    [Flags]
-    public enum ExecutionOptions
-    {
-        /// <summary>
-        /// Just accumulate the state
-        /// </summary>
-        None = 0,
-
-        /// <summary>
-        /// Commit the state after execution
-        /// </summary>
-        Commit = 1,
-
-        /// <summary>
-        /// Restore state after execution
-        /// </summary>
-        Restore = 2,
-
-        /// <summary>
-        /// Skip potential fail checks
-        /// </summary>
-        SkipValidation = 4,
-
-        /// <summary>
-        /// Marker option used by state pre-warmer
-        /// </summary>
-        Warmup = 8,
-
-        /// <summary>
-        /// Skip potential fail checks and commit state after execution
-        /// </summary>
-        SkipValidationAndCommit = Commit | SkipValidation,
-
-        /// <summary>
-        /// Commit and later restore state also skip validation, use for CallAndRestore
-        /// </summary>
-        CommitAndRestore = Commit | Restore | SkipValidation
-    }
-
     public abstract class TransactionProcessorBase<TGasPolicy> : ITransactionProcessor
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
@@ -156,9 +117,8 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer txTracer,
             ExecutionOptions options)
         {
-            if (options == ExecutionOptions.None)
+            if (options == ExecutionOptions.BuildUp)
             {
-                // BuildUp mode
                 WorldState.TakeSnapshot(true);
             }
 
@@ -434,7 +394,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
             {
                 float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
 
