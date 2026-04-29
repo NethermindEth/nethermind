@@ -72,13 +72,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public ReadOnlySpan<byte> GetSpan() => _reservation.GetSpan();
 
     /// <summary>
-    /// Construct an in-memory <see cref="SpanByteReader"/> over this snapshot's bytes.
-    /// Reader-shaped APIs (instance methods, the 5 enumerators, anything in
-    /// <see cref="PersistedSnapshotReader"/>) consume this rather than poking at
-    /// <see cref="GetSpan"/> directly, so the read path is the reader abstraction
-    /// end-to-end.
+    /// Construct a reader over this snapshot's bytes. Delegates to
+    /// <see cref="ArenaReservation.CreateReader"/> so the storage layer owns the
+    /// reader-construction policy.
     /// </summary>
-    internal SpanByteReader CreateReader() => new(GetSpan());
+    internal SpanByteReader CreateReader() => _reservation.CreateReader();
 
     public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation,
         PersistedSnapshot[]? referencedSnapshots = null)

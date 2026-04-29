@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Utils;
+using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Storage;
 
@@ -18,6 +19,13 @@ public sealed class ArenaReservation(IArenaManager arenaManager, int arenaId, lo
     public int Size { get; internal set; } = size;
 
     public ReadOnlySpan<byte> GetSpan() => _arenaManager.GetSpan(this);
+
+    /// <summary>
+    /// Construct a span-backed <see cref="SpanByteReader"/> over this reservation's bytes.
+    /// Reader-shaped APIs consume this rather than poking at <see cref="GetSpan"/> directly,
+    /// keeping the read path on the reader abstraction end-to-end.
+    /// </summary>
+    public SpanByteReader CreateReader() => new(GetSpan());
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 
