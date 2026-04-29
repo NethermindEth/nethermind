@@ -82,9 +82,9 @@ public class EciesCipherTests
         Assert.That(authMessage.IsTokenUsed, Is.EqualTo(false));
         Assert.That(authMessage.Signature, Is.Not.Null);
 
-        IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
+
         Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
-        data.SafeRelease();
     }
 
     [Test]
