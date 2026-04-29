@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,7 +78,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
             services.AddSingleton<ISszEndpointHandler>(
                 _ => new GetPayloadBodiesByHashSszHandler<TResult>(version,
                     ctx.Resolve<IHandler<IReadOnlyList<Hash256>, IEnumerable<TResult?>>>(),
-                    (IEnumerable<TResult?> e) => encoder(e as IReadOnlyList<TResult?> ?? e.ToList())));
+                    (IEnumerable<TResult?> e) => encoder(e as IReadOnlyList<TResult?> ?? ServiceCollectionExtensions.AsReadOnlyList(e))));
 
         void AddGetPayloadBodiesByRange<TResult>(
             int version,
@@ -88,7 +87,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
             where TResult : class =>
             services.AddSingleton<ISszEndpointHandler>(
                 _ => new GetPayloadBodiesByRangeSszHandler<TResult>(version, rangeHandle,
-                    (IEnumerable<TResult?> e) => encoder(e as IReadOnlyList<TResult?> ?? e.ToList())));
+                    (IEnumerable<TResult?> e) => encoder(e as IReadOnlyList<TResult?> ?? ServiceCollectionExtensions.AsReadOnlyList(e))));
 
         void AddGetBlobsV2(
             int version,
@@ -132,4 +131,11 @@ file static class ServiceCollectionExtensions
 {
     public static void Bridge<T>(this IServiceCollection services, IComponentContext ctx) where T : class
         => services.AddSingleton(ctx.Resolve<T>());
+
+    public static IReadOnlyList<T?> AsReadOnlyList<T>(IEnumerable<T?> source)
+    {
+        if (source is IReadOnlyList<T?> list) return list;
+        List<T?> result = [.. source];
+        return result;
+    }
 }

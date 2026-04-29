@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Merge.Plugin.Data;
@@ -20,11 +19,11 @@ public sealed class GetBlobsV1SszHandler(
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
-        byte[][] hashes = Array.ConvertAll(SszCodec.DecodeGetBlobsRequest(body.Span), m => m.Span.ToArray());
+        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
         await WriteSszResultAsync(ctx,
             await handler.HandleAsync(hashes),
             (IEnumerable<BlobAndProofV1?> e) =>
-                SszCodec.EncodeGetBlobsV1Response(e as IReadOnlyList<BlobAndProofV1?> ?? e.ToList()));
+                SszCodec.EncodeGetBlobsV1Response(AsReadOnlyList(e)));
     }
 }
 
@@ -40,10 +39,10 @@ public sealed class GetBlobsV2SszHandler(
 
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
-        byte[][] hashes = Array.ConvertAll(SszCodec.DecodeGetBlobsRequest(body.Span), m => m.Span.ToArray());
+        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
         await WriteSszResultAsync(ctx,
             await handler.HandleAsync(new GetBlobsHandlerV2Request(hashes, AllowPartialReturn: allowPartialReturn)),
             (IEnumerable<BlobAndProofV2?>? e) =>
-                encode(e as IReadOnlyList<BlobAndProofV2?> ?? (e ?? []).ToList()));
+                encode(AsReadOnlyList(e ?? [])));
     }
 }

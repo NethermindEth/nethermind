@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
@@ -37,8 +38,23 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
             return false;
         }
         string hex = extra.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? extra[2..] : extra;
-        id = Convert.FromHexString(hex.AsSpan());
+        if (hex.Length == 0 || hex.Length % 2 != 0 || !IsValidHex(hex))
+        {
+            id = [];
+            err = $"Invalid payload ID: '{extra}'";
+            return false;
+        }
+        id = Convert.FromHexString(hex);
         err = string.Empty;
+        return true;
+    }
+
+    private static bool IsValidHex(string s)
+    {
+        foreach (char c in s)
+        {
+            if (!Uri.IsHexDigit(c)) return false;
+        }
         return true;
     }
 
@@ -85,6 +101,13 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "text/plain";
         await ctx.Response.WriteAsync(message);
+    }
+
+    protected static IReadOnlyList<T?> AsReadOnlyList<T>(IEnumerable<T?> source)
+    {
+        if (source is IReadOnlyList<T?> list) return list;
+        List<T?> result = [.. source];
+        return result;
     }
 
     protected static int ErrorCodeToHttpStatus(int errorCode) => errorCode switch
