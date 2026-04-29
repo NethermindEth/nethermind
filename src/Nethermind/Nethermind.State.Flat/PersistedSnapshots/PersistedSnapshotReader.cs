@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
@@ -161,24 +160,6 @@ public static class PersistedSnapshotReader
         for (int i = 0; i < count; i++)
             ids[i] = BitConverter.ToInt32(buf.Slice(i * 4, 4));
         return ids;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static byte[] ResolveValue(ReadOnlySpan<byte> snapshotData, int valueLengthOffset) =>
-        DecodeValueAt(snapshotData, valueLengthOffset).ToArray();
-
-    /// <summary>
-    /// Decode the value bytes for a non-inline HSST entry whose metadata starts at
-    /// <paramref name="metadataStart"/>. Entry layout: <c>[Value][ValueLength: LEB128][...]</c>.
-    /// Reads the LEB128 forward, then the value lives in the <paramref name="valueLength"/>
-    /// bytes immediately preceding <paramref name="metadataStart"/>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ReadOnlySpan<byte> DecodeValueAt(ReadOnlySpan<byte> data, int metadataStart)
-    {
-        int pos = metadataStart;
-        int valueLength = Leb128.Read(data, ref pos);
-        return data.Slice(metadataStart - valueLength, valueLength);
     }
 
     private static bool TryGetFromColumn<TReader, TPin>(in TReader reader, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> entityKey, out Bound bound)
@@ -488,7 +469,7 @@ public static class PersistedSnapshotReader
                         1 => DecodeCompactTreePath(key),
                         _ => new(new ValueHash256(key[..32]), key[32]),
                     };
-                    byte[] valueBytes = _snapshot.ResolveValueAt(entry.ValueBound).ToArray();
+                    byte[] valueBytes = _snapshot.ResolveValueAt(entry.ValueBound);
                     _current = new(path, new TrieNode(NodeType.Unknown, valueBytes));
                     return true;
                 }
@@ -557,7 +538,7 @@ public static class PersistedSnapshotReader
                         TreePath path = _stage == 0
                             ? DecodeCompactTreePath(key)
                             : new(new ValueHash256(key[..32]), key[32]);
-                        byte[] valueBytes = _snapshot.ResolveValueAt(pathEntry.ValueBound).ToArray();
+                        byte[] valueBytes = _snapshot.ResolveValueAt(pathEntry.ValueBound);
                         _current = new((_curHash, path), new TrieNode(NodeType.Unknown, valueBytes));
                         return true;
                     }

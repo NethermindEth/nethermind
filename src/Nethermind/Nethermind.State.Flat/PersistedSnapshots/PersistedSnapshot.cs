@@ -79,34 +79,27 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal SpanByteReader CreateReader() => _reservation.CreateReader();
 
     /// <summary>
-    /// Decode the value bytes for a non-inline HSST entry at <paramref name="metadataStart"/>
-    /// in <paramref name="data"/>. Static so the returned span's lifetime stays tied to the
-    /// caller-supplied input rather than to a method-local receiver; that keeps the chain
-    /// from narrowing through C#'s ref-safety analysis.
-    /// </summary>
-    private static ReadOnlySpan<byte> DecodeValueAt(ReadOnlySpan<byte> data, int metadataStart)
-    {
-        int pos = metadataStart;
-        int valueLength = Leb128.Read(data, ref pos);
-        return data.Slice(metadataStart - valueLength, valueLength);
-    }
-
-    /// <summary>
     /// Materialise the value at <paramref name="localBound"/> in this snapshot's bytes,
-    /// dereferencing across snapshots when this snapshot stores NodeRefs. Used by the 5
-    /// <c>*Enumerator</c> types in <see cref="PersistedSnapshotReader"/>; their callers
-    /// immediately copy the resolved span via <c>ToArray</c>, so the narrower escape
-    /// lifetime that C# infers through this method-call indirection is fine.
+    /// dereferencing across snapshots when this snapshot stores NodeRefs. Reads via the
+    /// reader abstraction (no GetSpan), copying directly into a heap-allocated byte[].
     /// </summary>
-    internal ReadOnlySpan<byte> ResolveValueAt(Bound localBound)
+    internal byte[] ResolveValueAt(Bound localBound)
     {
+        SpanByteReader reader = _reservation.CreateReader();
         if (!HasNodeRefs || _referencedSnapshots is null)
-            return GetSpan().Slice((int)localBound.Offset, localBound.Length);
+        {
+            byte[] result = new byte[localBound.Length];
+            reader.TryRead(localBound.Offset, result);
+            return result;
+        }
 
-        NodeRef nodeRef = NodeRef.Read(GetSpan().Slice((int)localBound.Offset, localBound.Length));
+        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
+        Span<byte> nr = nrBuf[..localBound.Length];
+        reader.TryRead(localBound.Offset, nr);
+        NodeRef nodeRef = NodeRef.Read(nr);
         if (!_referencedSnapshots.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snap))
             throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found");
-        return DecodeValueAt(snap.GetSpan(), nodeRef.ValueLengthOffset);
+        return snap.ReadEntryValue(nodeRef.ValueLengthOffset);
     }
 
     public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation,
@@ -207,7 +200,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             nodeRlp = null;
             return false;
         }
-        nodeRlp = ResolveValueAt(bound).ToArray();
+        nodeRlp = ResolveValueAt(bound);
         return true;
     }
 
@@ -219,7 +212,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             nodeRlp = null;
             return false;
         }
-        nodeRlp = ResolveValueAt(bound).ToArray();
+        nodeRlp = ResolveValueAt(bound);
         return true;
     }
 
@@ -234,16 +227,29 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// Resolve a NodeRef by reading the entry value from the referenced snapshot.
+    /// Read the raw entry value at a given <c>MetadataStart</c> offset (the LEB128 ValueLength
+    /// cursor). Decodes the LEB128 forward via the reader, then copies the preceding value
+    /// bytes directly into a heap-allocated array.
     /// </summary>
-    public static byte[] ResolveValue(ReadOnlySpan<byte> snapshotData, int valueLengthOffset) =>
-        PersistedSnapshotReader.ResolveValue(snapshotData, valueLengthOffset);
-
-    /// <summary>
-    /// Read the raw entry value at a given ValueLengthOffset in this snapshot's data.
-    /// </summary>
-    public byte[] ReadEntryValue(int valueLengthOffset) =>
-        PersistedSnapshotReader.ResolveValue(GetSpan(), valueLengthOffset);
+    public byte[] ReadEntryValue(int valueLengthOffset)
+    {
+        SpanByteReader reader = _reservation.CreateReader();
+        int valueLength = 0;
+        int shift = 0;
+        int pos = valueLengthOffset;
+        Span<byte> oneByte = stackalloc byte[1];
+        while (true)
+        {
+            reader.TryRead(pos++, oneByte);
+            byte b = oneByte[0];
+            valueLength |= (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) break;
+            shift += 7;
+        }
+        byte[] result = new byte[valueLength];
+        reader.TryRead(valueLengthOffset - valueLength, result);
+        return result;
+    }
 
     // --- Snapshot-matching enumerable properties ---
 
