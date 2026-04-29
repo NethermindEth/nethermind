@@ -986,11 +986,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
-        if (spec.IsEip8037Enabled && wasCreated)
-        {
-            state.AccessTracker.RecordAccountCreated(state.Env.ExecutingAccount);
-        }
+        // Touch the precompile address (records balance change / empty entry in BAL) but do NOT
+        // fire RecordAccountCreated: precompiles are system-defined addresses and must not incur
+        // EIP-8037 PerEmptyAccountState. Charging it here OOGs every CALL whose forwarded gas is
+        // less than the per-empty-account spill (e.g. a contract calling ECRECOVER).
+        _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec, out _);
+        bool wasCreated = false;
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
