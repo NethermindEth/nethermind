@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain;
 public class ReorgDepthFinalizedStateProvider(IBlockTree blockTree) : IFinalizedStateProvider
 {
     private sealed record FinalizedCache(Hash256 Hash, long Number);
-    private FinalizedCache? _cache;
+    private volatile FinalizedCache? _cache;
 
     public long FinalizedBlockNumber
     {
