@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,6 +51,9 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         {
             data.Event.Wait();
         }
+
+        // Rethrow the first captured worker exception, if any, on the calling thread
+        data.ThrowIfFaulted();
 
         parallelOptions.CancellationToken.ThrowIfCancellationRequested();
     }
@@ -133,13 +137,21 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     {
         try
         {
-            int i = _data.Index.GetNext();
-            while (i < _data.ToExclusive)
+            try
             {
-                if (_data.CancellationToken.IsCancellationRequested) return;
-                _data.Action(i);
-                // Get the next index
-                i = _data.Index.GetNext();
+                int i = _data.Index.GetNext();
+                while (i < _data.ToExclusive)
+                {
+                    if (_data.CancellationToken.IsCancellationRequested) return;
+                    _data.Action(i);
+                    i = _data.Index.GetNext();
+                }
+            }
+            catch (Exception ex)
+            {
+                // Capture so the exception is rethrown on the calling thread instead of escaping
+                // a thread-pool worker (which would otherwise be unobserved/fatal).
+                _data.CaptureException(ex);
             }
         }
         finally
@@ -181,6 +193,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
         public SemaphoreSlim Event { get; } = new(initialCount: 0);
         private int _activeThreads = threads;
+        private ExceptionDispatchInfo? _exception;
         public CancellationToken CancellationToken { get; } = token;
 
         /// <summary>
@@ -192,6 +205,24 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Gets the number of active threads.
         /// </summary>
         public int ActiveThreads => Volatile.Read(ref _activeThreads);
+
+        /// <summary>
+        /// Captures the first exception observed by any worker so it can be rethrown on the
+        /// calling thread. Subsequent exceptions are dropped.
+        /// </summary>
+        public void CaptureException(Exception exception)
+        {
+            // Skip the (non-trivial) ExceptionDispatchInfo.Capture call once we already have one.
+            if (Volatile.Read(ref _exception) is not null) return;
+
+            // Only the first exception wins; any later ones are discarded.
+            Interlocked.CompareExchange(ref _exception, ExceptionDispatchInfo.Capture(exception), null);
+        }
+
+        /// <summary>
+        /// Rethrows the first captured exception (preserving its original stack trace), if any.
+        /// </summary>
+        public void ThrowIfFaulted() => _exception?.Throw();
 
         /// <summary>
         /// Marks a thread as completed.
@@ -272,6 +303,9 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                 data.Event.Wait();
             }
 
+            // Rethrow the first captured worker exception, if any, on the calling thread
+            data.ThrowIfFaulted();
+
             parallelOptions.CancellationToken.ThrowIfCancellationRequested();
         }
 
@@ -286,9 +320,10 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public void Execute()
         {
-            TLocal? value = _data.Init();
+            TLocal? value = default;
             try
             {
+                value = _data.Init();
                 int i = _data.Index.GetNext();
                 while (i < _data.ToExclusive)
                 {
@@ -297,9 +332,24 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                     i = _data.Index.GetNext();
                 }
             }
+            catch (Exception ex)
+            {
+                // Capture so the exception is rethrown on the calling thread instead of escaping
+                // a thread-pool worker (which would otherwise be unobserved/fatal).
+                _data.CaptureException(ex);
+            }
             finally
             {
-                _data.Finally(value);
+                // A throwing Finally must not skip MarkThreadCompleted, or the calling thread hangs
+                // on the semaphore. Capture and continue.
+                try
+                {
+                    _data.Finally(value!);
+                }
+                catch (Exception ex)
+                {
+                    _data.CaptureException(ex);
+                }
                 _data.MarkThreadCompleted();
             }
         }
