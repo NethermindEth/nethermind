@@ -45,44 +45,43 @@ public class TestingRpcModule(
 
     public void Dispose() => _commitLock.Dispose();
 
-    public async Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
+    public async Task<ResultWrapper<object>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
     {
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
         if (parentBlock is null)
-            return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
+            return ResultWrapper<object>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
 
         ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(parentBlock.Header, payloadAttributes, txRlps, extraData, nameof(testing_buildBlockV1), processExitSource.Token);
         if (produced.Result.ResultType == ResultType.Failure)
-            return ResultWrapper<object?>.Fail(produced.Result.Error!, produced.ErrorCode);
+            return ResultWrapper<object>.Fail(produced.Result.Error!, produced.ErrorCode);
 
         if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {produced.Data.Block.Header.ToString(BlockHeader.Format.Short)}.");
-        return ResultWrapper<object?>.Success(CreateGetPayloadResult(produced.Data.Block, produced.Data.Fees, produced.Data.Spec));
+        return ResultWrapper<object>.Success(CreateGetPayloadResult(produced.Data.Block, produced.Data.Fees, produced.Data.Spec));
     }
 
-    public async Task<ResultWrapper<Hash256?>> testing_commitBlockV1(
+    public async Task<ResultWrapper<Hash256>> testing_commitBlockV1(
         PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null)
     {
         CancellationToken exitToken = processExitSource.Token;
         try
         {
-            await _commitLock.WaitAsync(exitToken).ConfigureAwait(false);
+            await _commitLock.WaitAsync(exitToken);
         }
         catch (OperationCanceledException)
         {
-            return ResultWrapper<Hash256?>.Fail("node is shutting down", ErrorCodes.InternalError);
+            return ResultWrapper<Hash256>.Fail("node is shutting down", ErrorCodes.InternalError);
         }
 
         try
         {
-            BlockHeader? chainHead = blockTree.Head?.Header;
-            if (chainHead is null)
-                return ResultWrapper<Hash256?>.Fail("chain head not found", ErrorCodes.InternalError);
+            if (blockTree.Head?.Header is not BlockHeader chainHead)
+                return ResultWrapper<Hash256>.Fail("chain head not found", ErrorCodes.InternalError);
 
             ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(chainHead, payloadAttributes, txRlps, extraData, nameof(testing_commitBlockV1), exitToken);
             if (produced.Result.ResultType == ResultType.Failure)
-                return ResultWrapper<Hash256?>.Fail(produced.Result.Error!, produced.ErrorCode);
+                return ResultWrapper<Hash256>.Fail(produced.Result.Error!, produced.ErrorCode);
 
-            return await SuggestAndWaitForHeadAsync(produced.Data.Block, exitToken).ConfigureAwait(false);
+            return await SuggestAndWaitForHeadAsync(produced.Data.Block, exitToken);
         }
         finally
         {
@@ -140,10 +139,10 @@ public class TestingRpcModule(
         return ResultWrapper<ProducedBlock>.Success(new ProducedBlock(processedBlock, feesTracer.Fees, spec));
     }
 
-    private async Task<ResultWrapper<Hash256?>> SuggestAndWaitForHeadAsync(Block processedBlock, CancellationToken exitToken)
+    private async Task<ResultWrapper<Hash256>> SuggestAndWaitForHeadAsync(Block processedBlock, CancellationToken exitToken)
     {
         if (processedBlock.Hash is null)
-            return ResultWrapper<Hash256?>.Fail("processed block has no hash", ErrorCodes.InternalError);
+            return ResultWrapper<Hash256>.Fail("processed block has no hash", ErrorCodes.InternalError);
 
         Hash256 expectedHash = processedBlock.Hash;
         TaskCompletionSource<bool> headAdvanced = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -161,25 +160,25 @@ public class TestingRpcModule(
             if (blockTree.Head?.Hash == expectedHash)
                 headAdvanced.TrySetResult(true);
 
-            AddBlockResult addBlockResult = await blockTree.SuggestBlockAsync(processedBlock, BlockTreeSuggestOptions.ShouldProcess).ConfigureAwait(false);
+            AddBlockResult addBlockResult = await blockTree.SuggestBlockAsync(processedBlock, BlockTreeSuggestOptions.ShouldProcess);
             if (addBlockResult != AddBlockResult.Added)
             {
                 if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
-                return ResultWrapper<Hash256?>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
+                return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
             }
 
             using CancellationTokenSource timeoutCts = new(CommitHeadTimeout);
             using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, exitToken);
             try
             {
-                await headAdvanced.Task.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+                await headAdvanced.Task.WaitAsync(linkedCts.Token);
             }
             catch (OperationCanceledException)
             {
                 string message = exitToken.IsCancellationRequested
                     ? "node is shutting down"
                     : $"block was suggested but did not become head within {CommitHeadTimeout.TotalSeconds:0}s";
-                return ResultWrapper<Hash256?>.Fail(message, ErrorCodes.InternalError);
+                return ResultWrapper<Hash256>.Fail(message, ErrorCodes.InternalError);
             }
         }
         finally
@@ -188,7 +187,7 @@ public class TestingRpcModule(
         }
 
         if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {expectedHash}");
-        return ResultWrapper<Hash256?>.Success(expectedHash);
+        return ResultWrapper<Hash256>.Success(expectedHash);
     }
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)
