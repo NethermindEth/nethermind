@@ -518,7 +518,7 @@ namespace Nethermind.Db.LogIndex
         {
             if (_maxBlock is null) return null;
             if (_finalizedBlockProvider.FinalizedBlockNumber is { } finalized)
-                return checked((int)finalized);
+                return finalized > int.MaxValue ? _maxBlock : (int)finalized;
             return _maxBlock - _maxReorgDepth;
         }
 

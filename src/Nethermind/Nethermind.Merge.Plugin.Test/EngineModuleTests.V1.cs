@@ -708,6 +708,50 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task forkchoiceUpdatedV1_WhenBlockIsNotYetProcessed_ReturnsSyncing()
+    {
+        // Spec point 1 + point 6: an unprocessed beacon block has no committed state, so CanReorgOn
+        // is undefined for it. The handler must not return -38006; it must fall through to SYNCING
+        // so beacon header sync can proceed.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block headBlock = Build.A.Block.WithNumber(100).TestObject;
+        Block beaconTarget = Build.A.Block.WithNumber(101).TestObject;
+
+        blockTree.Head.Returns(headBlock);
+        blockTree.HeadHash.Returns(headBlock.Hash!);
+        blockTree.FindHeader(beaconTarget.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(beaconTarget.Header);
+        blockTree.GetInfo(beaconTarget.Number, beaconTarget.Hash!).Returns(
+            (new BlockInfo(beaconTarget.Hash!, 0) { WasProcessed = false }, new ChainLevelInfo(true)));
+
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CanReorgOn(Arg.Any<BlockHeader>()).Returns(false); // would force -38006 if the gate ran
+
+        ForkchoiceUpdatedHandler handler = new(
+            blockTree,
+            Substitute.For<IManualBlockFinalizationManager>(),
+            Substitute.For<IPoSSwitcher>(),
+            Substitute.For<IPayloadPreparationService>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            Substitute.For<IBlockCacheService>(),
+            Substitute.For<IInvalidChainTracker>(),
+            Substitute.For<IMergeSyncController>(),
+            Substitute.For<IBeaconPivot>(),
+            Substitute.For<IPeerRefresher>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<ISyncPeerPool>(),
+            new MergeConfig(),
+            worldStateManager,
+            Substitute.For<ILogManager>());
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(
+            new ForkchoiceStateV1(beaconTarget.Hash!, Keccak.Zero, Keccak.Zero), null, 1);
+
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Syncing,
+            "unprocessed block must trigger sync, not -38006 — CanReorgOn is undefined for unvalidated blocks");
+        result.ErrorCode.Should().Be(0);
+    }
+
+    [Test]
     public async Task forkchoiceUpdatedV1_WhenReorgWithinRetainedState_Reorgs()
     {
         // Spec PR #786 point 6: a reorg to a canonical ancestor whose state is still retained by
