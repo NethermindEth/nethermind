@@ -84,8 +84,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 {
     private const int MaxBatchLookupBlocks = 192 * 1024;
 
-    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
-    private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded = ResultWrapper<UInt256?>.Fail("lookback limit exceeded");
+    // ResourceNotFound (-32000) instead of the default InternalError (-32603), and IsTemporary
+    // so the JsonRpc framework's SuppressWarning flag fires (JsonRpcService.cs:158 ->
+    // JsonRpcProcessor.cs:428). Without this, every cold-boot tryLastFinalizedCheckpoint poll
+    // produces a loud "Error response handling JsonRpc..." WARN line on a known-transient miss.
+    private static readonly ResultWrapper<UInt256?> BlockIdNotFound =
+        ResultWrapper<UInt256?>.Fail("not found", ErrorCodes.ResourceNotFound, isTemporary: true);
 
     private readonly ILogger _taikoLogger = logManager.GetClassLogger<TaikoEngineRpcModule>();
 
@@ -393,14 +397,18 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                if (_taikoLogger.IsWarn) _taikoLogger.Warn($"taikoAuth_lastL1OriginByBatchID: no block found for batch {batchId}");
+                // Debug, not Warn: this fires on every periodic poll for the latest batch
+                // before NMC has ingested it; that's expected control flow, not a fault.
+                if (_taikoLogger.IsDebug) _taikoLogger.Debug($"taikoAuth_lastL1OriginByBatchID: no block found for batch {batchId}");
                 return TaikoExtendedEthModule.L1OriginByBatchIdNullResult;
             }
         }
 
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
-        if (origin is null && _taikoLogger.IsWarn)
-            _taikoLogger.Warn($"taikoAuth_lastL1OriginByBatchID: block {blockId} found for batch {batchId} but no L1 origin entry");
+        // Debug: a known block can lack its L1Origin record briefly between insertion and
+        // the driver's taikoAuth_updateL1Origin writeback — expected, not a fault.
+        if (origin is null && _taikoLogger.IsDebug)
+            _taikoLogger.Debug($"taikoAuth_lastL1OriginByBatchID: block {blockId} found for batch {batchId} but no L1 origin entry");
 
         return origin is null ? TaikoExtendedEthModule.L1OriginByBatchIdNullResult : ResultWrapper<L1Origin?>.Success(origin);
     }
@@ -413,7 +421,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                if (_taikoLogger.IsWarn) _taikoLogger.Warn($"taikoAuth_lastBlockIDByBatchID: no block found for batch {batchId}");
+                if (_taikoLogger.IsDebug) _taikoLogger.Debug($"taikoAuth_lastBlockIDByBatchID: no block found for batch {batchId}");
                 return BlockIdNotFound;
             }
         }

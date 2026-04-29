@@ -143,6 +143,7 @@ public class TaikoModule : Module
         builder
             .AddSingleton<NethermindApi, TaikoNethermindApi>()
             .AddModule(new BaseMergePluginModule())
+            .AddModule(new TaikoSynchronizerModule())
 
             .AddSingleton<IPrecompileProvider, TaikoPrecompileProvider>()
             .AddScoped<IVirtualMachine, TaikoEthereumVirtualMachine>()
