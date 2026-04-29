@@ -31,7 +31,13 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
     protected override long SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
     protected override Func<bool> HasPivot =>
-        () => _blockAccessListStore.Exists(_blockTree.SyncPivot.BlockHash);
+        () =>
+        {
+            (long pivotNumber, Hash256 pivotHash) = _blockTree.SyncPivot;
+            BlockHeader? pivotHeader = _blockTree.FindHeader(pivotHash, blockNumber: pivotNumber);
+            return pivotHeader is not null &&
+                   (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotHash));
+        };
 
     private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
 
@@ -196,21 +202,11 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             return false;
         }
 
-        Hash256? expectedHash = header.BlockAccessListHash;
-        if (expectedHash is null)
+        if (!BlockAccessListHashValidator.Validate(header, accessListRlp, out errorMessage))
         {
-            errorMessage = "missing block access list hash";
             return false;
         }
 
-        Hash256 actualHash = new(ValueKeccak.Compute(accessListRlp).Bytes);
-        if (actualHash != expectedHash)
-        {
-            errorMessage = $"block access list hash mismatch, expected {expectedHash}, got {actualHash}";
-            return false;
-        }
-
-        errorMessage = null;
         return true;
     }
 

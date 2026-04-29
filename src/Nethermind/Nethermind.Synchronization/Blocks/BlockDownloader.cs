@@ -543,7 +543,7 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if (!ValidateAccessListHash(header, encodedAccessList, out string? errorMessage))
+                if (!BlockAccessListHashValidator.Validate(header, encodedAccessList, out string? errorMessage))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Invalid block access list from {peer} for block {header.ToString(BlockHeader.Format.Short)}, {errorMessage}");
 
@@ -578,25 +578,6 @@ namespace Nethermind.Synchronization.Blocks
             return result;
         }
 
-        private static bool ValidateAccessListHash(BlockHeader header, byte[] encodedAccessList, out string? errorMessage)
-        {
-            Hash256? expectedHash = header.BlockAccessListHash;
-            if (expectedHash is null)
-            {
-                errorMessage = "block header is missing block access list hash";
-                return false;
-            }
-
-            Hash256 actualHash = new(ValueKeccak.Compute(encodedAccessList).Bytes);
-            if (actualHash != expectedHash)
-            {
-                errorMessage = $"block access list hash mismatch, expected {expectedHash}, got {actualHash}";
-                return false;
-            }
-
-            errorMessage = null;
-            return true;
-        }
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
         {
             Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptEncoder);

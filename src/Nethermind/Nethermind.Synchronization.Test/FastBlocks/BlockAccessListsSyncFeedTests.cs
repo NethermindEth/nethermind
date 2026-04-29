@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -86,6 +87,25 @@ public class BlockAccessListsSyncFeedTests
             peerInfo,
             DisconnectReason.InvalidTxOrUncle,
             Arg.Is<string>(static message => message.Contains("invalid block access list")));
+    }
+
+    [Test]
+    public void Treats_pivot_without_block_access_list_hash_as_available()
+    {
+        const long previousBarrier = 123;
+        _metadataDb.Set(MetadataDbKeys.BlockAccessListsBarrierWhenStarted, previousBarrier.ToBigEndianByteArrayWithoutLeadingZeros());
+
+        BlockHeader pivotHeader = Build.A.BlockHeader
+            .WithBlockAccessListHash(null)
+            .TestObject;
+        _blockTree.SyncPivot.Returns((2, TestItem.KeccakB));
+        _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2).Returns(pivotHeader);
+
+        _feed.InitializeFeed();
+
+        long barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+        Assert.That(barrier, Is.EqualTo(previousBarrier));
+        _blockAccessListStore.DidNotReceive().Exists(TestItem.KeccakB);
     }
 
     [Test]
