@@ -44,13 +44,24 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
     }
 
     /// <summary>
-    /// Floor B-tree lookup within the current <see cref="Bound"/> (treated as an HSST).
-    /// On success sets <see cref="_bound"/> to the floor entry's value region and returns the
-    /// prior bound via <paramref name="previousBound"/> so the caller can restore it with
-    /// <see cref="SetBound"/>. Returns false if the HSST is empty or <paramref name="key"/>
-    /// precedes every entry.
+    /// Exact-match B-tree lookup within the current <see cref="Bound"/>. On success sets
+    /// <see cref="_bound"/> to the matched entry's value region and returns the prior bound via
+    /// <paramref name="previousBound"/>. Returns false if no entry has exactly <paramref name="key"/>.
+    /// Use <see cref="TrySeekFloor"/> for floor (largest entry ≤ key) semantics.
     /// </summary>
-    public bool TrySeek(ReadOnlySpan<byte> key, out Bound previousBound)
+    public bool TrySeek(ReadOnlySpan<byte> key, out Bound previousBound) =>
+        TrySeekCore(key, exactMatch: true, out previousBound);
+
+    /// <summary>
+    /// Floor B-tree lookup within the current <see cref="Bound"/>. On success sets
+    /// <see cref="_bound"/> to the floor entry's value region (largest stored key ≤ <paramref name="key"/>)
+    /// and returns the prior bound via <paramref name="previousBound"/>. Returns false if the HSST
+    /// is empty or <paramref name="key"/> precedes every entry.
+    /// </summary>
+    public bool TrySeekFloor(ReadOnlySpan<byte> key, out Bound previousBound) =>
+        TrySeekCore(key, exactMatch: false, out previousBound);
+
+    private bool TrySeekCore(ReadOnlySpan<byte> key, bool exactMatch, out Bound previousBound)
     {
         previousBound = _bound;
 
@@ -84,6 +95,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 {
                     int floorIdx = node.FindFloorIndex(key);
                     if (floorIdx < 0) return false;
+                    if (exactMatch && !key.SequenceEqual(node.GetKey(floorIdx))) return false;
                     ReadOnlySpan<byte> val = node.GetValue(floorIdx);
                     if (val.IsEmpty)
                     {
@@ -99,19 +111,49 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 }
                 else
                 {
-                    if (!node.TryGetFloor(key, out _, out ReadOnlySpan<byte> metaBytes))
+                    if (!node.TryGetFloor(key, out ReadOnlySpan<byte> separator, out ReadOnlySpan<byte> metaBytes))
                         return false;
+
+                    // Exact-match early-out: stored key starts with separator, so input must too.
+                    if (exactMatch && !key.StartsWith(separator)) return false;
+
                     int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + node.Metadata.BaseOffset;
                     long absMetaStart = _bound.Offset + 1 + metaStart;
 
-                    // Read enough bytes to decode the valueLength LEB128 (max 5 bytes for int32).
+                    // Read up to 10 bytes from absMetaStart: enough for ValueLength (≤5) +
+                    // RemainingKeyLength (≤5) LEB128s. Both decoded eagerly when exactMatch is true.
                     long available = _bound.Offset + _bound.Length - absMetaStart;
                     if (available <= 0) return false;
-                    Span<byte> lebBuf = stackalloc byte[5];
-                    int lebRead = (int)Math.Min(5, available);
+                    Span<byte> lebBuf = stackalloc byte[10];
+                    int lebRead = (int)Math.Min(10, available);
                     if (!_reader.TryRead(absMetaStart, lebBuf[..lebRead])) return false;
+
                     int pos = 0;
                     int valueLength = Leb128.Read(lebBuf, ref pos);
+
+                    if (exactMatch)
+                    {
+                        int remainingKeyLength = Leb128.Read(lebBuf, ref pos);
+                        int expectedRemaining = key.Length - separator.Length;
+                        if (remainingKeyLength != expectedRemaining) return false;
+                        if (remainingKeyLength > 0)
+                        {
+                            // Compare remaining-key bytes against key[separator.Length..] in
+                            // bounded-stack chunks so arbitrarily long keys don't blow the stack.
+                            Span<byte> chunk = stackalloc byte[256];
+                            ReadOnlySpan<byte> expected = key[separator.Length..];
+                            int compared = 0;
+                            while (compared < remainingKeyLength)
+                            {
+                                int toRead = Math.Min(chunk.Length, remainingKeyLength - compared);
+                                Span<byte> chunkSlice = chunk[..toRead];
+                                if (!_reader.TryRead(absMetaStart + pos + compared, chunkSlice)) return false;
+                                if (!chunkSlice.SequenceEqual(expected.Slice(compared, toRead))) return false;
+                                compared += toRead;
+                            }
+                        }
+                    }
+
                     // value bytes are immediately before the metaStart
                     _bound = new Bound(absMetaStart - valueLength, valueLength);
                     return true;

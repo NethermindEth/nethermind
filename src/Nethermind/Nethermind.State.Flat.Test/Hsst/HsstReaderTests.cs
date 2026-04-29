@@ -52,30 +52,38 @@ public class HsstReaderTests
     }
 
     [Test]
-    public void TrySeek_AfterLastEntry_ReturnsLastEntry()
+    public void TrySeekFloor_AfterLastEntry_ReturnsLastEntry()
     {
         byte[] data = BuildHsst(("a", "alpha"), ("b", "beta"));
         SpanByteReader reader = new(data);
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
-        Assert.That(r.TrySeek("z"u8, out _), Is.True);
+        Assert.That(r.TrySeekFloor("z"u8, out _), Is.True);
         Span<byte> buf = new byte[r.GetBound().Length];
         r.GetValue(buf);
         Assert.That(Encoding.UTF8.GetString(buf), Is.EqualTo("beta"));
+
+        // Exact TrySeek for the same non-existent key returns false.
+        r.SetBound(new Bound(0, data.Length));
+        Assert.That(r.TrySeek("z"u8, out _), Is.False);
     }
 
     [Test]
-    public void TrySeek_BetweenKeys_ReturnsFloorEntry()
+    public void TrySeekFloor_BetweenKeys_ReturnsFloorEntry()
     {
         byte[] data = BuildHsst(("a", "alpha"), ("c", "gamma"));
         SpanByteReader reader = new(data);
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
         // "b" is between "a" and "c" — floor is "a"
-        Assert.That(r.TrySeek("b"u8, out _), Is.True);
+        Assert.That(r.TrySeekFloor("b"u8, out _), Is.True);
         Span<byte> buf = new byte[r.GetBound().Length];
         r.GetValue(buf);
         Assert.That(Encoding.UTF8.GetString(buf), Is.EqualTo("alpha"));
+
+        // Exact TrySeek for "b" returns false.
+        r.SetBound(new Bound(0, data.Length));
+        Assert.That(r.TrySeek("b"u8, out _), Is.False);
     }
 
     [Test]
@@ -250,9 +258,11 @@ public class HsstReaderTests
         r.SetBound(root);
         Assert.That(r.TrySeek("aaa"u8, out _), Is.False);
 
-        // After last entry - floor returns "key1"
+        // After last entry - exact returns false; floor returns "key1"
         r.SetBound(root);
-        Assert.That(r.TrySeek("key2"u8, out _), Is.True);
+        Assert.That(r.TrySeek("key2"u8, out _), Is.False);
+        r.SetBound(root);
+        Assert.That(r.TrySeekFloor("key2"u8, out _), Is.True);
         Span<byte> buf2 = new byte[r.GetBound().Length];
         r.GetValue(buf2);
         Assert.That(Encoding.UTF8.GetString(buf2), Is.EqualTo("value1"));
