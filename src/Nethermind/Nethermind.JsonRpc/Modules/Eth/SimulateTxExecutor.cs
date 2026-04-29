@@ -134,7 +134,7 @@ public class SimulateTxExecutor<TTrace>(
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
                 if (givenNumber <= (ulong)lastBlockNumber)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.BlocksOutOfOrder, ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 // if the no. of filler blocks are greater than maximum simulate blocks cap
                 if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
@@ -297,6 +297,12 @@ public class SimulateTxExecutor<TTrace>(
 /// </summary>
 internal static class SimulateErrorMessages
 {
+    /// <summary>
+    /// Returned when block numbers in the simulation sequence did not increase
+    /// (error code <see cref="ErrorCodes.InvalidInputBlocksOutOfOrder"/>).
+    /// </summary>
+    public const string BlocksOutOfOrder = "Block number in sequence did not increase";
+
     /// <summary>
     /// Returned when the transaction gas limit is below the intrinsic gas cost
     /// (error code <see cref="ErrorCodes.IntrinsicGas"/>).

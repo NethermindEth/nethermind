@@ -702,4 +702,32 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
     }
 
+    /// <summary>
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11219.
+    /// eth_simulateV1 must return -38020 with the spec-mandated fixed message when block
+    /// numbers in the simulation sequence do not increase.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_blocks_out_of_order_returns_spec_error_code_and_message()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // Second block has a lower number than the first — violates the ordering requirement.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new() { BlockOverrides = new BlockOverride { Number = 100 }, Calls = [] },
+                new() { BlockOverrides = new BlockOverride { Number = 50 }, Calls = [] }
+            ],
+            Validation = false
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInputBlocksOutOfOrder));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.BlocksOutOfOrder));
+    }
+
 }
