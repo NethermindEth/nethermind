@@ -253,7 +253,11 @@ public static partial class EvmInstructions
         if (outOfGas) goto OutOfGas;
 
         // Create or update the inheritor account with the transferred balance.
-        if (!inheritorAccountExists)
+        // Under EIP-161 (ClearEmptyAccountWhenTouched), SELFDESTRUCT with value=0 to a nonexistent
+        // inheritor is a no-op — creating the empty account would just be cleared on commit, and
+        // under EIP-8037 the spurious RecordAccountCreated would charge PerEmptyAccountState
+        // against the caller's frame for an account that never observably exists.
+        if (!inheritorAccountExists && (!spec.ClearEmptyAccountWhenTouched || !result.IsZero))
         {
             state.CreateAccount(inheritor, result);
             if (spec.IsEip8037Enabled)
@@ -261,7 +265,7 @@ public static partial class EvmInstructions
                 vmState.AccessTracker.RecordAccountCreated(inheritor);
             }
         }
-        else if (!inheritor.Equals(executingAccount))
+        else if (inheritorAccountExists && !inheritor.Equals(executingAccount))
         {
             state.AddToBalance(inheritor, result, spec);
         }
