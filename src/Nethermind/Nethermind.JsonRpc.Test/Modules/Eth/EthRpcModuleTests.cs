@@ -1533,25 +1533,27 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_createAccessList_optimize_false_includes_contract_storage_in_access_list()
+    public async Task Eth_createAccessList_optimize_false_includes_sender_in_access_list()
     {
         using Context ctx = await Context.Create();
-
+        const string senderAddr = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
         const string contractAddr = "0xc200000000000000000000000000000000000000";
         object stateOverride = JsonSerializer.Deserialize<object>(
             $"{{\"{contractAddr}\":{{\"code\":\"0x6001545000\"}}}}")!;
 
         object transaction = JsonSerializer.Deserialize<object>(
-            $"{{\"from\":\"0x7f554713be84160fdf0178cc8df86f5aabd33397\",\"to\":\"{contractAddr}\"}}")!;
+            $"{{\"from\":\"{senderAddr}\",\"to\":\"{contractAddr}\"}}")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
 
         JToken result = JToken.Parse(serialized)["result"]!;
         result["error"].Should().BeNull();
         long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
-        gasUsed.Should().BeGreaterThan(21_000);
-        // Contract address with storage slot 1 must appear regardless of the optimize flag.
-        result["accessList"]!.ToArray().Should().Contain(e =>
+        gasUsed.Should().Be(27_805);
+        JToken[] accessList = result["accessList"]!.ToArray();
+        accessList.Should().Contain(e => e["address"]!.Value<string>() == senderAddr);
+        // Contract with slot 1 must also appear.
+        accessList.Should().Contain(e =>
             e["address"]!.Value<string>() == contractAddr &&
             e["storageKeys"]!.ToArray().Any(
                 k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000001"));
