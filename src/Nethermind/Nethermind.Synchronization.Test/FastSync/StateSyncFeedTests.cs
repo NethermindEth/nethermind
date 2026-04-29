@@ -488,6 +488,42 @@ namespace Nethermind.Synchronization.Test.FastSync
             clearedAddresses.Should().Contain(TestItem.KeccakA, "EnsureStorageEmpty should be called for account with empty storage root in UpdatedStorages");
         }
 
+        [Test]
+        [Repeat(TestRepeatCount)]
+        public async Task RepairDeletedAccount_calls_EnsureStorageEmpty()
+        {
+            RemoteDbContext remote = new(_logManager);
+
+            // Final state has no record of KeccakA — account was removed (e.g. SELFDESTRUCT).
+            // KeccakB exists so the state tree is not entirely empty.
+            StateTree state = remote.StateTree;
+            state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject);
+            state.Commit();
+
+            List<Hash256> clearedAddresses = new();
+
+            await using IContainer container = PrepareDownloader(remote, configureBuilder: builder =>
+            {
+                builder.AddDecorator<ITreeSyncStore>((ctx, inner) =>
+                    new TrackingTreeSyncStore(inner, clearedAddresses));
+            });
+            IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
+
+            local.SetAccountsAndCommit(
+                (TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject));
+
+            local.DeleteStateRoot();
+
+            // Earlier sync wrote storage for KeccakA before the account was deleted upstream.
+            container.Resolve<StateSyncPivot>().UpdatedStorages.Add(TestItem.KeccakA);
+
+            SafeContext ctx = container.Resolve<SafeContext>();
+            await ActivateAndWait(ctx);
+
+            local.CompareTrees(remote, _logger, "END");
+            clearedAddresses.Should().Contain(TestItem.KeccakA, "EnsureStorageEmpty should be called when the account no longer exists in final state");
+        }
+
         private class TrackingTreeSyncStore(ITreeSyncStore inner, List<Hash256> clearedAddresses) : ITreeSyncStore
         {
             public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => inner.NodeExists(address, path, hash);
