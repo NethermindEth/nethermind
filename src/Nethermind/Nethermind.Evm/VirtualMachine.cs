@@ -1125,7 +1125,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             // Ensure the executing account has sufficient balance and exists in the world state.
             bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
-            if (spec.IsEip8037Enabled && wasCreated && !(vmState.IsTopLevel && vmState.ExecutionType.IsAnyCreate()))
+            // EIP-8037: top-level CREATE pays PerEmptyAccountState via intrinsic createStateCost.
+            // Top-level value transfers (CALL to a new EOA) are not charged the per-empty-account
+            // state cost — the spec keeps them at the basic 21000 gas. Inner CALLs/CREATEs that
+            // create accounts still incur the runtime charge here.
+            if (spec.IsEip8037Enabled && wasCreated && !vmState.IsTopLevel)
             {
                 vmState.AccessTracker.RecordAccountCreated(env.ExecutingAccount);
             }
