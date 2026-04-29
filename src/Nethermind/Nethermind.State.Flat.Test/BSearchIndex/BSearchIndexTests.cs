@@ -8,7 +8,6 @@ using Nethermind.Core.Utils;
 using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
-using HsstReader = Nethermind.State.Flat.Hsst.Hsst;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -373,14 +372,21 @@ public class BSearchIndexTests
             }
         }, maxLeafEntries: 8);
 
-        HsstReader hsst = new(data);
-        Assert.That(hsst.EntryCount, Is.EqualTo(count));
+        SpanByteReader reader = new(data);
+        // Count entries via the new enumerator and verify each key is reachable via TrySeek.
+        int actualCount = 0;
+        using (HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
+        {
+            while (e.MoveNext()) actualCount++;
+        }
+        Assert.That(actualCount, Is.EqualTo(count));
 
         for (int i = 0; i < count; i++)
         {
             byte[] key = new byte[4];
             System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(key, i);
-            Assert.That(hsst.TryGet(key, out _), Is.True, $"Key {i} not found");
+            using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+            Assert.That(r.TrySeek(key, out _), Is.True, $"Key {i} not found");
         }
     }
 }

@@ -25,6 +25,12 @@ namespace Nethermind.State.Flat.Hsst;
 public ref struct HsstBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
+    /// <summary>
+    /// Default maximum entries per leaf B-tree node. Above this, the builder splits and
+    /// promotes a separator into an intermediate node.
+    /// </summary>
+    public const int MaxLeafEntries = 64;
+
     private ref TWriter _writer;
     private int _writtenBeforeValue;
     private readonly int _baseOffset;
@@ -181,7 +187,7 @@ public ref struct HsstBuilder<TWriter>
     /// Build index. The ref writer is already advanced.
     /// No trailer is written — the root index is readable from the end.
     /// </summary>
-    public void Build(int maxLeafEntries = Hsst.MaxLeafEntries)
+    public void Build(int maxLeafEntries = MaxLeafEntries)
     {
         if (_inlineValues)
         {

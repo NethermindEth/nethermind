@@ -24,8 +24,10 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 {
     /// <summary>Maximum supported B-tree depth. Realistic trees stay ≤4; 16 is a hard ceiling.</summary>
     private const int MaxDepth = 16;
-    /// <summary>Inline buffer for reconstructed keys. Real-world keys are ≤33 bytes.</summary>
-    private const int InlineKeyBytes = 256;
+    /// <summary>Inline buffer for reconstructed keys. Real-world HSST keys are ≤33 bytes; the
+    /// generous 1 KiB ceiling keeps the enumerator allocation-free for any realistic load while
+    /// still bounding the per-instance footprint.</summary>
+    private const int InlineKeyBytes = 1024;
 
     [InlineArray(MaxDepth)]
     private struct AncestorStack { private Ancestor _e0; }

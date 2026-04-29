@@ -128,14 +128,12 @@ public class HsstReaderTests
                 builder.Add(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value));
         });
 
-        Hsst.Hsst hsst = new(data);
         SpanByteReader reader = new(data);
 
         foreach ((string key, string value) in entries)
         {
             byte[] keyBytes = Encoding.UTF8.GetBytes(key);
-
-            Assert.That(hsst.TryGet(keyBytes, out ReadOnlySpan<byte> spanVal), Is.True, $"Hsst.TryGet failed for {key}");
+            byte[] spanVal = Encoding.UTF8.GetBytes(value);
 
             using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
             Bound root = r.GetBound();
