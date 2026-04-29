@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -12,11 +13,12 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Streaming scan over a persisted snapshot's HSST columns. Pair the snapshot with a
-/// <see cref="WholeReadSession"/> taken on its reservation; the scanner does not own the
-/// session but enumerators are only valid while the session is alive. Each enumerable
-/// re-walks the B-tree on iteration — fine for one-shot consumers (e.g. RocksDB flush)
-/// and acceptable for the bloom builder's two-pass count + populate.
+/// Streaming scan over a persisted snapshot's HSST columns. The
+/// <see cref="WholeReadSession"/> guarantees the underlying span stays valid for the
+/// scanner's lifetime, so enumerators slice keys/values directly out of it instead of
+/// copying through TryRead. Each enumerable re-walks the B-tree on iteration — fine for
+/// one-shot consumers (RocksDB flush) and acceptable for the bloom builder's two-pass
+/// count + populate.
 /// </summary>
 public sealed class PersistedSnapshotScanner(WholeReadSession session, PersistedSnapshot snapshot)
 {
@@ -25,29 +27,34 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     private readonly WholeReadSession _session = session;
     private readonly PersistedSnapshot _snapshot = snapshot;
 
-    public SelfDestructEnumerable SelfDestructedStorageAddresses => new(_snapshot);
-    public AccountEnumerable Accounts => new(_snapshot);
-    public StorageEnumerable Storages => new(_snapshot);
-    public StateNodeEnumerable StateNodes => new(_snapshot);
-    public StorageNodeEnumerable StorageNodes => new(_snapshot);
+    public SelfDestructEnumerable SelfDestructedStorageAddresses => new(_snapshot, _session.GetSpan());
+    public AccountEnumerable Accounts => new(_snapshot, _session.GetSpan());
+    public StorageEnumerable Storages => new(_snapshot, _session.GetSpan());
+    public StateNodeEnumerable StateNodes => new(_snapshot, _session.GetSpan());
+    public StorageNodeEnumerable StorageNodes => new(_snapshot, _session.GetSpan());
 
-    public readonly ref struct SelfDestructEnumerable(PersistedSnapshot snapshot)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> Slice(ReadOnlySpan<byte> data, Bound b) =>
+        data.Slice((int)b.Offset, b.Length);
+
+    public readonly ref struct SelfDestructEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
-        public readonly SelfDestructEnumerator GetEnumerator() => new(_snapshot);
+        private readonly ReadOnlySpan<byte> _data = data;
+        public readonly SelfDestructEnumerator GetEnumerator() => new(_snapshot, _data);
     }
 
     public ref struct SelfDestructEnumerator : IDisposable
     {
-        private readonly PersistedSnapshot _snapshot;
+        private readonly ReadOnlySpan<byte> _data;
         private readonly SpanByteReader _reader;
         private HsstEnumerator<SpanByteReader, NoOpPin> _addrEnum;
         private KeyValuePair<AddressAsKey, bool> _current;
 
-        public SelfDestructEnumerator(PersistedSnapshot snapshot)
+        public SelfDestructEnumerator(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
         {
-            _snapshot = snapshot;
-            _reader = snapshot.CreateReader();
+            _data = data;
+            _reader = new SpanByteReader(data);
             HsstReader<SpanByteReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
             _addrEnum = new HsstEnumerator<SpanByteReader, NoOpPin>(in _reader, colBound);
@@ -62,16 +69,9 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 if (!perAddr.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
                     continue;
                 Bound sdBound = perAddr.GetBound();
-                byte[] addrBytes = new byte[addrEntry.KeyBound.Length];
-                _reader.TryRead(addrEntry.KeyBound.Offset, addrBytes);
-                bool isNew = false;
-                if (sdBound.Length > 0)
-                {
-                    Span<byte> oneByte = stackalloc byte[1];
-                    _reader.TryRead(sdBound.Offset, oneByte);
-                    isNew = oneByte[0] == 0x01;
-                }
-                _current = new(new Address(addrBytes), isNew);
+                Address addr = new(Slice(_data, addrEntry.KeyBound));
+                bool isNew = sdBound.Length > 0 && _data[(int)sdBound.Offset] == 0x01;
+                _current = new(addr, isNew);
                 return true;
             }
             return false;
@@ -81,23 +81,24 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         public void Dispose() => _addrEnum.Dispose();
     }
 
-    public readonly ref struct AccountEnumerable(PersistedSnapshot snapshot)
+    public readonly ref struct AccountEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
-        public readonly AccountEnumerator GetEnumerator() => new(_snapshot);
+        private readonly ReadOnlySpan<byte> _data = data;
+        public readonly AccountEnumerator GetEnumerator() => new(_snapshot, _data);
     }
 
     public ref struct AccountEnumerator : IDisposable
     {
-        private readonly PersistedSnapshot _snapshot;
+        private readonly ReadOnlySpan<byte> _data;
         private readonly SpanByteReader _reader;
         private HsstEnumerator<SpanByteReader, NoOpPin> _addrEnum;
         private KeyValuePair<AddressAsKey, Account?> _current;
 
-        public AccountEnumerator(PersistedSnapshot snapshot)
+        public AccountEnumerator(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
         {
-            _snapshot = snapshot;
-            _reader = snapshot.CreateReader();
+            _data = data;
+            _reader = new SpanByteReader(data);
             HsstReader<SpanByteReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
             _addrEnum = new HsstEnumerator<SpanByteReader, NoOpPin>(in _reader, colBound);
@@ -112,21 +113,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 if (!perAddr.TrySeek(PersistedSnapshot.AccountSubTag, out _))
                     continue;
                 Bound rlpBound = perAddr.GetBound();
-                byte[] addrBytes = new byte[addrEntry.KeyBound.Length];
-                _reader.TryRead(addrEntry.KeyBound.Offset, addrBytes);
-                Account? account;
-                if (rlpBound.Length == 0)
-                {
-                    account = null;
-                }
-                else
-                {
-                    Span<byte> rlpBuf = rlpBound.Length <= 256 ? stackalloc byte[256] : new byte[rlpBound.Length];
-                    Span<byte> rlp = rlpBuf[..rlpBound.Length];
-                    _reader.TryRead(rlpBound.Offset, rlp);
-                    account = AccountDecoder.Slim.Decode(rlp);
-                }
-                _current = new(new Address(addrBytes), account);
+                Address addr = new(Slice(_data, addrEntry.KeyBound));
+                ReadOnlySpan<byte> rlp = Slice(_data, rlpBound);
+                Account? account = rlp.IsEmpty ? null : AccountDecoder.Slim.Decode(rlp);
+                _current = new(addr, account);
                 return true;
             }
             return false;
@@ -136,34 +126,35 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         public void Dispose() => _addrEnum.Dispose();
     }
 
-    public readonly ref struct StorageEnumerable(PersistedSnapshot snapshot)
+    public readonly ref struct StorageEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
-        public readonly StorageEnumerator GetEnumerator() => new(_snapshot);
+        private readonly ReadOnlySpan<byte> _data = data;
+        public readonly StorageEnumerator GetEnumerator() => new(_snapshot, _data);
     }
 
     public ref struct StorageEnumerator : IDisposable
     {
-        private readonly PersistedSnapshot _snapshot;
+        private readonly ReadOnlySpan<byte> _data;
         private readonly SpanByteReader _reader;
         private HsstEnumerator<SpanByteReader, NoOpPin> _addrEnum;
         private HsstEnumerator<SpanByteReader, NoOpPin> _prefixEnum;
         private HsstEnumerator<SpanByteReader, NoOpPin> _suffixEnum;
         private byte _level; // 0=need new addr, 1=have prefixEnum, 2=have suffixEnum
         private Address _curAddr;
-        private byte[] _curPrefixBytes;
+        private Bound _curPrefixBound;
         private KeyValuePair<(AddressAsKey, UInt256), SlotValue?> _current;
 
-        public StorageEnumerator(PersistedSnapshot snapshot)
+        public StorageEnumerator(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
         {
-            _snapshot = snapshot;
-            _reader = snapshot.CreateReader();
+            _data = data;
+            _reader = new SpanByteReader(data);
             HsstReader<SpanByteReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
             _addrEnum = new HsstEnumerator<SpanByteReader, NoOpPin>(in _reader, colBound);
             _level = 0;
             _curAddr = default!;
-            _curPrefixBytes = [];
+            _curPrefixBound = default;
         }
 
         public bool MoveNext()
@@ -176,21 +167,11 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     {
                         KeyValueEntry suffixEntry = _suffixEnum.Current;
                         Span<byte> slotKey = stackalloc byte[32];
-                        _curPrefixBytes.CopyTo(slotKey);
-                        _reader.TryRead(suffixEntry.KeyBound.Offset, slotKey.Slice(SlotPrefixLength, suffixEntry.KeyBound.Length));
+                        Slice(_data, _curPrefixBound).CopyTo(slotKey);
+                        Slice(_data, suffixEntry.KeyBound).CopyTo(slotKey[SlotPrefixLength..]);
                         UInt256 slot = new(slotKey, isBigEndian: true);
-                        SlotValue? value;
-                        if (suffixEntry.ValueBound.Length == 0)
-                        {
-                            value = null;
-                        }
-                        else
-                        {
-                            Span<byte> vbuf = stackalloc byte[32];
-                            Span<byte> v = vbuf[..suffixEntry.ValueBound.Length];
-                            _reader.TryRead(suffixEntry.ValueBound.Offset, v);
-                            value = SlotValue.FromSpanWithoutLeadingZero(v);
-                        }
+                        ReadOnlySpan<byte> raw = Slice(_data, suffixEntry.ValueBound);
+                        SlotValue? value = raw.IsEmpty ? null : SlotValue.FromSpanWithoutLeadingZero(raw);
                         _current = new((_curAddr, slot), value);
                         return true;
                     }
@@ -203,8 +184,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     if (_prefixEnum.MoveNext())
                     {
                         KeyValueEntry prefixEntry = _prefixEnum.Current;
-                        _curPrefixBytes = new byte[prefixEntry.KeyBound.Length];
-                        _reader.TryRead(prefixEntry.KeyBound.Offset, _curPrefixBytes);
+                        _curPrefixBound = prefixEntry.KeyBound;
                         _suffixEnum = new HsstEnumerator<SpanByteReader, NoOpPin>(in _reader, prefixEntry.ValueBound);
                         _level = 2;
                         continue;
@@ -219,9 +199,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 HsstReader<SpanByteReader, NoOpPin> perAddr = new(in _reader, addrEntry.ValueBound);
                 if (!perAddr.TrySeek(PersistedSnapshot.SlotSubTag, out _))
                     continue;
-                byte[] addrBytes = new byte[addrEntry.KeyBound.Length];
-                _reader.TryRead(addrEntry.KeyBound.Offset, addrBytes);
-                _curAddr = new Address(addrBytes);
+                _curAddr = new Address(Slice(_data, addrEntry.KeyBound));
                 _prefixEnum = new HsstEnumerator<SpanByteReader, NoOpPin>(in _reader, perAddr.GetBound());
                 _level = 1;
             }
@@ -237,24 +215,27 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         }
     }
 
-    public readonly struct StateNodeEnumerable(PersistedSnapshot snapshot)
+    public readonly ref struct StateNodeEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
-        public StateNodeEnumerator GetEnumerator() => new(_snapshot);
+        private readonly ReadOnlySpan<byte> _data = data;
+        public StateNodeEnumerator GetEnumerator() => new(_snapshot, _data);
     }
 
     public ref struct StateNodeEnumerator : IDisposable
     {
         private readonly PersistedSnapshot _snapshot;
+        private readonly ReadOnlySpan<byte> _data;
         private readonly SpanByteReader _reader;
         private HsstEnumerator<SpanByteReader, NoOpPin> _inner;
         private byte _stage; // 0=TopNodes, 1=CompactNodes, 2=Fallback, 3=done
         private KeyValuePair<TreePath, TrieNode> _current;
 
-        public StateNodeEnumerator(PersistedSnapshot snapshot)
+        public StateNodeEnumerator(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
         {
             _snapshot = snapshot;
-            _reader = snapshot.CreateReader();
+            _data = data;
+            _reader = new SpanByteReader(data);
             _stage = 0;
             _inner = OpenColumn(in _reader, PersistedSnapshot.StateTopNodesTag);
         }
@@ -273,9 +254,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 if (_inner.MoveNext())
                 {
                     KeyValueEntry entry = _inner.Current;
-                    Span<byte> keyBuf = stackalloc byte[33];
-                    Span<byte> key = keyBuf[..entry.KeyBound.Length];
-                    _reader.TryRead(entry.KeyBound.Offset, key);
+                    ReadOnlySpan<byte> key = Slice(_data, entry.KeyBound);
                     TreePath path = _stage switch
                     {
                         0 => TreePath.DecodeWith3Byte(key),
@@ -302,15 +281,17 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         public void Dispose() => _inner.Dispose();
     }
 
-    public readonly struct StorageNodeEnumerable(PersistedSnapshot snapshot)
+    public readonly ref struct StorageNodeEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
-        public StorageNodeEnumerator GetEnumerator() => new(_snapshot);
+        private readonly ReadOnlySpan<byte> _data = data;
+        public StorageNodeEnumerator GetEnumerator() => new(_snapshot, _data);
     }
 
     public ref struct StorageNodeEnumerator : IDisposable
     {
         private readonly PersistedSnapshot _snapshot;
+        private readonly ReadOnlySpan<byte> _data;
         private readonly SpanByteReader _reader;
         private HsstEnumerator<SpanByteReader, NoOpPin> _hashEnum;
         private HsstEnumerator<SpanByteReader, NoOpPin> _pathEnum;
@@ -319,10 +300,11 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private Hash256 _curHash;
         private KeyValuePair<(Hash256AsKey, TreePath), TrieNode> _current;
 
-        public StorageNodeEnumerator(PersistedSnapshot snapshot)
+        public StorageNodeEnumerator(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
         {
             _snapshot = snapshot;
-            _reader = snapshot.CreateReader();
+            _data = data;
+            _reader = new SpanByteReader(data);
             _stage = 0;
             _level = 0;
             _curHash = default!;
@@ -338,6 +320,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
 
         public bool MoveNext()
         {
+            Span<byte> hashKeyPadded = stackalloc byte[32];
             while (_stage < 2)
             {
                 if (_level == 1)
@@ -345,9 +328,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     if (_pathEnum.MoveNext())
                     {
                         KeyValueEntry pathEntry = _pathEnum.Current;
-                        Span<byte> keyBuf = stackalloc byte[33];
-                        Span<byte> key = keyBuf[..pathEntry.KeyBound.Length];
-                        _reader.TryRead(pathEntry.KeyBound.Offset, key);
+                        ReadOnlySpan<byte> key = Slice(_data, pathEntry.KeyBound);
                         TreePath path = _stage == 0
                             ? PersistedSnapshotReader.DecodeCompactTreePath(key)
                             : new(new ValueHash256(key[..32]), key[32]);
@@ -362,9 +343,9 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 if (_hashEnum.MoveNext())
                 {
                     KeyValueEntry hashEntry = _hashEnum.Current;
-                    byte[] hashBytes = new byte[32];
-                    _reader.TryRead(hashEntry.KeyBound.Offset, hashBytes.AsSpan(0, hashEntry.KeyBound.Length));
-                    _curHash = new Hash256(hashBytes);
+                    hashKeyPadded.Clear();
+                    Slice(_data, hashEntry.KeyBound).CopyTo(hashKeyPadded);
+                    _curHash = new Hash256(hashKeyPadded);
                     _pathEnum = new HsstEnumerator<SpanByteReader, NoOpPin>(in _reader, hashEntry.ValueBound);
                     _level = 1;
                     continue;
