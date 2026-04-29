@@ -424,7 +424,7 @@ public class ForensicsTests
     public async Task TestVoteEquivocationSameRound()
     {
         using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 10, configurer: RegisterRealForensicsProcessor);
-        IForensicsProcessor forensicsProcessor = blockchain.Container.Resolve<IForensicsProcessor>();
+        ForensicsProcessor forensicsProcessor = (ForensicsProcessor)blockchain.Container.Resolve<IForensicsProcessor>();
         IXdcConsensusContext context = blockchain.XdcContext;
 
         XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
@@ -474,7 +474,7 @@ public class ForensicsTests
     public async Task TestVoteEquivocationDifferentRound()
     {
         using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 15, configurer: RegisterRealForensicsProcessor);
-        IForensicsProcessor forensicsProcessor = blockchain.Container.Resolve<IForensicsProcessor>();
+        ForensicsProcessor forensicsProcessor = (ForensicsProcessor)blockchain.Container.Resolve<IForensicsProcessor>();
 
         XdcBlockHeader headerN = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
         XdcBlockHeader headerNMinus1 = (XdcBlockHeader)blockchain.BlockTree.FindHeader(headerN.ParentHash!)!;

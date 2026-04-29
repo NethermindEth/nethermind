@@ -20,23 +20,24 @@ namespace Nethermind.Xdc;
 internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epochSwitchManager, ILogManager logManager) : IForensicsProcessor
 {
     private const int NumberOfForensicsQcs = 3;
+    private const long MaxForensicsTraversalDepth = 256;
 
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
     private readonly ILogger _logger = logManager.GetClassLogger<ForensicsProcessor>();
-    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
-    private readonly VoteDecoder _voteDecoder = new();
+    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
+    private static readonly VoteDecoder _voteDecoder = new();
     private readonly object _highestCommittedQcsLock = new();
     private QuorumCertificate[] _highestCommittedQcs = [];
     public event EventHandler<ForensicsEvent>? ForensicsEventEmitted;
 
-    public async Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC)
+    public Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC)
     {
-        await ProcessForensics(incomingQC);
-        await SetCommittedQCs(headerQcToBeCommitted, incomingQC);
+        ProcessForensics(incomingQC);
+        return SetCommittedQCs(headerQcToBeCommitted, incomingQC);
     }
 
-    public Task ProcessForensics(QuorumCertificate incomingQC)
+    internal Task ProcessForensics(QuorumCertificate incomingQC)
     {
         QuorumCertificate[] highestCommittedQCs;
         lock (_highestCommittedQcsLock)
@@ -75,7 +76,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         return SendForensicProof(ancestorQC, lowerRoundQCs[NumberOfForensicsQcs - 1]);
     }
 
-    public Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC)
+    internal Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC)
     {
         XdcBlockHeader[] committedHeaders = headers.ToArray();
         if (committedHeaders.Length != NumberOfForensicsQcs - 1)
@@ -152,7 +153,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         }
     }
 
-    public (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath) FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo)
+    internal (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath) FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo)
     {
         Hash256 lowerBlockNumHash = firstBlockInfo.Hash;
         Hash256 higherBlockNumberHash = secondBlockInfo.Hash;
@@ -170,13 +171,22 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
             orderSwapped = true;
         }
 
+        if (blockNumberDifference > MaxForensicsTraversalDepth)
+        {
+            if (_logger.IsWarn)
+            {
+                _logger.Warn($"[FindAncestorBlockHash] Traversal depth {blockNumberDifference} exceeded cap {MaxForensicsTraversalDepth}.");
+            }
+            return (Hash256.Zero, lowerBlockNumToAncestorHashPath, higherBlockToAncestorNumHashPath);
+        }
+
         lowerBlockNumToAncestorHashPath.Add(lowerBlockNumHash.ToString());
         higherBlockToAncestorNumHashPath.Add(higherBlockNumberHash.ToString());
 
         for (int i = 0; i < blockNumberDifference; i++)
         {
             XdcBlockHeader? parentHeader = (XdcBlockHeader?)_blockTree.FindHeader(higherBlockNumberHash);
-            if (parentHeader is null)
+            if (parentHeader is null || parentHeader.ParentHash is null)
             {
                 return (Hash256.Zero, lowerBlockNumToAncestorHashPath, higherBlockToAncestorNumHashPath);
             }
@@ -185,11 +195,21 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
             higherBlockToAncestorNumHashPath.Add(higherBlockNumberHash.ToString());
         }
 
+        long convergenceSteps = 0;
         while (lowerBlockNumHash != higherBlockNumberHash)
         {
+            if (convergenceSteps++ >= MaxForensicsTraversalDepth)
+            {
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"[FindAncestorBlockHash] Convergence traversal exceeded cap {MaxForensicsTraversalDepth}.");
+                }
+                return (Hash256.Zero, lowerBlockNumToAncestorHashPath, higherBlockToAncestorNumHashPath);
+            }
+
             XdcBlockHeader? lowerHeader = (XdcBlockHeader?)_blockTree.FindHeader(lowerBlockNumHash);
             XdcBlockHeader? higherHeader = (XdcBlockHeader?)_blockTree.FindHeader(higherBlockNumberHash);
-            if (lowerHeader is null || higherHeader is null)
+            if (lowerHeader is null || higherHeader is null || lowerHeader.ParentHash is null || higherHeader.ParentHash is null)
             {
                 return (Hash256.Zero, lowerBlockNumToAncestorHashPath, higherBlockToAncestorNumHashPath);
             }
@@ -223,6 +243,11 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
         BlockRoundInfo proposedBlockInfo = higherBlockNumQCs[0].ProposedBlockInfo;
         long blockDifference = higherBlockNumQCs[0].ProposedBlockInfo.BlockNumber - lowerBlockNumQCs[0].ProposedBlockInfo.BlockNumber;
+        if (blockDifference < 0 || blockDifference > MaxForensicsTraversalDepth)
+        {
+            return false;
+        }
+
         for (int i = 0; i < blockDifference; i++)
         {
             XdcBlockHeader? parentHeader = (XdcBlockHeader?)_blockTree.FindHeader(proposedBlockInfo.Hash);
@@ -319,18 +344,33 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         }
 
         ancestorQc = higherRoundQCs[0];
-        while (ancestorQc.ProposedBlockInfo.Round >= lowerRoundQCs[NumberOfForensicsQcs - 1].ProposedBlockInfo.Round)
+        ulong targetRound = lowerRoundQCs[NumberOfForensicsQcs - 1].ProposedBlockInfo.Round;
+        while (ancestorQc.ProposedBlockInfo.Round >= targetRound)
         {
-            XdcBlockHeader? proposedBlock = (XdcBlockHeader?)_blockTree.FindHeader(ancestorQc.ProposedBlockInfo.Hash);
+            Hash256 ancestorHash = ancestorQc.ProposedBlockInfo.Hash;
+            XdcBlockHeader? proposedBlock = (XdcBlockHeader?)_blockTree.FindHeader(ancestorHash);
             QuorumCertificate? parentQc = proposedBlock?.ExtraConsensusData?.QuorumCert;
             if (parentQc is null)
             {
                 return false;
             }
 
-            if (parentQc.ProposedBlockInfo.Round < lowerRoundQCs[NumberOfForensicsQcs - 1].ProposedBlockInfo.Round)
+            if (parentQc.ProposedBlockInfo.Round < targetRound)
             {
                 return true;
+            }
+
+            if (parentQc.ProposedBlockInfo.Round >= ancestorQc.ProposedBlockInfo.Round)
+            {
+                // Defensive: without strictly decreasing rounds, malformed ancestry may loop forever.
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn(
+                        $"[TryFindAncestorQcThroughRound] Non-decreasing QC round transition " +
+                        $"({ancestorQc.ProposedBlockInfo.Round} -> {parentQc.ProposedBlockInfo.Round}) " +
+                        $"at block {ancestorHash}.");
+                }
+                return false;
             }
 
             ancestorQc = parentQc;
@@ -390,11 +430,16 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
     private bool IsExtendingFromAncestor(BlockRoundInfo currentBlock, BlockRoundInfo ancestorBlock)
     {
         long blockNumDiff = currentBlock.BlockNumber - ancestorBlock.BlockNumber;
+        if (blockNumDiff < 0 || blockNumDiff > MaxForensicsTraversalDepth)
+        {
+            return false;
+        }
+
         Hash256 nextBlockHash = currentBlock.Hash;
         for (int i = 0; i < blockNumDiff; i++)
         {
             XdcBlockHeader? parentBlock = (XdcBlockHeader?)_blockTree.FindHeader(nextBlockHash);
-            if (parentBlock is null)
+            if (parentBlock is null || parentBlock.ParentHash is null)
             {
                 return false;
             }
@@ -475,7 +520,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         return Task.CompletedTask;
     }
 
-    public Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc)
+    internal Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc)
     {
         QuorumCertificate lowerRoundQc = firstQc;
         QuorumCertificate higherRoundQc = secondQc;
@@ -531,7 +576,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         return Task.CompletedTask;
     }
 
-    public Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer)
+    internal Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer)
     {
         Vote smallerRoundVote = vote1;
         Vote largerRoundVote = vote2;
