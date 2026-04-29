@@ -40,6 +40,6 @@
     "Enabled": true
   },
   "Discovery": {
-    "DiscoveryVersion": "All"
+    "DiscoveryVersion": "V5"
   }
 }
