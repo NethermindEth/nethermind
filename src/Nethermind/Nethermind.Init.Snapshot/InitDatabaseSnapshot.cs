@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.IO.Abstractions;
 using System.Net;
 using System.Security.Cryptography;
 using Nethermind.Api;
@@ -182,15 +183,24 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
         checkpoint.Advance(SnapshotStage.Extracted);
     }
 
-    private static void CheckDiskSpace(string dbPath, string snapshotPath)
+    private void CheckDiskSpace(string dbPath, string snapshotPath)
     {
-        long snapshotSize = new FileInfo(snapshotPath).Length;
-        string root = Path.GetPathRoot(dbPath) ?? "/";
-        DriveInfo drive = new(root);
+        IDriveInfo[] drives = api.FileSystem.GetDriveInfos(dbPath);
+        if (drives.Length == 0)
+        {
+            return;
+        }
 
-        // May still underestimate for highly compressed archives.
-        if (drive.AvailableFreeSpace < snapshotSize * 2)
-            throw new IOException($"Insufficient disk space to extract snapshot: need at least {snapshotSize * 2} bytes, {drive.AvailableFreeSpace} available on '{root}'.");
+        long snapshotSize = new FileInfo(snapshotPath).Length;
+        long required = snapshotSize * 2.5;
+
+        foreach (IDriveInfo drive in drives)
+        {
+            if (drive.AvailableFreeSpace < required)
+                throw new IOException(
+                    $"Insufficient disk space on '{drive.RootDirectory.FullName}' to extract snapshot: " +
+                    $"need at least {required} bytes, {drive.AvailableFreeSpace} available.");
+        }
     }
 
     private async Task<byte[]> ComputeChecksumAsync(string filePath, CancellationToken cancellationToken)
