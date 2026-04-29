@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
@@ -50,11 +49,5 @@ internal class WorldStateDbDeciderModule : Module
                 (policy, flatFactory, patriciaFactory) =>
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
-                        : (IFullStateFinder)patriciaFactory())
-
-            .Intercept<ISyncConfig>((syncConfig, ctx) =>
-            {
-                if (ctx.Resolve<FlatStateActivationPolicy>().ShouldTurnOnFlatDb())
-                    syncConfig.SnapServingEnabled ??= true;
-            });
+                        : (IFullStateFinder)patriciaFactory());
 }
