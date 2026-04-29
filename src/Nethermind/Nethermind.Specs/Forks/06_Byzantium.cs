@@ -7,7 +7,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Byzantium() : NamedReleaseSpec<Byzantium>(SpuriousDragon.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Byzantium";
         spec.BlockReward = new UInt256(3000000000000000000ul);

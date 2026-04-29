@@ -7,7 +7,7 @@ namespace Nethermind.Specs.Forks;
 
 public class SpuriousDragon() : NamedReleaseSpec<SpuriousDragon>(TangerineWhistle.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Spurious Dragon";
         spec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
