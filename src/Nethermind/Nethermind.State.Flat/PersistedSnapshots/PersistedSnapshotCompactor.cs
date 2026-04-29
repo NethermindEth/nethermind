@@ -141,6 +141,11 @@ public class PersistedSnapshotCompactor(
 
         persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedIds, isPersistable, mergedBloom);
 
+        // The freshly-written compacted bytes are warm in the kernel page cache from the write
+        // path; drop them so they don't crowd out the random-access read working set. Subsequent
+        // reads will fault them back in on demand.
+        reservation.AdviseDontNeed();
+
         Metrics.PersistedSnapshotCompactions++;
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
         Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;

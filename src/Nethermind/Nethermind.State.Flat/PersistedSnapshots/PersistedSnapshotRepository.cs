@@ -158,6 +158,10 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             else
                 _baseSnapshots[snapshot.To] = persisted;
         }
+
+        // Drop the freshly-written pages from the kernel page cache — the write path warmed
+        // them, but they aren't part of the read working set yet.
+        reservation.AdviseDontNeed();
     }
 
     /// <summary>
