@@ -10,9 +10,9 @@ namespace Nethermind.Evm.TransactionProcessing;
 public interface ITransactionProcessor
 {
     TransactionResult Process(
-    Transaction transaction,
-    ITxTracer txTracer,
-    ExecutionOptions options);
+        Transaction transaction,
+        ITxTracer txTracer,
+        ExecutionOptions options);
 
     void SetBlockExecutionContext(BlockHeader blockHeader);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
@@ -29,6 +29,9 @@ public interface ITransactionProcessor
 
 public static class ITransactionProcessorExtensions
 {
+    /// <summary>
+    /// Execute transaction, commit state.
+    /// </summary>
     public static TransactionResult Execute(
         this ITransactionProcessor transactionProcessor,
         Transaction transaction,
@@ -38,6 +41,9 @@ public static class ITransactionProcessorExtensions
             txTracer,
             ExecutionOptions.Commit);
 
+    /// <summary>
+    /// Call transaction, rollback state.
+    /// </summary>
     public static TransactionResult CallAndRestore(
         this ITransactionProcessor transactionProcessor,
         Transaction transaction,
@@ -47,6 +53,9 @@ public static class ITransactionProcessorExtensions
             txTracer,
             ExecutionOptions.CommitAndRestore);
 
+    /// <summary>
+    /// Execute transaction, keep the state uncommitted (block-building mode).
+    /// </summary>
     public static TransactionResult BuildUp(
         this ITransactionProcessor transactionProcessor,
         Transaction transaction,
@@ -56,6 +65,11 @@ public static class ITransactionProcessorExtensions
             txTracer,
             ExecutionOptions.None);
 
+
+    /// <summary>
+    /// Call transaction, no validations, commit state.
+    /// Will NOT charge gas from sender account, so stateDiff will miss gas fee.
+    /// </summary>
     public static TransactionResult Trace(
         this ITransactionProcessor transactionProcessor,
         Transaction transaction,
