@@ -72,6 +72,8 @@ public class TxPoolInfoProviderTests
         Transaction[] blobs = BuildTransactions([1, 3]);
         _txPool.GetPendingTransactionsBySender()
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, standard } });
+        // Blob bucket is populated to make the exclusion semantics explicit; GetInfo does not
+        // consult the blob pool, so these nonces must not appear in the output.
         _txPool.GetPendingLightBlobTransactionsBySender()
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, blobs } });
 
@@ -84,6 +86,11 @@ public class TxPoolInfoProviderTests
     [Test]
     public void GetInfo_WhenSenderHasOnlyBlobTransactions_DoesNotAppearInResult()
     {
+        // Regression guard: if anyone re-introduces a blob lookup in GetInfo, the blob mock
+        // here becomes live and the address would appear in Pending/Queued, failing the
+        // NotContainKey assertions. Today the blob mock is unconsulted (matches geth's
+        // BlobPool.Content() empty-stub behaviour), so the address is absent because the
+        // standard-pool dictionary has no entry for it.
         _stateReader.GetNonce(_address).Returns((UInt256)0);
         Transaction[] blobs = BuildTransactions([0, 1]);
         _txPool.GetPendingLightBlobTransactionsBySender()
