@@ -236,8 +236,14 @@ namespace Nethermind.Facade
             }
         }
 
+        // Convergence loop: mirrors Geth's AccessList() — run with the current AL, discover touched
+        // slots, repeat until the AL stabilizes. Gas and error come from the final (warm) run, so
+        // cold-read overcounting is eliminated and OOG due to AL intrinsic cost is surfaced.
+        // Starts from the caller-supplied AL so user-provided entries are preserved and counted.
         private CallOutput ConvergeAccessList(BlockProcessingComponents components, BlockHeader header, Transaction tx, bool optimize, CancellationToken cancellationToken)
         {
+            // Loop-invariant: the addresses to filter from the discovered AL depend only on header
+            // and tx, neither of which change between iterations. Compute once and reuse.
             Address[] addressesToOptimize = BuildAddressesToOptimize(header, tx, optimize);
             AccessList? previousAccessList = tx.AccessList;
             TransactionResult result;
@@ -288,6 +294,9 @@ namespace Nethermind.Facade
 
         private static bool HasConverged(AccessList? previous, AccessList? discovered)
         {
+            // Count comparison is sufficient because WarmUp(tx.AccessList) pre-populates the warm-address
+            // set with all of `previous`'s entries before execution, making `discovered` monotonically
+            // non-decreasing (discovered ⊇ previous). Equal counts therefore imply equal content.
             (int addrs, int keys) previousCount = previous?.Count ?? (0, 0);
             (int addrs, int keys) discoveredCount = discovered?.Count ?? (0, 0);
             return previousCount == discoveredCount;
