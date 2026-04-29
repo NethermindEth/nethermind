@@ -38,6 +38,9 @@ namespace Nethermind.Consensus.Processing
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
             void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+            public void SetupTxTimingMetrics(Block block);
+            public long StartTxTimer();
+            public void StopTxTimer(int i, long txStart);
         }
     }
 }

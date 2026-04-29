@@ -42,6 +42,7 @@ public partial class BlockProcessor
             }
 
             Metrics.ResetBlockStats();
+            inner.SetupTxTimingMetrics(block);
 
             return !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, token)
@@ -56,7 +57,8 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+
+                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, i, receiptsTracer, processingOptions, inner);
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
@@ -89,7 +91,7 @@ public partial class BlockProcessor
                     0,
                     len + 1,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions, inner),
                     static (i, state) =>
                     {
                         if (i == 0)
@@ -112,7 +114,8 @@ public partial class BlockProcessor
                                 tx,
                                 txIndex,
                                 state.receiptsTracers[txIndex],
-                                state.processingOptions);
+                                state.processingOptions,
+                                state.inner);
                             state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                         }
                         catch (InvalidBlockException ex)
@@ -185,10 +188,17 @@ public partial class BlockProcessor
             Transaction currentTx,
             int index,
             BlockReceiptsTracer receiptsTracer,
-            ProcessingOptions processingOptions)
+            ProcessingOptions processingOptions,
+            IBlockProcessor.IBlockTransactionsExecutor inner)
         {
+            long txStart = inner.StartTxTimer();
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+            inner.StopTxTimer(index, txStart);
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
+
+        public void SetupTxTimingMetrics(Block block) { }
+        public long StartTxTimer() => 0;
+        public void StopTxTimer(int i, long txStart) { }
     }
 }

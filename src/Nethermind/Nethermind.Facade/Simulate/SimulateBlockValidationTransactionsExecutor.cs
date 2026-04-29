@@ -56,4 +56,8 @@ public class SimulateBlockValidationTransactionsExecutor(
 
         return result;
     }
+
+    public void SetupTxTimingMetrics(Block block) { }
+    public long StartTxTimer() => 0;
+    public void StopTxTimer(int i, long txStart) { }
 }

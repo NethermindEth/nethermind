@@ -24,31 +24,24 @@ public partial class BlockProcessor
     {
         protected IWorldState _stateProvider = stateProvider;
         protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
+        private bool _enableTxTimingMetrics = false;
 
         public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
         public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             Metrics.ResetBlockStats();
+            SetupTxTimingMetrics(block);
 
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
-
-            bool capturePerTx = PerTxTimingCollector.IsEnabled;
-            if (capturePerTx)
-            {
-                PerTxTimingCollector.Prepare(block.Transactions.Length);
-            }
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
 
-                long txStart = capturePerTx ? Stopwatch.GetTimestamp() : 0;
+                long txStart = StartTxTimer();
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
-                if (capturePerTx)
-                {
-                    PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
-                }
+                StopTxTimer(i, txStart);
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
@@ -69,6 +62,27 @@ public partial class BlockProcessor
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
             _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
         }
+
+        public void SetupTxTimingMetrics(Block block)
+        {
+            _enableTxTimingMetrics = PerTxTimingCollector.IsEnabled;
+            if (_enableTxTimingMetrics)
+            {
+                PerTxTimingCollector.Prepare(block.Transactions.Length);
+            }
+        }
+
+        public long StartTxTimer()
+            => _enableTxTimingMetrics ? Stopwatch.GetTimestamp() : 0;
+
+        public void StopTxTimer(int i, long txStart)
+        {
+            if (_enableTxTimingMetrics)
+            {
+                PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
+            }
+        }
+
 
         [DoesNotReturn, StackTraceHidden]
         internal static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
