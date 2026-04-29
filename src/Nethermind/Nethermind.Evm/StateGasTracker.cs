@@ -69,6 +69,9 @@ internal sealed class StateGasTracker
     public void RecordAccountCreated(Address address)
         => _changes.Add(new StateChange { Kind = StateChangeKind.AccountCreated, Address = address });
 
+    public void MarkAccountCreatedForRefund(Address address)
+        => _createdAccounts.Add(address);
+
     public void RecordCodeDeposit(Address address, int codeLength)
     {
         if (codeLength <= 0) return;
