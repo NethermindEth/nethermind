@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
+using Nethermind.Db.LogIndex;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
@@ -92,11 +93,25 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
 
             .AddSingleton<IFinalizedStateProvider, ReorgDepthFinalizedStateProvider>()
+            .AddSingleton<IFinalizedBlockProvider, IFinalizedStateProvider>(
+                provider => new FinalizedBlockProviderAdapter(provider))
             ;
 
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
             builder.AddStep(typeof(RunVerifyTrie));
+        }
+    }
+
+    private sealed class FinalizedBlockProviderAdapter(IFinalizedStateProvider inner) : IFinalizedBlockProvider
+    {
+        public long? FinalizedBlockNumber
+        {
+            get
+            {
+                long number = inner.FinalizedBlockNumber;
+                return number > 0 ? number : null;
+            }
         }
     }
 

@@ -47,6 +47,18 @@ public interface IWorldStateManager
     /// Persist and clear cache. Used by some tests.
     /// </summary>
     void FlushCache(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns true when the backend can make <paramref name="header"/> the new head — i.e. it is
+    /// safe to reorg the chain so that subsequent blocks are built on top of this state.
+    /// </summary>
+    /// <remarks>
+    /// This is distinct from <see cref="IStateReader.HasStateForBlock"/>: an archive node has the
+    /// state for every historical block (so <c>HasStateForBlock</c> returns true everywhere), but
+    /// the live trie store may not be willing to rewind to an arbitrary ancient block. This method
+    /// lets each backend apply its own reorg-window policy on top of state availability.
+    /// </remarks>
+    bool CanReorgOn(BlockHeader header);
 }
 
 public interface IOverridableWorldScope : IDisposable

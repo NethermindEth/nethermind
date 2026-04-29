@@ -72,4 +72,6 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public bool CanReorgOn(BlockHeader header) => GlobalStateReader.HasStateForBlock(header);
 }

@@ -21,7 +21,8 @@ public interface ILogIndexConfig : IConfig
     public bool Reset { get; set; }
 
     [ConfigItem(
-        Description = "Max allowed reorg depth for the index.",
+        Description = "Fallback reorg depth used before the first finalized block is established. " +
+                      "On post-Merge networks the reorg window tracks the finalized block dynamically and this value is not the effective limit.",
         DefaultValue = "64",
         HiddenFromDocs = true
     )]

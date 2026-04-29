@@ -70,7 +70,7 @@ namespace Nethermind.Db.Test.LogIndex
             };
 
             ILogIndexStorage storage = failOnBlock is null && failOnCallN is null
-                ? new LogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
+                ? new LogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config, NullFinalizedBlockProvider.Instance)
                 : new SaveFailingLogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
                 {
                     FailOnBlock = failOnBlock ?? 0,
@@ -1071,8 +1071,14 @@ namespace Nethermind.Db.Test.LogIndex
                 $"{_batchCount} * {_blocksPerBatch} blocks (ex-ranges: {ExtendedGetRanges}, compression: {Compression})";
         }
 
+        private sealed class NullFinalizedBlockProvider : IFinalizedBlockProvider
+        {
+            public static readonly NullFinalizedBlockProvider Instance = new();
+            public long? FinalizedBlockNumber => null;
+        }
+
         private class SaveFailingLogIndexStorage(IDbFactory dbFactory, ILogManager logManager, ILogIndexConfig config)
-            : LogIndexStorage(dbFactory, logManager, config)
+            : LogIndexStorage(dbFactory, logManager, config, NullFinalizedBlockProvider.Instance)
         {
             public const string FailMessage = "Test exception.";
 

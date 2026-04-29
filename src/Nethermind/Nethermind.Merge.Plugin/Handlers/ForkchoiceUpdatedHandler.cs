@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -48,6 +49,7 @@ public class ForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
+    IWorldStateManager worldStateManager,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -55,6 +57,7 @@ public class ForkchoiceUpdatedHandler(
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+    private readonly IWorldStateManager _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -64,18 +67,25 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
-    protected virtual bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
-        [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
+    protected virtual bool ShouldProceedWithReorg(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
+        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         if (_blockTree.IsOnMainChainBehindFinalized(newHeadHeader))
         {
             if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated skipped - head is a valid ancestor of the latest known finalized block.");
-            result = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
-            return true;
+            errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            return false;
         }
 
-        result = null;
-        return false;
+        if (!_worldStateManager.CanReorgOn(newHeadHeader))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Too deep reorg. Backend cannot reorg to {newHeadHeader.ToString(BlockHeader.Format.Short)}. Request: {forkchoiceState}.");
+            errorResult = ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("Too deep reorg", MergeErrorCodes.TooDeepReorg);
+            return false;
+        }
+
+        errorResult = null;
+        return true;
     }
 
     // Rejects a finalized/safe entry that fails the request-local numeric bounds
@@ -160,9 +170,10 @@ public class ForkchoiceUpdatedHandler(
 
         if (!blockInfo.WasProcessed)
         {
-            if (IsOnMainChainBehindFinalized(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+            if (_blockTree.IsOnMainChainBehindFinalized(newHeadHeader))
             {
-                return errorResult;
+                if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated skipped - head is a valid ancestor of the latest known finalized block.");
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
             BlockHeader? blockParent = _blockTree.FindHeader(newHeadHeader.ParentHash!, blockNumber: newHeadHeader.Number - 1);
@@ -239,7 +250,11 @@ public class ForkchoiceUpdatedHandler(
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (IsOnMainChainBehindFinalized(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
+        long finalizedNumber = finalizedHeader?.Number ?? 0;
+        if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
+        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
+
+        if (blocks is not null && !ShouldProceedWithReorg(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
             return result;
         }
@@ -250,14 +265,6 @@ public class ForkchoiceUpdatedHandler(
         {
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
-
-        // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
-        // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
-        // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
-        long finalizedNumber = finalizedHeader?.Number ?? 0;
-
-        if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
-        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
 
         bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)

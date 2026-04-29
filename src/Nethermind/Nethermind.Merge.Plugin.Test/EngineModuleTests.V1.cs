@@ -10,10 +10,10 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -31,13 +31,17 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -564,6 +568,254 @@ public partial class EngineModuleTests
     }
 
 
+    [TestCase(3, TestName = "2 blocks behind head")]
+    [TestCase(33, TestName = "32 blocks behind head")]
+    public async Task forkchoiceUpdatedV1_WhenHeadIsCanonicalAncestorWithRetainedState_ReorgsToAncestor(int chainLength)
+    {
+        // Spec PR #786: MUST reorg to a canonical ancestor whose state is retained by the trie store.
+        // No finalized block is set — the MAY-skip (spec point 2) never fires; the reorg proceeds
+        // because IStateReader.HasStateForBlock returns true for all recently processed blocks in
+        // the test's MemDb-backed trie store.
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, chainLength, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        Hash256 b1Hash = branch[0].BlockHash;
+        Hash256 headHash = branch[chainLength - 1].BlockHash;
+
+        // Advance head to the last block without setting finalized
+        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(headHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.HeadHash.Should().Be(headHash, $"precondition: head is at H={chainLength}");
+
+        ForkchoiceStateV1 fcuToAncestor = new(b1Hash, Keccak.Zero, Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestor);
+
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.HeadHash.Should().Be(b1Hash, $"head must reorg to b1 — state for b1 is retained");
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorOfFinalizedBlock_SkipsUpdate()
+    {
+        // Spec PR #786 point 2: client MAY skip the update when headBlockHash is a valid ancestor of the
+        // latest known finalized block. Build 34 blocks, explicitly finalize b34, then FCU to b1
+        // (H=1 <= H=34, canonical) — the MAY-skip fires, not any depth limit.
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 34, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        Hash256 b1Hash = branch[0].BlockHash;
+        Hash256 b34Hash = branch[33].BlockHash;
+
+        // Set head to b34 and explicitly finalize it
+        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(b34Hash, b34Hash, b34Hash))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.HeadHash.Should().Be(b34Hash, "precondition: head is at H=34");
+        chain.BlockTree.FinalizedHash.Should().Be(b34Hash, "precondition: b34 is finalized");
+
+        ForkchoiceStateV1 fcuToAncestorOfFinalized = new(b1Hash, Keccak.Zero, Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestorOfFinalized);
+
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.PayloadStatus.LatestValidHash.Should().Be(b1Hash, "spec mandates latestValidHash == forkchoiceState.headBlockHash when skipping");
+        result.Data.PayloadId.Should().BeNull("spec mandates payloadId: null when skipping");
+        chain.BlockTree.HeadHash.Should().Be(b34Hash, "Nethermind skips the update — b1 is a canonical ancestor of the finalized block, skip is permitted by spec");
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenHeadIsOnDifferentBranch_ReorgsRegardlessOfDepth()
+    {
+        // Spec PR #786: the MAY-skip (spec point 2) only fires when headBlockHash is a canonical ancestor
+        // of the finalized block. A non-canonical (fork) block is NOT eligible for the skip. The reorg
+        // proceeds because the side block was just processed and its state is retained — IStateReader
+        // .HasStateForBlock returns true. Builds a canonical chain of 34 blocks, then a side block off
+        // genesis.
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        // Capture genesis as parent before building canonical chain
+        ExecutionPayload genesisAsParent = CreateParentBlockRequestOnHead(chain.BlockTree);
+
+        // Build canonical chain: genesis → b1 → b2 → ... → b34 (head at H=34)
+        IReadOnlyList<ExecutionPayload> canonical = await ProduceBranchV1(rpc, chain, 34, genesisAsParent, setHead: true);
+        Hash256 b34Hash = canonical[33].BlockHash;
+        chain.BlockTree.HeadHash.Should().Be(b34Hash, "precondition: canonical head is at H=34");
+
+        // Build a side block off genesis (H=1, different branch)
+        ExecutionPayload sideBlock = CreateBlockRequest(chain, genesisAsParent, TestItem.AddressA);
+        await rpc.engine_newPayloadV1(sideBlock);
+        Hash256 sideHash = sideBlock.BlockHash;
+        chain.BlockTree.IsMainChain(chain.BlockTree.FindHeader(sideHash, BlockTreeLookupOptions.None)!).Should().BeFalse("precondition: side block is not on canonical chain");
+
+        // FCU to the side block — it's on a different branch, so it must reorg regardless of depth
+        ForkchoiceStateV1 fcuToSide = new(sideHash, Keccak.Zero, Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToSide);
+
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.HeadHash.Should().Be(sideHash, "different-branch FCU must always reorg — MAY-skip only applies to canonical ancestors of the finalized block");
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenStateForNewHeadIsUnavailable_ReturnsTooDeepReorg()
+    {
+        // Spec PR #786 point 6: -38006 when the state backend cannot serve the FCU target.
+        // Mock-based because MemDb-backed integration tests cannot evict state on demand —
+        // HasStateForBlock always returns true there. This test wires HasStateForBlock to
+        // return false and asserts the gate fires.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block headBlock = Build.A.Block.WithNumber(100).TestObject;
+        Block deepAncestor = Build.A.Block.WithNumber(33).TestObject;
+        // TryGetBranch walks parents via FindBlock(parentHash, …) — provide one parent so the loop
+        // breaks on IsMainChain(parent) instead of returning false (which would short-circuit to
+        // InvalidParams before ShouldProceedWithReorg runs).
+        Block ancestorParent = Build.A.Block.WithNumber(32).TestObject;
+
+        SetUpDeepAncestorReorgScenario(blockTree, headBlock, deepAncestor);
+        blockTree.FindBlock(deepAncestor.Header.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing, blockNumber: 32).Returns(ancestorParent);
+
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CanReorgOn(deepAncestor.Header).Returns(false);
+
+        ForkchoiceUpdatedHandler handler = BuildHandler(blockTree, worldStateManager);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(
+            new ForkchoiceStateV1(deepAncestor.Hash!, Keccak.Zero, Keccak.Zero), null, 1);
+
+        result.ErrorCode.Should().Be(MergeErrorCodes.TooDeepReorg,
+            "state for the FCU target is not retained — gate must reject with -38006");
+        blockTree.DidNotReceive().UpdateMainChain(Arg.Any<IReadOnlyList<Block>>(), Arg.Any<bool>(), Arg.Any<bool>());
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenBlockIsNotYetProcessed_ReturnsSyncing()
+    {
+        // Spec point 1 + point 6: an unprocessed beacon block has no committed state, so CanReorgOn
+        // is undefined for it. The handler must not return -38006; it must fall through to SYNCING
+        // so beacon header sync can proceed.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block headBlock = Build.A.Block.WithNumber(100).TestObject;
+        Block beaconTarget = Build.A.Block.WithNumber(101).TestObject;
+
+        blockTree.Head.Returns(headBlock);
+        blockTree.HeadHash.Returns(headBlock.Hash!);
+        blockTree.FindHeader(beaconTarget.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(beaconTarget.Header);
+        blockTree.GetInfo(beaconTarget.Number, beaconTarget.Hash!).Returns(
+            (new BlockInfo(beaconTarget.Hash!, 0) { WasProcessed = false }, new ChainLevelInfo(true)));
+
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CanReorgOn(Arg.Any<BlockHeader>()).Returns(false); // would force -38006 if the gate ran
+
+        ForkchoiceUpdatedHandler handler = BuildHandler(blockTree, worldStateManager);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(
+            new ForkchoiceStateV1(beaconTarget.Hash!, Keccak.Zero, Keccak.Zero), null, 1);
+
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Syncing,
+            "unprocessed block must trigger sync, not -38006 — CanReorgOn is undefined for unvalidated blocks");
+        result.ErrorCode.Should().Be(0);
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenReorgWithinRetainedState_Reorgs()
+    {
+        // Spec PR #786 point 6: a reorg to a canonical ancestor whose state is still retained by
+        // the trie store must succeed. With finalized=b50, the trie store keeps state for blocks
+        // in [50, 100], so a reorg to b80 (depth 20) is served from the dirty cache.
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 100, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        Hash256 b50Hash = branch[49].BlockHash;
+        Hash256 b80Hash = branch[79].BlockHash;
+        Hash256 b100Hash = branch[99].BlockHash;
+
+        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(b100Hash, b50Hash, b50Hash))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.HeadHash.Should().Be(b100Hash, "precondition: head is at H=100");
+        chain.BlockTree.FinalizedHash.Should().Be(b50Hash, "precondition: b50 is finalized");
+
+        ForkchoiceStateV1 fcuToCanonicalAfterFinalized = new(b80Hash, Keccak.Zero, Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToCanonicalAfterFinalized);
+
+        result.ErrorCode.Should().Be(0, "reorg whose target state is retained must not return -38006");
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.HeadHash.Should().Be(b80Hash, "head must reorg to b80");
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenHeadEqualsFinalized_DoesNotSkip()
+    {
+        // Spec PR #786 point 2: MAY-skip uses strict `<`, so newHead.Number == finalized.Number
+        // does NOT trigger the skip — the FCU falls through to the normal update path and
+        // returns Valid (with payloadId == null since no attributes were provided).
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        Hash256 b10Hash = branch[9].BlockHash;
+
+        (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(b10Hash, b10Hash, b10Hash))).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.HeadHash.Should().Be(b10Hash, "precondition: head is at H=10 and finalized");
+        chain.BlockTree.FinalizedHash.Should().Be(b10Hash, "precondition: b10 is finalized");
+
+        // Re-issue FCU with newHead == finalized — strict `<` means MAY-skip does not fire.
+        ForkchoiceStateV1 fcuHeadEqualsFinalized = new(b10Hash, b10Hash, b10Hash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuHeadEqualsFinalized);
+
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.PayloadStatus.LatestValidHash.Should().Be(b10Hash);
+        chain.BlockTree.HeadHash.Should().Be(b10Hash, "head stays at b10 (no actual reorg, but path was the normal-update path, not MAY-skip)");
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenInconsistent_ReturnsInvalidForkchoiceStateBeforeProceedingToReorgCheck()
+    {
+        // Spec ordering: RejectIfInconsistent (-38002) runs BEFORE ShouldProceedWithReorg (-38006).
+        // Locks in the validate-before-mutate ordering introduced with PR #786.
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ExecutionPayload genesisAsParent = CreateParentBlockRequestOnHead(chain.BlockTree);
+
+        IReadOnlyList<ExecutionPayload> canonical = await ProduceBranchV1(rpc, chain, 10, genesisAsParent, setHead: true);
+        Hash256 b5Hash = canonical[4].BlockHash;
+        Hash256 b10Hash = canonical[9].BlockHash;
+        chain.BlockTree.HeadHash.Should().Be(b10Hash, "precondition: canonical head is at H=10");
+
+        // Side block off genesis (H=1) — finalized=b5 is canonical but NOT an ancestor of this side block.
+        ExecutionPayload sideBlock = CreateBlockRequest(chain, genesisAsParent, TestItem.AddressA);
+        await rpc.engine_newPayloadV1(sideBlock);
+
+        // finalized.Number=5 > newHead.Number=1 (and finalized not ancestor of side) → RejectIfInconsistent fires.
+        ForkchoiceStateV1 fcuInconsistent = new(sideBlock.BlockHash, b5Hash, b5Hash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuInconsistent);
+
+        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState,
+            "RejectIfInconsistent must run before ShouldProceedWithReorg");
+        chain.BlockTree.HeadHash.Should().Be(b10Hash, "head must not change when -38002 is returned");
+    }
+
+    // Spec: -38002 fires only for non-zero unknown safe/finalized hashes; zero means "unknown" and
+    // must not produce an error. Models CL checkpoint-syncing from a non-finalized state.
+    [TestCase(false, 0, TestName = "Zero safe and finalized — Valid, no error")]
+    [TestCase(true, MergeErrorCodes.InvalidForkchoiceState, TestName = "Non-zero unknown safe with zero finalized — returns -38002")]
+    public async Task forkchoiceUpdatedV1_validates_safe_and_finalized_hashes(bool useUnknownSafe, int expectedErrorCode)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        Hash256 headHash = branch[0].BlockHash;
+
+        Hash256 safeHash = useUnknownSafe ? TestItem.KeccakA : Keccak.Zero;
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(headHash, safeHash, Keccak.Zero));
+
+        result.ErrorCode.Should().Be(expectedErrorCode);
+        if (expectedErrorCode == 0)
+        {
+            result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+            chain.BlockTree.HeadHash.Should().Be(headHash);
+        }
+    }
+
     [Test]
     public async Task forkchoiceUpdatedV1_should_work_with_zero_keccak_as_safe_block()
     {
@@ -985,7 +1237,7 @@ public partial class EngineModuleTests
 
         async Task CanReorganizeToBlock(ExecutionPayload block, MergeTestBlockchain testChain)
         {
-            ForkchoiceStateV1 forkchoiceStateV1 = new(block.BlockHash, block.BlockHash, block.BlockHash);
+            ForkchoiceStateV1 forkchoiceStateV1 = new(block.BlockHash, Keccak.Zero, Keccak.Zero);
             ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             result.Data.PayloadId.Should().Be(null);
@@ -1018,7 +1270,7 @@ public partial class EngineModuleTests
 
         async Task CanReorganizeToBlock(ExecutionPayload block, MergeTestBlockchain testChain)
         {
-            ForkchoiceStateV1 forkchoiceStateV1 = new(block.BlockHash, block.BlockHash, block.BlockHash);
+            ForkchoiceStateV1 forkchoiceStateV1 = new(block.BlockHash, Keccak.Zero, Keccak.Zero);
             ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             result.Data.PayloadId.Should().Be(null);
@@ -1081,7 +1333,7 @@ public partial class EngineModuleTests
             chain.StateReader.GetBalance(payloadBlock, to).Should().Be(toBalanceAfter);
             if (moveHead)
             {
-                ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executePayloadRequest.BlockHash, executePayloadRequest.BlockHash, executePayloadRequest.BlockHash);
+                ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executePayloadRequest.BlockHash, Keccak.Zero, Keccak.Zero);
                 await rpc.engine_forkchoiceUpdatedV1(forkChoiceUpdatedRequest);
                 chain.ReadOnlyState.StateRoot.Should().Be(executePayloadRequest.StateRoot);
                 chain.ReadOnlyState.StateRoot.Should().NotBe(parentHeader.StateRoot!);
@@ -1917,4 +2169,34 @@ public partial class EngineModuleTests
             .WithDifficulty(900000)
             .WithTotalDifficulty(1900000L)
             .WithStateRoot(new Hash256(correctStateRoot ? "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f" : "0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+
+    private static void SetUpDeepAncestorReorgScenario(IBlockTree blockTree, Block headBlock, Block deepAncestor)
+    {
+        blockTree.FindBlock(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor);
+        blockTree.FindHeader(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor.Header);
+        blockTree.GetInfo(deepAncestor.Number, deepAncestor.Hash!).Returns(
+            (new BlockInfo(deepAncestor.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
+        blockTree.Head.Returns(headBlock);
+        blockTree.HeadHash.Returns(headBlock.Hash!);
+        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+        blockTree.IsMainChain(Arg.Any<Hash256>()).Returns(true);
+    }
+
+    private static ForkchoiceUpdatedHandler BuildHandler(IBlockTree blockTree, IWorldStateManager worldStateManager) =>
+        new(
+            blockTree,
+            Substitute.For<IManualBlockFinalizationManager>(),
+            Substitute.For<IPoSSwitcher>(),
+            Substitute.For<IPayloadPreparationService>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            Substitute.For<IBlockCacheService>(),
+            Substitute.For<IInvalidChainTracker>(),
+            Substitute.For<IMergeSyncController>(),
+            Substitute.For<IBeaconPivot>(),
+            Substitute.For<IPeerRefresher>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<ISyncPeerPool>(),
+            new MergeConfig(),
+            worldStateManager,
+            Substitute.For<ILogManager>());
 }
