@@ -52,6 +52,15 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].AsSpan((int)reservation.Offset, reservation.Size);
 
+    public IArenaWholeView OpenWholeView(ArenaReservation reservation) =>
+        new MemoryWholeView(_arenas[reservation.ArenaId], (int)reservation.Offset, reservation.Size);
+
+    private sealed class MemoryWholeView(byte[] buffer, int offset, int size) : IArenaWholeView
+    {
+        public ReadOnlySpan<byte> GetSpan() => buffer.AsSpan(offset, size);
+        public void Dispose() { }
+    }
+
     public void AdviseDontNeed(ArenaReservation reservation) { }
 
     public void Touch(ArenaReservation reservation, int subOffset, int size) { }
