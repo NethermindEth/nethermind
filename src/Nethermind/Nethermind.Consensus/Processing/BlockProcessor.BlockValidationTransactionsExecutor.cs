@@ -39,9 +39,7 @@ public partial class BlockProcessor
             {
                 Transaction currentTx = block.Transactions[i];
 
-                long txStart = StartTxTimer();
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
-                StopTxTimer(i, txStart);
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
@@ -58,7 +56,9 @@ public partial class BlockProcessor
 
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
+            long txStart = StartTxTimer();
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
+            StopTxTimer(index, txStart);
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
             _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
         }
