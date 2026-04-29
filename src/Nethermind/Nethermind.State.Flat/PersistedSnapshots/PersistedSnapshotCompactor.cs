@@ -113,8 +113,10 @@ public class PersistedSnapshotCompactor(
 
             for (int i = 0; i < snapshots.Count; i++)
             {
-                if (snapshots[i].Type != PersistedSnapshotType.Full)
-                    snapshots[i].AdviseDontNeed();
+                PersistedSnapshot s = snapshots[i];
+                bool isPersistableSize = s.To.BlockNumber - s.From.BlockNumber == _compactSize;
+                if (s.Type != PersistedSnapshotType.Full || !isPersistableSize)
+                    s.AdviseDontNeed();
             }
 
             int len = arenaWriter.GetWriter().Written;
