@@ -91,71 +91,53 @@ public static class PersistedSnapshotReader
     }
 
     /// <summary>
-    /// Look up a state-trie node's bytes by tree path. Span-based at this layer because the
-    /// NodeRef-resolution step crosses snapshot boundaries (the value may live in a
-    /// referenced snapshot whose bytes are reached via its own <c>GetSpan()</c>); generic-ref
-    /// lifetime inference doesn't carry through that cross-snapshot hop. Internally, the
-    /// in-snapshot column lookup goes through the reader-shaped helpers.
+    /// Look up a state-trie node by tree path. Returns the local value <see cref="Bound"/>
+    /// — caller (<see cref="PersistedSnapshot"/>) checks <c>HasNodeRefs</c>, decodes the
+    /// NodeRef when present, and does the cross-snapshot dereference.
+    ///
+    /// Span-based at the public layer because C#'s ref-safety analysis on generic
+    /// <c>allows ref struct</c> readers loses the "out Bound is value-type" property when
+    /// the caller's <c>out ReadOnlySpan&lt;byte&gt;</c> needs to escape across a loop;
+    /// internally we still use the reader-shaped helpers.
     /// </summary>
-    internal static bool TryLoadStateNodeRlp(ReadOnlySpan<byte> data, scoped in TreePath path,
-        Dictionary<int, PersistedSnapshot>? referencedSnapshots, bool hasNodeRefs,
-        out ReadOnlySpan<byte> nodeRlp)
+    internal static bool TryLoadStateNodeRlp(ReadOnlySpan<byte> data, scoped in TreePath path, out Bound bound)
     {
         SpanByteReader reader = new(data);
-        Bound bound;
         if (path.Length <= TopPathThreshold)
         {
             Span<byte> key = stackalloc byte[3];
             path.EncodeWith3Byte(key);
-            if (!TryGetFromColumn<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StateTopNodesTag, key, out bound))
-            { nodeRlp = default; return false; }
+            return TryGetFromColumn<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StateTopNodesTag, key, out bound);
         }
-        else if (path.Length <= CompactPathThreshold)
-        {
-            Span<byte> key = stackalloc byte[8];
-            path.EncodeWith8Byte(key);
-            if (!TryGetFromColumn<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StateNodeTag, key, out bound))
-            { nodeRlp = default; return false; }
-        }
-        else
-        {
-            Span<byte> fullKey = stackalloc byte[33];
-            path.Path.Bytes.CopyTo(fullKey);
-            fullKey[32] = (byte)path.Length;
-            if (!TryGetFromColumn<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StateNodeFallbackTag, fullKey, out bound))
-            { nodeRlp = default; return false; }
-        }
-        nodeRlp = ResolveNodeRefValue(data, bound, referencedSnapshots, hasNodeRefs);
-        return true;
-    }
-
-    /// <summary>
-    /// Look up a storage-trie node's bytes. Same NodeRef-resolution semantics as
-    /// <see cref="TryLoadStateNodeRlp"/>.
-    /// </summary>
-    internal static bool TryLoadStorageNodeRlp(ReadOnlySpan<byte> data, Hash256 address, in TreePath path,
-        Dictionary<int, PersistedSnapshot>? referencedSnapshots, bool hasNodeRefs,
-        scoped out ReadOnlySpan<byte> nodeRlp)
-    {
-        SpanByteReader reader = new(data);
-        Bound bound;
         if (path.Length <= CompactPathThreshold)
         {
             Span<byte> key = stackalloc byte[8];
             path.EncodeWith8Byte(key);
-            if (!TryGetNestedValue<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StorageNodeTag, address.Bytes[..StorageHashPrefixLength], key, out bound))
-            { nodeRlp = default; return false; }
+            return TryGetFromColumn<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StateNodeTag, key, out bound);
         }
-        else
+        Span<byte> fullKey = stackalloc byte[33];
+        path.Path.Bytes.CopyTo(fullKey);
+        fullKey[32] = (byte)path.Length;
+        return TryGetFromColumn<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StateNodeFallbackTag, fullKey, out bound);
+    }
+
+    /// <summary>
+    /// Look up a storage-trie node by hash + tree path. Same caller-resolves-NodeRef contract
+    /// and same span-input rationale as <see cref="TryLoadStateNodeRlp"/>.
+    /// </summary>
+    internal static bool TryLoadStorageNodeRlp(ReadOnlySpan<byte> data, Hash256 address, in TreePath path, out Bound bound)
+    {
+        SpanByteReader reader = new(data);
+        if (path.Length <= CompactPathThreshold)
         {
-            Span<byte> fullKey = stackalloc byte[33];
-            path.Path.Bytes.CopyTo(fullKey);
-            fullKey[32] = (byte)path.Length;
-            if (!TryGetNestedValue<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StorageNodeFallbackTag, address.Bytes[..StorageHashPrefixLength], fullKey, out bound))
-            { nodeRlp = default; return false; }
+            Span<byte> key = stackalloc byte[8];
+            path.EncodeWith8Byte(key);
+            return TryGetNestedValue<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StorageNodeTag, address.Bytes[..StorageHashPrefixLength], key, out bound);
         }
-        nodeRlp = ResolveNodeRefValue(data, bound, referencedSnapshots, hasNodeRefs);
-        return true;
+        Span<byte> fullKey = stackalloc byte[33];
+        path.Path.Bytes.CopyTo(fullKey);
+        fullKey[32] = (byte)path.Length;
+        return TryGetNestedValue<SpanByteReader, NoOpPin>(in reader, PersistedSnapshot.StorageNodeFallbackTag, address.Bytes[..StorageHashPrefixLength], fullKey, out bound);
     }
 
     internal static bool CheckHasNodeRefsFlag<TReader, TPin>(scoped in TReader reader)
@@ -193,24 +175,6 @@ public static class PersistedSnapshotReader
         DecodeValueAt(snapshotData, valueLengthOffset).ToArray();
 
     /// <summary>
-    /// Span-friendly NodeRef resolution used by the *Enumerator types, which already hold the
-    /// local snapshot's data span. Returns the bytes at <paramref name="localBound"/> if no
-    /// NodeRef is in play, otherwise dereferences via <paramref name="referencedSnapshots"/>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ReadOnlySpan<byte> ResolveNodeRefValue(ReadOnlySpan<byte> snapshotData, Bound localBound,
-        Dictionary<int, PersistedSnapshot>? referencedSnapshots, bool hasNodeRefs)
-    {
-        if (!hasNodeRefs || referencedSnapshots is null)
-            return SliceFromBound(snapshotData, localBound);
-
-        NodeRef nodeRef = NodeRef.Read(SliceFromBound(snapshotData, localBound));
-        if (!referencedSnapshots.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snapshot))
-            throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found");
-        return DecodeValueAt(snapshot.GetSpan(), nodeRef.ValueLengthOffset);
-    }
-
-    /// <summary>
     /// Decode the value bytes for a non-inline HSST entry whose metadata starts at
     /// <paramref name="metadataStart"/>. Entry layout: <c>[Value][ValueLength: LEB128][...]</c>.
     /// Reads the LEB128 forward, then the value lives in the <paramref name="valueLength"/>
@@ -224,7 +188,7 @@ public static class PersistedSnapshotReader
         return data.Slice(metadataStart - valueLength, valueLength);
     }
 
-    private static bool TryGetFromColumn<TReader, TPin>(scoped in TReader reader, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> entityKey, out Bound bound)
+    private static bool TryGetFromColumn<TReader, TPin>(in TReader reader, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> entityKey, out Bound bound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -238,7 +202,7 @@ public static class PersistedSnapshotReader
         return true;
     }
 
-    private static bool TryGetNestedValue<TReader, TPin>(scoped in TReader reader, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> addressKey, scoped ReadOnlySpan<byte> entityKey, out Bound bound)
+    private static bool TryGetNestedValue<TReader, TPin>(in TReader reader, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> addressKey, scoped ReadOnlySpan<byte> entityKey, out Bound bound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -474,7 +438,7 @@ public static class PersistedSnapshotReader
                     {
                         KeyValueEntry entry = e.Current;
                         TreePath path = TreePath.DecodeWith3Byte(SliceFromBound(snapshotData, entry.KeyBound));
-                        ReadOnlySpan<byte> resolved = ResolveNodeRefValue(snapshotData, entry.ValueBound, snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                        ReadOnlySpan<byte> resolved = snapshot.ResolveValueAt(entry.ValueBound);
                         list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
                     }
                 }
@@ -490,7 +454,7 @@ public static class PersistedSnapshotReader
                     {
                         KeyValueEntry entry = e.Current;
                         TreePath path = DecodeCompactTreePath(SliceFromBound(snapshotData, entry.KeyBound));
-                        ReadOnlySpan<byte> resolved = ResolveNodeRefValue(snapshotData, entry.ValueBound, snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                        ReadOnlySpan<byte> resolved = snapshot.ResolveValueAt(entry.ValueBound);
                         list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
                     }
                 }
@@ -507,7 +471,7 @@ public static class PersistedSnapshotReader
                         KeyValueEntry entry = e.Current;
                         ReadOnlySpan<byte> entryKey = SliceFromBound(snapshotData, entry.KeyBound);
                         TreePath path = new(new ValueHash256(entryKey[..32]), entryKey[32]);
-                        ReadOnlySpan<byte> resolved = ResolveNodeRefValue(snapshotData, entry.ValueBound, snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                        ReadOnlySpan<byte> resolved = snapshot.ResolveValueAt(entry.ValueBound);
                         list.Add(new(path, new TrieNode(NodeType.Unknown, resolved.ToArray())));
                     }
                 }
@@ -554,7 +518,7 @@ public static class PersistedSnapshotReader
                         {
                             KeyValueEntry pathEntry = pathEnum.Current;
                             TreePath path = DecodeCompactTreePath(SliceFromBound(snapshotData, pathEntry.KeyBound));
-                            ReadOnlySpan<byte> resolved = ResolveNodeRefValue(snapshotData, pathEntry.ValueBound, snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                            ReadOnlySpan<byte> resolved = snapshot.ResolveValueAt(pathEntry.ValueBound);
                             list.Add(new((addressHash, path), new TrieNode(NodeType.Unknown, resolved.ToArray())));
                         }
                     }
@@ -577,7 +541,7 @@ public static class PersistedSnapshotReader
                             KeyValueEntry pathEntry = pathEnum.Current;
                             ReadOnlySpan<byte> pathKey = SliceFromBound(snapshotData, pathEntry.KeyBound);
                             TreePath path = new(new ValueHash256(pathKey[..32]), pathKey[32]);
-                            ReadOnlySpan<byte> resolved = ResolveNodeRefValue(snapshotData, pathEntry.ValueBound, snapshot.ReferencedSnapshotsLookup, snapshot.HasNodeRefs);
+                            ReadOnlySpan<byte> resolved = snapshot.ResolveValueAt(pathEntry.ValueBound);
                             list.Add(new((addressHash, path), new TrieNode(NodeType.Unknown, resolved.ToArray())));
                         }
                     }
