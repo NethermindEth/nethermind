@@ -31,6 +31,8 @@ public sealed class ArenaReservation(IArenaManager arenaManager, int arenaId, lo
     /// </summary>
     public WholeReadSession BeginWholeReadSession() => new(this);
 
+    internal IArenaWholeView OpenWholeView() => _arenaManager.OpenWholeView(this);
+
     /// <summary>
     /// Construct a span-backed <see cref="SpanByteReader"/> over this reservation's bytes.
     /// Reader-shaped APIs consume this; per-read pinning happens at the reader level, so

@@ -15,6 +15,7 @@ namespace Nethermind.State.Flat.Storage;
 /// </summary>
 public sealed unsafe class ArenaFile : IDisposable
 {
+    private const int MADV_NORMAL = 0;
     private const int MADV_RANDOM = 1;
     private const int MADV_DONTNEED = 4;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
@@ -98,6 +99,52 @@ public sealed unsafe class ArenaFile : IDisposable
         if (end <= start) return;
 
         Madvise(_basePtr + start, end - start, MADV_DONTNEED);
+    }
+
+    /// <summary>
+    /// Open a fresh per-reservation mmap view over <c>[offset, offset+size)</c> with
+    /// <c>MADV_NORMAL</c> hint, distinct from the global random-access view used by point
+    /// queries. Disposing the returned view applies <c>MADV_DONTNEED</c> to the range.
+    /// </summary>
+    public IArenaWholeView OpenWholeView(long offset, int size)
+    {
+        MemoryMappedViewAccessor accessor = _mmf.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
+        byte* ptr = null;
+        accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+        // The accessor's pointer is offset by an internal page-aligned skew; add it
+        // so the span starts at the requested offset's first byte.
+        byte* dataPtr = ptr + accessor.PointerOffset;
+        if (OperatingSystem.IsLinux())
+            Madvise(dataPtr, (nuint)size, MADV_NORMAL);
+        return new MmapWholeView(accessor, dataPtr, size);
+    }
+
+    private sealed unsafe class MmapWholeView(
+        MemoryMappedViewAccessor accessor, byte* dataPtr, int size) : IArenaWholeView
+    {
+        public ReadOnlySpan<byte> GetSpan() => new(dataPtr, size);
+
+        public void Dispose()
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                // Round to full pages around the data range.
+                // NOTE: MADV_DONTNEED on a file-backed shared mapping drops the affected
+                // pages from the kernel page cache, so it also affects the arena's global
+                // random-access view (and any other independent mmap of the same file).
+                // That's intentional here — the whole-read session has finished sweeping
+                // the range and we want those pages out of cache rather than competing
+                // with the random-access working set.
+                nuint pageSize = PageSize;
+                nuint addr = (nuint)dataPtr;
+                nuint start = (addr + pageSize - 1) & ~(pageSize - 1);
+                nuint end = (addr + (nuint)size) & ~(pageSize - 1);
+                if (end > start)
+                    Madvise((byte*)start, end - start, MADV_DONTNEED);
+            }
+            accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+            accessor.Dispose();
+        }
     }
 
     public void Dispose()

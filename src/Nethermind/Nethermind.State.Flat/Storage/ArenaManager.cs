@@ -161,6 +161,14 @@ public sealed class ArenaManager : IArenaManager
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].GetSpan(reservation.Offset, reservation.Size);
 
+    public IArenaWholeView OpenWholeView(ArenaReservation reservation)
+    {
+        lock (_lock)
+        {
+            return _arenas[reservation.ArenaId].OpenWholeView(reservation.Offset, reservation.Size);
+        }
+    }
+
     /// <summary>
     /// Mark space as dead for compaction tracking.
     /// </summary>
