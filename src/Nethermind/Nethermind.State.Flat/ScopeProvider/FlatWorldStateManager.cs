@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -20,7 +19,6 @@ public class FlatWorldStateManager(
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
-    IProcessExitSource processExitSource,
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
@@ -32,7 +30,6 @@ public class FlatWorldStateManager(
         flatDbManager,
         configuration,
         trieWarmer,
-        processExitSource,
         ResourcePool.Usage.MainBlockProcessing,
         logManager,
         isReadOnly: false);
@@ -56,7 +53,6 @@ public class FlatWorldStateManager(
             flatDbManager,
             configuration,
             new NoopTrieWarmer(),
-            processExitSource,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             logManager,
             isReadOnly: true);
