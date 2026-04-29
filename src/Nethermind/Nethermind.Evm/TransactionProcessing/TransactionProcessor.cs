@@ -235,7 +235,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
             Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
 
-            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
+            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, tracer.IsTracingAccess, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
             int statusCode = !tracer.IsTracingInstructions ?
@@ -715,6 +715,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ICodeInfoRepository codeInfoRepository,
             in StackAccessTracker accessTracker,
+            bool isTracingAccess,
             out ExecutionEnvironment env)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
@@ -734,7 +735,9 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessTracker.WarmUp(delegationAddress);
             }
 
-            if (spec.UseHotAndColdStorage)
+            // Pre-tx warmup runs when EIP-2929 is active OR when access-list tracing is requested,
+            // so eth_createAccessList captures the same baseline pre-Berlin as Geth.
+            if (spec.UseHotAndColdStorage || isTracingAccess)
             {
                 if (spec.UseTxAccessLists)
                     accessTracker.WarmUp(tx.AccessList); // eip-2930

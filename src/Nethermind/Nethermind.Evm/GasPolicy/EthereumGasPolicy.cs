@@ -122,7 +122,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         Address? delegated,
         bool chargeForWarm = true)
     {
-        if (!spec.UseHotAndColdStorage)
+        if (!spec.UseHotAndColdStorage && !isTracingAccess)
             return true;
 
         bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
@@ -136,25 +136,26 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         Address address,
         bool chargeForWarm = true)
     {
-        bool result = true;
-        if (spec.UseHotAndColdStorage)
+        // Tracing-driven warmup runs regardless of spec so that eth_createAccessList
+        // captures accesses pre-Berlin (when warm/cold gas accounting is inactive).
+        if (isTracingAccess)
         {
-            if (isTracingAccess)
-            {
-                accessTracker.WarmUp(address);
-            }
-
-            if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
-            {
-                result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
-            }
-            else if (chargeForWarm)
-            {
-                result = UpdateGas(ref gas, GasCostOf.WarmStateRead);
-            }
+            accessTracker.WarmUp(address);
         }
 
-        return result;
+        if (!spec.UseHotAndColdStorage)
+            return true;
+
+        if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
+        {
+            return UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
+        }
+        if (chargeForWarm)
+        {
+            return UpdateGas(ref gas, GasCostOf.WarmStateRead);
+        }
+
+        return true;
     }
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
@@ -164,12 +165,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         StorageAccessType storageAccessType,
         IReleaseSpec spec)
     {
-        if (!spec.UseHotAndColdStorage)
-            return true;
+        // Tracing-driven warmup runs regardless of spec so that eth_createAccessList
+        // captures accesses pre-Berlin (when warm/cold gas accounting is inactive).
         if (isTracingAccess)
         {
             accessTracker.WarmUp(in storageCell);
         }
+
+        if (!spec.UseHotAndColdStorage)
+            return true;
 
         if (accessTracker.WarmUp(in storageCell))
             return UpdateGas(ref gas, GasCostOf.ColdSLoad);
