@@ -36,7 +36,7 @@ on:
       workers:
         description: Parallel workers
         required: false
-        default: '4'
+        default: '1'
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -50,7 +50,7 @@ env:
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
   EEST_VERSION: ${{ inputs.eest_version || 'bal@v5.6.0' }}
   EEST_ARCHIVE: ${{ inputs.eest_archive || 'fixtures_bal.tar.gz' }}
-  WORKERS: ${{ inputs.workers || '4' }}
+  WORKERS: ${{ inputs.workers || '1' }}
   FILTER: ${{ inputs.filter || '' }}
 
 defaults:
