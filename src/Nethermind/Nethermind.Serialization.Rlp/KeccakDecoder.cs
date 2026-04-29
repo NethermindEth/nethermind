@@ -10,6 +10,7 @@ namespace Nethermind.Serialization.Rlp
     public sealed class KeccakDecoder() : RlpValueDecoder<Hash256?>
     {
         public static readonly KeccakDecoder Instance = new();
+        public static readonly IRlpValueDecoder<Hash256> NonNullableInstance = new NonNullDecoderWrapper<Hash256>(Instance);
 
         protected override Hash256? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
 
