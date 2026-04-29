@@ -340,7 +340,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
 
                 JsonRpcResponse response = await _requestForwarder.ForwardRequestToExecutionClient(request);
 
-                if (TrackPayloadIdFromResponse(response, request, headBlockHashStr))
+                if (TrackPayloadIdFromResponse(response, request, headBlockHashStr, expectPayloadId: true))
                 {
                     if (_lhResponseCache.Count < 100)
                     {
@@ -361,7 +361,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
             _logger.Info("LH mode: FCU request without payload attributes, forwarding normally. This usually means the node is not synced yet.");
 
             JsonRpcResponse plainResponse = await _requestForwarder.ForwardRequestToExecutionClient(request);
-            TrackPayloadIdFromResponse(plainResponse, request, headBlockHashStr);
+            TrackPayloadIdFromResponse(plainResponse, request, headBlockHashStr, expectPayloadId: false);
             return plainResponse;
         }
         catch (Exception ex)
@@ -374,20 +374,36 @@ public class ForkChoiceUpdatedHandler : IDisposable
     /// <summary>
     /// If <paramref name="response"/> carries a payloadId, records it in the payload tracker
     /// (along with the parentBeaconBlockRoot from <paramref name="request"/>, when present).
+    /// When <paramref name="expectPayloadId"/> is false a missing payloadId is normal (e.g. an
+    /// FCU without payload attributes), so we log at Debug instead of Warn.
     /// Returns true if a payloadId was successfully tracked.
     /// </summary>
-    private bool TrackPayloadIdFromResponse(JsonRpcResponse response, JsonRpcRequest request, string headBlockHashStr)
+    private bool TrackPayloadIdFromResponse(JsonRpcResponse response, JsonRpcRequest request, string headBlockHashStr, bool expectPayloadId)
     {
         if (response.Result is not JsonObject resultObj || resultObj["payloadId"] is null)
         {
-            _logger.Warn("LH validation flow received response with no payloadId");
+            if (expectPayloadId)
+            {
+                _logger.Warn("LH validation flow received response with no payloadId");
+            }
+            else
+            {
+                _logger.Debug("LH FCU response without payloadId (expected for non-building slots)");
+            }
             return false;
         }
 
         string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
         if (string.IsNullOrEmpty(payloadId) || string.IsNullOrEmpty(headBlockHashStr))
         {
-            _logger.Warn("LH validation flow received response but payloadId or headBlockHash is empty");
+            if (expectPayloadId)
+            {
+                _logger.Warn("LH validation flow received response but payloadId or headBlockHash is empty");
+            }
+            else
+            {
+                _logger.Debug("LH FCU response had empty payloadId or headBlockHash");
+            }
             return false;
         }
 
