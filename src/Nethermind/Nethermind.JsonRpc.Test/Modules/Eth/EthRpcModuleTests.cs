@@ -1483,9 +1483,8 @@ public partial class EthRpcModuleTests
         result["accessList"]!.ToArray().Should().NotBeEmpty();
     }
 
-    // Mirrors the core cases from Geth's testAccessList in ethclient_test.go.
     [Test]
-    public async Task Eth_createAccessList_gas_calculation_matches_geth_simple_transfer()
+    public async Task Eth_createAccessList_gas_calculation()
     {
         using Context ctx = await Context.Create();
 
@@ -1538,8 +1537,6 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        // CALL to a contract that reads storage slot 1. With optimize=false the AccessTxTracer is
-        // constructed without sender/recipient in the exclude list, exercising the non-optimized path.
         const string contractAddr = "0xc200000000000000000000000000000000000000";
         object stateOverride = JsonSerializer.Deserialize<object>(
             $"{{\"{contractAddr}\":{{\"code\":\"0x6001545000\"}}}}")!;
@@ -1552,7 +1549,7 @@ public partial class EthRpcModuleTests
         JToken result = JToken.Parse(serialized)["result"]!;
         result["error"].Should().BeNull();
         long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
-        gasUsed.Should().BeGreaterThan(0);
+        gasUsed.Should().BeGreaterThan(21_000);
         // Contract address with storage slot 1 must appear regardless of the optimize flag.
         result["accessList"]!.ToArray().Should().Contain(e =>
             e["address"]!.Value<string>() == contractAddr &&
