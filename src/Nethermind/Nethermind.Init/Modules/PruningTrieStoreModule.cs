@@ -84,15 +84,10 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
             .AddSingleton<PruningTrieStateFactory>()
             .AddSingleton<PruningTrieStateFactoryOutput>()
 
-            .Map<IWorldStateManager, PruningTrieStateFactoryOutput>((o) => o.WorldStateManager)
-
-            // Some admin rpc to trigger verify trie and pruning
-            .Map<IPruningTrieStateAdminRpcModule, PruningTrieStateFactoryOutput>((m) => m.AdminRpcModule)
-
             // Sync components backed by the patricia trie store
-            .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
-            .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
+            .AddSingleton<FullStateFinder>()
+            .AddSingleton<PatriciaSnapTrieFactory>()
+            .AddSingleton<PatriciaTreeSyncStore>()
             .AddSingleton<IPathRecovery, ISyncPeerPool, INodeStorage, ILogManager>((peerPool, nodeStorage, logManager) => new PathNodeRecovery(
                 new NodeDataRecovery(peerPool!, nodeStorage, logManager),
                 new SnapRangeRecovery(peerPool!, logManager),
@@ -109,7 +104,7 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
     private static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
 
     // Just a wrapper to easily extract the output of `PruningTrieStateFactory` which do the actual initializations.
-    private class PruningTrieStateFactoryOutput
+    internal class PruningTrieStateFactoryOutput
     {
         public IWorldStateManager WorldStateManager { get; }
         public IPruningTrieStateAdminRpcModule AdminRpcModule { get; }

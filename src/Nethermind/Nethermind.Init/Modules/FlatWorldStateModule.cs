@@ -23,9 +23,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -37,10 +34,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
-            .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
+            .AddSingleton<FlatWorldStateManager>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
-            .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
+            .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
 
             // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
@@ -66,16 +63,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .Add<FlatOverridableWorldScope>()
 
             // Sync components
-            .AddSingleton<ISnapTrieFactory, FlatSnapTrieFactory>()
+            .AddSingleton<FlatSnapTrieFactory>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
-            .AddSingleton<ITreeSyncStore, FlatTreeSyncStore>()
-            .Intercept<ISyncConfig>((syncConfig) =>
-            {
-                syncConfig.SnapServingEnabled ??= true;
-            })
-            .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
+            .AddSingleton<FlatTreeSyncStore>()
+            .AddSingleton<FlatFullStateFinder>()
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
@@ -114,7 +107,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         }
     }
 
-    private class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
+    internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
 
