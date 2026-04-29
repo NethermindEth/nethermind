@@ -87,6 +87,31 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_nested_create_code_deposit_state_oog_refunds_remaining_child_gas()
+    {
+        byte[] factoryCode = Bytes.FromHexString("3660006000373660006101f4f0");
+        byte[] initCodeReturningLargeContract = Bytes.FromHexString("6103e86000f3");
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            500_000,
+            factoryCode,
+            initCodeReturningLargeContract,
+            new UInt256(1_000));
+        block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Address createdAddress = ContractAddress.From(Recipient, 0);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(30_407),
+            "The regular code-deposit charge is paid, but the failed state-gas charge must not burn the remaining child gas.");
+        Assert.That(TestState.AccountExists(createdAddress), Is.False);
+    }
+
+    [Test]
     public void Eip8037_nested_create_code_deposit_failure_must_refund_parent_create_state()
     {
         byte[] childInitCode = Prepare.EvmCode

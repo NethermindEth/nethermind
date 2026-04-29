@@ -486,11 +486,32 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             if (chargedCodeDeposit)
             {
                 previousState.Gas = gasAfterCodeDeposit;
-                _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
                 if (eip8037Enabled)
                 {
                     previousState.AccessTracker.RecordCodeDeposit(callCodeOwner, code.Length);
+                    if (!TryApplyFrameStateGas(previousState))
+                    {
+                        TGasPolicy.UpdateGasUp(ref _currentState.Gas, TGasPolicy.GetRemainingGas(in previousState.Gas));
+                        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir, previousState.StateGasRefund);
+                        _worldState.Restore(previousState.Snapshot);
+                        if (!previousState.IsCreateOnPreExistingAccount)
+                        {
+                            _worldState.DeleteAccount(callCodeOwner);
+                        }
+
+                        _previousCallResult = BytesZero;
+                        previousStateSucceeded = false;
+
+                        if (_txTracer.IsTracingActions)
+                        {
+                            _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                        }
+
+                        return;
+                    }
                 }
+
+                _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
                 if (_txTracer.IsTracingActions)
                 {
                     _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), callCodeOwner, code);
