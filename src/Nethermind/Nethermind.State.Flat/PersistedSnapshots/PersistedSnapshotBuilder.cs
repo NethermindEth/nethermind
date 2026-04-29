@@ -49,8 +49,8 @@ public static class PersistedSnapshotBuilder
     };
 
     /// <summary>
-    /// Drop-in equivalent of the legacy <c>Hsst.Hsst.TryGet</c>: builds an HsstReader over
-    /// <paramref name="data"/> in-place, exact-seeks, and slices the result span.
+    /// Build an <see cref="HsstReader{SpanByteReader,NoOpPin}"/> over <paramref name="data"/>,
+    /// exact-seek for <paramref name="key"/>, and slice the result span.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out ReadOnlySpan<byte> value)
@@ -64,8 +64,8 @@ public static class PersistedSnapshotBuilder
     }
 
     /// <summary>
-    /// Drop-in equivalent of the legacy <c>Hsst.Hsst.TryGetBound</c>: returns the matched
-    /// entry's offset+length within <paramref name="data"/> without slicing.
+    /// Like <see cref="TryGet"/> but returns the matched entry's offset+length within
+    /// <paramref name="data"/> without producing a span.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryGetBound(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out int offset, out int length)

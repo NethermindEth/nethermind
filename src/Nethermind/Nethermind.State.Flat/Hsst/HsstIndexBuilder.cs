@@ -47,7 +47,7 @@ public ref struct HsstIndexBuilder<TWriter>
     /// Build B-tree index via writer.
     /// The absolute data region start offset (= 1 + dataLen) is needed to compute child offsets.
     /// </summary>
-    public void Build(int absoluteIndexStart, int maxLeafEntries = Hsst.MaxLeafEntries)
+    public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBuilder<TWriter>.MaxLeafEntries)
     {
         int startWritten = _writer.Written;
 
