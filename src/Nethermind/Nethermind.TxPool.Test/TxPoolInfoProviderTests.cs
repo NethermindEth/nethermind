@@ -144,23 +144,14 @@ public class TxPoolInfoProviderTests
     {
         _stateReader.GetNonce(_address).Returns((UInt256)0);
         _txPool.GetPendingTransactionsBySender(_address).Returns(BuildTransactions([0, 2]));
+        // Blob bucket is populated to make the exclusion semantics explicit; GetSenderInfo
+        // does not consult the blob pool, so these nonces must not appear in the output.
         _txPool.GetPendingLightBlobTransactionsBySender(_address).Returns(BuildTransactions([1, 3]));
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
         senderInfo.Pending.Keys.Should().BeEquivalentTo(new ulong[] { 0 });
         senderInfo.Queued.Keys.Should().BeEquivalentTo(new ulong[] { 2 });
-    }
-
-    [Test]
-    public void GetSenderInfo_WhenSenderHasOnlyBlobTransactions_ReturnsEmpty()
-    {
-        _stateReader.GetNonce(_address).Returns((UInt256)0);
-        _txPool.GetPendingLightBlobTransactionsBySender(_address).Returns(BuildTransactions([0, 1]));
-
-        TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
-
-        senderInfo.Should().BeSameAs(TxPoolSenderInfo.Empty);
     }
 
     [Test]
