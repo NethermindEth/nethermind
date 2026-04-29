@@ -227,12 +227,6 @@ jobs:
 
           touch /tmp/nethtest-results.json /tmp/nethtest-stderr.log
 
-          # Named pipe to tee stderr to both console and log file
-          STDERR_PIPE=$(mktemp -u)
-          mkfifo "$STDERR_PIPE"
-          tee /tmp/nethtest-stderr.log < "$STDERR_PIPE" >&2 &
-          TEE_PID=$!
-
           set +e
           dotnet run --no-build --no-launch-profile -c Release \
             --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
@@ -243,10 +237,9 @@ jobs:
             --neverTrace \
             $FILTER_ARG \
             > /tmp/nethtest-results.json \
-            2> "$STDERR_PIPE"
+            2> >(while IFS= read -r line; do echo "$line"; echo "$line" >> /tmp/nethtest-stderr.log; done)
           rc=$?
-          wait $TEE_PID 2>/dev/null || true
-          rm -f "$STDERR_PIPE"
+          sleep 1
           set -e
 
           echo "Exit code: $rc"
