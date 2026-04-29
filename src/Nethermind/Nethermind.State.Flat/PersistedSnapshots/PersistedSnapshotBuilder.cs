@@ -48,6 +48,37 @@ public static class PersistedSnapshotBuilder
         return cmp != 0 ? cmp : a.Key.Path.Length.CompareTo(b.Key.Path.Length);
     };
 
+    /// <summary>
+    /// Drop-in equivalent of the legacy <c>Hsst.Hsst.TryGet</c>: builds an HsstReader over
+    /// <paramref name="data"/> in-place, exact-seeks, and slices the result span.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out ReadOnlySpan<byte> value)
+    {
+        SpanByteReader r = new(data);
+        HsstReader<SpanByteReader, NoOpPin> hsst = new(in r);
+        if (!hsst.TrySeek(key, out _)) { value = default; return false; }
+        Bound b = hsst.GetBound();
+        value = data.Slice((int)b.Offset, b.Length);
+        return true;
+    }
+
+    /// <summary>
+    /// Drop-in equivalent of the legacy <c>Hsst.Hsst.TryGetBound</c>: returns the matched
+    /// entry's offset+length within <paramref name="data"/> without slicing.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryGetBound(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out int offset, out int length)
+    {
+        SpanByteReader r = new(data);
+        HsstReader<SpanByteReader, NoOpPin> hsst = new(in r);
+        if (!hsst.TrySeek(key, out _)) { offset = 0; length = 0; return false; }
+        Bound b = hsst.GetBound();
+        offset = (int)b.Offset;
+        length = b.Length;
+        return true;
+    }
+
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriter
     {
         // Declare mutable locals populated by the parallel jobs below.
@@ -421,7 +452,6 @@ public static class PersistedSnapshotBuilder
     internal static void ConvertFullToLinked<TWriter>(PersistedSnapshot fullSnapshot, ref TWriter writer) where TWriter : IByteBufferWriter
     {
         ReadOnlySpan<byte> snapshotData = fullSnapshot.GetSpan();
-        Hsst.Hsst outer = new(snapshotData);
         using HsstBuilder<TWriter> outerBuilder = new(ref writer);
 
         byte[][] tags = [
@@ -438,7 +468,7 @@ public static class PersistedSnapshotBuilder
 
         foreach (byte[] tag in tags)
         {
-            if (!outer.TryGet(tag, out ReadOnlySpan<byte> column)) continue;
+            if (!TryGet(snapshotData, tag, out ReadOnlySpan<byte> column)) continue;
             int columnOffset = SpanOffset(snapshotData, column);
 
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
@@ -488,20 +518,21 @@ public static class PersistedSnapshotBuilder
         int snapshotId, int columnOffset,
         int minSeparatorLength = 0) where TWriter : IByteBufferWriter
     {
-        Hsst.Hsst hsst = new(column);
+        SpanByteReader reader = new(column);
         HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues: true);
-        Hsst.Hsst.Enumerator e = hsst.GetEnumerator();
+        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, column.Length));
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
 
         while (e.MoveNext())
         {
-            NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffset + e.CurrentMetadataStart));
+            // metaStart relative to column = ValueBound.Offset + ValueBound.Length
+            int metaStart = (int)(e.Current.ValueBound.Offset + e.Current.ValueBound.Length);
+            NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffset + metaStart));
             builder.Add(e.Current.Key, refBytes);
         }
 
         builder.Build();
         builder.Dispose();
-        e.Dispose();
     }
 
     /// <summary>
@@ -513,36 +544,36 @@ public static class PersistedSnapshotBuilder
         int snapshotId,
         int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriter
     {
-        Hsst.Hsst outerHsst = new(column);
+        int columnOffsetInSnapshot = SpanOffset(snapshotData, column);
+        SpanByteReader reader = new(column);
         HsstBuilder<TWriter> builder = new(ref writer, outerMinSep);
-        Hsst.Hsst.Enumerator outerEnum = outerHsst.GetEnumerator();
+        using HsstEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, column.Length));
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
 
         while (outerEnum.MoveNext())
         {
-            ReadOnlySpan<byte> innerData = outerEnum.Current.Value;
-            int innerOffset = SpanOffset(snapshotData, innerData);
+            Bound innerScope = outerEnum.Current.ValueBound;
 
-            Hsst.Hsst innerHsst = new(innerData);
             ref TWriter innerWriter = ref builder.BeginValueWrite();
             HsstBuilder<TWriter> innerBuilder = new(ref innerWriter, innerMinSep, inlineValues: true);
-            Hsst.Hsst.Enumerator innerEnum = innerHsst.GetEnumerator();
+            using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerScope);
 
             while (innerEnum.MoveNext())
             {
-                NodeRef.Write(refBytes, new NodeRef(snapshotId, innerOffset + innerEnum.CurrentMetadataStart));
+                // metaStart relative to column for the inner entry; add columnOffsetInSnapshot
+                // to land at the absolute snapshot offset NodeRef expects.
+                int metaStartInColumn = (int)(innerEnum.Current.ValueBound.Offset + innerEnum.Current.ValueBound.Length);
+                NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffsetInSnapshot + metaStartInColumn));
                 innerBuilder.Add(innerEnum.Current.Key, refBytes);
             }
 
             innerBuilder.Build();
             innerBuilder.Dispose();
-            innerEnum.Dispose();
             builder.FinishValueWrite(outerEnum.Current.Key);
         }
 
         builder.Build();
         builder.Dispose();
-        outerEnum.Dispose();
     }
 
     /// <summary>
@@ -665,8 +696,7 @@ public static class PersistedSnapshotBuilder
             for (int i = 0; i < n; i++)
             {
                 ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
-                Hsst.Hsst outer = new(snapshotData);
-                if (outer.TryGetBound(tag, out int colOff, out int colLen))
+                if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: inlineValues);
@@ -884,8 +914,7 @@ public static class PersistedSnapshotBuilder
             for (int i = 0; i < n; i++)
             {
                 ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
-                Hsst.Hsst outer = new(snapshotData);
-                if (outer.TryGetBound(tag, out int colOff, out int colLen))
+                if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false);
@@ -920,8 +949,7 @@ public static class PersistedSnapshotBuilder
             for (int i = 0; i < n; i++)
             {
                 ReadOnlySpan<byte> snapshotData = snapshots[i].GetSpan();
-                Hsst.Hsst outer = new(snapshotData);
-                if (outer.TryGetBound(tag, out int colOff, out int colLen))
+                if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
                     columnBounds[i] = (colOff, colLen);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new Hsst.Hsst.MergeEnumerator(column, isInline: false);
@@ -968,8 +996,7 @@ public static class PersistedSnapshotBuilder
                         ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
                         bloom.Add(addrKey);
                         ReadOnlySpan<byte> perAddrHsst = colSpan.Slice(valOff, valLen);
-                        Hsst.Hsst perAddr = new(perAddrHsst);
-                        if (perAddr.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
+                        if (TryGet(perAddrHsst, PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
                             AddSlotKeysToBloom(slotSection, addrKey, bloom);
                     }
                 }
@@ -1033,8 +1060,7 @@ public static class PersistedSnapshotBuilder
         for (int j = 0; j < matchCount; j++)
         {
             ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-            Hsst.Hsst h = new(perAddr);
-            if (h.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal) && sdVal.IsEmpty)
+            if (TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal) && sdVal.IsEmpty)
                 destructBarrier = j;
         }
 
@@ -1048,8 +1074,7 @@ public static class PersistedSnapshotBuilder
             {
                 ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan()
                     .Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                Hsst.Hsst h = new(perAddr);
-                if (h.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
+                if (TryGet(perAddr, PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
                     AddSlotKeysToBloom(slotSection, addrBloomKey, bloom);
             }
         }
@@ -1061,8 +1086,7 @@ public static class PersistedSnapshotBuilder
             for (int j = slotStart; j < matchCount; j++)
             {
                 ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                Hsst.Hsst h = new(perAddr);
-                if (h.TryGetBound(PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
+                if (TryGetBound(perAddr, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
                 {
                     slotSources[slotSourceCount] = j;
                     slotBounds[slotSourceCount] = (perAddrBounds[j].Offset + slotOff, slotLen);
@@ -1111,8 +1135,7 @@ public static class PersistedSnapshotBuilder
             for (int j = 0; j < matchCount; j++)
             {
                 ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                Hsst.Hsst h = new(perAddr);
-                if (!h.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)) continue;
+                if (!TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)) continue;
 
                 if (!hasSd)
                 {
@@ -1138,8 +1161,7 @@ public static class PersistedSnapshotBuilder
             for (int j = matchCount - 1; j >= 0; j--)
             {
                 ReadOnlySpan<byte> perAddr = snapshots[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                Hsst.Hsst h = new(perAddr);
-                if (h.TryGet(PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account))
+                if (TryGet(perAddr, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account))
                 {
                     perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, account);
                     break;
@@ -1162,20 +1184,15 @@ public static class PersistedSnapshotBuilder
         ReadOnlySpan<byte> oldestData = snapshots[0].GetSpan();
         ReadOnlySpan<byte> newestData = snapshots[n - 1].GetSpan();
 
-        Hsst.Hsst oldestOuter = new(oldestData);
-        Hsst.Hsst newestOuter = new(newestData);
-        oldestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> oldestMeta);
-        newestOuter.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> newestMeta);
-
-        Hsst.Hsst oldestHsst = new(oldestMeta);
-        Hsst.Hsst newestHsst = new(newestMeta);
+        TryGet(oldestData, PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> oldestMeta);
+        TryGet(newestData, PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> newestMeta);
 
         // Extract fields
-        oldestHsst.TryGet("from_block"u8, out ReadOnlySpan<byte> fromBlock);
-        oldestHsst.TryGet("from_hash"u8, out ReadOnlySpan<byte> fromHash);
-        newestHsst.TryGet("to_block"u8, out ReadOnlySpan<byte> toBlock);
-        newestHsst.TryGet("to_hash"u8, out ReadOnlySpan<byte> toHash);
-        newestHsst.TryGet("version"u8, out ReadOnlySpan<byte> version);
+        TryGet(oldestMeta, "from_block"u8, out ReadOnlySpan<byte> fromBlock);
+        TryGet(oldestMeta, "from_hash"u8, out ReadOnlySpan<byte> fromHash);
+        TryGet(newestMeta, "to_block"u8, out ReadOnlySpan<byte> toBlock);
+        TryGet(newestMeta, "to_hash"u8, out ReadOnlySpan<byte> toHash);
+        TryGet(newestMeta, "version"u8, out ReadOnlySpan<byte> version);
 
         // Build ref_ids value
         byte[] refIdsValue = new byte[refIds.Count * 4];
