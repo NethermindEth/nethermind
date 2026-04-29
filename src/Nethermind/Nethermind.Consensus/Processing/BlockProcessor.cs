@@ -75,9 +75,6 @@ public partial class BlockProcessor(
 
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
 
-        if (suggestedBlock.BlockAccessList is not null)
-            stateProvider.HintBal(suggestedBlock.BlockAccessList);
-
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);

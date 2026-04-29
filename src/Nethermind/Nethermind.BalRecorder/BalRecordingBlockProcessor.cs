@@ -6,29 +6,16 @@ using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
 
 namespace Nethermind.BalRecorder;
 
 public class BalRecordingBlockProcessor(
     IBlockProcessor inner,
     IRecordedBalStore store,
-    IWorldState stateProvider,
-    BalRecorderSpecSwitch balSwitch,
-    ILogManager logManager) : IBlockProcessor
+    IBlockAccessListManager balManager,
+    BalRecorderSpecSwitch balSwitch) : IBlockProcessor
 {
-    private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder is { } b ? b
-        : store.RecordingEnabled ? WarnNullBuilder(logManager) : null;
-
-    private static IBlockAccessListBuilder? WarnNullBuilder(ILogManager logManager)
-    {
-        logManager.GetClassLogger<BalRecordingBlockProcessor>()
-            .Warn("RecordingEnabled is true but IWorldState does not implement IBlockAccessListBuilder — BAL recording is disabled.");
-        return null;
-    }
-
     public event Action? TransactionsExecuted
     {
         add => inner.TransactionsExecuted += value;
@@ -45,8 +32,8 @@ public class BalRecordingBlockProcessor(
         try
         {
             (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
-            if (store.RecordingEnabled && _balBuilder is not null)
-                store.Insert(block, _balBuilder.GeneratedBlockAccessList);
+            if (store.RecordingEnabled)
+                store.Insert(block, balManager.GeneratedBlockAccessList);
             return (block, receipts);
         }
         finally
