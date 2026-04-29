@@ -270,7 +270,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
     }
 
 
@@ -581,23 +582,124 @@ public class EthSimulateTestsBlocksAndTransactions
             $"Expected block.timestamp = {futureTimestamp} (overridden), got {returnedTimestamp}");
     }
 
-    [Test]
-    public async Task Test_eth_simulate_no_validation_still_returns_insufficient_balance()
+    /// <summary>
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11217.
+    /// eth_simulateV1 must return -38014 with the spec-mandated message when the sender has
+    /// insufficient funds, regardless of the <c>validation</c> flag.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task eth_simulateV1_insufficient_funds_returns_spec_error_code_and_message(bool validation)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
             [
-                new() { Calls = [ new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1_000_000.Ether } ] }
+                new() { Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1_000_000.Ether }] }
             ],
-            Validation = false
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
     }
+
+    /// <summary>
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11215
+    /// eth_simulateV1 with validation:true and maxFeePerGas below block baseFee must return
+    /// code -38012 with message "max fee per gas less than block base fee".
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_fee_cap_below_base_fee_returns_spec_error_code_and_message()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // baseFeePerGas = 100 gwei, maxFeePerGas = 1 gwei → fee cap is below base fee
+        UInt256 baseFee = 100.GWei;
+        UInt256 feeCap = 1.GWei;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { BaseFeePerGas = baseFee },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } }
+                    },
+                    Calls =
+                    [
+                        new EIP1559TransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            Gas = 21_000,
+                            MaxFeePerGas = feeCap,
+                            MaxPriorityFeePerGas = UInt256.Zero
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.FeeCapBelowBaseFee));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.FeeCapBelowBaseFee));
+    }
+
+    /// <summary>
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11218.
+    /// eth_simulateV1 must return -38013 with the spec-mandated message when the transaction
+    /// gas limit is below the intrinsic gas cost.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_intrinsic_gas_returns_spec_error_code_and_message()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // Gas = 1 is below the intrinsic gas cost of 21_000 for a basic transfer.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { BaseFeePerGas = UInt256.Zero },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            Gas = 1,
+                            GasPrice = UInt256.Zero
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
+    }
+
 }

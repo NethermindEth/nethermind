@@ -559,10 +559,11 @@ public partial class EthRpcModuleTests
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7623Floor100.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7623: data heavy tx returns lower floor");
 
-        // EIP-7976: gas limit below intrinsic gas
+        // EIP-7976: intrinsic gas too low
         const long belowFloor = GasCostOf.Transaction + GasCostOf.TxDataZero;
+        long eip7976Floor1Byte = GasCostOf.Transaction + 1 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7976Spec, new byte[] { 0 }, belowFloor, null,
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"gas limit below intrinsic gas\"},\"id\":67}")
+                $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"intrinsic gas too low: have {belowFloor}, want {eip7976Floor1Byte}\"}},\"id\":67}}")
             .SetName("EIP-7976: insufficient gas for floor");
 
         // EIP-7976: mixed calldata (0x00001122 = 2 zero + 2 nonzero bytes)
@@ -664,7 +665,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
         JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().BeEquivalentTo("gas limit below intrinsic gas");
+            .Should().StartWith("intrinsic gas too low");
     }
 
 }

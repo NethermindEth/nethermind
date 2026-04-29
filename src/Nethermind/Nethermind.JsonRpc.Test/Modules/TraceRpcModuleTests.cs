@@ -100,7 +100,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_filter", request);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"block not found: 0x154\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
     [Test]

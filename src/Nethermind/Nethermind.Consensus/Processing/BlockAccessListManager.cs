@@ -47,7 +47,7 @@ public class BlockAccessListManager(
             innerException.InvalidBlock,
             innerException.Message,
             (innerException as InvalidTransactionException)?.Reason
-                ?? TransactionResult.WithDetail(TransactionResult.ErrorType.MalformedTransaction, $"Parallel execution failure: {innerException.Message}"),
+                ?? TransactionResult.ErrorType.MalformedTransaction.WithDetail($"Parallel execution failure: {innerException.Message}"),
             innerException);
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }

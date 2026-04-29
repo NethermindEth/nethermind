@@ -21,6 +21,7 @@ public static class ExitCodes
     public const int MissingChainspecEipConfiguration = 108;
     public const int DbCorruption = 109;
     public const int MissingPrecompile = 110;
+    public const int InvalidBlock = 111;
 
     // Posix exit code
     // https://tldp.org/LDP/abs/html/exitcodes.html
