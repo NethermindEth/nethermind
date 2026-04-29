@@ -17,13 +17,13 @@ internal static class PersistedSnapshotBloomBuilder
         using WholeReadSession session = snapshot.BeginWholeReadSession();
         PersistedSnapshotScanner scanner = new(session, snapshot);
 
-        // Pass 1: count keys to size the bloom accurately.
+        // Pass 1: count keys to size the bloom accurately. Lazy entries: no decoding.
         long capacity = 0;
-        foreach (KeyValuePair<AddressAsKey, Account?> _ in scanner.Accounts)
+        foreach (PersistedSnapshotScanner.AccountEntry _ in scanner.Accounts)
             capacity++;
-        foreach (KeyValuePair<AddressAsKey, bool> _ in scanner.SelfDestructedStorageAddresses)
+        foreach (PersistedSnapshotScanner.SelfDestructEntry _ in scanner.SelfDestructedStorageAddresses)
             capacity++;
-        foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> _ in scanner.Storages)
+        foreach (PersistedSnapshotScanner.StorageEntry _ in scanner.Storages)
             capacity += 2; // address key + (address, slot) key
 
         if (capacity == 0)
@@ -31,19 +31,18 @@ internal static class PersistedSnapshotBloomBuilder
 
         BloomFilter bloom = new(capacity, bitsPerKey);
 
-        // Pass 2: add keys.
-        foreach (KeyValuePair<AddressAsKey, Account?> kv in scanner.Accounts)
-            bloom.Add(AddressKey((Address)kv.Key));
+        // Pass 2: add keys. Only Address/Slot decoded — Account/SlotValue skipped.
+        foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
+            bloom.Add(AddressKey(entry.Address));
 
-        foreach (KeyValuePair<AddressAsKey, bool> kv in scanner.SelfDestructedStorageAddresses)
-            bloom.Add(AddressKey((Address)kv.Key));
+        foreach (PersistedSnapshotScanner.SelfDestructEntry entry in scanner.SelfDestructedStorageAddresses)
+            bloom.Add(AddressKey(entry.Address));
 
-        foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in scanner.Storages)
+        foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
         {
-            Address addr = (Address)kv.Key.Item1;
-            ulong addrKey = AddressKey(addr);
+            ulong addrKey = AddressKey(entry.Address);
             bloom.Add(addrKey);
-            bloom.Add(SlotKey(addrKey, kv.Key.Item2));
+            bloom.Add(SlotKey(addrKey, entry.Slot));
         }
 
         return bloom;
