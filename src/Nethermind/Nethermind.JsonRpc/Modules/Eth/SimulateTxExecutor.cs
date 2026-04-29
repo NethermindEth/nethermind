@@ -228,11 +228,17 @@ public class SimulateTxExecutor<TTrace>(
             ? null
             : MapSimulateErrorCode(results.TransactionResult);
         if (results.IsInvalidInput) errorCode = ErrorCodes.Default;
-        return results.Error is null
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
-            : errorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, errorCode.Value)
-                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
+
+        if (results.Error is null)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items]);
+
+        if (errorCode is not null)
+        {
+            string message = MapSimulateErrorMessage(results.TransactionResult) ?? results.Error!;
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(message, errorCode.Value);
+        }
+
+        return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
     }
 
     private static int MapSimulateErrorCode(TransactionResult txResult)
@@ -246,8 +252,8 @@ public class SimulateTxExecutor<TTrace>(
                 TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
                     or TransactionResult.ErrorType.InsufficientSenderBalance => ErrorCodes.InsufficientFunds,
                 TransactionResult.ErrorType.MalformedTransaction => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee => ErrorCodes.InvalidParams,
-                TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
+                    or TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.FeeCapBelowBaseFee,
                 TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
                 TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
                 TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
@@ -261,10 +267,43 @@ public class SimulateTxExecutor<TTrace>(
         return MapEvmExceptionType(txResult.EvmExceptionType);
     }
 
+    /// <summary>
+    /// Returns the spec-mandated error message for well-known eth_simulateV1 error types,
+    /// or <see langword="null"/> when no override is required.
+    /// </summary>
+    private static string? MapSimulateErrorMessage(TransactionResult txResult) =>
+        txResult.Error switch
+        {
+            TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
+                or TransactionResult.ErrorType.MinerPremiumNegative
+                => SimulateErrorMessages.FeeCapBelowBaseFee,
+            TransactionResult.ErrorType.InsufficientSenderBalance
+                or TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
+                => SimulateErrorMessages.InsufficientFunds,
+            _ => null
+        };
 
     private static int MapEvmExceptionType(EvmExceptionType type) => type switch
     {
         EvmExceptionType.Revert => ErrorCodes.ExecutionReverted,
         _ => ErrorCodes.VMError
     };
+}
+
+/// <summary>
+/// Canonical eth_simulateV1 error message strings shared between the executor and tests.
+/// </summary>
+internal static class SimulateErrorMessages
+{
+    /// <summary>
+    /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
+    /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).
+    /// </summary>
+    public const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+
+    /// <summary>
+    /// Returned when the sender does not have enough balance to cover gas + value
+    /// (error code <see cref="ErrorCodes.InsufficientFunds"/>).
+    /// </summary>
+    public const string InsufficientFunds = "Insufficient funds to pay for gas fees and value for a transaction";
 }

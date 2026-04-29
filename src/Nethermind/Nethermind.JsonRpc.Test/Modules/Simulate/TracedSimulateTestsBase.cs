@@ -112,6 +112,6 @@ public abstract class TracedSimulateTestsBase<TTrace>
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error!, Does.Contain("insufficient funds"));
+        Assert.That(result.Result!.Error!, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
     }
 }
