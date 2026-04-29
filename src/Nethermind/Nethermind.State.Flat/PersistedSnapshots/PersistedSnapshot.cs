@@ -78,6 +78,37 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// </summary>
     internal SpanByteReader CreateReader() => _reservation.CreateReader();
 
+    /// <summary>
+    /// Decode the value bytes for a non-inline HSST entry at <paramref name="metadataStart"/>
+    /// in <paramref name="data"/>. Static so the returned span's lifetime stays tied to the
+    /// caller-supplied input rather than to a method-local receiver; that keeps the chain
+    /// from narrowing through C#'s ref-safety analysis.
+    /// </summary>
+    private static ReadOnlySpan<byte> DecodeValueAt(ReadOnlySpan<byte> data, int metadataStart)
+    {
+        int pos = metadataStart;
+        int valueLength = Leb128.Read(data, ref pos);
+        return data.Slice(metadataStart - valueLength, valueLength);
+    }
+
+    /// <summary>
+    /// Materialise the value at <paramref name="localBound"/> in this snapshot's bytes,
+    /// dereferencing across snapshots when this snapshot stores NodeRefs. Used by the 5
+    /// <c>*Enumerator</c> types in <see cref="PersistedSnapshotReader"/>; their callers
+    /// immediately copy the resolved span via <c>ToArray</c>, so the narrower escape
+    /// lifetime that C# infers through this method-call indirection is fine.
+    /// </summary>
+    internal ReadOnlySpan<byte> ResolveValueAt(Bound localBound)
+    {
+        if (!HasNodeRefs || _referencedSnapshots is null)
+            return GetSpan().Slice((int)localBound.Offset, localBound.Length);
+
+        NodeRef nodeRef = NodeRef.Read(GetSpan().Slice((int)localBound.Offset, localBound.Length));
+        if (!_referencedSnapshots.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snap))
+            throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found");
+        return DecodeValueAt(snap.GetSpan(), nodeRef.ValueLengthOffset);
+    }
+
     public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
@@ -164,11 +195,27 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return PersistedSnapshotReader.TryGetSelfDestructFlag<SpanByteReader, NoOpPin>(in reader, address);
     }
 
-    public bool TryLoadStateNodeRlp(scoped in TreePath path, out ReadOnlySpan<byte> nodeRlp) =>
-        PersistedSnapshotReader.TryLoadStateNodeRlp(GetSpan(), in path, _referencedSnapshots, HasNodeRefs, out nodeRlp);
+    public bool TryLoadStateNodeRlp(scoped in TreePath path, out ReadOnlySpan<byte> nodeRlp)
+    {
+        if (!PersistedSnapshotReader.TryLoadStateNodeRlp(GetSpan(), in path, out Bound bound))
+        {
+            nodeRlp = default;
+            return false;
+        }
+        nodeRlp = ResolveValueAt(bound);
+        return true;
+    }
 
-    public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, scoped out ReadOnlySpan<byte> nodeRlp) =>
-        PersistedSnapshotReader.TryLoadStorageNodeRlp(GetSpan(), address, in path, _referencedSnapshots, HasNodeRefs, out nodeRlp);
+    public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, out ReadOnlySpan<byte> nodeRlp)
+    {
+        if (!PersistedSnapshotReader.TryLoadStorageNodeRlp(GetSpan(), address, in path, out Bound bound))
+        {
+            nodeRlp = default;
+            return false;
+        }
+        nodeRlp = ResolveValueAt(bound);
+        return true;
+    }
 
     /// <summary>
     /// Read the "ref_ids" list from a snapshot's metadata column.
