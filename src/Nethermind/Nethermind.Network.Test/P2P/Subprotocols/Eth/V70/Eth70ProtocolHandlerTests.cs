@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -101,14 +101,14 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth70");
-        _handler.ProtocolVersion.Should().Be(70);
-        _handler.MessageIdSpaceSize.Should().Be(18);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth70"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
@@ -263,9 +263,9 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        IOwnedReadOnlyList<TxReceipt[]> result = await task;
-        result.Should().HaveCount(1);
-        result[0].Should().BeEquivalentTo(receipts);
+        using IOwnedReadOnlyList<TxReceipt[]> result = await task;
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
     }
 
     [Test]
@@ -305,15 +305,87 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        IOwnedReadOnlyList<TxReceipt[]> result = await task;
-        result.Should().HaveCount(2);
-        result[0].Should().BeEquivalentTo(block1);
-        result[1].Should().BeEquivalentTo(block2);
-        seenOffsets.AsSpan().ToArray().Should().Equal(0, 2);
+        using IOwnedReadOnlyList<TxReceipt[]> result = await task;
+        Assert.That(result, Has.Count.EqualTo(2));
+        AssertReceiptsEqual(result[0], block1);
+        AssertReceiptsEqual(result[1], block2);
+        Assert.That(seenOffsets.AsSpan().ToArray(), Is.EqualTo(new[] { 0L, 2L }));
     }
 
     [Test]
-    public async Task Should_reject_when_receipts_response_below_minimum_size()
+    public async Task Should_accept_empty_receipts_block_when_requesting_from_peer()
+    {
+        TxReceipt[] block2Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            TxReceipt[][] payload = [[], block2Receipts];
+
+            using ReceiptsMessage70 response = new(sent.RequestId, payload.ToPooledList(), lastBlockIncomplete: false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+
+        Assert.That(result, Has.Count.EqualTo(2));
+        Assert.That(result[0], Is.Empty);
+        Assert.That(result[1], Has.Length.EqualTo(block2Receipts.Length));
+        Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
+        Assert.That(result[1][0].Logs, Is.Empty);
+    }
+
+    [TestCaseSource(nameof(EmptyReceiptsPayloadCases))]
+    public async Task Should_handle_empty_receipts_payload_when_requesting_from_peer(
+        EmptyReceiptsPayloadScenario scenario,
+        string? expectedExceptionMessage,
+        int expectedRequestCount,
+        int expectedResultCount)
+    {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
+
+        TxReceipt[] firstPage =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        int requestCount = 0;
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            requestCount++;
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = BuildEmptyReceiptsPayloadResponse(sent, scenario, firstPage);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task<IOwnedReadOnlyList<TxReceipt[]>>> act = async () =>
+            await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+
+        if (expectedExceptionMessage is null)
+        {
+            using IOwnedReadOnlyList<TxReceipt[]> result = await act();
+            Assert.That(result, Has.Count.EqualTo(expectedResultCount));
+        }
+        else
+        {
+            SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () =>
+            {
+                using IOwnedReadOnlyList<TxReceipt[]> result = await act();
+            });
+            Assert.That(exception?.Message, Is.EqualTo(expectedExceptionMessage));
+        }
+
+        Assert.That(requestCount, Is.EqualTo(expectedRequestCount));
+    }
+
+    [Test]
+    public void Should_reject_when_receipts_response_below_minimum_size()
     {
         TxReceipt[] receipts =
         [
@@ -330,8 +402,8 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        await act.Should().ThrowAsync<SubprotocolException>()
-            .WithMessage("Received partial receipts response below minimum size*");
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Does.StartWith("Received partial receipts response below minimum size"));
     }
 
     [Test]
@@ -353,7 +425,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        act.Should().ThrowAsync<SubprotocolException>();
+        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
     }
 
     [Test]
@@ -378,7 +450,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        act.Should().ThrowAsync<SubprotocolException>();
+        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
     }
 
     [Test]
@@ -414,12 +486,12 @@ public class Eth70ProtocolHandlerTests
         });
 
         HandleIncomingStatusMessage();
-        IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
 
         // Handler should make only 1 request - not loop trying to get remaining 3 blocks
         // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
-        requestCount.Should().Be(1, "handler should not loop requesting more when peer returned fewer with incomplete=false");
-        result.Should().HaveCount(7, "should return what peer gave us without looping");
+        Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
+        Assert.That(result, Has.Count.EqualTo(7), "should return what peer gave us without looping");
     }
 
     [Test]
@@ -649,6 +721,40 @@ public class Eth70ProtocolHandlerTests
     {
         public bool IsDisposed { get; private set; }
         public override void Dispose() { IsDisposed = true; base.Dispose(); }
+    }
+
+    private static void AssertReceiptsEqual(TxReceipt[] actual, TxReceipt[] expected) =>
+        Assert.That(actual, Is.EqualTo(expected).UsingPropertiesComparer());
+
+    public enum EmptyReceiptsPayloadScenario
+    {
+        FirstComplete,
+        FirstIncomplete,
+        PartialContinuationComplete
+    }
+
+    private static IEnumerable<TestCaseData> EmptyReceiptsPayloadCases()
+    {
+        yield return new TestCaseData(EmptyReceiptsPayloadScenario.FirstComplete, null, 1, 0)
+            .SetName("Should_accept_empty_receipts_payload_when_requesting_from_peer");
+        yield return new TestCaseData(EmptyReceiptsPayloadScenario.FirstIncomplete, "Peer returned no progress for partial receipts", 1, 0)
+            .SetName("Should_reject_empty_incomplete_receipts_payload_when_requesting_from_peer");
+        yield return new TestCaseData(EmptyReceiptsPayloadScenario.PartialContinuationComplete, "Peer returned no progress for partial receipts", 2, 0)
+            .SetName("Should_reject_empty_receipts_payload_for_partial_continuation");
+    }
+
+    private static ReceiptsMessage70 BuildEmptyReceiptsPayloadResponse(
+        GetReceiptsMessage70 sent,
+        EmptyReceiptsPayloadScenario scenario,
+        TxReceipt[] firstPage)
+    {
+        if (scenario == EmptyReceiptsPayloadScenario.PartialContinuationComplete && sent.FirstBlockReceiptIndex == 0)
+        {
+            return new ReceiptsMessage70(sent.RequestId, new[] { firstPage }.ToPooledList(), lastBlockIncomplete: true);
+        }
+
+        bool lastBlockIncomplete = scenario == EmptyReceiptsPayloadScenario.FirstIncomplete;
+        return new ReceiptsMessage70(sent.RequestId, ArrayPoolList<TxReceipt[]>.Empty(), lastBlockIncomplete);
     }
 
     private void HandleIncomingStatusMessage()

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,105 +18,112 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V71;
 [Parallelizable(ParallelScope.All)]
 public class BlockAccessListsMessageSerializerTests
 {
-    [Test]
-    public void Roundtrip_empty()
+    [TestCaseSource(nameof(BlockAccessListsRoundtripCases))]
+    public void Roundtrip(Func<BlockAccessListsMessage> buildMessage, string? expectedData)
     {
         BlockAccessListsMessageSerializer serializer = new();
-        using BlockAccessListsMessage msg = new(42, ArrayPoolList<byte[]?>.Empty());
-        SerializerTester.TestZero(serializer, msg);
+        using BlockAccessListsMessage msg = buildMessage();
+        SerializerTester.TestZero(serializer, msg, expectedData);
     }
 
-    [Test]
-    public void Roundtrip_single_absent_bal()
+    [TestCaseSource(nameof(BlockAccessListsRejectionCases))]
+    public void Rejects_invalid_payload(Func<IByteBuffer> buildPayload, Type exceptionType)
     {
         BlockAccessListsMessageSerializer serializer = new();
-        ArrayPoolList<byte[]?> bals = new(1) { null };
-        using BlockAccessListsMessage msg = new(43, bals);
+        using DisposableByteBuffer payload = buildPayload().AsDisposable();
 
-        SerializerTester.TestZero(serializer, msg, "c32bc180");
+        Assert.Throws(exceptionType, () => serializer.Deserialize(payload));
     }
 
-    [Test]
-    public void Roundtrip_multiple_bals()
+    private static IEnumerable<TestCaseData> BlockAccessListsRoundtripCases()
     {
-        BlockAccessListsMessageSerializer serializer = new();
-        ArrayPoolList<byte[]?> bals = new(3);
-        bals.Add(new byte[] { 0xc1, 0x80 });
-        bals.Add(new byte[] { 0xc2, 0x01, 0x02 });
-        bals.Add(null);
-        using BlockAccessListsMessage msg = new(44, bals);
-        SerializerTester.TestZero(serializer, msg);
+        yield return new TestCaseData(
+                new Func<BlockAccessListsMessage>(() => new BlockAccessListsMessage(42, ArrayPoolList<byte[]?>.Empty())),
+                null)
+            .SetName("Roundtrip_empty");
+        yield return new TestCaseData(
+                new Func<BlockAccessListsMessage>(() => new BlockAccessListsMessage(43, new ArrayPoolList<byte[]?>(1)
+                {
+                    null
+                })),
+                "c32bc180")
+            .SetName("Roundtrip_single_absent_bal");
+        yield return new TestCaseData(
+                new Func<BlockAccessListsMessage>(() => new BlockAccessListsMessage(44, new ArrayPoolList<byte[]?>(3)
+                {
+                    new byte[] { 0xc1, 0x80 },
+                    new byte[] { 0xc2, 0x01, 0x02 },
+                    null
+                })),
+                null)
+            .SetName("Roundtrip_multiple_bals");
+        yield return new TestCaseData(
+                new Func<BlockAccessListsMessage>(() => new BlockAccessListsMessage(-1, ArrayPoolList<byte[]?>.Empty())),
+                null)
+            .SetName("Roundtrip_negative_request_id");
     }
 
-    [Test]
-    public void Rejects_extra_outer_payload()
+    private static IEnumerable<TestCaseData> BlockAccessListsRejectionCases()
     {
-        BlockAccessListsMessageSerializer serializer = new();
-        IByteBuffer payload = Unpooled.WrappedBuffer([0xc5, 0x01, 0xc2, 0x81, 0x80, 0xc0]);
-
-        Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+        yield return new TestCaseData(
+                new Func<IByteBuffer>(() => Unpooled.WrappedBuffer([0xc5, 0x01, 0xc2, 0x81, 0x80, 0xc0])),
+                typeof(RlpException))
+            .SetName("Rejects_extra_outer_payload");
+        yield return new TestCaseData(
+                new Func<IByteBuffer>(() => Unpooled.WrappedBuffer([0xcb, 0x89, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xc0])),
+                typeof(RlpException))
+            .SetName("Rejects_request_id_longer_than_8_bytes");
+        yield return new TestCaseData(
+                new Func<IByteBuffer>(BuildTooManyBlockAccessListsPayload),
+                typeof(RlpLimitException))
+            .SetName("Rejects_too_many_block_access_lists");
     }
 
-    [Test]
-    public void Roundtrip_negative_request_id()
+    private static IByteBuffer BuildTooManyBlockAccessListsPayload()
     {
         BlockAccessListsMessageSerializer serializer = new();
-        using BlockAccessListsMessage msg = new(-1, ArrayPoolList<byte[]?>.Empty());
-
-        SerializerTester.TestZero(serializer, msg);
-    }
-
-    [Test]
-    public void Rejects_request_id_longer_than_8_bytes()
-    {
-        BlockAccessListsMessageSerializer serializer = new();
-        IByteBuffer payload = Unpooled.WrappedBuffer([0xcb, 0x89, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xc0]);
-
-        Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
-    }
-
-    [Test]
-    public void Rejects_too_many_block_access_lists()
-    {
-        BlockAccessListsMessageSerializer serializer = new();
-        ArrayPoolList<byte[]?> bals = new(GethSyncLimits.MaxBodyFetch + 1);
+        ArrayPoolList<byte[]?> blockAccessLists = new(GethSyncLimits.MaxBodyFetch + 1);
         for (int i = 0; i <= GethSyncLimits.MaxBodyFetch; i++)
         {
-            bals.Add(null);
+            blockAccessLists.Add(null);
         }
 
-        using BlockAccessListsMessage msg = new(45, bals);
+        using BlockAccessListsMessage msg = new(45, blockAccessLists);
         IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg, out _));
         serializer.Serialize(payload, msg);
-
-        Assert.Throws<RlpLimitException>(() => serializer.Deserialize(payload));
+        return payload;
     }
 }
 
 [Parallelizable(ParallelScope.All)]
 public class GetBlockAccessListsMessageSerializerTests
 {
-    [Test]
-    public void Roundtrip_empty_hashes()
+    [TestCaseSource(nameof(GetBlockAccessListsRoundtripCases))]
+    public void Roundtrip(Func<GetBlockAccessListsMessage> buildMessage)
     {
         GetBlockAccessListsMessageSerializer serializer = new();
-        using GetBlockAccessListsMessage msg = new(99, new ArrayPoolList<Hash256>(0));
+        using GetBlockAccessListsMessage msg = buildMessage();
         SerializerTester.TestZero(serializer, msg);
     }
 
-    [Test]
-    public void Roundtrip_single_hash()
+    private static IEnumerable<TestCaseData> GetBlockAccessListsRoundtripCases()
     {
-        GetBlockAccessListsMessageSerializer serializer = new();
-        using GetBlockAccessListsMessage msg = new(100, new[] { Keccak.Zero }.ToPooledList());
-        SerializerTester.TestZero(serializer, msg);
-    }
-
-    [Test]
-    public void Roundtrip_multiple_hashes()
-    {
-        GetBlockAccessListsMessageSerializer serializer = new();
-        using GetBlockAccessListsMessage msg = new(101, new Hash256[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList(3));
-        SerializerTester.TestZero(serializer, msg);
+        yield return new TestCaseData(
+                new Func<GetBlockAccessListsMessage>(() => new GetBlockAccessListsMessage(99, ArrayPoolList<Hash256>.Empty())))
+            .SetName("Roundtrip_empty_hashes");
+        yield return new TestCaseData(
+                new Func<GetBlockAccessListsMessage>(() => new GetBlockAccessListsMessage(100, new ArrayPoolList<Hash256>(1)
+                {
+                    Keccak.Zero
+                })))
+            .SetName("Roundtrip_single_hash");
+        yield return new TestCaseData(
+                new Func<GetBlockAccessListsMessage>(() => new GetBlockAccessListsMessage(101, new ArrayPoolList<Hash256>(3)
+                {
+                    Keccak.Zero,
+                    TestItem.KeccakA,
+                    TestItem.KeccakB
+                })))
+            .SetName("Roundtrip_multiple_hashes");
     }
 }

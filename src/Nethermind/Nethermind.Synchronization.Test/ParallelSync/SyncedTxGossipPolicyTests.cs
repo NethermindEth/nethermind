@@ -36,6 +36,21 @@ public class SyncedTxGossipPolicyTests
     public bool receipts_unsynced_ignores_block_access_lists_only_mode(SyncMode mode) =>
         mode.HaveNotSyncedReceiptsYet();
 
+    [TestCase(SyncMode.FastHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies, ExpectedResult = false)]
+    [TestCase(SyncMode.FastReceipts, ExpectedResult = false)]
+    [TestCase(SyncMode.FastBlockAccessLists, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies | SyncMode.FastBlockAccessLists, ExpectedResult = true)]
+    [TestCase(SyncMode.FastSync, ExpectedResult = true)]
+    [TestCase(SyncMode.StateNodes, ExpectedResult = true)]
+    [TestCase(SyncMode.SnapSync, ExpectedResult = true)]
+    [TestCase(SyncMode.BeaconHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.UpdatingPivot, ExpectedResult = true)]
+    [TestCase(SyncMode.Full, ExpectedResult = false)]
+    [TestCase(SyncMode.WaitingForBlock, ExpectedResult = false)]
+    public bool block_access_lists_unsynced_tracks_headers_state_and_bal_phases(SyncMode mode) =>
+        mode.HaveNotSyncedBlockAccessListsYet();
+
     [Test]
     public void Composite_reflects_sync_mode_transitions()
     {

@@ -1088,7 +1088,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                         $"BAL debug block {blockNumber}: sourceBal={(sourceBal is null ? "null" : sourceBal.Length)}, " +
                         $"syncedBal={(syncedBal is null ? "null" : syncedBal.Length)}, " +
                         $"syncedEncoded={(syncedBlock.EncodedBlockAccessList is null ? "null" : syncedBlock.EncodedBlockAccessList.Length)}, " +
-                        $"syncedHasStore={blockAccessListStore.HasBlock(syncedBlock.Hash!)}, " +
+                        $"syncedHasStore={blockAccessListStore.Exists(syncedBlock.Hash!)}, " +
                         $"headerBalHash={syncedBlock.Header.BlockAccessListHash}");
                 }
 
