@@ -17,6 +17,9 @@ public interface ITransactionProcessor
     void SetBlockExecutionContext(BlockHeader blockHeader);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
 
+    TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
+        => Process(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
+
     public interface IBlobBaseFeeCalculator
     {
         bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction,
@@ -62,14 +65,6 @@ public static class ITransactionProcessorExtensions
             txTracer,
             ExecutionOptions.SkipValidationAndCommit);
 
-    public static TransactionResult Warmup(
-        this ITransactionProcessor transactionProcessor,
-        Transaction transaction,
-        ITxTracer txTracer)
-        => transactionProcessor.Process(
-            transaction,
-            txTracer,
-            ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
     public static TransactionResult Execute(this ITransactionProcessor transactionProcessor, Transaction transaction, BlockHeader header, ITxTracer txTracer)
     {
         transactionProcessor.SetBlockExecutionContext(header);
