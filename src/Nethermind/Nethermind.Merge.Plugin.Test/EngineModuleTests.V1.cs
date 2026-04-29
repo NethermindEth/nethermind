@@ -669,35 +669,13 @@ public partial class EngineModuleTests
         // InvalidParams before ShouldProceedWithReorg runs).
         Block ancestorParent = Build.A.Block.WithNumber(32).TestObject;
 
-        blockTree.FindBlock(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor);
+        SetUpDeepAncestorReorgScenario(blockTree, headBlock, deepAncestor);
         blockTree.FindBlock(deepAncestor.Header.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing, blockNumber: 32).Returns(ancestorParent);
-        blockTree.GetInfo(deepAncestor.Number, deepAncestor.Hash!).Returns(
-            (new BlockInfo(deepAncestor.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
-        blockTree.Head.Returns(headBlock);
-        blockTree.HeadHash.Returns(headBlock.Hash!);
-        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
-        blockTree.IsMainChain(Arg.Any<Hash256>()).Returns(true);
-        blockTree.FindHeader(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor.Header);
 
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager.CanReorgOn(deepAncestor.Header).Returns(false);
 
-        ForkchoiceUpdatedHandler handler = new(
-            blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
-            Substitute.For<IPoSSwitcher>(),
-            Substitute.For<IPayloadPreparationService>(),
-            Substitute.For<IBlockProcessingQueue>(),
-            Substitute.For<IBlockCacheService>(),
-            Substitute.For<IInvalidChainTracker>(),
-            Substitute.For<IMergeSyncController>(),
-            Substitute.For<IBeaconPivot>(),
-            Substitute.For<IPeerRefresher>(),
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<ISyncPeerPool>(),
-            new MergeConfig(),
-            worldStateManager,
-            Substitute.For<ILogManager>());
+        ForkchoiceUpdatedHandler handler = BuildHandler(blockTree, worldStateManager);
 
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(
             new ForkchoiceStateV1(deepAncestor.Hash!, Keccak.Zero, Keccak.Zero), null, 1);
@@ -726,22 +704,7 @@ public partial class EngineModuleTests
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager.CanReorgOn(Arg.Any<BlockHeader>()).Returns(false); // would force -38006 if the gate ran
 
-        ForkchoiceUpdatedHandler handler = new(
-            blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
-            Substitute.For<IPoSSwitcher>(),
-            Substitute.For<IPayloadPreparationService>(),
-            Substitute.For<IBlockProcessingQueue>(),
-            Substitute.For<IBlockCacheService>(),
-            Substitute.For<IInvalidChainTracker>(),
-            Substitute.For<IMergeSyncController>(),
-            Substitute.For<IBeaconPivot>(),
-            Substitute.For<IPeerRefresher>(),
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<ISyncPeerPool>(),
-            new MergeConfig(),
-            worldStateManager,
-            Substitute.For<ILogManager>());
+        ForkchoiceUpdatedHandler handler = BuildHandler(blockTree, worldStateManager);
 
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(
             new ForkchoiceStateV1(beaconTarget.Hash!, Keccak.Zero, Keccak.Zero), null, 1);
@@ -830,40 +793,27 @@ public partial class EngineModuleTests
         chain.BlockTree.HeadHash.Should().Be(b10Hash, "head must not change when -38002 is returned");
     }
 
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenZeroFinalizedAndSafeHash_ReturnsValidWithoutError()
+    // Spec: -38002 fires only for non-zero unknown safe/finalized hashes; zero means "unknown" and
+    // must not produce an error. Models CL checkpoint-syncing from a non-finalized state.
+    [TestCase(false, 0, TestName = "Zero safe and finalized — Valid, no error")]
+    [TestCase(true, MergeErrorCodes.InvalidForkchoiceState, TestName = "Non-zero unknown safe with zero finalized — returns -38002")]
+    public async Task forkchoiceUpdatedV1_validates_safe_and_finalized_hashes(bool useUnknownSafe, int expectedErrorCode)
     {
-        // Spec: zero safeBlockHash and finalizedBlockHash mean "unknown" — must not return -38002.
-        // Models CL checkpoint-syncing from a non-finalized state where safe/finalized are unknown.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 3, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
-        Hash256 headHash = branch[2].BlockHash;
-
-        ForkchoiceStateV1 fcuWithUnknownFinality = new(headHash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuWithUnknownFinality);
-
-        result.ErrorCode.Should().Be(0, "zero safe/finalized hashes must not produce an error");
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(headHash);
-    }
-
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenNonZeroUnknownFinalizedHash_ReturnsInvalidForkchoiceState()
-    {
-        // Spec: -38002 must only fire for non-zero hashes that are unknown, not for zero hashes.
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
         Hash256 headHash = branch[0].BlockHash;
 
-        ForkchoiceStateV1 fcuWithUnknownFinalized = new(headHash, TestItem.KeccakA, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuWithUnknownFinalized);
+        Hash256 safeHash = useUnknownSafe ? TestItem.KeccakA : Keccak.Zero;
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(headHash, safeHash, Keccak.Zero));
 
-        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState,
-            "non-zero unknown finalizedBlockHash must return -38002");
+        result.ErrorCode.Should().Be(expectedErrorCode);
+        if (expectedErrorCode == 0)
+        {
+            result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+            chain.BlockTree.HeadHash.Should().Be(headHash);
+        }
     }
 
     [Test]
@@ -2219,4 +2169,34 @@ public partial class EngineModuleTests
             .WithDifficulty(900000)
             .WithTotalDifficulty(1900000L)
             .WithStateRoot(new Hash256(correctStateRoot ? "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f" : "0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+
+    private static void SetUpDeepAncestorReorgScenario(IBlockTree blockTree, Block headBlock, Block deepAncestor)
+    {
+        blockTree.FindBlock(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor);
+        blockTree.FindHeader(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor.Header);
+        blockTree.GetInfo(deepAncestor.Number, deepAncestor.Hash!).Returns(
+            (new BlockInfo(deepAncestor.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
+        blockTree.Head.Returns(headBlock);
+        blockTree.HeadHash.Returns(headBlock.Hash!);
+        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+        blockTree.IsMainChain(Arg.Any<Hash256>()).Returns(true);
+    }
+
+    private static ForkchoiceUpdatedHandler BuildHandler(IBlockTree blockTree, IWorldStateManager worldStateManager) =>
+        new(
+            blockTree,
+            Substitute.For<IManualBlockFinalizationManager>(),
+            Substitute.For<IPoSSwitcher>(),
+            Substitute.For<IPayloadPreparationService>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            Substitute.For<IBlockCacheService>(),
+            Substitute.For<IInvalidChainTracker>(),
+            Substitute.For<IMergeSyncController>(),
+            Substitute.For<IBeaconPivot>(),
+            Substitute.For<IPeerRefresher>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<ISyncPeerPool>(),
+            new MergeConfig(),
+            worldStateManager,
+            Substitute.For<ILogManager>());
 }
