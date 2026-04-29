@@ -20,8 +20,9 @@ namespace Nethermind.State.Flat.Hsst;
 /// entry's value region; the caller saves/restores scope via <see cref="GetBound"/> /
 /// <see cref="SetBound"/> using the <c>out previousBound</c> parameter.
 /// </summary>
-public ref struct HsstReader<TReader>(scoped in TReader reader, Bound initialBound) : IDisposable
-    where TReader : IHsstByteReader, allows ref struct
+public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound initialBound) : IDisposable
+    where TPin : struct, IDisposable, allows ref struct
+    where TReader : IHsstByteReader<TPin>, allows ref struct
 {
     private TReader _reader = reader;
     private Bound _bound = initialBound;
@@ -64,7 +65,7 @@ public ref struct HsstReader<TReader>(scoped in TReader reader, Bound initialBou
 
         while (true)
         {
-            BufferPin pin = TryLoadNode(currentAbsEnd, out HsstIndex node, out long nodeAbsStart, out ReadOnlySpan<byte> nodeBytes);
+            TPin pin = TryLoadNode(currentAbsEnd, out HsstIndex node, out long nodeAbsStart, out ReadOnlySpan<byte> nodeBytes);
             if (nodeBytes.IsEmpty) return false;
             using (pin)
             {
@@ -121,30 +122,30 @@ public ref struct HsstReader<TReader>(scoped in TReader reader, Bound initialBou
 
     /// <summary>
     /// Load the index node whose exclusive end is <paramref name="absEnd"/> via the reader's
-    /// <see cref="IHsstByteReader.PinBuffer"/>. Returns the parsed <see cref="HsstIndex"/>, the
-    /// node's absolute start offset, the backing span (used by callers to compute inline-value
-    /// offsets), and a <see cref="BufferPin"/> the caller must dispose to release the pin.
+    /// <see cref="IHsstByteReader{TPin}.PinBuffer"/>. Returns the parsed <see cref="HsstIndex"/>,
+    /// the node's absolute start offset, the backing span (used by callers to compute inline-value
+    /// offsets), and the pin the caller must dispose to release the window.
     /// On failure, <paramref name="nodeBytes"/> is empty; the returned pin is still safe to dispose.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private BufferPin TryLoadNode(long absEnd, out HsstIndex node, out long nodeAbsStart, [UnscopedRef] out ReadOnlySpan<byte> nodeBytes)
+    private TPin TryLoadNode(long absEnd, out HsstIndex node, out long nodeAbsStart, [UnscopedRef] out ReadOnlySpan<byte> nodeBytes)
     {
         node = default;
         nodeAbsStart = 0;
         nodeBytes = default;
 
-        if (absEnd < 1) return BufferPin.None;
+        if (absEnd < 1) return default;
 
         // Read the trailing MetadataLength byte
         Span<byte> oneByte = stackalloc byte[1];
-        if (!_reader.TryRead(absEnd - 1, oneByte)) return BufferPin.None;
+        if (!_reader.TryRead(absEnd - 1, oneByte)) return default;
         int metadataLen = oneByte[0];
 
         long metadataAbsStart = absEnd - 1 - metadataLen;
-        if (metadataAbsStart < 0) return BufferPin.None;
+        if (metadataAbsStart < 0) return default;
 
         int totalNodeSize;
-        using (BufferPin metaPin = _reader.PinBuffer(metadataAbsStart, metadataLen, out ReadOnlySpan<byte> metaSpan))
+        using (TPin metaPin = _reader.PinBuffer(metadataAbsStart, metadataLen, out ReadOnlySpan<byte> metaSpan))
         {
             int p = 0;
             byte flags = metaSpan[p++];
@@ -160,9 +161,9 @@ public ref struct HsstReader<TReader>(scoped in TReader reader, Bound initialBou
         }
 
         nodeAbsStart = absEnd - totalNodeSize;
-        if (nodeAbsStart < 0) return BufferPin.None;
+        if (nodeAbsStart < 0) return default;
 
-        BufferPin pin = _reader.PinBuffer(nodeAbsStart, totalNodeSize, out nodeBytes);
+        TPin pin = _reader.PinBuffer(nodeAbsStart, totalNodeSize, out nodeBytes);
         node = HsstIndex.ReadFromEnd(nodeBytes, totalNodeSize);
         return pin;
     }
