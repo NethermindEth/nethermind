@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 Span<byte> bytes = _db.Get(GetKey(blockNumber));
 
-                return bytes.IsEmpty // should not happen at this point
+                return bytes.IsEmpty
                     ? throw new InvalidOperationException($"No validator info for block number {blockNumber}.")
                     : Rlp.Decode<ValidatorInfo>(bytes);
             }
