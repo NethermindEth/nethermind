@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -24,69 +25,62 @@ public static class PersistedSnapshotReader
 
     internal static bool TryGetAccount(ReadOnlySpan<byte> data, Address address, [UnscopedRef] out ReadOnlySpan<byte> accountRlp)
     {
-        if (!TryGetPerAddressHsst(data, address.Bytes, out ReadOnlySpan<byte> perAddrData))
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ||
+            !r.TrySeek(address.Bytes, out _) ||
+            !r.TrySeek(PersistedSnapshot.AccountSubTag, out _))
         {
             accountRlp = default;
             return false;
         }
-        Hsst.Hsst perAddr = new(perAddrData);
-        return perAddr.TryGet(PersistedSnapshot.AccountSubTag, out accountRlp);
+        accountRlp = SliceFromBound(data, r.GetBound());
+        return true;
     }
 
     internal static bool TryGetSlot(ReadOnlySpan<byte> data, Address address, in UInt256 index, [UnscopedRef] out ReadOnlySpan<byte> slotValue)
     {
-        if (!TryGetPerAddressHsst(data, address.Bytes, out ReadOnlySpan<byte> perAddrData))
-        {
-            slotValue = default;
-            return false;
-        }
-        Hsst.Hsst perAddr = new(perAddrData);
-        if (!perAddr.TryGet(PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotData))
-        {
-            slotValue = default;
-            return false;
-        }
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Span<byte> slotKey = stackalloc byte[32];
         index.ToBigEndian(slotKey);
-        Hsst.Hsst prefixLevel = new(slotData);
-        if (!prefixLevel.TryGet(slotKey[..SlotPrefixLength], out ReadOnlySpan<byte> suffixData))
+        if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ||
+            !r.TrySeek(address.Bytes, out _) ||
+            !r.TrySeek(PersistedSnapshot.SlotSubTag, out _) ||
+            !r.TrySeek(slotKey[..SlotPrefixLength], out _) ||
+            !r.TrySeek(slotKey[SlotPrefixLength..], out _))
         {
             slotValue = default;
             return false;
         }
-        Hsst.Hsst suffixLevel = new(suffixData);
-        return suffixLevel.TryGet(slotKey[SlotPrefixLength..], out slotValue);
+        slotValue = SliceFromBound(data, r.GetBound());
+        return true;
     }
 
     internal static bool IsSelfDestructed(ReadOnlySpan<byte> data, Address address)
     {
-        if (!TryGetPerAddressHsst(data, address.Bytes, out ReadOnlySpan<byte> perAddrData))
-            return false;
-        Hsst.Hsst perAddr = new(perAddrData);
-        return perAddr.TryGet(PersistedSnapshot.SelfDestructSubTag, out _);
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        return r.TrySeek(PersistedSnapshot.AccountColumnTag, out _)
+            && r.TrySeek(address.Bytes, out _)
+            && r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _);
     }
 
     internal static bool? TryGetSelfDestructFlag(ReadOnlySpan<byte> data, Address address)
     {
-        if (!TryGetPerAddressHsst(data, address.Bytes, out ReadOnlySpan<byte> perAddrData))
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ||
+            !r.TrySeek(address.Bytes, out _) ||
+            !r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
             return null;
-        Hsst.Hsst perAddr = new(perAddrData);
-        if (!perAddr.TryGet(PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> value))
-            return null;
-        return value.Length > 0 && value[0] == 0x01;
+        Bound b = r.GetBound();
+        return b.Length > 0 && data[(int)b.Offset] == 0x01;
     }
 
-    private static bool TryGetPerAddressHsst(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> addressBytes, out ReadOnlySpan<byte> perAddrData)
-    {
-        Hsst.Hsst outer = new(data);
-        if (!outer.TryGet(PersistedSnapshot.AccountColumnTag, out ReadOnlySpan<byte> columnData))
-        {
-            perAddrData = default;
-            return false;
-        }
-        Hsst.Hsst addressLevel = new(columnData);
-        return addressLevel.TryGet(addressBytes, out perAddrData);
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> SliceFromBound(ReadOnlySpan<byte> data, Bound b) =>
+        data.Slice((int)b.Offset, b.Length);
 
     internal static bool TryLoadStateNodeRlp(ReadOnlySpan<byte> data, scoped in TreePath path,
         Dictionary<int, PersistedSnapshot>? referencedSnapshots, bool hasNodeRefs, out ReadOnlySpan<byte> nodeRlp)
@@ -152,19 +146,22 @@ public static class PersistedSnapshotReader
 
     internal static bool CheckHasNodeRefsFlag(ReadOnlySpan<byte> data)
     {
-        Hsst.Hsst outer = new(data);
-        if (!outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaColumn)) return false;
-        Hsst.Hsst inner = new(metaColumn);
-        return inner.TryGet("noderefs"u8, out _);
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        return r.TrySeek(PersistedSnapshot.MetadataTag, out _)
+            && r.TrySeek("noderefs"u8, out _);
     }
 
     internal static int[]? ReadRefIdsFromMetadata(ReadOnlySpan<byte> snapshotData)
     {
-        Hsst.Hsst outer = new(snapshotData);
-        if (!outer.TryGet(PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> metaColumn)) return null;
-        Hsst.Hsst inner = new(metaColumn);
-        if (!inner.TryGet("ref_ids"u8, out ReadOnlySpan<byte> refIdBytes)) return null;
-        if (refIdBytes.Length == 0 || refIdBytes.Length % 4 != 0) return null;
+        SpanByteReader reader = new(snapshotData);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(PersistedSnapshot.MetadataTag, out _) ||
+            !r.TrySeek("ref_ids"u8, out _))
+            return null;
+        Bound b = r.GetBound();
+        if (b.Length == 0 || b.Length % 4 != 0) return null;
+        ReadOnlySpan<byte> refIdBytes = SliceFromBound(snapshotData, b);
         int count = refIdBytes.Length / 4;
         int[] ids = new int[count];
         for (int i = 0; i < count; i++)
@@ -181,35 +178,28 @@ public static class PersistedSnapshotReader
 
     private static bool TryGetFromColumn(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> entityKey, scoped out ReadOnlySpan<byte> value)
     {
-        Hsst.Hsst outer = new(data);
-        if (!outer.TryGet(tag, out ReadOnlySpan<byte> columnData))
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(tag, out _) || !r.TrySeek(entityKey, out _))
         {
             value = default;
             return false;
         }
-
-        Hsst.Hsst inner = new(columnData);
-        return inner.TryGet(entityKey, out value);
+        value = SliceFromBound(data, r.GetBound());
+        return true;
     }
 
     private static bool TryGetNestedValue(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> addressKey, scoped ReadOnlySpan<byte> entityKey, out ReadOnlySpan<byte> value)
     {
-        Hsst.Hsst outer = new(data);
-        if (!outer.TryGet(tag, out ReadOnlySpan<byte> columnData))
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(tag, out _) || !r.TrySeek(addressKey, out _) || !r.TrySeek(entityKey, out _))
         {
             value = default;
             return false;
         }
-
-        Hsst.Hsst addressLevel = new(columnData);
-        if (!addressLevel.TryGet(addressKey, out ReadOnlySpan<byte> innerData))
-        {
-            value = default;
-            return false;
-        }
-
-        Hsst.Hsst inner = new(innerData);
-        return inner.TryGet(entityKey, out value);
+        value = SliceFromBound(data, r.GetBound());
+        return true;
     }
 
     private static bool TryGetDoubleNestedValue(
@@ -220,29 +210,18 @@ public static class PersistedSnapshotReader
         scoped ReadOnlySpan<byte> suffixKey,
         out ReadOnlySpan<byte> value)
     {
-        Hsst.Hsst outer = new(data);
-        if (!outer.TryGet(tag, out ReadOnlySpan<byte> columnData))
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(tag, out _) ||
+            !r.TrySeek(addressKey, out _) ||
+            !r.TrySeek(prefixKey, out _) ||
+            !r.TrySeek(suffixKey, out _))
         {
             value = default;
             return false;
         }
-
-        Hsst.Hsst addressLevel = new(columnData);
-        if (!addressLevel.TryGet(addressKey, out ReadOnlySpan<byte> prefixData))
-        {
-            value = default;
-            return false;
-        }
-
-        Hsst.Hsst prefixLevel = new(prefixData);
-        if (!prefixLevel.TryGet(prefixKey, out ReadOnlySpan<byte> suffixData))
-        {
-            value = default;
-            return false;
-        }
-
-        Hsst.Hsst suffixLevel = new(suffixData);
-        return suffixLevel.TryGet(suffixKey, out value);
+        value = SliceFromBound(data, r.GetBound());
+        return true;
     }
 
     internal static TreePath DecodeCompactTreePath(ReadOnlySpan<byte> key) =>
