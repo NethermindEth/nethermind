@@ -4,6 +4,7 @@
 using System.Runtime.CompilerServices;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
@@ -29,10 +30,12 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
 
     public EnumerableWithCount<AccountChanges> AccountChanges => new(_accountChanges.Values, _accountChanges.Values.Count);
+    public EnumerableWithCount<AccountChanges> AccountChangesSorted => new(
+        _accountChanges.Values.OrderBy(static a => a.Address, GenericComparer.GetOptimized<Address>()),
+        _accountChanges.Values.Count);
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
-    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
-    private readonly SortedDictionary<Address, AccountChanges> _accountChanges = new(GenericComparer.GetOptimized<Address>());
+    private readonly Dictionary<Address, AccountChanges> _accountChanges = new();
     private readonly Stack<Change> _changes = new();
     private int? _itemCount = null;
 
@@ -40,7 +43,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
     }
 
-    public BlockAccessList(SortedDictionary<Address, AccountChanges> accountChanges) => _accountChanges = accountChanges;
+    public BlockAccessList(Dictionary<Address, AccountChanges> accountChanges) => _accountChanges = accountChanges;
 
     public bool Equals(BlockAccessList? other)
     {
@@ -361,10 +364,9 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    // todo: optimize early validation
     public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
     {
-        foreach (AccountChanges accountChanges in AccountChanges)
+        foreach (AccountChanges accountChanges in AccountChangesSorted)
         {
             bool isSystemContract =
                 accountChanges.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||

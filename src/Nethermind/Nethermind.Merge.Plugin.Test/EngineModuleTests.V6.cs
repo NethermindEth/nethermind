@@ -836,7 +836,7 @@ public partial class EngineModuleTests
         Block block = blockResult.Block!;
         BlockAccessList validBal = block.BlockAccessList!;
 
-        SortedDictionary<Address, AccountChanges> modifiedAccounts = new();
+        Dictionary<Address, AccountChanges> modifiedAccounts = new();
         Address senderAddress = TestItem.AddressA;
 
         BlockAccessList modifiedBal = CreateBlockAccessList();

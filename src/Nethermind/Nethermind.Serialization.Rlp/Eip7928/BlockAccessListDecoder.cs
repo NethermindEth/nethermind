@@ -24,7 +24,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
         Address? lastAddress = null;
         int itemCount = 0;
-        SortedDictionary<Address, AccountChanges> accountChangesMap = new(GenericComparer.GetOptimized<Address>());
+        Dictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.Length);
         foreach (AccountChanges a in accountChanges)
         {
             Address address = a.Address;
@@ -42,7 +42,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
     }
 
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => stream.EncodeArray([.. item.AccountChanges], rlpBehaviors);
+        => stream.EncodeArray([.. item.AccountChangesSorted], rlpBehaviors);
 
     private static int GetContentLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
         => AccountChangesDecoder.Instance.GetContentLength([.. item.AccountChanges], rlpBehaviors);
