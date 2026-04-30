@@ -50,16 +50,20 @@ public class BlockCacheService : IBlockCacheService
     public bool TryAddBlock(Block block)
     {
         Hash256 blockHash = block.Hash ?? block.CalculateHash();
-        bool added = _blockCache.TryAdd(blockHash, block);
-        if (added)
+        lock (_pruneLock)
         {
-            lock (_pruneLock)
+            bool added = _blockCache.TryAdd(blockHash, block);
+            if (added)
             {
-                PruneIfNeeded();
+                while (_blockCache.Count > _maxCachedBlocks &&
+                       TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHashToRemove))
+                {
+                    _blockCache.TryRemove(blockHashToRemove, out _);
+                }
             }
-        }
 
-        return added;
+            return added;
+        }
     }
 
     /// <inheritdoc />
@@ -80,18 +84,7 @@ public class BlockCacheService : IBlockCacheService
         }
     }
 
-    private void PruneIfNeeded()
-    {
-        while (_blockCache.Count > _maxCachedBlocks)
-        {
-            if (!TryRemoveHighestNumberedBlock())
-            {
-                break;
-            }
-        }
-    }
-
-    private bool TryRemoveHighestNumberedBlock()
+    private bool TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHash)
     {
         Hash256AsKey furthestHash = default;
         long furthestNumber = long.MinValue;
@@ -112,7 +105,8 @@ public class BlockCacheService : IBlockCacheService
             }
         }
 
-        return foundFurthest && _blockCache.TryRemove(furthestHash, out _);
+        blockHash = furthestHash;
+        return foundFurthest;
     }
 
     private bool IsProtected(Hash256AsKey blockHash) =>
