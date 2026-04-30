@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -224,7 +223,10 @@ namespace Nethermind.Facade
             // Collect active precompile addresses so that they can 
             // be excluded from the access list if they carry no storage keys
             IReleaseSpec releaseSpec = specProvider.GetSpec(header);
-            Address[] precompileAddresses = [.. releaseSpec.Precompiles.Select(static p => (Address)p)];
+            Address[] precompileAddresses = new Address[releaseSpec.Precompiles.Count];
+            int idx = 0;
+            foreach (AddressAsKey p in releaseSpec.Precompiles)
+                precompileAddresses[idx++] = (Address)p;
 
             AccessTxTracer accessTxTracer = optimize
                 ? new([tx.SenderAddress,

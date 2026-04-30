@@ -144,6 +144,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (!spec.UseHotAndColdStorage)
             return true;
 
+        // Note: isTracingAccess pre-warms the address above, so this second WarmUp returns false
+        // (already warm). Cold gas is intentionally not charged here — the caller will include
+        // these addresses in an EIP-2930 access list, making them warm on actual execution.
         if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
         {
             return UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
