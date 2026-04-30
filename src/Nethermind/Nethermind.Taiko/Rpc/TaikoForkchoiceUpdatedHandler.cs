@@ -18,6 +18,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Taiko.Rpc;
@@ -36,6 +37,7 @@ internal class TaikoForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
+    IWorldStateManager worldStateManager,
     ILogManager logManager) : ForkchoiceUpdatedHandler(
     blockTree,
     manualBlockFinalizationManager,
@@ -50,13 +52,14 @@ internal class TaikoForkchoiceUpdatedHandler(
     specProvider,
     syncPeerPool,
     mergeConfig,
+    worldStateManager,
     logManager)
 {
-    protected override bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
-        [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
+    protected override bool ShouldProceedWithReorg(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
+        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
-        result = null;
-        return false;
+        errorResult = null;
+        return true;
     }
 
     // Taiko finality follows L1 and may regress on L1 reorgs, so Ethereum's spec-ordering bounds
