@@ -86,7 +86,7 @@ public class BlockProcessingBenchmark
         public BlockProcessingConfig()
         {
             AddJob(Job.Default
-                .WithToolchain(InProcessNoEmitToolchain.Default)
+                .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
                 .WithLaunchCount(2)
