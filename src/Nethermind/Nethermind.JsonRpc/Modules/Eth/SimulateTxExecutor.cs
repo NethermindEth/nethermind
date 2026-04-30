@@ -255,11 +255,11 @@ public class SimulateTxExecutor<TTrace>(
                 TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
                     or TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.FeeCapBelowBaseFee,
                 TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.SenderIsNotEoa,
                 TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
                 TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.NonceTooHigh,
+                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.NonceTooLow,
                 _ => ErrorCodes.InternalError
             };
         }

@@ -143,9 +143,24 @@ namespace Nethermind.JsonRpc
         public const int BlockGasLimitReached = -38015;
 
         /// <summary>
+        /// Transaction nonce is lower than the account's current nonce
+        /// </summary>
+        public const int NonceTooLow = -38010;
+
+        /// <summary>
+        /// Transaction nonce is higher than the account's current nonce 
+        /// </summary>
+        public const int NonceTooHigh = -38011;
+
+        /// <summary>
         /// EIP-3860. Code size is to big
         /// </summary>
         public const int MaxInitCodeSizeExceeded = -38025;
+
+        /// <summary>
+        /// Sender account has deployed code (is not an EOA)
+        /// </summary>
+        public const int SenderIsNotEoa = -38024;
 
         /// <summary>
         /// Error during EVM execution
