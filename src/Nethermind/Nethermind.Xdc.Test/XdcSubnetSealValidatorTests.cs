@@ -115,6 +115,51 @@ public class XdcSubnetSealValidatorTests
     }
 
     [Test]
+    public void ListsAreEqual_BothEmpty_ReturnsTrue()
+    {
+        Address[] a = [];
+        Address[] b = [];
+
+        Assert.That(a.ListsAreEqual(b), Is.True);
+    }
+
+    [Test]
+    public void ListsAreEqual_SameElementsSameOrder_ReturnsTrue()
+    {
+        Address[] a = [Address.FromNumber(1), Address.FromNumber(2)];
+        Address[] b = [Address.FromNumber(1), Address.FromNumber(2)];
+
+        Assert.That(a.ListsAreEqual(b), Is.True);
+    }
+
+    [Test]
+    public void ListsAreEqual_SameElementsDifferentOrder_ReturnsTrue()
+    {
+        Address[] a = [Address.FromNumber(1), Address.FromNumber(2)];
+        Address[] b = [Address.FromNumber(2), Address.FromNumber(1)];
+
+        Assert.That(a.ListsAreEqual(b), Is.True);
+    }
+
+    [Test]
+    public void ListsAreEqual_DifferentCounts_ReturnsFalse()
+    {
+        Address[] a = [Address.FromNumber(1)];
+        Address[] b = [Address.FromNumber(1), Address.FromNumber(2)];
+
+        Assert.That(a.ListsAreEqual(b), Is.False);
+    }
+
+    [Test]
+    public void ListsAreEqual_SameCountDifferentElements_ReturnsFalse()
+    {
+        Address[] a = [Address.FromNumber(1), Address.FromNumber(2)];
+        Address[] b = [Address.FromNumber(1), Address.FromNumber(3)];
+
+        Assert.That(a.ListsAreEqual(b), Is.False);
+    }
+
+    [Test]
     public void GapPlusOne_MatchingSnapshot_Valid()
     {
         (IXdcReleaseSpec _, ISpecProvider specProvider) = CreateSubnetSpec();
