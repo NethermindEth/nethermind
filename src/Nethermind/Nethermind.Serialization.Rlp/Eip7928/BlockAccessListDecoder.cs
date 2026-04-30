@@ -45,5 +45,5 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         => stream.EncodeArray([.. item.AccountChangesSorted], rlpBehaviors);
 
     private static int GetContentLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
-        => AccountChangesDecoder.Instance.GetContentLength([.. item.AccountChanges], rlpBehaviors);
+        => AccountChangesDecoder.Instance.GetContentLength([.. item.AccountChangesSorted], rlpBehaviors);
 }

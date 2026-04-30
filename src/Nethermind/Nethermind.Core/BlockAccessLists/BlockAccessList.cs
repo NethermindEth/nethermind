@@ -4,7 +4,6 @@
 using System.Runtime.CompilerServices;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
@@ -30,9 +29,15 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
 
     public EnumerableWithCount<AccountChanges> AccountChanges => new(_accountChanges.Values, _accountChanges.Values.Count);
-    public EnumerableWithCount<AccountChanges> AccountChangesSorted => new(
-        _accountChanges.Values.OrderBy(static a => a.Address, GenericComparer.GetOptimized<Address>()),
-        _accountChanges.Values.Count);
+    public EnumerableWithCount<AccountChanges> AccountChangesSorted
+    {
+        get
+        {
+            List<AccountChanges> sorted = new(_accountChanges.Values);
+            sorted.Sort(static (a, b) => a.Address.CompareTo(b.Address));
+            return new EnumerableWithCount<AccountChanges>(sorted, sorted.Count);
+        }
+    }
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
     private readonly Dictionary<Address, AccountChanges> _accountChanges = new();
