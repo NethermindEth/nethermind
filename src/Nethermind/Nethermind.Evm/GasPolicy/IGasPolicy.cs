@@ -167,7 +167,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="parentGas">The parent gas state to restore into.</param>
     /// <param name="childGas">The child gas state to restore from.</param>
-    static virtual void RestoreChildStateGasOnHalt(ref TSelf parentGas, in TSelf childGas) { }
+    /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
+    static virtual void RestoreChildStateGasOnHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
 
     /// <summary>
     /// Adjusts parent gas state when a child <see cref="Refund"/> was already applied but the child

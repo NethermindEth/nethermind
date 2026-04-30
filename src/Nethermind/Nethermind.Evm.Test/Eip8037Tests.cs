@@ -277,8 +277,35 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.SetOutOfGas(ref child);
         Assert.That((child.Value, child.StateReservoir), Is.EqualTo((0L, 300L)));
 
-        EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child);
+        EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child, initialStateReservoir: 500);
         Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((500L, 10L)));
+    }
+
+    [Test]
+    public void Exceptional_halt_does_not_restore_spilled_state_refund_above_initial_reservoir()
+    {
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 1_000);
+        EthereumGasPolicy.ConsumeStateGas(ref child, 200);
+        EthereumGasPolicy.RefundStateGas(ref child, 200, stateGasFloor: 0);
+
+        EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child, initialStateReservoir: 0);
+
+        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 200L)));
+    }
+
+    [Test]
+    public void Code_deposit_halt_does_not_restore_spilled_state_refund_above_initial_reservoir()
+    {
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 1_000);
+        EthereumGasPolicy.ConsumeStateGas(ref child, 200);
+        EthereumGasPolicy.RefundStateGas(ref child, 200, stateGasFloor: 0);
+
+        EthereumGasPolicy.Refund(ref parent, in child);
+        EthereumGasPolicy.RevertRefundToHalt(ref parent, in child, initialStateReservoir: 0, childStateRefund: 200);
+
+        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 200L)));
     }
 
     [Test]

@@ -602,7 +602,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
-        TGasPolicy.RestoreChildStateGasOnHalt(ref _currentState.Gas, in childState.Gas);
+        TGasPolicy.RestoreChildStateGasOnHalt(ref _currentState.Gas, in childState.Gas, childState.InitialStateReservoir);
         _currentState.IsContinuation = true;
         childState.Dispose();
     }
