@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -26,6 +27,17 @@ public sealed class ForkchoiceUpdatedSszHandler(IEngineRpcModule engineModule) :
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
+        if (version > EngineApiVersions.Fcu.Latest)
+        {
+            await WriteSszResultAsync(
+                ctx,
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
+                    $"Unsupported engine_forkchoiceUpdated version: {version}",
+                    ErrorCodes.MethodNotFound),
+                SszCodec.EncodeForkchoiceUpdatedResponse);
+            return;
+        }
+
         (ForkchoiceStateV1 state, PayloadAttributes? attrs) =
             SszCodec.DecodeForkchoiceUpdatedRequest(body.Span, version);
 

@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -35,9 +36,17 @@ public sealed class GetPayloadSszHandler<TResult>(
 
         ctx.Response.Headers["Cache-Control"] = "no-store";
 
+        if (result.Result != Result.Success)
+        {
+            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
+                result.Result.Error ?? "Unknown error");
+            return;
+        }
         if (result.Data is null)
+        {
             ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-        else
-            await WriteSszPooledAsync(ctx, encode(result.Data));
+            return;
+        }
+        await WriteSszPooledAsync(ctx, encode(result.Data));
     }
 }
