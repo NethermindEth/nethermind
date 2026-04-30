@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -43,15 +44,58 @@ public class DebugModuleTests
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
-    private DebugRpcModule CreateDebugRpcModule(IDebugBridge customDebugBridge) => new(
+    private DebugRpcModule CreateDebugRpcModule(
+        IDebugBridge customDebugBridge,
+        IBlockchainBridge? blockchainBridge = null,
+        IBlockFinder? blockFinder = null) => new(
             LimboLogs.Instance,
             customDebugBridge,
             _jsonRpcConfig,
             _specProvider,
-            _blockchainBridge,
+            blockchainBridge ?? _blockchainBridge,
             new BlocksConfig(),
-            _blockFinder
+            blockFinder ?? _blockFinder
         );
+
+    [Test]
+    public void Debug_traceCallMany_materializes_simple_path_before_timeout_source_is_disposed()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+        blockFinder.SearchForHeader(Arg.Any<BlockParameter>()).Returns(new SearchResult<BlockHeader>(header));
+        blockchainBridge.HasStateForBlock(header).Returns(true);
+        localDebugBridge
+            .GetBundleTraces(
+                Arg.Any<TransactionBundle[]>(),
+                Arg.Any<BlockParameter>(),
+                Arg.Any<CancellationToken>(),
+                Arg.Any<GethTraceOptions>())
+            .Returns(static callInfo => GetBundleTracesUsingCancellationToken(callInfo.ArgAt<CancellationToken>(2)));
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge, blockchainBridge, blockFinder);
+        TransactionBundle bundle = new()
+        {
+            Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }]
+        };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            rpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        result.Data.First().Should().HaveCount(1);
+    }
+
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTracesUsingCancellationToken(CancellationToken cancellationToken)
+    {
+        yield return GetTraceUsingCancellationToken(cancellationToken);
+    }
+
+    private static IEnumerable<GethLikeTxTrace> GetTraceUsingCancellationToken(CancellationToken cancellationToken)
+    {
+        using CancellationTokenRegistration registration = cancellationToken.Register(static () => { });
+        yield return new GethLikeTxTrace();
+    }
 
     [Test]
     public async Task Get_from_db()
