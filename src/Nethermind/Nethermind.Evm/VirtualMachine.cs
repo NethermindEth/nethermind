@@ -568,7 +568,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // For a top-level call, immediately return a final transaction substate.
         if (_currentState.IsTopLevel)
         {
-            RefundRevertedTopLevelStateGas();
+            RefundHaltedTopLevelStateGas();
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
             shouldExit = true;
@@ -610,11 +610,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RefundRevertedTopLevelStateGas()
     {
-        // EIP-8037: only the reservoir-funded portion of state gas is refundable on a top-level
-        // halt. The spilled portion was paid out of regular gas, which the halt burns — refunding
-        // it would let the user reclaim execution gas they cannot get back. The spilled portion
-        // is also moved out of state-gas accounting so it shows up only in the regular dimension
-        // (where the halt-burn already accounts for it).
+        // EIP-8037 top-level REVERT: gas_left is preserved, so the spilled portion of
+        // state_gas_used (originally drawn from gas_left) is still in the user's pocket.
+        // Refund the full state_gas_used — reservoir-portion AND spilled-portion — to the
+        // reservoir. The user is billed only the regular component.
+        long stateGasFloor = _currentState.InitialStateGasUsed;
+        long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
+        if (revertedStateGas > stateGasFloor)
+        {
+            TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, stateGasFloor);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RefundHaltedTopLevelStateGas()
+    {
+        // EIP-8037 top-level halt: gas_left is burned, so the spilled portion of
+        // state_gas_used was paid out of gas the user can no longer reclaim. Only the
+        // reservoir-funded portion is restorable; the spilled portion is discarded from
+        // state-gas accounting so it counts only via the regular-dimension burn.
         long stateGasFloor = _currentState.InitialStateGasUsed;
         long stateGasSpill = TGasPolicy.GetStateGasSpill(in _currentState.Gas);
         long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas) - stateGasSpill;
@@ -727,7 +741,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // If this is the top-level call, return a final transaction substate encapsulating the error.
         if (_currentState.IsTopLevel)
         {
-            RefundRevertedTopLevelStateGas();
+            RefundHaltedTopLevelStateGas();
             shouldExit = true;
             return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
         }

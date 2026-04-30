@@ -367,6 +367,35 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     /// <summary>
+    /// Top-level REVERT preserves gas_left, so the spilled portion of state_gas_used —
+    /// originally drawn from gas_left — is still in the user's pocket. The full
+    /// state_gas_used (reservoir-portion AND spilled-portion) must be refunded to the
+    /// reservoir; the user is billed only the regular component (which already paid for
+    /// the spill in gas_left). BlockStateGas ends at 0; SpentGas is below the limit
+    /// because gas_left survives the revert.
+    /// </summary>
+    [Test]
+    public void Eip8037_top_level_revert_refunds_full_spilled_state_gas()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.REVERT)
+            .Done;
+
+        const long gasLimit = 100_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.LessThan(gasLimit));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
+    }
+
+    /// <summary>
     /// Same rule as the SSTORE-spill case but for an inner CALL whose NewAccountState charge
     /// spills into regular gas before the parent INVALIDs at the top level.
     /// </summary>
