@@ -26,81 +26,9 @@ defaults:
     shell: bash
 
 jobs:
-  # Per-OS warmup jobs: split so consumers only wait for the OSes they actually use.
-  # continue-on-error: a transient nuget.org / cache-service failure must not skip the
-  # entire workflow — consumers fall back to dotnet's implicit restore.
-  cache-warmup-ubuntu:
-    name: Warm NuGet cache (ubuntu-latest)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-      - uses: ./.github/actions/restore-nuget-cache
-        with:
-          save: 'true'
-      - name: Restore packages
-        run: |
-          dotnet restore src/Nethermind/Nethermind.slnx
-          dotnet restore src/Nethermind/EthereumTests.slnx
-
-  cache-warmup-ubuntu-arm:
-    name: Warm NuGet cache (ubuntu-24.04-arm)
-    runs-on: ubuntu-24.04-arm
-    continue-on-error: true
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-      - uses: ./.github/actions/restore-nuget-cache
-        with:
-          save: 'true'
-      - name: Restore packages
-        run: |
-          dotnet restore src/Nethermind/Nethermind.slnx
-          dotnet restore src/Nethermind/EthereumTests.slnx
-
-  cache-warmup-windows:
-    name: Warm NuGet cache (windows-latest)
-    runs-on: windows-latest
-    continue-on-error: true
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-      - uses: ./.github/actions/restore-nuget-cache
-        with:
-          save: 'true'
-      - name: Restore packages
-        run: |
-          dotnet restore src/Nethermind/Nethermind.slnx
-          dotnet restore src/Nethermind/EthereumTests.slnx
-
-  cache-warmup-macos:
-    name: Warm NuGet cache (macos-latest)
-    runs-on: macos-latest
-    continue-on-error: true
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-      - uses: ./.github/actions/restore-nuget-cache
-        with:
-          save: 'true'
-      - name: Restore packages
-        run: |
-          dotnet restore src/Nethermind/Nethermind.slnx
-          dotnet restore src/Nethermind/EthereumTests.slnx
-
   tests:
     name: Run ${{ matrix.project }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    needs: [cache-warmup-ubuntu, cache-warmup-ubuntu-arm, cache-warmup-windows, cache-warmup-macos]
-    # Run even if a warmup job failed — consumers fall back to restore-keys
-    # partial cache + dotnet's implicit restore. continue-on-error on warmup
-    # only affects workflow status, not needs:.
-    if: ${{ !cancelled() }}
     timeout-minutes: 15
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
@@ -174,8 +102,6 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - uses: ./.github/actions/restore-nuget-cache
-
       - name: ${{ matrix.project }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
@@ -205,8 +131,6 @@ jobs:
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    needs: [cache-warmup-ubuntu, cache-warmup-ubuntu-arm]
-    if: ${{ !cancelled() }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -252,8 +176,6 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - uses: ./.github/actions/restore-nuget-cache
-
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
@@ -285,8 +207,6 @@ jobs:
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    needs: [cache-warmup-ubuntu, cache-warmup-ubuntu-arm, cache-warmup-windows, cache-warmup-macos]
-    if: ${{ !cancelled() }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -328,8 +248,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-
-      - uses: ./.github/actions/restore-nuget-cache
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
