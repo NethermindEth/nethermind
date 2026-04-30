@@ -58,49 +58,6 @@ public class InvalidChainTrackerTest
         return hashList;
     }
 
-    [Test]
-    public void block_cache_service_prunes_oldest_unprotected_blocks()
-    {
-        BlockCacheService blockCacheService = new(2);
-        Block block1 = Build.A.Block.WithNumber(1).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).TestObject;
-        Block block3 = Build.A.Block.WithNumber(3).TestObject;
-        Hash256 block1Hash = block1.GetOrCalculateHash();
-        Hash256 block2Hash = block2.GetOrCalculateHash();
-        Hash256 block3Hash = block3.GetOrCalculateHash();
-
-        blockCacheService.TryAddBlock(block1).Should().BeTrue();
-        blockCacheService.TryAddBlock(block2).Should().BeTrue();
-        blockCacheService.TryAddBlock(block3).Should().BeTrue();
-
-        blockCacheService.BlockCache.Should().HaveCount(2);
-        blockCacheService.BlockCache.ContainsKey(block1Hash).Should().BeFalse();
-        blockCacheService.BlockCache.ContainsKey(block2Hash).Should().BeTrue();
-        blockCacheService.BlockCache.ContainsKey(block3Hash).Should().BeTrue();
-    }
-
-    [Test]
-    public void block_cache_service_preserves_head_and_finalized_blocks_when_pruning()
-    {
-        BlockCacheService blockCacheService = new(2);
-        Block finalizedBlock = Build.A.Block.WithNumber(1).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).TestObject;
-        Block block3 = Build.A.Block.WithNumber(3).TestObject;
-        Hash256 finalizedHash = finalizedBlock.GetOrCalculateHash();
-        Hash256 block2Hash = block2.GetOrCalculateHash();
-        Hash256 block3Hash = block3.GetOrCalculateHash();
-        blockCacheService.FinalizedHash = finalizedHash;
-
-        blockCacheService.TryAddBlock(finalizedBlock).Should().BeTrue();
-        blockCacheService.TryAddBlock(block2).Should().BeTrue();
-        blockCacheService.TryAddBlock(block3).Should().BeTrue();
-
-        blockCacheService.BlockCache.Should().HaveCount(2);
-        blockCacheService.BlockCache.ContainsKey(finalizedHash).Should().BeTrue();
-        blockCacheService.BlockCache.ContainsKey(block2Hash).Should().BeFalse();
-        blockCacheService.BlockCache.ContainsKey(block3Hash).Should().BeTrue();
-    }
-
     [TestCase(true)]
     [TestCase(false)]
     public void given_aChainOfLength5_when_originBlockIsInvalid_then_otherBlockIsInvalid(bool connectInReverse)

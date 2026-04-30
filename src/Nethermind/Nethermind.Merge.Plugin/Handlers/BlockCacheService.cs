@@ -4,60 +4,82 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
+/// <summary>
+/// Stores payload blocks while their ancestry is resolved during merge sync.
+/// </summary>
 public class BlockCacheService : IBlockCacheService
 {
     private readonly int _maxCachedBlocks;
+    private readonly Lock _pruneLock = new();
 
+    /// <summary>
+    /// Initializes a block cache with the default merge sync bound.
+    /// </summary>
     public BlockCacheService()
         : this((int)(Reorganization.MaxDepth * 2 + 16))
     {
     }
 
+    /// <summary>
+    /// Initializes a block cache with the provided maximum number of cached blocks.
+    /// </summary>
+    /// <param name="maxCachedBlocks">Maximum number of cached blocks before pruning unprotected entries.</param>
     public BlockCacheService(int maxCachedBlocks)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCachedBlocks);
         _maxCachedBlocks = maxCachedBlocks;
     }
 
+    /// <inheritdoc />
     public ConcurrentDictionary<Hash256AsKey, Block> BlockCache { get; } = new();
+
+    /// <inheritdoc />
     public Hash256? FinalizedHash { get; set; }
+
+    /// <inheritdoc />
     public Hash256? HeadBlockHash { get; set; }
 
+    /// <inheritdoc />
     public bool TryAddBlock(Block block)
     {
         Hash256 blockHash = block.Hash ?? block.CalculateHash();
         bool added = BlockCache.TryAdd(blockHash, block);
         if (added)
         {
-            PruneIfNeeded();
+            lock (_pruneLock)
+            {
+                PruneIfNeeded();
+            }
         }
 
         return added;
     }
 
+    /// <inheritdoc />
     public void Clear() => BlockCache.Clear();
 
     private void PruneIfNeeded()
     {
         while (BlockCache.Count > _maxCachedBlocks)
         {
-            if (!TryRemoveOldestBlock())
+            if (!TryRemoveFurthestBlock())
             {
                 return;
             }
         }
     }
 
-    private bool TryRemoveOldestBlock()
+    private bool TryRemoveFurthestBlock()
     {
-        Hash256AsKey oldestHash = default;
-        long oldestNumber = long.MaxValue;
-        bool foundOldest = false;
+        Hash256AsKey furthestHash = default;
+        long furthestNumber = long.MinValue;
+        bool foundFurthest = false;
 
         foreach (KeyValuePair<Hash256AsKey, Block> cachedBlock in BlockCache)
         {
@@ -66,15 +88,15 @@ public class BlockCacheService : IBlockCacheService
                 continue;
             }
 
-            if (!foundOldest || cachedBlock.Value.Number < oldestNumber)
+            if (!foundFurthest || cachedBlock.Value.Number > furthestNumber)
             {
-                oldestHash = cachedBlock.Key;
-                oldestNumber = cachedBlock.Value.Number;
-                foundOldest = true;
+                furthestHash = cachedBlock.Key;
+                furthestNumber = cachedBlock.Value.Number;
+                foundFurthest = true;
             }
         }
 
-        return foundOldest && BlockCache.TryRemove(oldestHash, out _);
+        return foundFurthest && BlockCache.TryRemove(furthestHash, out _);
     }
 
     private bool IsProtected(Hash256AsKey blockHash) =>
