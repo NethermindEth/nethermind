@@ -132,7 +132,11 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
 
         CompositeBlockTracer parallelSafeCompositeBlockTracer = new();
         parallelSafeCompositeBlockTracer._childTracers.AddRange(parallelSafeTracers);
-        parallelSafeCompositeBlockTracer.IsTracingRewards = parallelSafeTracers.Any(static tracer => tracer.IsTracingRewards);
+        for (int index = 0; index < parallelSafeTracers.Count; index++)
+        {
+            parallelSafeCompositeBlockTracer.IsTracingRewards |= parallelSafeTracers[index].IsTracingRewards;
+        }
+
         return parallelSafeCompositeBlockTracer;
     }
 }
