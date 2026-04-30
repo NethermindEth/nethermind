@@ -258,8 +258,8 @@ public class SimulateTxExecutor<TTrace>(
                 TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
                 TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
                 TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.NonceTooHigh,
+                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.NonceTooLow,
                 _ => ErrorCodes.InternalError
             };
         }
@@ -274,6 +274,10 @@ public class SimulateTxExecutor<TTrace>(
     private static string? MapSimulateErrorMessage(TransactionResult txResult) =>
         txResult.Error switch
         {
+            TransactionResult.ErrorType.TransactionNonceTooLow
+                => SimulateErrorMessages.NonceTooLow,
+            TransactionResult.ErrorType.TransactionNonceTooHigh
+                => SimulateErrorMessages.NonceTooHigh,
             TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
                 => SimulateErrorMessages.IntrinsicGas,
             TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
@@ -297,6 +301,18 @@ public class SimulateTxExecutor<TTrace>(
 /// </summary>
 internal static class SimulateErrorMessages
 {
+    /// <summary>
+    /// Returned when the transaction nonce is below the sender's current nonce
+    /// (error code <see cref="ErrorCodes.NonceTooLow"/>).
+    /// </summary>
+    public const string NonceTooLow = "Transactions nonce is too low";
+
+    /// <summary>
+    /// Returned when the transaction nonce is above the sender's current nonce
+    /// (error code <see cref="ErrorCodes.NonceTooHigh"/>).
+    /// </summary>
+    public const string NonceTooHigh = "Transactions nonce is too high";
+
     /// <summary>
     /// Returned when the transaction gas limit is below the intrinsic gas cost
     /// (error code <see cref="ErrorCodes.IntrinsicGas"/>).

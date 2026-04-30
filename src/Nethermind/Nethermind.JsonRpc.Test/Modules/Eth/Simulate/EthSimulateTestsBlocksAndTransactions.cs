@@ -702,4 +702,46 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
     }
 
+    /// <summary>
+    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11220
+    /// eth_simulateV1 should return -38010 with the spec-mandated message when a transaction nonce is too low.
+    /// Nonce validation only applies when <c>Validation = true</c>; with false the nonce check is skipped.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_nonce_too_low_returns_spec_error_code_and_message()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Nonce = 5, Balance = 1000.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = 1,
+                            Nonce = 3
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.NonceTooLow));
+        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.NonceTooLow));
+    }
+
 }

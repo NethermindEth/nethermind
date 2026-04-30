@@ -123,6 +123,16 @@ namespace Nethermind.JsonRpc
         public const int Default = -32000;
 
         /// <summary>
+        /// Transaction nonce is below the sender's current nonce — eth_simulateV1 spec error
+        /// </summary>
+        public const int NonceTooLow = -38010;
+
+        /// <summary>
+        /// Transaction nonce is above the sender's current nonce — eth_simulateV1 spec error
+        /// </summary>
+        public const int NonceTooHigh = -38011;
+
+        /// <summary>
         /// Transaction maxFeePerGas is below the block base fee — eth_simulateV1 spec error
         /// </summary>
         public const int FeeCapBelowBaseFee = -38012;
