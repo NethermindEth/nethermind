@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -33,6 +34,18 @@ public static class PersistedSnapshotBuilder
     private const int TopPathThreshold = 5;
     private const int CompactPathThreshold = 15;
     private const int StorageHashPrefixLength = 20;
+
+    // Outer HSST column tags in iteration order. Shared between ConvertFullToLinked and NWayMergeSnapshots.
+    private static readonly byte[][] s_columnTags =
+    [
+        PersistedSnapshot.MetadataTag,
+        PersistedSnapshot.AccountColumnTag,
+        PersistedSnapshot.StateNodeTag,
+        PersistedSnapshot.StateTopNodesTag,
+        PersistedSnapshot.StateNodeFallbackTag,
+        PersistedSnapshot.StorageNodeTag,
+        PersistedSnapshot.StorageNodeFallbackTag,
+    ];
 
     private static readonly Comparison<(TreePath Path, TrieNode Node)> StateNodeComparer = (a, b) =>
     {
@@ -129,7 +142,7 @@ public static class PersistedSnapshotBuilder
             () =>
             {
                 // Job C: account column prep — build sorted storages and unique address list.
-                HashSet<HashedKey<Address>> seen = [];
+                using PooledSet<HashedKey<Address>> seen = new();
                 foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
                     seen.Add(kv.Key);
                 foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
@@ -463,19 +476,9 @@ public static class PersistedSnapshotBuilder
         ReadOnlySpan<byte> snapshotData = session.GetSpan();
         using HsstBuilder<TWriter> outerBuilder = new(ref writer);
 
-        byte[][] tags = [
-            PersistedSnapshot.MetadataTag,
-            PersistedSnapshot.AccountColumnTag,
-            PersistedSnapshot.StateNodeTag,
-            PersistedSnapshot.StateTopNodesTag,
-            PersistedSnapshot.StateNodeFallbackTag,
-            PersistedSnapshot.StorageNodeTag,
-            PersistedSnapshot.StorageNodeFallbackTag,
-        ];
-
         int snapshotId = fullSnapshot.Id;
 
-        foreach (byte[] tag in tags)
+        foreach (byte[] tag in s_columnTags)
         {
             if (!TryGet(snapshotData, tag, out ReadOnlySpan<byte> column)) continue;
             int columnOffset = SpanOffset(snapshotData, column);
@@ -624,17 +627,7 @@ public static class PersistedSnapshotBuilder
 
             using HsstBuilder<TWriter> outerBuilder = new(ref writer);
 
-            byte[][] tags = [
-                PersistedSnapshot.MetadataTag,
-                PersistedSnapshot.AccountColumnTag,
-                PersistedSnapshot.StateNodeTag,
-                PersistedSnapshot.StateTopNodesTag,
-                PersistedSnapshot.StateNodeFallbackTag,
-                PersistedSnapshot.StorageNodeTag,
-                PersistedSnapshot.StorageNodeFallbackTag,
-            ];
-
-            foreach (byte[] tag in tags)
+            foreach (byte[] tag in s_columnTags)
             {
                 ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
 
@@ -698,10 +691,10 @@ public static class PersistedSnapshotBuilder
         int minSeparatorLength = 0, bool inlineValues = false) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
-        HsstMergeEnumerator[] enums = new HsstMergeEnumerator[n];
-        bool[] hasMore = new bool[n];
-        (int Offset, int Length)[] columnBounds = new (int, int)[n];
-        WholeReadSession[] sessions = new WholeReadSession[n];
+        using ArrayPoolList<HsstMergeEnumerator> enums = new(n, n);
+        using ArrayPoolList<bool> hasMore = new(n, n);
+        using ArrayPoolList<(int Offset, int Length)> columnBounds = new(n, n);
+        using ArrayPoolList<WholeReadSession> sessions = new(n, n);
 
         try
         {
@@ -709,8 +702,7 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
-                if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
-                    columnBounds[i] = (colOff, colLen);
+                columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new HsstMergeEnumerator(column, isInline: inlineValues);
                 hasMore[i] = enums[i].MoveNext(column);
@@ -781,8 +773,9 @@ public static class PersistedSnapshotBuilder
     {
         using HsstBuilder<TWriter> builder = new(ref writer, outerMinSep);
 
-        // Temp array for collecting matching source indices
-        int[] matchingSources = new int[n];
+        // Temp list for collecting matching source indices
+        using ArrayPoolList<int> matchingSourcesList = new(n, n);
+        int[] matchingSources = matchingSourcesList.UnsafeGetInternalArray();
 
         while (true)
         {
@@ -850,9 +843,9 @@ public static class PersistedSnapshotBuilder
         ref TWriter writer,
         int minSeparatorLength = 0, bool inlineValues = false) where TWriter : IByteBufferWriter
     {
-        HsstMergeEnumerator[] innerEnums = new HsstMergeEnumerator[matchCount];
-        bool[] innerHasMore = new bool[matchCount];
-        (int Offset, int Length)[] innerBounds = new (int, int)[matchCount];
+        using ArrayPoolList<HsstMergeEnumerator> innerEnums = new(matchCount, matchCount);
+        using ArrayPoolList<bool> innerHasMore = new(matchCount, matchCount);
+        using ArrayPoolList<(int Offset, int Length)> innerBounds = new(matchCount, matchCount);
 
         try
         {
@@ -919,10 +912,14 @@ public static class PersistedSnapshotBuilder
         int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
-        HsstMergeEnumerator[] enums = new HsstMergeEnumerator[n];
-        bool[] hasMore = new bool[n];
-        (int Offset, int Length)[] columnBounds = new (int, int)[n];
-        WholeReadSession[] sessions = new WholeReadSession[n];
+        using ArrayPoolList<HsstMergeEnumerator> enumsList = new(n, n);
+        using ArrayPoolList<bool> hasMoreList = new(n, n);
+        using ArrayPoolList<(int Offset, int Length)> columnBoundsList = new(n, n);
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        HsstMergeEnumerator[] enums = enumsList.UnsafeGetInternalArray();
+        bool[] hasMore = hasMoreList.UnsafeGetInternalArray();
+        (int Offset, int Length)[] columnBounds = columnBoundsList.UnsafeGetInternalArray();
+        WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
 
         try
         {
@@ -930,8 +927,7 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
-                if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
-                    columnBounds[i] = (colOff, colLen);
+                columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new HsstMergeEnumerator(column, isInline: false);
                 hasMore[i] = enums[i].MoveNext(column);
@@ -957,10 +953,16 @@ public static class PersistedSnapshotBuilder
         PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
-        HsstMergeEnumerator[] enums = new HsstMergeEnumerator[n];
-        bool[] hasMore = new bool[n];
-        (int Offset, int Length)[] columnBounds = new (int, int)[n];
-        WholeReadSession[] sessions = new WholeReadSession[n];
+        using ArrayPoolList<HsstMergeEnumerator> enumsList = new(n, n);
+        using ArrayPoolList<bool> hasMoreList = new(n, n);
+        using ArrayPoolList<(int Offset, int Length)> columnBoundsList = new(n, n);
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        using ArrayPoolList<int> matchingSourcesList = new(n, n);
+        HsstMergeEnumerator[] enums = enumsList.UnsafeGetInternalArray();
+        bool[] hasMore = hasMoreList.UnsafeGetInternalArray();
+        (int Offset, int Length)[] columnBounds = columnBoundsList.UnsafeGetInternalArray();
+        WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
+        int[] matchingSources = matchingSourcesList.UnsafeGetInternalArray();
 
         try
         {
@@ -968,15 +970,13 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
-                if (TryGetBound(snapshotData, tag, out int colOff, out int colLen))
-                    columnBounds[i] = (colOff, colLen);
+                columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
                 enums[i] = new HsstMergeEnumerator(column, isInline: false);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
             using HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength: 2);
-            int[] matchingSources = new int[n];
 
             while (true)
             {
@@ -1064,7 +1064,8 @@ public static class PersistedSnapshotBuilder
         ref TWriter writer, BloomFilter? bloom = null, ulong addrBloomKey = 0) where TWriter : IByteBufferWriter
     {
         // Get per-address HSST bounds (absolute offset from snapshot start) for each matching source
-        (int Offset, int Length)[] perAddrBounds = new (int, int)[matchCount];
+        using ArrayPoolList<(int Offset, int Length)> perAddrBoundsList = new(matchCount, matchCount);
+        (int Offset, int Length)[] perAddrBounds = perAddrBoundsList.UnsafeGetInternalArray();
         for (int j = 0; j < matchCount; j++)
         {
             int srcIdx = matchingSources[j];
@@ -1101,8 +1102,11 @@ public static class PersistedSnapshotBuilder
         {
             // Collect sources that have slots in the range
             int slotSourceCount = 0;
-            int[] slotSources = new int[matchCount - slotStart];
-            (int Offset, int Length)[] slotBounds = new (int, int)[matchCount - slotStart];
+            int slotCapacity = matchCount - slotStart;
+            using ArrayPoolList<int> slotSourcesList = new(slotCapacity, slotCapacity);
+            using ArrayPoolList<(int Offset, int Length)> slotBoundsList = new(slotCapacity, slotCapacity);
+            int[] slotSources = slotSourcesList.UnsafeGetInternalArray();
+            (int Offset, int Length)[] slotBounds = slotBoundsList.UnsafeGetInternalArray();
             for (int j = slotStart; j < matchCount; j++)
             {
                 ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
@@ -1121,8 +1125,10 @@ public static class PersistedSnapshotBuilder
             else if (slotSourceCount > 1)
             {
                 // N-way nested streaming merge on slot prefix-level HSSTs
-                HsstMergeEnumerator[] slotEnums = new HsstMergeEnumerator[slotSourceCount];
-                bool[] slotHasMore = new bool[slotSourceCount];
+                using ArrayPoolList<HsstMergeEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
+                using ArrayPoolList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
+                HsstMergeEnumerator[] slotEnums = slotEnumsList.UnsafeGetInternalArray();
+                bool[] slotHasMore = slotHasMoreList.UnsafeGetInternalArray();
                 try
                 {
                     for (int j = 0; j < slotSourceCount; j++)

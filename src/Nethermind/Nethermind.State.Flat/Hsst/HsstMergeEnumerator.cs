@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat.Hsst;
@@ -19,34 +20,37 @@ namespace Nethermind.State.Flat.Hsst;
 /// </summary>
 public sealed class HsstMergeEnumerator : IDisposable
 {
-    // Per-leaf-entry: separator offset+length in data, and metadata/value offset+length
-    private readonly (int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)[] _entries;
+    // Per-leaf-entry: separator offset+length in data, and metadata/value offset+length.
+    // Pooled (ArrayPoolList) so the per-merge enumerator allocations return to ArrayPool on Dispose.
+    private readonly ArrayPoolList<(int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)> _entries;
     private readonly bool _isInline;
     private int _index = -1;
 
-    // Single reusable key buffer
+    // Single reusable key buffer (pooled via ArrayPoolList, disposed in Dispose()).
+    private readonly ArrayPoolList<byte> _keyBufferList;
     private readonly byte[] _keyBuffer;
     private int _keyLength;
+    private bool _disposed;
 
     public HsstMergeEnumerator(scoped ReadOnlySpan<byte> hsstData, bool isInline, int maxKeyLength = 64)
     {
-        _keyBuffer = new byte[maxKeyLength];
+        _keyBufferList = new ArrayPoolList<byte>(maxKeyLength, maxKeyLength);
+        _keyBuffer = _keyBufferList.UnsafeGetInternalArray();
         _isInline = isInline;
 
         if (hsstData.Length < 2)
         {
-            _entries = [];
+            _entries = new ArrayPoolList<(int, int, int, int)>(0);
             return;
         }
 
         HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, hsstData.Length);
-        List<(int, int, int, int)> entries = [];
-        CollectLeafOffsets(hsstData, rootIndex, entries, _isInline);
-        _entries = [.. entries];
+        _entries = new ArrayPoolList<(int, int, int, int)>(16);
+        CollectLeafOffsets(hsstData, rootIndex, _entries, _isInline);
     }
 
     private static void CollectLeafOffsets(ReadOnlySpan<byte> data, HsstIndex index,
-        List<(int, int, int, int)> entries, bool isInline)
+        ArrayPoolList<(int, int, int, int)> entries, bool isInline)
     {
         if (!index.IsIntermediate)
         {
@@ -101,11 +105,11 @@ public sealed class HsstMergeEnumerator : IDisposable
         value = data.Slice(metadataStart - valueLength, valueLength);
     }
 
-    public int Count => _entries.Length;
+    public int Count => _entries.Count;
 
     public bool MoveNext(ReadOnlySpan<byte> data)
     {
-        if (++_index >= _entries.Length) return false;
+        if (++_index >= _entries.Count) return false;
         (int sepOff, int sepLen, int metaOrValOff, _) = _entries[_index];
         if (_isInline)
         {
@@ -144,5 +148,11 @@ public sealed class HsstMergeEnumerator : IDisposable
 
     public int CurrentMetadataStart => 1 + _entries[_index].MetaOrValOffset;
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _entries.Dispose();
+        _keyBufferList.Dispose();
+    }
 }

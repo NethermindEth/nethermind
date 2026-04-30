@@ -3,6 +3,8 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using Collections.Pooled;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
@@ -320,7 +322,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             int pruned = 0;
 
             // Collect base snapshot IDs referenced by active compacted snapshots
-            HashSet<int> referencedBaseIds = [];
+            using PooledSet<int> referencedBaseIds = new();
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
             {
                 if (kv.Value.To.BlockNumber >= stateId.BlockNumber && kv.Value.ReferencedSnapshotIds is int[] ids)
@@ -337,7 +339,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             }
 
             // Prune base snapshots (skip if referenced by an active compacted snapshot)
-            List<StateId> baseToRemove = [];
+            using ArrayPoolList<StateId> baseToRemove = new(0);
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
             {
                 if (kv.Value.To.BlockNumber < stateId.BlockNumber && !referencedBaseIds.Contains(kv.Value.Id))
@@ -354,7 +356,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             }
 
             // Prune compacted snapshots
-            List<StateId> compactedToRemove = [];
+            using ArrayPoolList<StateId> compactedToRemove = new(0);
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
             {
                 if (kv.Value.To.BlockNumber < stateId.BlockNumber)
@@ -371,7 +373,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             }
 
             // Prune persistable compacted snapshots
-            List<StateId> persistableToRemove = [];
+            using ArrayPoolList<StateId> persistableToRemove = new(0);
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _persistableCompactedSnapshots)
             {
                 if (kv.Value.To.BlockNumber < stateId.BlockNumber)
