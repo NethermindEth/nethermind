@@ -9,9 +9,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -49,7 +51,7 @@ public class SszMiddlewareTests
 
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
-    private ISszProcessExitSource _processExitSource = null!;
+    private IProcessExitSource _processExitSource = null!;
     private SszMiddleware _middleware = null!;
 
     private const int AuthenticatedPort = 8551;
@@ -81,8 +83,8 @@ public class SszMiddlewareTests
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
-        _processExitSource = Substitute.For<ISszProcessExitSource>();
-        _processExitSource.ProcessExit.Returns(CancellationToken.None);
+        _processExitSource = Substitute.For<IProcessExitSource>();
+        _processExitSource.Token.Returns(CancellationToken.None);
 
         JsonRpcUrl engineUrl = new("http", "localhost", AuthenticatedPort, RpcEndpoint.Http, true, ["engine"]);
         _urlCollection.TryGetValue(AuthenticatedPort, out Arg.Any<JsonRpcUrl?>())
@@ -101,26 +103,26 @@ public class SszMiddlewareTests
             new NewPayloadSszHandler(_engineModule),
             new ForkchoiceUpdatedSszHandler(_engineModule),
 
-            new GetPayloadSszHandler<ExecutionPayload>(1, _getPayloadV1.AsFunc(), SszCodec.EncodeGetPayloadV1Response),
-            new GetPayloadSszHandler<GetPayloadV2Result>(2, _getPayloadV2.AsFunc(), SszCodec.EncodeGetPayloadV2Response),
-            new GetPayloadSszHandler<GetPayloadV3Result>(3, _getPayloadV3.AsFunc(), SszCodec.EncodeGetPayloadV3Response),
-            new GetPayloadSszHandler<GetPayloadV4Result>(4, _getPayloadV4.AsFunc(), SszCodec.EncodeGetPayloadV4Response),
-            new GetPayloadSszHandler<GetPayloadV5Result>(5, _getPayloadV5.AsFunc(), SszCodec.EncodeGetPayloadV5Response),
-            new GetPayloadSszHandler<GetPayloadV6Result>(6, _getPayloadV6.AsFunc(), SszCodec.EncodeGetPayloadV6Response),
+            new GetPayloadSszHandler<ExecutionPayload>(1, _getPayloadV1.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV1Response(p))),
+            new GetPayloadSszHandler<GetPayloadV2Result>(2, _getPayloadV2.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV2Response(p))),
+            new GetPayloadSszHandler<GetPayloadV3Result>(3, _getPayloadV3.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV3Response(p))),
+            new GetPayloadSszHandler<GetPayloadV4Result>(4, _getPayloadV4.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV4Response(p))),
+            new GetPayloadSszHandler<GetPayloadV5Result>(5, _getPayloadV5.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV5Response(p))),
+            new GetPayloadSszHandler<GetPayloadV6Result>(6, _getPayloadV6.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV6Response(p))),
 
             new GetBlobsV1SszHandler(_getBlobsV1),
-            new GetBlobsV2SszHandler(2, allowPartialReturn: false, _getBlobsV2, SszCodec.EncodeGetBlobsV2Response),
-            new GetBlobsV2SszHandler(3, allowPartialReturn: true,  _getBlobsV2, SszCodec.EncodeGetBlobsV3Response),
+            new GetBlobsV2SszHandler(2, allowPartialReturn: false, _getBlobsV2, b => ToPooledTuple(SszCodec.EncodeGetBlobsV2Response(b))),
+            new GetBlobsV2SszHandler(3, allowPartialReturn: true,  _getBlobsV2, b => ToPooledTuple(SszCodec.EncodeGetBlobsV3Response(b))),
 
             new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByHashV1,
-                bodies => SszCodec.EncodePayloadBodiesV1Response((IReadOnlyList<ExecutionPayloadBodyV1Result?>)bodies)),
+                bodies => ToPooledTuple(SszCodec.EncodePayloadBodiesV1Response((IReadOnlyList<ExecutionPayloadBodyV1Result?>)bodies))),
             new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByHashV2,
-                bodies => SszCodec.EncodePayloadBodiesV2Response((IReadOnlyList<ExecutionPayloadBodyV2Result?>)bodies)),
+                bodies => ToPooledTuple(SszCodec.EncodePayloadBodiesV2Response((IReadOnlyList<ExecutionPayloadBodyV2Result?>)bodies))),
 
             new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByRangeV1.Handle,
-                bodies => SszCodec.EncodePayloadBodiesV1Response((IReadOnlyList<ExecutionPayloadBodyV1Result?>)bodies)),
+                bodies => ToPooledTuple(SszCodec.EncodePayloadBodiesV1Response((IReadOnlyList<ExecutionPayloadBodyV1Result?>)bodies))),
             new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByRangeV2.Handle,
-                bodies => SszCodec.EncodePayloadBodiesV2Response((IReadOnlyList<ExecutionPayloadBodyV2Result?>)bodies)),
+                bodies => ToPooledTuple(SszCodec.EncodePayloadBodiesV2Response((IReadOnlyList<ExecutionPayloadBodyV2Result?>)bodies))),
 
             new ClientVersionSszHandler(),
             new CapabilitiesSszHandler(_capabilities),
@@ -172,10 +174,25 @@ public class SszMiddlewareTests
         return ms.ToArray();
     }
 
-    private static byte[] ToBytes((byte[] buffer, int length) pooled)
+    private static byte[] ToBytes(ArrayPoolSpan<byte> span)
     {
-        try { return pooled.buffer.AsSpan(0, pooled.length).ToArray(); }
-        finally { ArrayPool<byte>.Shared.Return(pooled.buffer); }
+        try { return ((ReadOnlySpan<byte>)span).ToArray(); }
+        finally { span.Dispose(); }
+    }
+
+    private static (byte[] buffer, int length) ToPooledTuple(ArrayPoolSpan<byte> span)
+    {
+        int len = span.Length;
+        byte[] rented = ArrayPool<byte>.Shared.Rent(len);
+        try
+        {
+            ((ReadOnlySpan<byte>)span).CopyTo(rented);
+        }
+        finally
+        {
+            span.Dispose();
+        }
+        return (rented, len);
     }
 
     [Test]

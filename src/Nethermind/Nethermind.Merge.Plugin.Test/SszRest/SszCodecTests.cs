@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -18,28 +18,16 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 public class SszCodecTests
 {
 
-    private static byte[] ToBytes((byte[] buffer, int length) pooled)
+    private static byte[] ToBytes(ArrayPoolSpan<byte> pooled)
     {
-        try
-        {
-            return pooled.buffer.AsSpan(0, pooled.length).ToArray();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(pooled.buffer);
-        }
+        using (pooled)
+            return ((Span<byte>)pooled).ToArray();
     }
 
-    private static void AssertPooledBufferConsistent((byte[] buffer, int length) pooled)
+    private static void AssertPooledBufferConsistent(ArrayPoolSpan<byte> pooled)
     {
-        try
-        {
-            pooled.length.Should().BePositive().And.BeLessThanOrEqualTo(pooled.buffer.Length);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(pooled.buffer);
-        }
+        using (pooled)
+            pooled.Length.Should().BePositive();
     }
 
 
@@ -291,24 +279,19 @@ public class SszCodecTests
         ExecutionPayload ep = SszTestData.MakeMinimalPayload();
         ep.BaseFeePerGas = new UInt256(0xABCDEF);
 
-        (byte[] buffer, int length) = SszCodec.EncodeGetPayloadV1Response(ep);
-        try
-        {
-            length.Should().BeGreaterThan(440 + 32, "encoded payload must be large enough to contain baseFeePerGas");
+        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV1Response(ep);
+        Span<byte> buffer = encoded;
 
-            UInt256 decodedBaseFee = new(buffer.AsSpan(440, 32), isBigEndian: false);
-            decodedBaseFee.Should().Be(ep.BaseFeePerGas,
-                "baseFeePerGas must be encoded at byte offset 440 per the Ethereum consensus spec");
+        encoded.Length.Should().BeGreaterThan(440 + 32, "encoded payload must be large enough to contain baseFeePerGas");
 
-            buffer.AsSpan(0, 32).ToArray().Should().BeEquivalentTo(ep.ParentHash!.Bytes.ToArray(),
-                "parent_hash must be the first 32 bytes of the encoded payload");
+        UInt256 decodedBaseFee = new(buffer.Slice(440, 32), isBigEndian: false);
+        decodedBaseFee.Should().Be(ep.BaseFeePerGas,
+            "baseFeePerGas must be encoded at byte offset 440 per the Ethereum consensus spec");
 
-            buffer.AsSpan(472, 32).ToArray().Should().BeEquivalentTo(ep.BlockHash!.Bytes.ToArray(),
-                "block_hash must be encoded at byte offset 472 per the Ethereum consensus spec");
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        buffer.Slice(0, 32).ToArray().Should().BeEquivalentTo(ep.ParentHash!.Bytes.ToArray(),
+            "parent_hash must be the first 32 bytes of the encoded payload");
+
+        buffer.Slice(472, 32).ToArray().Should().BeEquivalentTo(ep.BlockHash!.Bytes.ToArray(),
+            "block_hash must be encoded at byte offset 472 per the Ethereum consensus spec");
     }
 }

@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Ssz;
+using Nethermind.Consensus;
+using System.Threading.Tasks;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
@@ -27,12 +30,12 @@ public static class SszCodec
     private const byte SszStatusAccepted = 3;
     private const byte SszStatusInvalidBlockHash = 4;
 
-    private static (byte[] buffer, int length) EncodePooled<T>(T value) where T : ISszCodec<T>
+    private static ArrayPoolSpan<byte> EncodePooled<T>(T value) where T : ISszCodec<T>
     {
         int length = T.GetLength(value);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-        T.Encode(buffer.AsSpan(0, length), value);
-        return (buffer, length);
+        ArrayPoolSpan<byte> span = new(length);
+        T.Encode(span, value);
+        return span;
     }
 
     private static T[] WrapBytes<T>(byte[][] src, Func<byte[], T> ctor)
@@ -43,10 +46,10 @@ public static class SszCodec
         return result;
     }
 
-    public static (byte[] buffer, int length) EncodePayloadStatus(PayloadStatusV1 ps)
+    public static ArrayPoolSpan<byte> EncodePayloadStatus(PayloadStatusV1 ps)
         => EncodePooled(BuildPayloadStatusWire(ps));
 
-    public static (byte[] buffer, int length) EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp)
+    public static ArrayPoolSpan<byte> EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp)
     {
         SszBytes8[]? pidList = null;
         if (resp.PayloadId is not null)
@@ -68,24 +71,53 @@ public static class SszCodec
         });
     }
 
-    public static (ForkchoiceStateV1 state, PayloadAttributes? attrs)
-        DecodeForkchoiceUpdatedRequest(ReadOnlySpan<byte> buf, int version)
+    public static TResult DispatchForkchoiceVersion<TResult>(
+        ReadOnlySpan<byte> buf,
+        int version,
+        Func<ForkchoiceStateWire, PayloadAttributes?, TResult> handler)
     {
-        (ForkchoiceStateWire fcState, PayloadAttributes? attrs) = version switch
+        (ForkchoiceStateWire state, PayloadAttributes? attrs) = version switch
         {
-            <= 1 => DecodeForkchoice<ForkchoiceUpdatedV1RequestWire>(buf, w => w.ForkchoiceState, w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
-            2 => DecodeForkchoice<ForkchoiceUpdatedV2RequestWire>(buf, w => w.ForkchoiceState, w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
-            3 => DecodeForkchoice<ForkchoiceUpdatedV3RequestWire>(buf, w => w.ForkchoiceState, w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
-            _ => DecodeForkchoice<ForkchoiceUpdatedRequestWire>(buf, w => w.ForkchoiceState, w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
+            <= 1 => DecodeForkchoice<ForkchoiceUpdatedV1RequestWire>(buf,
+                        w => w.ForkchoiceState,
+                        w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
+            2 => DecodeForkchoice<ForkchoiceUpdatedV2RequestWire>(buf,
+                        w => w.ForkchoiceState,
+                        w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
+            3 => DecodeForkchoice<ForkchoiceUpdatedV3RequestWire>(buf,
+                        w => w.ForkchoiceState,
+                        w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
+            _ => DecodeForkchoice<ForkchoiceUpdatedRequestWire>(buf,
+                        w => w.ForkchoiceState,
+                        w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
         };
 
-        ForkchoiceStateV1 state = new(
-            headBlockHash: fcState.HeadBlockHash,
-            finalizedBlockHash: fcState.FinalizedBlockHash,
-            safeBlockHash: fcState.SafeBlockHash);
-
-        return (state, attrs);
+        return handler(state, attrs);
     }
+
+    public static (ForkchoiceStateV1 state, PayloadAttributes? attrs)
+        DecodeForkchoiceUpdatedRequest(ReadOnlySpan<byte> buf, int version)
+        => DispatchForkchoiceVersion(buf, version, (fcState, attrs) =>
+        {
+            ForkchoiceStateV1 state = new(
+                headBlockHash: fcState.HeadBlockHash,
+                finalizedBlockHash: fcState.FinalizedBlockHash,
+                safeBlockHash: fcState.SafeBlockHash);
+            return (state, attrs);
+        });
+
+    public static Task<ResultWrapper<ForkchoiceUpdatedV1Result>> DispatchForkchoiceUpdatedCall(
+        IEngineRpcModule engine,
+        int version,
+        ForkchoiceStateV1 state,
+        PayloadAttributes? attrs)
+        => version switch
+        {
+            <= EngineApiVersions.Fcu.V1 => engine.engine_forkchoiceUpdatedV1(state, attrs),
+            EngineApiVersions.Fcu.V2 => engine.engine_forkchoiceUpdatedV2(state, attrs),
+            EngineApiVersions.Fcu.V3 => engine.engine_forkchoiceUpdatedV3(state, attrs),
+            _ => engine.engine_forkchoiceUpdatedV4(state, attrs),
+        };
 
     private static (ForkchoiceStateWire, PayloadAttributes?) DecodeForkchoice<TWire>(
         ReadOnlySpan<byte> buf,
@@ -143,17 +175,17 @@ public static class SszCodec
             $"Add a dedicated decode branch for this version before adding handler support.");
     }
 
-    public static (byte[] buffer, int length) EncodeGetPayloadV1Response(ExecutionPayload ep)
+    public static ArrayPoolSpan<byte> EncodeGetPayloadV1Response(ExecutionPayload ep)
         => EncodePooled(new SszExecutionPayloadV1(ep));
 
-    public static (byte[] buffer, int length) EncodeGetPayloadV2Response(GetPayloadV2Result? r)
+    public static ArrayPoolSpan<byte> EncodeGetPayloadV2Response(GetPayloadV2Result? r)
         => EncodePooled(new GetPayloadResponseV2Wire
         {
             ExecutionPayload = new SszExecutionPayload(r!.ExecutionPayload),
             BlockValue = r.BlockValue
         });
 
-    public static (byte[] buffer, int length) EncodeGetPayloadV3Response(GetPayloadV3Result? r)
+    public static ArrayPoolSpan<byte> EncodeGetPayloadV3Response(GetPayloadV3Result? r)
         => EncodePooled(new GetPayloadResponseV3Wire
         {
             ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
@@ -162,7 +194,7 @@ public static class SszCodec
             ShouldOverrideBuilder = r.ShouldOverrideBuilder
         });
 
-    public static (byte[] buffer, int length) EncodeGetPayloadV4Response(GetPayloadV4Result? r)
+    public static ArrayPoolSpan<byte> EncodeGetPayloadV4Response(GetPayloadV4Result? r)
         => EncodePooled(new GetPayloadResponseV4Wire
         {
             ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
@@ -172,7 +204,7 @@ public static class SszCodec
             ExecutionRequests = ExecutionRequestsToWire(r.ExecutionRequests)
         });
 
-    public static (byte[] buffer, int length) EncodeGetPayloadV5Response(GetPayloadV5Result? r)
+    public static ArrayPoolSpan<byte> EncodeGetPayloadV5Response(GetPayloadV5Result? r)
         => EncodePooled(new GetPayloadResponseV5Wire
         {
             ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
@@ -182,7 +214,7 @@ public static class SszCodec
             ExecutionRequests = ExecutionRequestsToWire(r.ExecutionRequests)
         });
 
-    public static (byte[] buffer, int length) EncodeGetPayloadV6Response(GetPayloadV6Result? r)
+    public static ArrayPoolSpan<byte> EncodeGetPayloadV6Response(GetPayloadV6Result? r)
         => EncodePooled(new GetPayloadResponseV6Wire
         {
             ExecutionPayload = new SszExecutionPayloadV4((ExecutionPayloadV4)r!.ExecutionPayload),
@@ -202,7 +234,7 @@ public static class SszCodec
         return result;
     }
 
-    public static (byte[] buffer, int length) EncodeGetBlobsV1Response(IReadOnlyList<BlobAndProofV1?> blobs)
+    public static ArrayPoolSpan<byte> EncodeGetBlobsV1Response(IReadOnlyList<BlobAndProofV1?> blobs)
     {
         int count = blobs.Count;
         BlobAndProofV1Wire[] arr = new BlobAndProofV1Wire[count];
@@ -215,7 +247,7 @@ public static class SszCodec
         return EncodePooled(new GetBlobsV1ResponseWire { BlobsAndProofs = arr[..filled] });
     }
 
-    public static (byte[] buffer, int length) EncodeGetBlobsV2Response(IReadOnlyList<BlobAndProofV2?> blobs)
+    public static ArrayPoolSpan<byte> EncodeGetBlobsV2Response(IReadOnlyList<BlobAndProofV2?> blobs)
     {
         int count = blobs.Count;
         BlobAndProofV2Wire[] arr = new BlobAndProofV2Wire[count];
@@ -228,7 +260,7 @@ public static class SszCodec
         return EncodePooled(new GetBlobsV2ResponseWire { BlobsAndProofs = arr[..filled] });
     }
 
-    public static (byte[] buffer, int length) EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs)
+    public static ArrayPoolSpan<byte> EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs)
     {
         int count = blobs.Count;
         NullableBlobAndProofV2Wire[] arr = new NullableBlobAndProofV2Wire[count];
@@ -254,7 +286,7 @@ public static class SszCodec
         return ((long)wire.Start, (long)wire.Count);
     }
 
-    public static (byte[] buffer, int length) EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies)
+    public static ArrayPoolSpan<byte> EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies)
     {
         int count = bodies.Count;
         NullablePayloadBodyV1Wire[] arr = new NullablePayloadBodyV1Wire[count];
@@ -274,7 +306,7 @@ public static class SszCodec
         return EncodePooled(new PayloadBodiesV1ResponseWire { PayloadBodies = arr });
     }
 
-    public static (byte[] buffer, int length) EncodePayloadBodiesV2Response(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies)
+    public static ArrayPoolSpan<byte> EncodePayloadBodiesV2Response(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies)
     {
         int count = bodies.Count;
         NullablePayloadBodyV2Wire[] arr = new NullablePayloadBodyV2Wire[count];
@@ -308,7 +340,7 @@ public static class SszCodec
         };
     }
 
-    public static (byte[] buffer, int length) EncodeTransitionConfigurationResponse(TransitionConfigurationV1 tc)
+    public static ArrayPoolSpan<byte> EncodeTransitionConfigurationResponse(TransitionConfigurationV1 tc)
         => EncodePooled(new ExchangeTransitionConfigurationRequestWire
         {
             TransitionConfiguration = new()
@@ -319,7 +351,7 @@ public static class SszCodec
             }
         });
 
-    public static (byte[] buffer, int length) EncodeCapabilitiesResponse(IReadOnlyList<string> caps)
+    public static ArrayPoolSpan<byte> EncodeCapabilitiesResponse(IReadOnlyList<string> caps)
     {
         int count = caps.Count;
         SszCapabilityName[] arr = new SszCapabilityName[count];
@@ -344,7 +376,7 @@ public static class SszCodec
         return new ClientVersionV1();
     }
 
-    public static (byte[] buffer, int length) EncodeClientVersionResponse(ClientVersionV1[] versions)
+    public static ArrayPoolSpan<byte> EncodeClientVersionResponse(ClientVersionV1[] versions)
     {
         ClientVersionWire[] wireVersions = new ClientVersionWire[versions.Length];
         for (int i = 0; i < versions.Length; i++)
@@ -423,12 +455,12 @@ public static class SszCodec
         return result;
     }
 
-    private static WithdrawalWire[] WithdrawalsToWire(IReadOnlyList<Withdrawal>? ws)
+    private static SszWithdrawal[] WithdrawalsToWire(IReadOnlyList<Withdrawal>? ws)
     {
         if (ws is null || ws.Count == 0) return [];
-        WithdrawalWire[] result = new WithdrawalWire[ws.Count];
+        SszWithdrawal[] result = new SszWithdrawal[ws.Count];
         for (int i = 0; i < ws.Count; i++)
-            result[i] = new WithdrawalWire
+            result[i] = new SszWithdrawal
             {
                 Index = ws[i].Index,
                 ValidatorIndex = ws[i].ValidatorIndex,
@@ -438,7 +470,7 @@ public static class SszCodec
         return result;
     }
 
-    private static Withdrawal[] WithdrawalsFromWire(WithdrawalWire[]? ws)
+    private static Withdrawal[] WithdrawalsFromWire(SszWithdrawal[]? ws)
     {
         if (ws is null || ws.Length == 0) return [];
         Withdrawal[] result = new Withdrawal[ws.Length];

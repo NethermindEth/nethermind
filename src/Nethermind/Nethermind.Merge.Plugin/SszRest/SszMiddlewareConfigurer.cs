@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -47,6 +48,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IJsonRpcUrlCollection>(ctx);
         services.Bridge<IRpcAuthentication>(ctx);
         services.Bridge<IEngineRpcModule>(ctx);
+        services.Bridge<IProcessExitSource>(ctx);
 
         services.Bridge<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(ctx);
 
@@ -60,44 +62,55 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IHandler<IEnumerable<string>, IEnumerable<string>>>(ctx);
         services.Bridge<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(ctx);
 
-        services.AddSingleton<ISszProcessExitSource>(new SszProcessExitSource { ProcessExit = ctx.Resolve<IProcessExitSource>().Token });
-
         IEngineRpcModule engine = ctx.Resolve<IEngineRpcModule>();
 
         void RegisterGetPayloadVersion<TResult>(
             int version,
             Func<byte[], Task<ResultWrapper<TResult?>>> engineCall,
-            Func<TResult, (byte[] buffer, int length)> encoder) where TResult : class =>
+            Func<TResult, ArrayPoolSpan<byte>> encoder) where TResult : class =>
             services.AddSingleton<ISszEndpointHandler>(
-                _ => new GetPayloadSszHandler<TResult>(version, engineCall, encoder));
+                _ => new GetPayloadSszHandler<TResult>(version, engineCall,
+                    r => { ArrayPoolSpan<byte> s = encoder(r); return (((ReadOnlySpan<byte>)s).ToArray(), s.Length); }));
 
         void AddGetPayloadBodiesByHash<TResult>(
             int version,
-            Func<IReadOnlyList<TResult?>, (byte[] buffer, int length)> encoder)
+            Func<IReadOnlyList<TResult?>, ArrayPoolSpan<byte>> encoder)
             where TResult : class =>
             services.AddSingleton<ISszEndpointHandler>(
                 _ => new GetPayloadBodiesByHashSszHandler<TResult>(version,
                     ctx.Resolve<IHandler<IReadOnlyList<Hash256>, IEnumerable<TResult?>>>(),
-                    (IEnumerable<TResult?> e) => encoder(e as IReadOnlyList<TResult?> ?? SszEndpointHandlerBase.AsReadOnlyList(e))));
+                    (IEnumerable<TResult?> e) =>
+                    {
+                        ArrayPoolSpan<byte> s = encoder(e as IReadOnlyList<TResult?> ?? SszEndpointHandlerBase.AsReadOnlyList(e));
+                        return (((ReadOnlySpan<byte>)s).ToArray(), s.Length);
+                    }));
 
         void AddGetPayloadBodiesByRange<TResult>(
             int version,
             Func<long, long, Task<ResultWrapper<IEnumerable<TResult?>>>> rangeHandle,
-            Func<IReadOnlyList<TResult?>, (byte[] buffer, int length)> encoder)
+            Func<IReadOnlyList<TResult?>, ArrayPoolSpan<byte>> encoder)
             where TResult : class =>
             services.AddSingleton<ISszEndpointHandler>(
                 _ => new GetPayloadBodiesByRangeSszHandler<TResult>(version, rangeHandle,
-                    (IEnumerable<TResult?> e) => encoder(e as IReadOnlyList<TResult?> ?? SszEndpointHandlerBase.AsReadOnlyList(e))));
+                    (IEnumerable<TResult?> e) =>
+                    {
+                        ArrayPoolSpan<byte> s = encoder(e as IReadOnlyList<TResult?> ?? SszEndpointHandlerBase.AsReadOnlyList(e));
+                        return (((ReadOnlySpan<byte>)s).ToArray(), s.Length);
+                    }));
 
         void AddGetBlobsV2(
             int version,
             bool allowPartialReturn,
-            Func<IReadOnlyList<BlobAndProofV2?>, (byte[] buffer, int length)> encoder) =>
+            Func<IReadOnlyList<BlobAndProofV2?>, ArrayPoolSpan<byte>> encoder) =>
             services.AddSingleton<ISszEndpointHandler>(
                 _ => new GetBlobsV2SszHandler(version,
                     allowPartialReturn,
                     ctx.Resolve<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-                    encoder));
+                    list =>
+                    {
+                        ArrayPoolSpan<byte> s = encoder(list);
+                        return (((ReadOnlySpan<byte>)s).ToArray(), s.Length);
+                    }));
 
         RegisterGetPayloadVersion<ExecutionPayload>(1, engine.engine_getPayloadV1, SszCodec.EncodeGetPayloadV1Response);
         RegisterGetPayloadVersion<GetPayloadV2Result>(2, engine.engine_getPayloadV2, SszCodec.EncodeGetPayloadV2Response);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
@@ -10,6 +11,7 @@ using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -26,24 +28,24 @@ public sealed class SszMiddleware(
     IJsonRpcUrlCollection urlCollection,
     IRpcAuthentication auth,
     IEnumerable<ISszEndpointHandler> handlers,
-    ISszProcessExitSource processExitSource,
+    IProcessExitSource processExitSource,
     ILogManager logManager)
 {
     private readonly RequestDelegate _next = next;
     private readonly IJsonRpcUrlCollection _urlCollection = urlCollection;
     private readonly IRpcAuthentication _auth = auth;
     private readonly ILogger _logger = logManager.GetClassLogger<SszMiddleware>();
-    private readonly CancellationToken _processExitToken = processExitSource.ProcessExit;
+    private readonly CancellationToken _processExitToken = processExitSource.Token;
 
     // Path: /engine/v{N}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v";
     public const int MaxBodySize = 0x1000000;
-    private readonly Dictionary<(string Method, string Resource), List<ISszEndpointHandler>> _routes = BuildRoutes(handlers);
+    private readonly FrozenDictionary<(string Method, string Resource), List<ISszEndpointHandler>> _routes = BuildRoutes(handlers);
 
-    private static Dictionary<(string, string), List<ISszEndpointHandler>> BuildRoutes(
+    private static FrozenDictionary<(string, string), List<ISszEndpointHandler>> BuildRoutes(
         IEnumerable<ISszEndpointHandler> handlers)
     {
-        Dictionary<(string, string), List<ISszEndpointHandler>> dict = new();
+        Dictionary<(string, string), List<ISszEndpointHandler>> dict = [];
         foreach (ISszEndpointHandler h in handlers)
         {
             (string, string) key = (h.HttpMethod.ToLowerInvariant(), h.Resource.ToLowerInvariant());
@@ -51,7 +53,7 @@ public sealed class SszMiddleware(
                 dict[key] = list = [];
             list.Add(h);
         }
-        return dict;
+        return dict.ToFrozenDictionary();
     }
 
     public async Task InvokeAsync(HttpContext ctx)
@@ -74,24 +76,27 @@ public sealed class SszMiddleware(
             return;
         }
 
-        if (!await _auth.Authenticate(ctx.Request.Headers.Authorization.ToString()))
+        string? authHeader = ctx.Request.Headers.Authorization;
+        if (authHeader is null || !await _auth.Authenticate(authHeader))
         {
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized, "Authentication error");
             return;
         }
 
-        if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out string pathSegment))
+        if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlySpan<char> pathSegment))
         {
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound, "Unknown SSZ endpoint");
             return;
         }
 
-        if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out string extra))
+        if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlySpan<char> extraSpan))
         {
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
                 $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment}");
             return;
         }
+
+        string extra = extraSpan.IsEmpty ? string.Empty : extraSpan.ToString();
 
         if (_logger.IsTrace)
             _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}" +
@@ -128,10 +133,10 @@ public sealed class SszMiddleware(
         }
     }
 
-    private static bool TryRoute(string path, out int version, out string pathSegment)
+    private static bool TryRoute(string path, out int version, out ReadOnlySpan<char> pathSegment)
     {
         version = 0;
-        pathSegment = string.Empty;
+        pathSegment = default;
 
         ReadOnlySpan<char> span = path.AsSpan();
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
@@ -157,17 +162,16 @@ public sealed class SszMiddleware(
         if (span.Contains("//", StringComparison.Ordinal))
             return false;
 
-        pathSegment = span.ToString();
+        pathSegment = span;
         return true;
     }
 
-    private bool TryResolveHandler(string method, string pathSegment, int version,
-        out ISszEndpointHandler? handler, out string extra)
+    private bool TryResolveHandler(string method, ReadOnlySpan<char> pathSegment, int version,
+        out ISszEndpointHandler? handler, out ReadOnlySpan<char> extra)
     {
         handler = null;
-        extra = string.Empty;
+        extra = default;
         ReadOnlySpan<char> methodSpan = method.AsSpan();
-        ReadOnlySpan<char> pathSpan = pathSegment.AsSpan();
 
         ISszEndpointHandler? fallback = null;
         ReadOnlySpan<char> fallbackExtraSpan = default;
@@ -180,16 +184,16 @@ public sealed class SszMiddleware(
 
             ReadOnlySpan<char> tailSpan;
             bool hasExtra;
-            if (MemoryExtensions.Equals(pathSpan, resourceSpan, StringComparison.OrdinalIgnoreCase))
+            if (MemoryExtensions.Equals(pathSegment, resourceSpan, StringComparison.OrdinalIgnoreCase))
             {
                 tailSpan = default;
                 hasExtra = false;
             }
-            else if (pathSpan.Length > resourceSpan.Length &&
-                     pathSpan[resourceSpan.Length] == '/' &&
-                     pathSpan.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
+            else if (pathSegment.Length > resourceSpan.Length &&
+                     pathSegment[resourceSpan.Length] == '/' &&
+                     pathSegment.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
             {
-                tailSpan = pathSpan[(resourceSpan.Length + 1)..];
+                tailSpan = pathSegment[(resourceSpan.Length + 1)..];
                 hasExtra = true;
             }
             else
@@ -204,7 +208,7 @@ public sealed class SszMiddleware(
                 if (candidate.Version == version)
                 {
                     handler = candidate;
-                    extra = hasExtra ? tailSpan.ToString() : string.Empty;
+                    extra = hasExtra ? tailSpan : default;
                     return true;
                 }
 
@@ -219,7 +223,7 @@ public sealed class SszMiddleware(
         if (fallback is not null)
         {
             handler = fallback;
-            extra = fallbackExtraSpan.IsEmpty ? string.Empty : fallbackExtraSpan.ToString();
+            extra = fallbackExtraSpan;
             return true;
         }
 
@@ -305,14 +309,4 @@ public sealed class SszMiddleware(
             await reader.CompleteAsync();
         }
     }
-}
-
-public interface ISszProcessExitSource
-{
-    CancellationToken ProcessExit { get; }
-}
-
-internal sealed class SszProcessExitSource : ISszProcessExitSource
-{
-    public required CancellationToken ProcessExit { get; init; }
 }

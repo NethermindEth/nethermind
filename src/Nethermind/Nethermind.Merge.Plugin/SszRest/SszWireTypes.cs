@@ -26,7 +26,7 @@ public partial struct SszTransaction
 }
 
 [SszContainer]
-public partial struct WithdrawalWire
+public partial struct SszWithdrawal
 {
     public ulong Index { get; set; }
     public ulong ValidatorIndex { get; set; }
@@ -64,7 +64,7 @@ public partial struct PayloadAttributesV2Wire
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
     public Address SuggestedFeeRecipient { get; set; }
-    [SszList(16)] public WithdrawalWire[]? Withdrawals { get; set; }
+    [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
 }
 
 [SszContainer]
@@ -73,7 +73,7 @@ public partial struct PayloadAttributesV3Wire
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
     public Address SuggestedFeeRecipient { get; set; }
-    [SszList(16)] public WithdrawalWire[]? Withdrawals { get; set; }
+    [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
     [SszList(1)] public Hash256[]? ParentBeaconBlockRoot { get; set; }
 }
 
@@ -83,7 +83,7 @@ public partial struct PayloadAttributesWire
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
     public Address SuggestedFeeRecipient { get; set; }
-    [SszList(16)] public WithdrawalWire[]? Withdrawals { get; set; }
+    [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
     [SszList(1)] public Hash256[]? ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
 }
@@ -297,14 +297,14 @@ public partial struct GetClientVersionResponseWire
 public partial struct ExecutionPayloadBodyV1Wire
 {
     [SszList(0x10_0000)] public SszTransaction[]? Transactions { get; set; }
-    [SszList(16)] public WithdrawalWire[]? Withdrawals { get; set; }
+    [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
 }
 
 [SszContainer]
 public partial struct ExecutionPayloadBodyV2Wire
 {
     [SszList(0x10_0000)] public SszTransaction[]? Transactions { get; set; }
-    [SszList(16)] public WithdrawalWire[]? Withdrawals { get; set; }
+    [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
     [SszList(1)] public SszTransaction[]? BlockAccessList { get; set; }
 }
 

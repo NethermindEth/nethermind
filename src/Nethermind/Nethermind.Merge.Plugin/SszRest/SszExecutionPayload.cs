@@ -144,7 +144,7 @@ public partial class SszExecutionPayload
     protected readonly ExecutionPayload _inner;
 
     private SszTransaction[]? _transactions;
-    private WithdrawalWire[]? _withdrawals;
+    private SszWithdrawal[]? _withdrawals;
 
     public SszExecutionPayload() => _inner = new ExecutionPayload();
     public SszExecutionPayload(ExecutionPayload inner) => _inner = inner;
@@ -259,16 +259,16 @@ public partial class SszExecutionPayload
     }
 
     [SszList(16)]
-    public WithdrawalWire[] Withdrawals
+    public SszWithdrawal[] Withdrawals
     {
         get
         {
             if (_withdrawals is not null) return _withdrawals;
             Withdrawal[]? ws = _inner.Withdrawals;
             if (ws is null || ws.Length == 0) return [];
-            _withdrawals = new WithdrawalWire[ws.Length];
+            _withdrawals = new SszWithdrawal[ws.Length];
             for (int i = 0; i < ws.Length; i++)
-                _withdrawals[i] = new WithdrawalWire
+                _withdrawals[i] = new SszWithdrawal
                 {
                     Index = ws[i].Index,
                     ValidatorIndex = ws[i].ValidatorIndex,
