@@ -16,6 +16,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class BlockCacheService : IBlockCacheService
 {
     private readonly int _maxCachedBlocks;
+    private readonly ConcurrentDictionary<Hash256AsKey, Block> _blockCache = new();
     private readonly Lock _pruneLock = new();
 
     /// <summary>
@@ -37,7 +38,7 @@ public class BlockCacheService : IBlockCacheService
     }
 
     /// <inheritdoc />
-    public ConcurrentDictionary<Hash256AsKey, Block> BlockCache { get; } = new();
+    public IReadOnlyDictionary<Hash256AsKey, Block> BlockCache => _blockCache;
 
     /// <inheritdoc />
     public Hash256? FinalizedHash { get; set; }
@@ -49,7 +50,7 @@ public class BlockCacheService : IBlockCacheService
     public bool TryAddBlock(Block block)
     {
         Hash256 blockHash = block.Hash ?? block.CalculateHash();
-        bool added = BlockCache.TryAdd(blockHash, block);
+        bool added = _blockCache.TryAdd(blockHash, block);
         if (added)
         {
             lock (_pruneLock)
@@ -62,26 +63,41 @@ public class BlockCacheService : IBlockCacheService
     }
 
     /// <inheritdoc />
-    public void Clear() => BlockCache.Clear();
+    public bool TryRemoveBlock(Hash256 blockHash)
+    {
+        lock (_pruneLock)
+        {
+            return _blockCache.TryRemove(blockHash, out _);
+        }
+    }
+
+    /// <inheritdoc />
+    public void Clear()
+    {
+        lock (_pruneLock)
+        {
+            _blockCache.Clear();
+        }
+    }
 
     private void PruneIfNeeded()
     {
-        while (BlockCache.Count > _maxCachedBlocks)
+        while (_blockCache.Count > _maxCachedBlocks)
         {
-            if (!TryRemoveFurthestBlock())
+            if (!TryRemoveHighestNumberedBlock())
             {
-                return;
+                break;
             }
         }
     }
 
-    private bool TryRemoveFurthestBlock()
+    private bool TryRemoveHighestNumberedBlock()
     {
         Hash256AsKey furthestHash = default;
         long furthestNumber = long.MinValue;
         bool foundFurthest = false;
 
-        foreach (KeyValuePair<Hash256AsKey, Block> cachedBlock in BlockCache)
+        foreach (KeyValuePair<Hash256AsKey, Block> cachedBlock in _blockCache)
         {
             if (IsProtected(cachedBlock.Key))
             {
@@ -96,7 +112,7 @@ public class BlockCacheService : IBlockCacheService
             }
         }
 
-        return foundFurthest && BlockCache.TryRemove(furthestHash, out _);
+        return foundFurthest && _blockCache.TryRemove(furthestHash, out _);
     }
 
     private bool IsProtected(Hash256AsKey blockHash) =>

@@ -485,7 +485,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             while (stack.TryPop(out Block? child))
             {
                 _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
-                _blockCacheService.BlockCache.TryRemove(child.Hash!, out _);
+                _blockCacheService.TryRemoveBlock(child.Hash!);
             }
 
             _beaconPivot.ProcessDestination = block.Header;

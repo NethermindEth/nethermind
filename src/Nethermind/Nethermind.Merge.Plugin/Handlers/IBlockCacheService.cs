@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -12,10 +12,7 @@ public interface IBlockCacheService
     /// <summary>
     /// Blocks cached while payload ancestry is resolved during merge sync.
     /// </summary>
-    /// <remarks>
-    /// Additions must go through <see cref="TryAddBlock"/> so the cache size bound is enforced.
-    /// </remarks>
-    public ConcurrentDictionary<Hash256AsKey, Block> BlockCache { get; }
+    public IReadOnlyDictionary<Hash256AsKey, Block> BlockCache { get; }
 
     /// <summary>
     /// Finalized block hash protected from cache pruning.
@@ -33,6 +30,13 @@ public interface IBlockCacheService
     /// <param name="block">Block to add.</param>
     /// <returns><see langword="true"/> if the block was added; otherwise <see langword="false"/>.</returns>
     bool TryAddBlock(Block block);
+
+    /// <summary>
+    /// Removes a block from the cache.
+    /// </summary>
+    /// <param name="blockHash">Hash of the block to remove.</param>
+    /// <returns><see langword="true"/> if the block was removed; otherwise <see langword="false"/>.</returns>
+    bool TryRemoveBlock(Hash256 blockHash);
 
     /// <summary>
     /// Removes all cached blocks.
