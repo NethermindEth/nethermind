@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -220,10 +221,17 @@ namespace Nethermind.Facade
 
         public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
+            // Collect active precompile addresses so that they can 
+            // be excluded from the access list if they carry no storage keys
+            IReleaseSpec releaseSpec = specProvider.GetSpec(header);
+            Address[] precompileAddresses = [.. releaseSpec.Precompiles.Select(static p => (Address)p)];
+
             AccessTxTracer accessTxTracer = optimize
-                ? new(tx.SenderAddress,
-                    tx.GetRecipient(tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : 0), header.GasBeneficiary)
-                : new(header.GasBeneficiary);
+                ? new([tx.SenderAddress,
+                    tx.GetRecipient(tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : 0),
+                    header.GasBeneficiary,
+                    .. precompileAddresses])
+                : new([header.GasBeneficiary, .. precompileAddresses]);
 
             CallOutputTracer callOutputTracer = new();
 
