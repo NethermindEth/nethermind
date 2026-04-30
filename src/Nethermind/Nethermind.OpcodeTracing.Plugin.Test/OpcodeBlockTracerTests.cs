@@ -14,6 +14,27 @@ namespace Nethermind.OpcodeTracing.Plugin.Test;
 public class OpcodeBlockTracerTests
 {
     [Test]
+    public void EndTxTrace_accumulates_transaction_trace()
+    {
+        OpcodeBlockTrace? completedTrace = null;
+        OpcodeBlockTracer blockTracer = new(trace => completedTrace = trace);
+        Transaction transaction = new() { GasLimit = 1 };
+
+        blockTracer.StartNewBlockTrace(new Block(CreateHeader(), [transaction], []));
+        ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
+        txTracer.StartOperation(0, Instruction.ADD, 0, null!);
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
+
+        Assert.That(completedTrace, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(completedTrace!.TransactionCount, Is.EqualTo(1));
+            Assert.That(completedTrace.Opcodes[(byte)Instruction.ADD], Is.EqualTo(1));
+        });
+    }
+
+    [Test]
     public void Counts_all_transaction_traces_when_completed_in_parallel()
     {
         const int txCount = 128;
@@ -30,7 +51,7 @@ public class OpcodeBlockTracerTests
 
         Parallel.For(0, txCount, i =>
         {
-            ITxTracer txTracer = blockTracer.StartNewTxTrace(transactions[i]);
+            using ITxTracer txTracer = blockTracer.StartNewTxTrace(transactions[i]);
             txTracer.StartOperation(0, Instruction.ADD, 0, null!);
             txTracer.StartOperation(1, Instruction.STOP, 0, null!);
             blockTracer.EndTxTrace();

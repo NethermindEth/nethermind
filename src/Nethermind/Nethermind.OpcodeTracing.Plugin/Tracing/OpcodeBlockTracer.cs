@@ -11,9 +11,16 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockCompleted) : IParallelSafeBlockTracer
 {
     private readonly Action<OpcodeBlockTrace> _onBlockCompleted = onBlockCompleted ?? throw new ArgumentNullException(nameof(onBlockCompleted));
-    private readonly object _lock = new();
-    private readonly AsyncLocal<OpcodeCountingTxTracer?> _currentTxTracer = new();
     private OpcodeTraceBuilder? _builder;
+
+    // Transaction execution is synchronous; the standard processing path ends
+    // the trace on the same worker thread that started it. Keep this out of
+    // AsyncLocal because it sits on the per-transaction hot path.
+    [ThreadStatic]
+    private static OpcodeBlockTracer? t_currentTracerOwner;
+
+    [ThreadStatic]
+    private static OpcodeCountingTxTracer? t_currentTxTracer;
 
     public bool IsTracingRewards => false;
 
@@ -26,64 +33,61 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        lock (_lock)
-        {
-            _builder = new OpcodeTraceBuilder(block);
-        }
+        Volatile.Write(ref _builder, new OpcodeTraceBuilder(block));
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         if (tx is null)
         {
-            _currentTxTracer.Value = null;
+            ClearCurrentTxTracer();
             return NullTxTracer.Instance;
         }
 
-        lock (_lock)
+        OpcodeTraceBuilder? builder = Volatile.Read(ref _builder);
+        if (builder is null)
         {
-            if (_builder is null)
-            {
-                _currentTxTracer.Value = null;
-                return NullTxTracer.Instance;
-            }
+            ClearCurrentTxTracer();
+            return NullTxTracer.Instance;
         }
 
-        OpcodeCountingTxTracer tracer = new();
-        _currentTxTracer.Value = tracer;
+        OpcodeCountingTxTracer tracer = new(builder);
+        t_currentTracerOwner = this;
+        t_currentTxTracer = tracer;
         return tracer;
     }
 
     public void EndTxTrace()
     {
-        OpcodeCountingTxTracer? currentTxTracer = _currentTxTracer.Value;
-        _currentTxTracer.Value = null;
-        if (currentTxTracer is null)
+        if (!ReferenceEquals(t_currentTracerOwner, this))
         {
             return;
         }
 
-        lock (_lock)
-        {
-            _builder?.Accumulate(currentTxTracer);
-        }
+        OpcodeCountingTxTracer? currentTxTracer = t_currentTxTracer;
+        t_currentTracerOwner = null;
+        t_currentTxTracer = null;
+        currentTxTracer?.Dispose();
     }
 
     public void EndBlockTrace()
     {
-        OpcodeBlockTrace trace;
-        lock (_lock)
+        OpcodeTraceBuilder? builder = Interlocked.Exchange(ref _builder, null);
+        if (builder is null)
         {
-            if (_builder is null)
-            {
-                return;
-            }
-
-            trace = _builder.Build();
-            _builder = null;
+            return;
         }
 
-        _onBlockCompleted(trace);
+        _onBlockCompleted(builder.Build());
+    }
+
+    private void ClearCurrentTxTracer()
+    {
+        if (ReferenceEquals(t_currentTracerOwner, this))
+        {
+            t_currentTracerOwner = null;
+            t_currentTxTracer = null;
+        }
     }
 }
 
@@ -105,8 +109,8 @@ internal sealed class OpcodeTraceBuilder(Block block)
 
     public void Accumulate(OpcodeCountingTxTracer tracer)
     {
-        _transactions++;
-        tracer.AccumulateInto(_opcodeCounters);
+        Interlocked.Increment(ref _transactions);
+        tracer.AccumulateIntoThreadSafe(_opcodeCounters);
     }
 
     public OpcodeBlockTrace Build()
@@ -129,7 +133,7 @@ internal sealed class OpcodeTraceBuilder(Block block)
             ParentHash = _block.ParentHash ?? Keccak.Zero,
             BlockNumber = _block.Number,
             Timestamp = _block.Timestamp,
-            TransactionCount = _transactions,
+            TransactionCount = Volatile.Read(ref _transactions),
             Opcodes = opcodeMap
         };
     }
