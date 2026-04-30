@@ -59,6 +59,9 @@ public class ProcessingStatsTests
     public async Task UpdateStats_aggregates_multiple_updates_until_report_window() =>
         await WithRestoredBlockchainMetrics(async () =>
         {
+#if DEBUG
+            Assert.Ignore("ProcessingStats emits every report when debug logging is enabled.");
+#endif
             TestProcessingStats processingStats = CreateTestProcessingStats(out TaskCompletionSource<BlockStatistics> completion);
             processingStats.Start();
 
