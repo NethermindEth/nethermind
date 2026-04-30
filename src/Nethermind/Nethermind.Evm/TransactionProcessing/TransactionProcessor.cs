@@ -735,8 +735,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessTracker.WarmUp(delegationAddress);
             }
 
-            // Pre-tx warmup runs when EIP-2929 is active OR when access-list tracing is requested,
-            // so eth_createAccessList captures the same baseline pre-Berlin as Geth.
             if (spec.UseHotAndColdStorage || isTracingAccess)
             {
                 if (spec.UseTxAccessLists)

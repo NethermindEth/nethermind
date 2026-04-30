@@ -8,8 +8,10 @@ using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -123,8 +125,6 @@ namespace Nethermind.Evm.Test.Tracing
     [TestFixture]
     public class AccessTxTracerPreBerlinTests : VirtualMachineTestsBase
     {
-        // Regression for issue #11209 — eth_createAccessList returned an empty access list pre-Berlin
-        // because tracer-driven WarmUp lived inside the `spec.UseHotAndColdStorage` gate.
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Istanbul.Instance);
 
         [Test]
@@ -180,20 +180,11 @@ namespace Nethermind.Evm.Test.Tracing
         }
     }
 
-    /// <summary>
-    /// Regression tests for issue #11209 – Bug 2:
-    /// Addresses/storage cells accessed inside a reverted sub-frame were silently dropped from the
-    /// access list because <see cref="JournalSet{T}.Restore"/> unwound the journaled set.
-    /// The non-journaled side-log on <see cref="StackAccessTracker"/> now preserves them.
-    /// </summary>
     [TestFixture]
     public class AccessTxTracerRevertedFrameTests : VirtualMachineTestsBase
     {
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
 
-        // Recipient code: CALL AddressC with 50 k gas, then REVERT (regardless of CALL outcome)
-        // This means AddressC is accessed during the call setup (ConsumeAccountAccessGas),
-        // but the outer frame reverts — the address must still appear in the access list.
         [Test]
         public void Reverted_call_target_address_is_still_captured_in_access_list()
         {
@@ -213,8 +204,6 @@ namespace Nethermind.Evm.Test.Tracing
                 because: "addresses accessed inside reverted frames must survive for eth_createAccessList");
         }
 
-        // AddressC's code does an SLOAD then REVERTs.
-        // The storage key must appear even though the frame reverts.
         [Test]
         public void Reverted_sub_frame_sload_storage_key_is_still_captured_in_access_list()
         {
@@ -240,21 +229,26 @@ namespace Nethermind.Evm.Test.Tracing
 
             AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, recipientCode);
 
-            IEnumerable<(Address Address, IEnumerable<UInt256> StorageKeys)> list = tracer.AccessList!;
+            AccessList list = tracer.AccessList!;
             // AddressC slot 7 must appear despite the REVERT inside AddressC's sub-frame
             list.Should().ContainSingle(e => e.Address == TestItem.AddressC)
                 .Which.StorageKeys.Should().Contain(new UInt256(7),
                     because: "storage cells first accessed inside a reverted sub-frame must still be captured");
         }
 
-        // Two-level scenario: outer frame COMMITs, inner frame REVERTs.
-        // Both the outer target (AddressC) and the inner target (AddressD) must appear.
         [Test]
         public void Outer_committed_and_inner_reverted_call_both_captured_in_access_list()
         {
-            // AddressC code: CALL AddressD then REVERT
+            byte[] addressECode = Prepare.EvmCode
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressE, 0);
+            TestState.InsertCode(TestItem.AddressE, addressECode, SpecProvider.GenesisSpec);
+
+            // AddressC code: CALL AddressE then REVERT
             byte[] addressCCode = Prepare.EvmCode
-                .Call(TestItem.AddressD, 20000)
+                .Call(TestItem.AddressE, 20000)
                 .PushData(0)
                 .PushData(0)
                 .Op(Instruction.REVERT)
@@ -275,7 +269,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Address[] addresses = tracer.AccessList!.Select(static t => t.Address).ToArray();
             addresses.Should().Contain(TestItem.AddressC, because: "committed outer CALL target must be in access list");
-            addresses.Should().Contain(TestItem.AddressD, because: "address accessed inside inner reverted frame must still be in access list");
+            addresses.Should().Contain(TestItem.AddressE, because: "address accessed inside inner reverted frame must still be in access list");
         }
 
         private AccessTxTracer ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, byte[] code)

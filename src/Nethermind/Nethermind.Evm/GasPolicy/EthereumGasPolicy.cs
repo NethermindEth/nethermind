@@ -136,8 +136,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         Address address,
         bool chargeForWarm = true)
     {
-        // Tracing-driven warmup runs regardless of spec so that eth_createAccessList
-        // captures accesses pre-Berlin (when warm/cold gas accounting is inactive).
         if (isTracingAccess)
         {
             accessTracker.WarmUp(address);
@@ -165,8 +163,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         StorageAccessType storageAccessType,
         IReleaseSpec spec)
     {
-        // Tracing-driven warmup runs regardless of spec so that eth_createAccessList
-        // captures accesses pre-Berlin (when warm/cold gas accounting is inactive).
         if (isTracingAccess)
         {
             accessTracker.WarmUp(in storageCell);

@@ -15,17 +15,11 @@ public struct StackAccessTracker(bool isTracingAccess = false) : IDisposable
 {
     public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
     public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
+    public readonly HashSet<Address> AllAccessedAddresses => _trackingState.AllAccessedAddresses;
+    public readonly HashSet<StorageCell> AllAccessedStorageCells => _trackingState.AllAccessedStorageCells;
     public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
-
-    /// <summary>
-    /// Non-journaled sets populated only when <paramref name="isTracingAccess"/> is true.
-    /// These survive sub-frame reverts so that <c>eth_createAccessList</c> captures
-    /// all accessed addresses/storage cells, matching Geth behavior.
-    /// </summary>
-    public readonly HashSet<Address> AllAccessedAddresses => _trackingState.AllAccessedAddresses;
-    public readonly HashSet<StorageCell> AllAccessedStorageCells => _trackingState.AllAccessedStorageCells;
 
     private readonly bool _isTracingAccess = isTracingAccess;
     private TrackingState _trackingState = TrackingState.RentState();
