@@ -5,6 +5,9 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  push:
+    branches:
+      - feat/integration-framework
   workflow_dispatch:
     inputs:
       workers:
