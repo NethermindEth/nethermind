@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Db
@@ -15,6 +16,16 @@ namespace Nethermind.Db
     {
         private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = new();
         private readonly bool _neverPrune;
+
+        // Cross-column atomicity guard. Each per-column SnapshotableMemDb has its own version
+        // counter and lock, so per-column reads/writes are individually consistent. But a
+        // multi-column writeBatch dispose applies columns one-by-one, and CreateSnapshot
+        // captures column snapshots one-by-one. Without this lock a snapshot taken concurrently
+        // with an in-flight writeBatch dispose can capture some columns AFTER the new writes
+        // and others BEFORE, producing a cross-column-inconsistent reader view. RocksDB does
+        // not have this problem (its snapshots are atomic across CFs); this lock makes the
+        // in-memory test backend match.
+        private readonly Lock _atomicityLock = new();
 
         private SnapshotableMemColumnsDb(TKey[] keys, bool neverPrune)
         {
@@ -55,16 +66,37 @@ namespace Nethermind.Db
 
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
 
-        public IColumnsWriteBatch<TKey> StartWriteBatch() => new InMemoryColumnWriteBatch<TKey>(this);
+        public IColumnsWriteBatch<TKey> StartWriteBatch() => new AtomicColumnsWriteBatch(this);
 
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
+            using Lock.Scope _ = _atomicityLock.EnterScope();
             Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = new();
             foreach (KeyValuePair<TKey, SnapshotableMemDb> kvp in _columnDbs)
             {
                 snapshots[kvp.Key] = kvp.Value.CreateSnapshot();
             }
             return new ColumnSnapshot(snapshots);
+        }
+
+        /// <summary>
+        /// Wraps <see cref="InMemoryColumnWriteBatch{TKey}"/> so the per-column commit phase
+        /// happens under the columns DB's write lock, making the multi-column commit atomic
+        /// w.r.t. <see cref="CreateSnapshot"/>.
+        /// </summary>
+        private sealed class AtomicColumnsWriteBatch(SnapshotableMemColumnsDb<TKey> db) : IColumnsWriteBatch<TKey>
+        {
+            private readonly InMemoryColumnWriteBatch<TKey> _inner = new(db);
+
+            public IWriteBatch GetColumnBatch(TKey key) => _inner.GetColumnBatch(key);
+
+            public void Clear() => _inner.Clear();
+
+            public void Dispose()
+            {
+                using Lock.Scope _ = db._atomicityLock.EnterScope();
+                _inner.Dispose();
+            }
         }
 
         public void Dispose()
