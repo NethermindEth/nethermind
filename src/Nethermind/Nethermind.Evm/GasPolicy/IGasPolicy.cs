@@ -324,6 +324,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
 
     /// <summary>
+    /// Credits state gas back to the usable budget without reducing committed state gas usage.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="amount">Credited state gas amount.</param>
+    static virtual void CreditStateGasRefund(ref TSelf gas, long amount) => TSelf.UpdateGasUp(ref gas, amount);
+
+    /// <summary>
     /// Discards state gas from block-state accounting without refunding it back into the
     /// usable gas budget. This is used for reverted state charges that should remain paid
     /// by the transaction but must not contribute to committed state gas.
