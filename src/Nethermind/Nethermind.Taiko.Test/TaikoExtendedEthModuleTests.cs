@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Taiko.Rpc;
 using NSubstitute;
