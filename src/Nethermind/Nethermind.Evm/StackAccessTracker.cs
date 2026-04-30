@@ -27,7 +27,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
-    public StackAccessTracker() : this(false) {}
+    public StackAccessTracker() : this(false) { }
 
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
