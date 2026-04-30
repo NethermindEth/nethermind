@@ -248,15 +248,16 @@ namespace Nethermind.Facade
             AccessList? previousAccessList = tx.AccessList;
             AccessTxTracer accessTracer = new(addressesToOptimize);
             CallOutputTracer outputTracer = new();
+            CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken);
             TransactionResult result;
             bool stop;
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 accessTracer.Reset();
+                outputTracer.Reset();
                 tx.AccessList = previousAccessList;
-                result = TryCallAndRestore(components, header, tx, false,
-                    new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken));
+                result = TryCallAndRestore(components, header, tx, false, tracer);
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
