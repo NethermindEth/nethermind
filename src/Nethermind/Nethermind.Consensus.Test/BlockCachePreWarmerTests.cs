@@ -247,13 +247,14 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// Verifies the prewarmer gate logic: ParallelExecution ON disables prewarming unless
-    /// ParallelExecutionBatchRead is ON and BALs are available.
+    /// Verifies the prewarmer gate logic: ParallelExecution ON skips speculative prewarming
+    /// only when BAL is active for the spec (so parallel execution can actually run); when
+    /// BAL is not active, speculative prewarming runs regardless of ParallelExecution.
     /// </summary>
     [TestCase(true, true, true, true, TestName = "ParallelExec ON, BALs ON, BatchRead ON => BAL warming")]
     [TestCase(true, true, false, false, TestName = "ParallelExec ON, BALs ON, BatchRead OFF => skipped")]
-    [TestCase(true, false, true, false, TestName = "ParallelExec ON, BALs OFF, BatchRead ON => skipped")]
-    [TestCase(true, false, false, false, TestName = "ParallelExec ON, BALs OFF, BatchRead OFF => skipped")]
+    [TestCase(true, false, true, true, TestName = "ParallelExec ON, BALs OFF, BatchRead ON => speculative")]
+    [TestCase(true, false, false, true, TestName = "ParallelExec ON, BALs OFF, BatchRead OFF => speculative")]
     [TestCase(false, true, true, true, TestName = "ParallelExec OFF, BALs ON, BatchRead ON => BAL warming")]
     [TestCase(false, false, false, true, TestName = "ParallelExec OFF, BALs OFF, BatchRead OFF => speculative")]
     public async Task PreWarmCaches_GateLogic(bool parallelExecution, bool hasBal, bool batchRead, bool expectWarmed)
