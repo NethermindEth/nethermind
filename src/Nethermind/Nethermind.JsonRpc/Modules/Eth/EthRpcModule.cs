@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Db;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -69,7 +72,9 @@ public partial class EthRpcModule(
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
-    ulong? secondsPerSlot) : IEthRpcModule
+    ulong? secondsPerSlot,
+    ISyncConfig? syncConfig = null,
+    IPruningConfig? pruningConfig = null) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -898,6 +903,68 @@ public partial class EthRpcModule(
             ResultWrapper<BlockAccessList?>.Fail("Cannot return pruned historical block access list.", ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<BlockAccessList?>.Success(bal);
     }
+    public ResultWrapper<EthCapabilitiesResult> eth_capabilities()
+    {
+        BlockHeader? head = _blockFinder.Head?.Header;
+        string headNumber = head is not null ? head.Number.ToHexString(skipLeadingZeros: true) : "0x0";
+        string headHash = head?.Hash?.ToString() ?? "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+        IBlockTree? blockTree = _blockFinder as IBlockTree;
+        long lowestBlock = blockTree?.LowestInsertedHeader?.Number ?? 0;
+        string lowestBlockHex = lowestBlock.ToHexString(skipLeadingZeros: true);
+
+        bool receiptsSynced = syncConfig?.DownloadReceiptsInFastSync ?? true;
+        long oldestReceipts = syncConfig?.AncientReceiptsBarrierCalc ?? 0;
+        string oldestReceiptsHex = oldestReceipts.ToHexString(skipLeadingZeros: true);
+
+        PruningMode mode = pruningConfig?.Mode ?? PruningMode.None;
+        bool isArchive = mode == PruningMode.None;
+        long? retentionBlocks = mode.IsMemory() ? pruningConfig!.PruningBoundary : null;
+        long stateOldest = isArchive ? 0 : (head is not null ? Math.Max(0, head.Number - (retentionBlocks ?? 0)) : 0);
+        string stateOldestHex = stateOldest.ToHexString(skipLeadingZeros: true);
+
+        static CapabilityDeleteStrategy? windowStrategy(long? retention) =>
+            retention is > 0 ? new CapabilityDeleteStrategy { Type = "window", RetentionBlocks = retention.Value } : null;
+
+        EthCapabilitiesResult result = new()
+        {
+            Head = new CapabilityHead { Number = headNumber, Hash = headHash },
+            Blocks = new CapabilityResource
+            {
+                Disabled = false,
+                OldestBlock = lowestBlockHex
+            },
+            State = new CapabilityResource
+            {
+                Disabled = false,
+                OldestBlock = stateOldestHex,
+                DeleteStrategy = windowStrategy(retentionBlocks)
+            },
+            Tx = new CapabilityResource
+            {
+                Disabled = !receiptsSynced,
+                OldestBlock = receiptsSynced ? oldestReceiptsHex : null
+            },
+            Logs = new CapabilityResource
+            {
+                Disabled = !receiptsSynced,
+                OldestBlock = receiptsSynced ? oldestReceiptsHex : null
+            },
+            Receipts = new CapabilityResource
+            {
+                Disabled = !receiptsSynced,
+                OldestBlock = receiptsSynced ? oldestReceiptsHex : null
+            },
+            Stateproofs = new CapabilityResource
+            {
+                Disabled = !isArchive,
+                OldestBlock = isArchive ? "0x0" : null
+            }
+        };
+
+        return ResultWrapper<EthCapabilitiesResult>.Success(result);
+    }
+
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
 

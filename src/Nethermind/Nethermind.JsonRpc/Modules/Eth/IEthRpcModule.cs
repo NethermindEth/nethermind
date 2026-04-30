@@ -304,6 +304,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork", IsSharable = true)]
         ResultWrapper<JsonNode> eth_config();
 
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns the node's historical data availability for routing and capability discovery.",
+            IsSharable = true)]
+        ResultWrapper<EthCapabilitiesResult> eth_capabilities();
+
         [JsonRpcMethod(Description = "Retrieves block access list for a block by hash.")]
         ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
 
