@@ -703,12 +703,15 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11220
-    /// eth_simulateV1 should return -38010 with the spec-mandated message when a transaction nonce is too low.
-    /// Nonce validation only applies when <c>Validation = true</c>; with false the nonce check is skipped.
+    /// Regression tests for https://github.com/NethermindEth/nethermind/issues/11220 and
+    /// https://github.com/NethermindEth/nethermind/issues/11221.
+    /// eth_simulateV1 should return -38010 / -38011 when a transaction nonce is below / above
+    /// the sender's current nonce under <c>Validation = true</c>.
     /// </summary>
-    [Test]
-    public async Task eth_simulateV1_nonce_too_low_returns_spec_error_code_and_message()
+    [TestCase(5ul, 3ul, ErrorCodes.NonceTooLow,  SimulateErrorMessages.NonceTooLow,  TestName = "NonceTooLow")]
+    [TestCase(3ul, 5ul, ErrorCodes.NonceTooHigh, SimulateErrorMessages.NonceTooHigh, TestName = "NonceTooHigh")]
+    public async Task eth_simulateV1_nonce_validation_returns_spec_error_code_and_message(
+        ulong accountNonce, ulong txNonce, int expectedCode, string expectedMessage)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
@@ -720,7 +723,7 @@ public class EthSimulateTestsBlocksAndTransactions
                 {
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { TestItem.AddressA, new AccountOverride { Nonce = 5, Balance = 1000.Ether } }
+                        { TestItem.AddressA, new AccountOverride { Nonce = accountNonce, Balance = 1000.Ether } }
                     },
                     Calls =
                     [
@@ -729,7 +732,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             From = TestItem.AddressA,
                             To = TestItem.AddressB,
                             Value = 1,
-                            Nonce = 3
+                            Nonce = txNonce
                         }
                     ]
                 }
@@ -740,8 +743,8 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.NonceTooLow));
-        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.NonceTooLow));
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedCode));
+        Assert.That(result.Result!.Error, Is.EqualTo(expectedMessage));
     }
 
 }
