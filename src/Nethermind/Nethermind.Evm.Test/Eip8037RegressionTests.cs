@@ -410,6 +410,62 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         AssertStorage(new StorageCell(TestItem.AddressC, UInt256.Zero), UInt256.Zero);
     }
 
+    /// <summary>
+    /// Mirrors EEST <c>test_reservoir_restored_after_child_spill_and_halt</c> (failing on CI).
+    /// Outer contract calls child with 500k gas. Child does 2 SSTOREs, then INVALID-halts.
+    /// Outer continues and does 2 more SSTOREs, then STOP. Goal: probe the halt-restore
+    /// path where parent's reservoir must be returned to a state where its 2 outer SSTOREs
+    /// can succeed.
+    /// </summary>
+    [Test]
+    public void Eip8037_reservoir_restored_after_child_spill_and_halt()
+    {
+        // Child: SSTORE 1 -> slot 0, SSTORE 1 -> slot 1, INVALID
+        byte[] childCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(1)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.INVALID)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+
+        // Outer: CALL(child, 500k gas, value=0), POP, SSTORE 1 -> slot 0, SSTORE 1 -> slot 1, STOP
+        byte[] outerCode = Prepare.EvmCode
+            .Call(TestItem.AddressC, 500_000)
+            .Op(Instruction.POP)
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(1)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        // Use the EEST fixture's tx gas limit so the math lines up.
+        const long gasLimit = 0x010092c0; // 16_815_296
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        // Parent's two outer SSTOREs must have landed.
+        AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
+        AssertStorage(new StorageCell(Recipient, 1), UInt256.One);
+        // Child's SSTOREs reverted on halt.
+        AssertStorage(new StorageCell(TestItem.AddressC, 0), UInt256.Zero);
+        AssertStorage(new StorageCell(TestItem.AddressC, 1), UInt256.Zero);
+        // The child's spilled state-gas stays burned with the child's regular gas — must NOT
+        // propagate to the parent's StateGasSpill bucket, otherwise Calculate8037BlockRegularGas
+        // would subtract the already-burned amount from the block's regular gas total and
+        // undercount block.gasUsed by 1×SSetState. Pre-fix this asserted 489_367.
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(526_935));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(2 * GasCostOf.SSetState));
+    }
+
     [Test]
     public void Eip8037_block_validation_must_not_use_header_max_gas_used_as_remaining_tx_budget()
     {

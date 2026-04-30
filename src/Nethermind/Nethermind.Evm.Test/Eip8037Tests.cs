@@ -291,7 +291,12 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child, initialStateReservoir: 0);
 
-        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 200L)));
+        // Spill must NOT propagate on exceptional halt: halt burns the child's regular gas
+        // (including the spilled portion). Calculate8037BlockRegularGas already accounts for
+        // that burn via the forwarded child gas — propagating spill here would cause the
+        // formula's `- stateGasSpill` term to subtract the same regular gas a second time,
+        // undercounting block.gasUsed by the spill amount.
+        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 0L)));
     }
 
     [Test]

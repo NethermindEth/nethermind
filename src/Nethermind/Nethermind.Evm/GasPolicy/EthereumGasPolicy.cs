@@ -138,11 +138,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
-    {
+    // Do NOT propagate childGas.StateGasSpill: an exceptional halt burns the child's
+    // regular gas — including the portion that was charged via spill. Propagating
+    // would let Calculate8037BlockRegularGas subtract that already-burned gas from
+    // the block's regular total, undercounting block.gasUsed by the spill amount.
+    public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir) =>
         parentGas.StateReservoir += GetRestoredChildStateReservoir(in childGas, initialStateReservoir);
-        parentGas.StateGasSpill += childGas.StateGasSpill;
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
