@@ -83,7 +83,7 @@ public class ProcessingStatsTests
                 .TestObject;
 
             processingStats.GenerateReportForTest(block1, baseBlock, blockCount: 1, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
-            await Task.Delay(TimeSpan.FromMilliseconds(1_100));
+            processingStats.AdvanceReportWindow();
             processingStats.GenerateReportForTest(block2, block1.Header, blockCount: 1, gasUsed: 3_000_000, transactionCount: 1, processingMicroseconds: 300_000);
 
             BlockStatistics stats = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -153,6 +153,10 @@ public class ProcessingStatsTests
     private sealed class TestProcessingStats(IStateReader stateReader)
         : ProcessingStats(stateReader, new TestLogManager(LogLevel.Warn))
     {
+        private long _reportMs;
+
+        public void AdvanceReportWindow() => _reportMs += 1_001;
+
         public void GenerateReportForTest(
             Block block,
             BlockHeader baseBlock,
@@ -170,5 +174,7 @@ public class ProcessingStatsTests
                 TransactionCount = transactionCount,
                 ProcessingMicroseconds = processingMicroseconds
             });
+
+        protected override long GetReportMs() => _reportMs;
     }
 }

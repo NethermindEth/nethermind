@@ -219,6 +219,7 @@ namespace Nethermind.Consensus.Processing
             Metrics.Transactions += data.TransactionCount;
             Metrics.TotalDifficulty = block.TotalDifficulty ?? UInt256.Zero;
             Metrics.LastDifficulty = block.Difficulty;
+            // These gauges describe the latest processed block; chunk totals above use data.GasUsed and data.TransactionCount.
             Metrics.GasUsed = block.GasUsed;
             Metrics.GasLimit = block.GasLimit;
 
@@ -239,6 +240,13 @@ namespace Nethermind.Consensus.Processing
             {
                 // Mev reward with in last tx
                 isMev = true;
+            }
+
+            _chunkBlobs += data.BlobCount;
+            long blobs = _chunkBlobs;
+            if (blobs > 0)
+            {
+                _showBlobs = true;
             }
 
             if (data.BaseBlock is null || !_stateReader.HasStateForBlock(data.BaseBlock) || block.StateRoot is null || !_stateReader.HasStateForBlock(block.Header))
@@ -267,14 +275,7 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
             }
 
-            _chunkBlobs += data.BlobCount;
-            long blobs = _chunkBlobs;
-            if (blobs > 0)
-            {
-                _showBlobs = true;
-            }
-
-            long reportMs = Environment.TickCount64;
+            long reportMs = GetReportMs();
             if (reportMs - _lastReportMs > 1000 || _logger.IsDebug)
             {
                 _lastReportMs = reportMs;
@@ -440,11 +441,13 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        protected virtual long GetReportMs() => Environment.TickCount64;
+
         public void Start()
         {
             if (!_runStopwatch.IsRunning)
             {
-                _lastReportMs = Environment.TickCount64;
+                _lastReportMs = GetReportMs();
                 _runStopwatch.Start();
             }
         }
