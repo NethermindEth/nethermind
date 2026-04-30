@@ -41,7 +41,9 @@ jobs:
         with:
           save: 'true'
       - name: Restore packages
-        run: dotnet restore src/Nethermind/Nethermind.slnx
+        run: |
+          dotnet restore src/Nethermind/Nethermind.slnx
+          dotnet restore src/Nethermind/EthereumTests.slnx
 
   cache-warmup-ubuntu-arm:
     name: Warm NuGet cache (ubuntu-24.04-arm)
@@ -55,7 +57,9 @@ jobs:
         with:
           save: 'true'
       - name: Restore packages
-        run: dotnet restore src/Nethermind/Nethermind.slnx
+        run: |
+          dotnet restore src/Nethermind/Nethermind.slnx
+          dotnet restore src/Nethermind/EthereumTests.slnx
 
   cache-warmup-windows:
     name: Warm NuGet cache (windows-latest)
@@ -69,7 +73,9 @@ jobs:
         with:
           save: 'true'
       - name: Restore packages
-        run: dotnet restore src/Nethermind/Nethermind.slnx
+        run: |
+          dotnet restore src/Nethermind/Nethermind.slnx
+          dotnet restore src/Nethermind/EthereumTests.slnx
 
   cache-warmup-macos:
     name: Warm NuGet cache (macos-latest)
@@ -83,7 +89,9 @@ jobs:
         with:
           save: 'true'
       - name: Restore packages
-        run: dotnet restore src/Nethermind/Nethermind.slnx
+        run: |
+          dotnet restore src/Nethermind/Nethermind.slnx
+          dotnet restore src/Nethermind/EthereumTests.slnx
 
   tests:
     name: Run ${{ matrix.project }} (${{ matrix.runner }})

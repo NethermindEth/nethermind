@@ -33,7 +33,9 @@ jobs:
         with:
           save: 'true'
       - name: Restore packages
-        run: dotnet restore src/Nethermind/Nethermind.slnx
+        run: |
+          dotnet restore src/Nethermind/Nethermind.slnx
+          dotnet restore src/Nethermind/EthereumTests.slnx
 
   tests:
     name: Run ${{ matrix.project }} (${{ matrix.variant.label }})
