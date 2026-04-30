@@ -43,6 +43,17 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit)
     public void ResetTransaction() => _txZkGasUsed = 0;
 
     /// <summary>
+    /// Clears all per-block accounting so the meter can be reused for the next block
+    /// without allocating a fresh instance. The block ZK gas limit is preserved.
+    /// </summary>
+    public void ResetBlock()
+    {
+        _blockZkGasUsed = 0;
+        _txZkGasUsed = 0;
+        IsLimitExceeded = false;
+    }
+
+    /// <summary>
     /// Promotes the current transaction's ZK gas into the finalized block total.
     /// Returns false if the commit would exceed the block limit.
     /// When the commit succeeds, <see cref="IsLimitExceeded"/> is reset to <c>false</c>

@@ -300,11 +300,17 @@ public class BlockInvalidTxExecutorZkTests
 
     /// <summary>
     /// When the anchor itself causes <see cref="ZkGasMeter.IsLimitExceeded"/> to be set,
-    /// the executor breaks out of the loop immediately after the anchor's post-execute
-    /// check, and tx2 is never attempted.
+    /// the anchor is preserved (it is mandatory and cannot be evicted), but subsequent
+    /// transactions are skipped via the pre-loop guard at the next iteration.
+    /// This mirrors alethia-reth (<c>!is_anchor_transaction</c> clause in
+    /// <c>try_execute_filtered</c>, <c>crates/block/src/executor.rs</c>): the anchor
+    /// must always survive so that <c>TaikoBlockValidator</c> does not silently reject
+    /// the block for missing it. The block-level ZK gas check in
+    /// <see cref="TaikoBlockProcessor"/> will surface the misconfiguration during
+    /// validation.
     /// </summary>
     [Test]
-    public void ZkGasExceededByAnchor_Tx2NeverExecuted()
+    public void ZkGasExceededByAnchor_AnchorPreserved_Tx2NeverExecuted()
     {
         Transaction anchor = MakeTx(0);
         Transaction tx2 = MakeTx(1);
@@ -322,14 +328,24 @@ public class BlockInvalidTxExecutorZkTests
         });
         txProcessor.Execute(tx2, Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
 
+        IWorldState worldState = Substitute.For<IWorldState>();
+        ITxPool txPool = Substitute.For<ITxPool>();
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
-        BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(),
-            Substitute.For<ITxPool>(), LimboLogs.Instance, holder);
+        BlockInvalidTxExecutor executor = new(txProcessor, worldState, txPool, LimboLogs.Instance, holder);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
 
+        // Anchor is preserved.
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        Assert.That(block.Transactions[0], Is.SameAs(anchor));
+
+        // tx2 is never attempted (pre-loop guard at i == 1 fires).
         txProcessor.DidNotReceive().Execute(tx2, Arg.Any<ITxTracer>());
+
+        // Anchor must NOT be removed from the pool nor rolled back from state.
+        txPool.DidNotReceive().RemoveTransaction(anchor.Hash);
+        worldState.DidNotReceive().Restore(Arg.Any<Snapshot>());
     }
 }

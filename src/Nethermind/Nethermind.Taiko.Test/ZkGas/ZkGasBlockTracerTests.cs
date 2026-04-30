@@ -56,10 +56,11 @@ public class ZkGasBlockTracerTests
     }
 
     /// <summary>
-    /// A second call to StartNewBlockTrace replaces the meter and updates the holder.
+    /// A second call to StartNewBlockTrace reuses the same meter instance (the holder
+    /// was already pointed at it during construction) but resets its per-block accounting.
     /// </summary>
     [Test]
-    public void StartNewBlockTrace_SecondCall_ReplacesMeter()
+    public void StartNewBlockTrace_SecondCall_ResetsMeter()
     {
         ZkGasMeterHolder holder = new();
         IBlockTracer inner = Substitute.For<IBlockTracer>();
@@ -68,10 +69,17 @@ public class ZkGasBlockTracerTests
         blockTracer.StartNewBlockTrace(MakeBlock());
         ZkGasMeter firstMeter = blockTracer.Meter;
 
+        // Accrue some block-level gas, then start a new block.
+        blockTracer.Meter.ChargeOpcode(0x01, 1_000);
+        blockTracer.Meter.CommitTransaction();
+        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.GreaterThan(0UL));
+
         blockTracer.StartNewBlockTrace(MakeBlock());
 
-        Assert.That(blockTracer.Meter, Is.Not.SameAs(firstMeter));
+        Assert.That(blockTracer.Meter, Is.SameAs(firstMeter), "meter instance must be reused across blocks");
         Assert.That(holder.Meter, Is.SameAs(blockTracer.Meter));
+        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL), "ResetBlock must clear accrued block ZK gas");
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.False);
     }
 
     // ── tx-level commit / reset ───────────────────────────────────────────────

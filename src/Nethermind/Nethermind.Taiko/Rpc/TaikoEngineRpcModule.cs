@@ -82,7 +82,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
 {
-    private const int MaxBatchLookupBlocks = 192 * 1024;
+    /// <summary>
+    /// Maximum number of blocks to scan backwards when the batch→block index is missing.
+    /// Matches alethia-reth's <c>MAX_BACKWARD_SCAN_BLOCKS = 192 * 21_600</c>.
+    /// </summary>
+    private const int MaxBatchLookupBlocks = 192 * 21_600;
 
     // ResourceNotFound (-32000) instead of the default InternalError (-32603), and IsTemporary
     // so the JsonRpc framework's SuppressWarning flag fires (JsonRpcService.cs:158 ->
@@ -90,6 +94,16 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     // produces a loud "Error response handling JsonRpc..." WARN line on a known-transient miss.
     private static readonly ResultWrapper<UInt256?> BlockIdNotFound =
         ResultWrapper<UInt256?>.Fail("not found", ErrorCodes.ResourceNotFound, isTemporary: true);
+
+    /// <summary>
+    /// Cached null-result for <c>taikoAuth_lastL1OriginByBatchID</c>. Per alethia-reth and
+    /// the Go taiko-client expectations, a missing L1 origin for a known batch is reported as
+    /// a successful JSON-RPC response with a null result (rather than a -32603 error), so a
+    /// freshly-started node that has not yet seen any L1 batches does not flood the logs
+    /// with errors during normal driver polling.
+    /// </summary>
+    private static readonly ResultWrapper<L1Origin?> L1OriginByBatchIdNullResult =
+        ResultWrapper<L1Origin?>.Success(null);
 
     private readonly ILogger _taikoLogger = logManager.GetClassLogger<TaikoEngineRpcModule>();
 
@@ -377,14 +391,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<L1Origin>.Fail($"signature must be exactly {L1OriginDecoder.SignatureLength} bytes, got {signature.Length}");
         }
 
-        L1Origin? l1Origin = l1OriginStore.ReadL1Origin(blockId);
+        // Atomic read-modify-write inside L1OriginStore so concurrent
+        // taikoAuth_setL1OriginSignature / taikoAuth_updateL1Origin calls cannot clobber each other.
+        L1Origin? l1Origin = l1OriginStore.SetL1OriginSignature(blockId, signature);
         if (l1Origin is null)
         {
             return ResultWrapper<L1Origin>.Fail($"L1 origin not found for block ID {blockId}");
         }
-
-        l1Origin.Signature = signature;
-        l1OriginStore.WriteL1Origin(blockId, l1Origin);
 
         return ResultWrapper<L1Origin>.Success(l1Origin);
     }
@@ -400,7 +413,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 // Debug, not Warn: this fires on every periodic poll for the latest batch
                 // before NMC has ingested it; that's expected control flow, not a fault.
                 if (_taikoLogger.IsDebug) _taikoLogger.Debug($"taikoAuth_lastL1OriginByBatchID: no block found for batch {batchId}");
-                return TaikoExtendedEthModule.L1OriginByBatchIdNullResult;
+                return L1OriginByBatchIdNullResult;
             }
         }
 
@@ -410,7 +423,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         if (origin is null && _taikoLogger.IsDebug)
             _taikoLogger.Debug($"taikoAuth_lastL1OriginByBatchID: block {blockId} found for batch {batchId} but no L1 origin entry");
 
-        return origin is null ? TaikoExtendedEthModule.L1OriginByBatchIdNullResult : ResultWrapper<L1Origin?>.Success(origin);
+        return origin is null ? L1OriginByBatchIdNullResult : ResultWrapper<L1Origin?>.Success(origin);
     }
 
     public Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId)

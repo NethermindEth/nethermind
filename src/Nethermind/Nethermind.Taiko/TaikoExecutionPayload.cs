@@ -82,12 +82,13 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
         }
     }
 
-    protected override int GetExecutionPayloadVersion() => this switch
-    {
-        { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
-        { WithdrawalsHash: not null } or { Withdrawals: not null } => 2, // modified
-        _ => 1
-    };
+    // Note: the base GetExecutionPayloadVersion override is intentionally absent.
+    // Taiko ships exclusively over the V2 wire (TaikoGetPayloadV2Result + TaikoExecutionPayload
+    // delivers, and IExecutionPayloadParams.ValidateParams above short-circuits to Success without
+    // consulting GetExecutionPayloadVersion). With ApplyUnzenPinnedFields populating BlobGasUsed,
+    // ExcessBlobGas and ParentBeaconBlockRoot on every Unzen block, the base override returns 3,
+    // but that value is never read by the Taiko code path. Removing the previous (also 3-returning)
+    // Taiko override eliminates dead code without changing observable behaviour.
 
     public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
@@ -160,7 +161,17 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
         if (BlobGasUsed is not null) header.BlobGasUsed ??= BlobGasUsed.Value;
         if (ExcessBlobGas is not null) header.ExcessBlobGas ??= ExcessBlobGas.Value;
 
-        IReleaseSpec? spec = _specProvider?.GetSpec(new ForkActivation(header.Number, header.Timestamp));
+        // Fail loudly rather than silently skip the pinning. A null _specProvider here means
+        // a caller bypassed Rpc.TaikoEngineRpcModule.engine_newPayloadV{1,2} (which calls
+        // AttachSpecProvider before delegating to base). Skipping the pinning would produce
+        // a block-hash mismatch on Unzen blocks with no obvious diagnostic.
+        if (_specProvider is null)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(TaikoExecutionPayload)}.{nameof(AttachSpecProvider)} must be called before {nameof(TryGetBlock)}.");
+        }
+
+        IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(header.Number, header.Timestamp));
 
         if (spec is ITaikoReleaseSpec { IsUnzenEnabled: true })
         {

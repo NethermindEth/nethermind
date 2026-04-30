@@ -56,11 +56,16 @@ public static class ZkGasSchedule
     /// <summary>Fail-safe multiplier for any opcode or precompile not explicitly listed.</summary>
     public const ushort FailsafeMultiplier = ushort.MaxValue;
 
+    // Backing arrays are kept private so they cannot be mutated in-place by external code;
+    // the public surface exposes them as ReadOnlySpan<ushort> for index-based reads.
+    private static readonly ushort[] _opcodeMultipliers = BuildOpcodeMultipliers();
+    private static readonly ushort[] _precompileMultipliers = BuildPrecompileMultipliers();
+
     /// <summary>Per-opcode proving-cost multipliers indexed by opcode byte.</summary>
-    public static readonly ushort[] OpcodeMultipliers = BuildOpcodeMultipliers();
+    public static ReadOnlySpan<ushort> OpcodeMultipliers => _opcodeMultipliers;
 
     /// <summary>Per-precompile proving-cost multipliers indexed by low-byte address.</summary>
-    public static readonly ushort[] PrecompileMultipliers = BuildPrecompileMultipliers();
+    public static ReadOnlySpan<ushort> PrecompileMultipliers => _precompileMultipliers;
 
     // Fixed raw-gas estimates for spawn opcodes (used when the opcode actually opens a child frame).
     public const ulong SpawnEstimateCall = 12_500;

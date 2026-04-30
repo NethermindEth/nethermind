@@ -13,12 +13,20 @@ namespace Nethermind.Taiko.ZkGas;
 /// A fresh <see cref="ZkGasMeter"/> is created for each block, sized according
 /// to the active network's Unzen block ZK gas limit.
 /// </summary>
-public sealed class ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null, ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit) : IBlockTracer
+public sealed class ZkGasBlockTracer : IBlockTracer
 {
-    private readonly IBlockTracer _inner = inner;
-    private readonly ZkGasMeterHolder? _holder = holder;
-    private readonly ulong _blockZkGasLimit = blockZkGasLimit;
-    private ZkGasMeter _meter = new(blockZkGasLimit);
+    private readonly IBlockTracer _inner;
+    private readonly ZkGasMeter _meter;
+
+    public ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null, ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit)
+    {
+        _inner = inner;
+        _meter = new ZkGasMeter(blockZkGasLimit);
+        // Publish once: the meter reference is stable across blocks (we Reset it in
+        // StartNewBlockTrace rather than reallocating), so the holder never needs
+        // re-pointing for the lifetime of this tracer.
+        if (holder is not null) holder.Meter = _meter;
+    }
 
     /// <summary>The ZK gas meter for the current block.</summary>
     public ZkGasMeter Meter => _meter;
@@ -31,12 +39,12 @@ public sealed class ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holde
         => _inner.ReportReward(author, rewardType, rewardValue);
 
     /// <summary>
-    /// Resets the meter for the new block, publishes it to the holder, and forwards to the inner tracer.
+    /// Resets the meter's per-block accounting and forwards to the inner tracer. The
+    /// meter instance itself is reused — see <see cref="ZkGasMeter.ResetBlock"/>.
     /// </summary>
     public void StartNewBlockTrace(Block block)
     {
-        _meter = new ZkGasMeter(_blockZkGasLimit);
-        if (_holder is not null) _holder.Meter = _meter;
+        _meter.ResetBlock();
         _inner.StartNewBlockTrace(block);
     }
 
