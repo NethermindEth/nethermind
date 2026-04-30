@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -12,7 +11,6 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Core.Extensions;
 using Nethermind.Merge.Plugin;
 
 namespace Nethermind.HealthChecks
