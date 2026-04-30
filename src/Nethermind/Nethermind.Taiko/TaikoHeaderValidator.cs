@@ -248,24 +248,22 @@ public class TaikoHeaderValidator(
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
 
+        // On Taiko, TotalDifficulty is consensus-irrelevant — Difficulty is repurposed (zk gas
+        // in Unzen, must be 0 pre-Unzen). The block tree may have populated TotalDifficulty via
+        // the cumulative path (parent.TD + Difficulty) before this validation runs; normalize it
+        // to zero rather than rejecting the block, since the announced TD is never authoritative.
+        header.TotalDifficulty = UInt256.Zero;
+
         if (taikoSpec.IsUnzenEnabled)
         {
-            // Unzen allows non-zero difficulty (stores ZK gas used)
-            // TotalDifficulty must still be zero or null
-            if (header.TotalDifficulty != 0 && header.TotalDifficulty is not null)
-            {
-                error = BlockErrorMessages.InvalidTotalDifficulty;
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - non-zero total difficulty in Unzen");
-                return false;
-            }
-
+            // Unzen allows non-zero difficulty (stores ZK gas used).
             return true;
         }
 
-        if (header.Difficulty != 0 || header.TotalDifficulty != 0 && header.TotalDifficulty != null)
+        if (header.Difficulty != 0)
         {
             error = BlockErrorMessages.InvalidTotalDifficulty;
-            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - incorrect difficulty or total difficulty");
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - non-zero difficulty in pre-Unzen header");
             return false;
         }
         return true;
