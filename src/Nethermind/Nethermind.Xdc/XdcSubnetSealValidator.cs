@@ -31,13 +31,13 @@ internal sealed class XdcSubnetSealValidator(
         {
             (Address[] masternodes, Address[] penaltiesAddresses) = masternodesCalculator.GetNextEpochCandidatesAndPenalties(xdcHeader.ParentHash);
 
-            if (xdcHeader.NextValidatorsAddress is null || !xdcHeader.NextValidatorsAddress.SequenceEqual(masternodes))
+            if (xdcHeader.NextValidatorsAddress is null || !xdcHeader.NextValidatorsAddress.ListsAreEqual(masternodes))
             {
                 error = "NextValidators do not match snapshot next epoch candidates.";
                 return false;
             }
 
-            if (xdcHeader.PenaltiesAddress is null || !xdcHeader.PenaltiesAddress.SequenceEqual(penaltiesAddresses))
+            if (xdcHeader.PenaltiesAddress is null || !xdcHeader.PenaltiesAddress.ListsAreEqual(penaltiesAddresses))
             {
                 error = "Penalties do not match snapshot next epoch penalties.";
                 return false;

@@ -95,12 +95,12 @@ internal class XdcSealValidator(
             error = "Invalid signer list on checkpoint block.";
             return false;
         }
-        if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
+        if (!xdcHeader.ValidatorsAddress.ListsAreEqual(masternodes))
         {
             error = "Validators does not match what's stored in snapshot minus its penalty.";
             return false;
         }
-        if (!xdcHeader.PenaltiesAddress.SequenceEqual(penalties))
+        if (!xdcHeader.PenaltiesAddress.ListsAreEqual(penalties))
         {
             error = "Penalties does not match.";
             return false;

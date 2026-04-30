@@ -9,6 +9,10 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -104,4 +108,12 @@ internal static partial class XdcExtensions
             return true;
         return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
     }
+
+    /// <summary>
+    /// Compares two lists of addresses for equality, ignoring order since the order of masternodes in XDC header validation does not matter.
+    /// </summary>
+    /// <param name="a"></param>
+    /// <param name="b"></param>
+    /// <returns>Returns <see cref="true"/> if the lists contain the same addresses, ignoring order; otherwise, <see cref="false"/>.</returns>
+    public static bool ListsAreEqual(this IList<Address> a, IList<Address> b) => a.Count == b.Count && new HashSet<Address>(a).SetEquals(b);
 }
