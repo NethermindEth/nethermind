@@ -379,6 +379,38 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_exceptional_halt_must_restore_child_inline_state_refund()
+    {
+        byte[] childCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.INVALID)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 100_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.INVALID)
+            .Done;
+
+        long gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.SSetState;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        AssertStorage(new StorageCell(TestItem.AddressC, UInt256.Zero), UInt256.Zero);
+    }
+
+    [Test]
     public void Eip8037_block_validation_must_not_use_header_max_gas_used_as_remaining_tx_budget()
     {
         byte[] stateHeavyCode = Prepare.EvmCode

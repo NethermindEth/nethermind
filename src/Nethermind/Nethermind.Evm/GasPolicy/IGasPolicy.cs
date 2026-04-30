@@ -149,8 +149,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
 
     /// <summary>
-    /// Restores all state gas from a failed child frame back to the parent's state reservoir.
-    /// On child revert or exceptional halt, state changes are rolled back so consumed state gas is returned.
+    /// Restores state gas from a reverted child frame back to the parent's state reservoir.
+    /// Child inline state-gas refunds are removed because they are burned at the revert boundary.
     /// Pre-EIP-8037 policies are no-ops.
     /// </summary>
     /// <param name="parentGas">The parent gas state to restore into.</param>
@@ -158,6 +158,16 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
     /// <param name="childStateRefund">Inline state-gas refunds already applied inside the child frame.</param>
     static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir, long childStateRefund) { }
+
+    /// <summary>
+    /// Restores state gas from an exceptionally halted child frame back to the parent's state reservoir.
+    /// Unlike explicit revert, halt restoration preserves inline state-gas refunds because the failing
+    /// call chain resets state gas back to the top-most failing call.
+    /// Pre-EIP-8037 policies are no-ops.
+    /// </summary>
+    /// <param name="parentGas">The parent gas state to restore into.</param>
+    /// <param name="childGas">The child gas state to restore from.</param>
+    static virtual void RestoreChildStateGasOnHalt(ref TSelf parentGas, in TSelf childGas) { }
 
     /// <summary>
     /// Adjusts parent gas state when a child <see cref="Refund"/> was already applied but the child

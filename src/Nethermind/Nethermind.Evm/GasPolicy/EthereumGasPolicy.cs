@@ -127,7 +127,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    // On halt/revert, restore the child's remaining state reservoir plus its unreverted
+    // On explicit REVERT, restore the child's remaining state reservoir plus its unreverted
     // state gas usage, then subtract inline refunds that inflated the reservoir inside the
     // child. Descendant spill remains tracked in StateGasSpill for block-level deduction.
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
@@ -138,14 +138,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
+    {
+        parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed;
+        parentGas.StateGasSpill += childGas.StateGasSpill;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
     {
         // Code deposit failure is an exceptional halt: the child's state is reverted.
         // Refund already added child.StateReservoir, child.StateGasUsed, and child.StateGasSpill to parent.
-        // Halt semantics discard child's StateGasUsed and return only the non-inflated state
-        // reservoir that would survive an error boundary.
+        // Halt semantics discard child's StateGasUsed and return it to the reservoir.
         _ = initialStateReservoir;
-        parentGas.StateReservoir += childGas.StateGasUsed - childStateRefund;
+        _ = childStateRefund;
+        parentGas.StateReservoir += childGas.StateGasUsed;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
     }
 

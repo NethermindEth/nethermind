@@ -284,7 +284,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     }
                     else
                     {
-                        // On revert, return remaining regular gas and restore all state gas to parent reservoir.
+                        // On revert, return remaining regular gas and restore state gas to parent reservoir.
                         TGasPolicy.UpdateGasUp(ref _currentState.Gas, TGasPolicy.GetRemainingGas(in previousState.Gas));
                         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir, previousState.StateGasRefund);
                         if (previousState.ExecutionType.IsAnyCreate())
@@ -594,7 +594,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     /// <summary>
-    /// Pops the child state, restores state gas to the parent frame, and disposes the child.
+    /// Pops the exceptionally halted child state, restores state gas to the parent frame, and disposes the child.
     /// Must be called before the child <see cref="VmState{TGasPolicy}"/> is disposed so that
     /// spill/usage accounting is not lost.
     /// </summary>
@@ -602,7 +602,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
-        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in childState.Gas, childState.InitialStateReservoir, childState.StateGasRefund);
+        TGasPolicy.RestoreChildStateGasOnHalt(ref _currentState.Gas, in childState.Gas);
         _currentState.IsContinuation = true;
         childState.Dispose();
     }
@@ -1331,7 +1331,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
-        // EIP-8037: write gas back to state on failure so RestoreChildStateGas
+        // EIP-8037: write gas back to state on failure so RestoreChildStateGasOnHalt
         // can read accumulated StateGasUsed/StateGasSpill from the child frame.
         _currentState.Gas = gas;
         // Return a failure CallResult based on the remaining gas and the exception type.

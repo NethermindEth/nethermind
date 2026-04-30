@@ -277,7 +277,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.SetOutOfGas(ref child);
         Assert.That((child.Value, child.StateReservoir), Is.EqualTo((0L, 300L)));
 
-        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 500, childStateRefund: 0);
+        EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child);
         Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((500L, 10L)));
     }
 
