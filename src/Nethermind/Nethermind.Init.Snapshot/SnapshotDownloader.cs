@@ -105,10 +105,9 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
             long remaining = bytesToSkip;
             while (remaining > 0)
             {
-                int read = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                    throw new IOException($"Stream ended prematurely while skipping: {remaining} of {bytesToSkip} bytes remaining.");
-                remaining -= read;
+                int chunk = (int)Math.Min(buffer.Length, remaining);
+                await stream.ReadAtLeastAsync(buffer.AsMemory(0, chunk), chunk, throwOnEndOfStream: true, cancellationToken).ConfigureAwait(false);
+                remaining -= chunk;
             }
         }
         finally
