@@ -951,25 +951,15 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void RefundRevertedExecutionStateGas(IReleaseSpec spec, in TGasPolicy intrinsicGas, ref TGasPolicy gas, bool excludeSpilled = false)
+        static void RefundRevertedExecutionStateGas(IReleaseSpec spec, in TGasPolicy intrinsicGas, ref TGasPolicy gas)
         {
             if (!spec.IsEip8037Enabled)
             {
                 return;
             }
 
-            // EIP-8037: when called from a true top-level exceptional halt (excludeSpilled=true),
-            // only the reservoir-funded portion is refundable — the spilled portion was already
-            // paid out of regular gas, which the halt burns. Refunding it would let the user
-            // reclaim execution gas they cannot get back. For code-deposit failure (excludeSpilled=false)
-            // the initcode ran cleanly; the spilled state gas stays accounted in the state dimension
-            // and the refund returns the full reverted state gas to the user.
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGas);
             long revertedStateGas = TGasPolicy.GetStateGasUsed(in gas);
-            if (excludeSpilled)
-            {
-                revertedStateGas -= TGasPolicy.GetStateGasSpill(in gas);
-            }
             if (revertedStateGas > stateGasFloor)
             {
                 TGasPolicy.RefundStateGas(ref gas, revertedStateGas, stateGasFloor);
@@ -1180,7 +1170,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (substate.IsError && spec.IsEip8037Enabled)
             {
-                RefundRevertedExecutionStateGas(spec, in intrinsicGasStandard, ref gasAfterExecution, excludeSpilled: true);
+                RefundRevertedExecutionStateGas(spec, in intrinsicGasStandard, ref gasAfterExecution);
                 return RefundOnFail(tx, spec, opts, in gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, burnRemainingRegularGas: true, burnRemainingRegularGasForBlock: true);
             }
 

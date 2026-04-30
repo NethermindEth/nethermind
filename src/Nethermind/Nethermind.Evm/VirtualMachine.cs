@@ -610,10 +610,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RefundRevertedTopLevelStateGas()
     {
-        long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
-        if (revertedStateGas > _currentState.InitialStateGasUsed)
+        // EIP-8037: only the reservoir-funded portion of state gas is refundable on a top-level
+        // halt. The spilled portion was paid out of regular gas, which the halt burns — refunding
+        // it would let the user reclaim execution gas they cannot get back. The spilled portion
+        // is also moved out of state-gas accounting so it shows up only in the regular dimension
+        // (where the halt-burn already accounts for it).
+        long stateGasFloor = _currentState.InitialStateGasUsed;
+        long stateGasSpill = TGasPolicy.GetStateGasSpill(in _currentState.Gas);
+        long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas) - stateGasSpill;
+        if (revertedStateGas > stateGasFloor)
         {
-            TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, _currentState.InitialStateGasUsed);
+            TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, stateGasFloor);
+        }
+        if (stateGasSpill > 0)
+        {
+            TGasPolicy.DiscardStateGas(ref _currentState.Gas, stateGasSpill, stateGasFloor);
         }
     }
 

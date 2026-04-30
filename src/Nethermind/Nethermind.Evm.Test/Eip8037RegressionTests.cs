@@ -332,8 +332,15 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         return createdAddress;
     }
 
+    /// <summary>
+    /// Top-level halt is billed at the original regular-gas budget (here = gasLimit, since
+    /// gasLimit &lt; cap leaves no reservoir excess). State gas that was borrowed from
+    /// execution gas (spilled) stays burned with the regular gas — no user refund, and it
+    /// does not contribute to BlockStateGas because the regular burn already accounts for
+    /// it via BlockGas.
+    /// </summary>
     [Test]
-    public void Eip8037_top_level_exceptional_halt_must_refund_execution_state_gas()
+    public void Eip8037_top_level_exceptional_halt_burns_spilled_state_gas()
     {
         Prepare codeBuilder = Prepare.EvmCode
             .PushData(1)
@@ -352,15 +359,19 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.StackOverflow)));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.SSetState));
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.SSetState));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit - GasCostOf.SSetState));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
     }
 
+    /// <summary>
+    /// Same rule as the SSTORE-spill case but for an inner CALL whose NewAccountState charge
+    /// spills into regular gas before the parent INVALIDs at the top level.
+    /// </summary>
     [Test]
-    public void Eip8037_top_level_exceptional_halt_must_refund_child_state_gas()
+    public void Eip8037_top_level_exceptional_halt_burns_spilled_child_state_gas()
     {
         byte[] code = Prepare.EvmCode
             .CallWithValue(TestItem.AddressC, 50_000, UInt256.One)
@@ -372,8 +383,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.NewAccountState));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit - GasCostOf.NewAccountState));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         Assert.That(TestState.AccountExists(TestItem.AddressC), Is.False);
     }
