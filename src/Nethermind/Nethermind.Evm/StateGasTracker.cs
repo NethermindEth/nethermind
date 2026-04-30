@@ -15,6 +15,7 @@ internal sealed class StateGasTracker
     private readonly Stack<AccountingEvent> _accountingEvents = new();
     private readonly HashSet<StorageCell> _createdStorageSlots = new(StorageCell.EqualityComparer);
     private readonly Dictionary<AddressAsKey, int> _createdStorageSlotsByAddress = new(AddressAsKey.EqualityComparer);
+    private readonly Dictionary<StorageCell, int> _pendingStorageRefunds = new(StorageCell.EqualityComparer);
     private readonly HashSet<AddressAsKey> _createdAccounts = new(AddressAsKey.EqualityComparer);
     private readonly Dictionary<AddressAsKey, int> _createdCodeLengths = new(AddressAsKey.EqualityComparer);
 
@@ -41,6 +42,7 @@ internal sealed class StateGasTracker
         _accountingEvents.Clear();
         _createdStorageSlots.Clear();
         _createdStorageSlotsByAddress.Clear();
+        _pendingStorageRefunds.Clear();
         _createdAccounts.Clear();
         _createdCodeLengths.Clear();
     }
@@ -102,8 +104,11 @@ internal sealed class StateGasTracker
         for (int i = snapshot; i < changesSpan.Length; i++)
         {
             ref StateChange change = ref changesSpan[i];
-            if (change.Accounted) continue;
-            (accountedIndices ??= []).Add(i);
+            bool accounted = change.Accounted;
+            if (!accounted)
+            {
+                (accountedIndices ??= []).Add(i);
+            }
 
             switch (change.Kind)
             {
@@ -128,9 +133,11 @@ internal sealed class StateGasTracker
                     }
                     break;
                 case StateChangeKind.AccountCreated:
+                    if (accounted) continue;
                     (accountAgg ??= new(AddressAsKey.EqualityComparer)).Add(change.Address!);
                     break;
                 case StateChangeKind.CodeDeposit:
+                    if (accounted) continue;
                     (codeAgg ??= new(AddressAsKey.EqualityComparer))[change.Address!] = change.CodeLength;
                     break;
             }
@@ -140,6 +147,7 @@ internal sealed class StateGasTracker
 
         long stateGasCharge = 0;
         long stateGasRefund = 0;
+        long stateGasCredit = 0;
         List<AccountingAction> actions = [];
 
         if (storageAgg is not null)
@@ -148,19 +156,40 @@ internal sealed class StateGasTracker
             {
                 bool entryIsZero = (slot & FrameStorageFlags.EntryIsZero) != 0;
                 bool exitIsZero = (slot & FrameStorageFlags.ExitIsZero) != 0;
-                if (entryIsZero == exitIsZero) continue;
-
                 bool txEntryIsZero = (slot & FrameStorageFlags.TxEntryIsZero) != 0;
                 bool isCreated = _createdStorageSlots.Contains(cell);
+                bool hasPendingRefund = HasPendingStorageRefund(cell);
+                long storageSetStateCost = TGasPolicy.GetStorageSetStateCost(in gas);
+                if (entryIsZero == exitIsZero)
+                {
+                    if (entryIsZero && txEntryIsZero && hasPendingRefund)
+                    {
+                        stateGasCredit = checked(stateGasCredit + storageSetStateCost);
+                        actions.Add(AccountingAction.ConsumePendingStorageRefund(cell));
+                    }
+
+                    continue;
+                }
+
                 if (!exitIsZero && txEntryIsZero && !isCreated)
                 {
-                    stateGasCharge = checked(stateGasCharge + TGasPolicy.GetStorageSetStateCost(in gas));
+                    if (hasPendingRefund)
+                    {
+                        stateGasCredit = checked(stateGasCredit + storageSetStateCost);
+                        actions.Add(AccountingAction.ConsumePendingStorageRefund(cell));
+                    }
+
+                    stateGasCharge = checked(stateGasCharge + storageSetStateCost);
                     actions.Add(AccountingAction.ChargeStorage(cell));
                 }
                 else if (exitIsZero && !entryIsZero && txEntryIsZero && isCreated)
                 {
-                    stateGasRefund = checked(stateGasRefund + TGasPolicy.GetStorageSetStateCost(in gas));
+                    stateGasRefund = checked(stateGasRefund + storageSetStateCost);
                     actions.Add(AccountingAction.RefundStorage(cell));
+                }
+                else if (exitIsZero && !entryIsZero && txEntryIsZero)
+                {
+                    actions.Add(AccountingAction.AddPendingStorageRefund(cell));
                 }
             }
         }
@@ -189,6 +218,11 @@ internal sealed class StateGasTracker
         if (stateGasRefund > 0)
         {
             TGasPolicy.RefundStateGas(ref gasAfterFrameAccounting, stateGasRefund, stateGasFloor);
+        }
+
+        if (stateGasCredit > 0)
+        {
+            TGasPolicy.CreditStateGasRefund(ref gasAfterFrameAccounting, stateGasCredit);
         }
 
         if (stateGasCharge > 0 && !TGasPolicy.ConsumeStateGas(ref gasAfterFrameAccounting, stateGasCharge))
@@ -244,6 +278,12 @@ internal sealed class StateGasTracker
                     _createdStorageSlots.Remove(action.StorageCell);
                     AdjustStorageSlotCount(action.StorageCell.Address, -1);
                     break;
+                case AccountingActionKind.AddPendingStorageRefund:
+                    AdjustPendingStorageRefundCount(action.StorageCell, +1);
+                    break;
+                case AccountingActionKind.ConsumePendingStorageRefund:
+                    AdjustPendingStorageRefundCount(action.StorageCell, -1);
+                    break;
                 case AccountingActionKind.ChargeAccount:
                     _createdAccounts.Add(action.Address);
                     break;
@@ -277,6 +317,12 @@ internal sealed class StateGasTracker
                     _createdStorageSlots.Add(action.StorageCell);
                     AdjustStorageSlotCount(action.StorageCell.Address, +1);
                     break;
+                case AccountingActionKind.AddPendingStorageRefund:
+                    AdjustPendingStorageRefundCount(action.StorageCell, -1);
+                    break;
+                case AccountingActionKind.ConsumePendingStorageRefund:
+                    AdjustPendingStorageRefundCount(action.StorageCell, +1);
+                    break;
                 case AccountingActionKind.ChargeAccount:
                     _createdAccounts.Remove(action.Address);
                     break;
@@ -294,6 +340,19 @@ internal sealed class StateGasTracker
         if (count == 0)
         {
             _createdStorageSlotsByAddress.Remove(address);
+        }
+    }
+
+    private bool HasPendingStorageRefund(StorageCell storageCell) =>
+        _pendingStorageRefunds.TryGetValue(storageCell, out int count) && count > 0;
+
+    private void AdjustPendingStorageRefundCount(StorageCell storageCell, int delta)
+    {
+        ref int count = ref CollectionsMarshal.GetValueRefOrAddDefault(_pendingStorageRefunds, storageCell, out _);
+        count += delta;
+        if (count == 0)
+        {
+            _pendingStorageRefunds.Remove(storageCell);
         }
     }
 
@@ -358,6 +417,12 @@ internal sealed class StateGasTracker
         public static AccountingAction RefundStorage(StorageCell storageCell) =>
             new(AccountingActionKind.RefundStorage, storageCell, default, 0);
 
+        public static AccountingAction AddPendingStorageRefund(StorageCell storageCell) =>
+            new(AccountingActionKind.AddPendingStorageRefund, storageCell, default, 0);
+
+        public static AccountingAction ConsumePendingStorageRefund(StorageCell storageCell) =>
+            new(AccountingActionKind.ConsumePendingStorageRefund, storageCell, default, 0);
+
         public static AccountingAction ChargeAccount(AddressAsKey address) =>
             new(AccountingActionKind.ChargeAccount, default, address, 0);
 
@@ -369,6 +434,8 @@ internal sealed class StateGasTracker
     {
         ChargeStorage,
         RefundStorage,
+        AddPendingStorageRefund,
+        ConsumePendingStorageRefund,
         ChargeAccount,
         ChargeCodeDeposit,
     }

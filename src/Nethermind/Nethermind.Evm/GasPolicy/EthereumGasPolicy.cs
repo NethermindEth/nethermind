@@ -277,6 +277,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void CreditStateGasRefund(ref EthereumGasPolicy gas, long amount) =>
+        gas.StateReservoir += amount;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
     {
         long discardableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
