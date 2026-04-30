@@ -465,11 +465,10 @@ public class DebugRpcModule(
     {
         PrepareTransactions(bundles, header);
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
-            .GetBundleTraces(bundles, blockParameter, cancellationToken, options);
+            .GetBundleTraces(bundles, blockParameter, timeout.Token, options);
 
         if (_logger.IsTrace)
         {
@@ -477,7 +476,24 @@ public class DebugRpcModule(
             _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
         }
 
-        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(StreamBundleTraces(bundleTraces, timeout));
+    }
+
+    // Bind the timeout CTS lifetime to enumerator disposal so the lazy bundle pipeline
+    // can keep using the cancellation token after this method returns (JSON-RPC serializes
+    // the result lazily). Disposing the CTS earlier breaks downstream token consumers
+    // (e.g. WaitHandle access throws ObjectDisposedException).
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundleTraces(
+        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces,
+        CancellationTokenSource cancellationTokenSource)
+    {
+        using (cancellationTokenSource)
+        {
+            foreach (IEnumerable<GethLikeTxTrace> traces in bundleTraces)
+            {
+                yield return traces;
+            }
+        }
     }
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)

@@ -43,15 +43,107 @@ public class DebugModuleTests
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
-    private DebugRpcModule CreateDebugRpcModule(IDebugBridge customDebugBridge) => new(
+    private DebugRpcModule CreateDebugRpcModule(
+        IDebugBridge customDebugBridge,
+        IBlockchainBridge? blockchainBridge = null,
+        IBlockFinder? blockFinder = null) => new(
             LimboLogs.Instance,
             customDebugBridge,
             _jsonRpcConfig,
             _specProvider,
-            _blockchainBridge,
+            blockchainBridge ?? _blockchainBridge,
             new BlocksConfig(),
-            _blockFinder
+            blockFinder ?? _blockFinder
         );
+
+    [Test]
+    public void Debug_traceCallMany_does_not_dispose_timeout_cts_before_consumer_enumerates()
+    {
+        (DebugRpcModule rpcModule, IDebugBridge localDebugBridge) = BuildTraceCallManyModule();
+        localDebugBridge
+            .GetBundleTraces(
+                Arg.Any<TransactionBundle[]>(),
+                Arg.Any<BlockParameter>(),
+                Arg.Any<CancellationToken>(),
+                Arg.Any<GethTraceOptions>())
+            .Returns(static callInfo => YieldTraceUsing(callInfo.ArgAt<CancellationToken>(2)));
+
+        TransactionBundle bundle = new()
+        {
+            Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }]
+        };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            rpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        // Iterate the way the JSON-RPC serializer does: drain each inner sequence inline.
+        // The inner iterator touches CancellationToken.WaitHandle, which throws
+        // ObjectDisposedException if the timeout CTS has been disposed prematurely.
+        List<int> innerCounts = [];
+        foreach (IEnumerable<GethLikeTxTrace> traces in result.Data)
+        {
+            innerCounts.Add(traces.Count());
+        }
+        innerCounts.Should().BeEquivalentTo([1]);
+    }
+
+    [Test]
+    public void Debug_traceCallMany_does_not_eagerly_materialize_bundles()
+    {
+        (DebugRpcModule rpcModule, IDebugBridge localDebugBridge) = BuildTraceCallManyModule();
+        localDebugBridge
+            .GetBundleTraces(
+                Arg.Any<TransactionBundle[]>(),
+                Arg.Any<BlockParameter>(),
+                Arg.Any<CancellationToken>(),
+                Arg.Any<GethTraceOptions>())
+            .Returns(_ => YieldOneThenThrow());
+
+        TransactionBundle bundle = new()
+        {
+            Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }]
+        };
+
+        // Result should be a deferred sequence: traceCallMany must not enumerate the second
+        // bundle (which throws) before returning. Eager materialization would surface the
+        // exception from this call.
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    private (DebugRpcModule Module, IDebugBridge DebugBridge) BuildTraceCallManyModule()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        Block headBlock = Build.A.Block.WithHeader(header).TestObject;
+        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+        blockFinder.Head.Returns(headBlock);
+        blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
+        blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        return (CreateDebugRpcModule(localDebugBridge, blockchainBridge, blockFinder), localDebugBridge);
+    }
+
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> YieldTraceUsing(CancellationToken cancellationToken)
+    {
+        yield return YieldOne(cancellationToken);
+    }
+
+    private static IEnumerable<GethLikeTxTrace> YieldOne(CancellationToken cancellationToken)
+    {
+        // Touching WaitHandle throws ObjectDisposedException if the source CTS has been disposed,
+        // so this enumerator only completes successfully while the timeout CTS is still alive.
+        _ = cancellationToken.WaitHandle;
+        yield return new GethLikeTxTrace();
+    }
+
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> YieldOneThenThrow()
+    {
+        yield return [new GethLikeTxTrace()];
+        throw new InvalidOperationException("bundles enumerated past first element — streaming was lost");
+    }
 
     [Test]
     public async Task Get_from_db()
