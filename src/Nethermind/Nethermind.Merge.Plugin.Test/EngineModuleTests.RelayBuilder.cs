@@ -155,7 +155,8 @@ public partial class EngineModuleTests
 
                 mockHttp
                     .Expect(HttpMethod.Post, relayUrl + BoostRelay.SendPayloadPath)
-                    .WithContent(serializer.Serialize(expected));
+                    .WithContent(serializer.Serialize(expected))
+                    .Respond("application/json", "{}");
 
                 DefaultHttpClient defaultHttpClient =
                     new(mockHttp.ToHttpClient(), serializer, logManager, 1, 100);
