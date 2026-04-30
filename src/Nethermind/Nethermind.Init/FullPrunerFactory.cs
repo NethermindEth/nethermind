@@ -3,7 +3,6 @@
 
 using System.IO.Abstractions;
 using System.Linq;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
@@ -30,7 +29,6 @@ public class FullPrunerFactory(
     IProcessExitSource processExit,
     ChainSpec chainSpec,
     IFileSystem fileSystem,
-    [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
     ITimerFactory timerFactory,
     CompositePruningTrigger compositePruningTrigger,
     ILogManager logManager
@@ -51,6 +49,10 @@ public class FullPrunerFactory(
             compositePruningTrigger.Add(automaticTrigger);
         }
 
+        // Resolve the drive from pruningDbPath rather than the BaseDbPath-keyed registration:
+        // if the pruning subdirectory is symlinked or bind-mounted to a different volume, we
+        // want the free-space trigger to read that volume, not BaseDbPath's drive.
+        IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
         return new FullPruner(
             fullPruningDb,
             nodeStorageFactory,
@@ -61,7 +63,7 @@ public class FullPrunerFactory(
             stateReader,
             processExit,
             ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
-            drives.FirstOrDefault(),
+            drive,
             trieStore,
             logManager);
     }
