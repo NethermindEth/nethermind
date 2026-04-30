@@ -48,22 +48,24 @@ public class BlockCacheService : IBlockCacheService
     public bool TryAddBlock(Block block)
     {
         Hash256 blockHash = block.Hash ?? block.CalculateHash();
-        bool added = _blockCache.TryAdd(blockHash, block);
-        if (added)
+        if (!_blockCache.TryAdd(blockHash, block))
         {
-            // The cache bound is small, so pruning scans it instead of maintaining a second ordered index.
-            while (_blockCache.Count > _maxCachedBlocks &&
-                   TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHashToRemove))
+            return false;
+        }
+
+        bool blockRemainsCached = true;
+        // The cache bound is small, so pruning scans it instead of maintaining a second ordered index.
+        while (_blockCache.Count > _maxCachedBlocks &&
+               TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHashToRemove))
+        {
+            bool removed = _blockCache.TryRemove(blockHashToRemove, out _);
+            if (removed && Equals(blockHashToRemove.Value, blockHash))
             {
-                bool removed = _blockCache.TryRemove(blockHashToRemove, out _);
-                if (removed && Equals(blockHashToRemove.Value, blockHash))
-                {
-                    added = false;
-                }
+                blockRemainsCached = false;
             }
         }
 
-        return added;
+        return blockRemainsCached;
     }
 
     /// <inheritdoc />
