@@ -5,6 +5,7 @@ using System.Buffers;
 using System.IO.Abstractions;
 using System.Net;
 using System.Security.Cryptography;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Core.Extensions;
@@ -21,7 +22,9 @@ namespace Nethermind.Init.Snapshot;
 [RunnerStepDependencies(
     dependencies: [],
     dependents: [typeof(InitializeBlockTree), typeof(DatabaseMigrations), typeof(StartLogIndex)])]
-public class InitDatabaseSnapshot(INethermindApi api) : IStep
+public class InitDatabaseSnapshot(
+    INethermindApi api,
+    [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives) : IStep
 {
     private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
@@ -188,20 +191,17 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
         if (checkpoint.Read() >= SnapshotStage.Extracted)
             return;
 
-        CheckDiskSpace(dbPath, snapshotPath);
+        CheckDiskSpace(snapshotPath);
 
         SnapshotExtractor extractor = new(api.LogManager);
         await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
         checkpoint.Advance(SnapshotStage.Extracted);
     }
 
-    private void CheckDiskSpace(string dbPath, string snapshotPath)
+    private void CheckDiskSpace(string snapshotPath)
     {
-        IDriveInfo[] drives = api.FileSystem.GetDriveInfos(dbPath);
         if (drives.Length == 0)
-        {
             return;
-        }
 
         long snapshotSize = api.FileSystem.FileInfo.New(snapshotPath).Length;
         long required = (long)(snapshotSize * 2.5);

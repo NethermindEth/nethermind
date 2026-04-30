@@ -91,12 +91,6 @@ namespace Nethermind.HealthChecks
             builder
                 .AddSingleton<IHealthHintService, HealthHintService>()
                 .AddSingleton<INodeHealthService, NodeHealthService>()
-                .AddKeyedSingleton<IDriveInfo[]>(nameof(IInitConfig.BaseDbPath), (ctx) =>
-                {
-                    IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
-                    IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-                    return fileSystem.GetDriveInfos(initConfig.BaseDbPath);
-                })
                 .AddSingleton<FreeDiskSpaceChecker>()
                 .AddSingleton<IJsonRpcServiceConfigurer, HealthCheckJsonRpcConfigurer>()
 
