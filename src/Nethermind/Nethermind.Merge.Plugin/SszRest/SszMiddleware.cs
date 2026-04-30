@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Pipelines;
 using System.Net.Mime;
 using System.Threading;
@@ -36,8 +37,7 @@ public sealed class SszMiddleware(
 
     // Path: /engine/v{N}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v";
-
-    private const int MaxBodySize = 0x1000000;
+    public const int MaxBodySize = 0x1000000;
     private readonly Dictionary<(string Method, string Resource), List<ISszEndpointHandler>> _routes = BuildRoutes(handlers);
 
     private static Dictionary<(string, string), List<ISszEndpointHandler>> BuildRoutes(
@@ -112,6 +112,11 @@ public sealed class SszMiddleware(
         {
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
         }
+        catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status422UnprocessableEntity, "Malformed SSZ body");
+        }
         catch (Exception ex)
         {
             if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
@@ -148,6 +153,9 @@ public sealed class SszMiddleware(
             if (!char.IsAsciiLetterOrDigit(c) && c != '-' && c != '/')
                 return false;
         }
+
+        if (span.Contains("//", StringComparison.Ordinal))
+            return false;
 
         pathSegment = span.ToString();
         return true;

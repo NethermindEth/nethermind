@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -40,23 +41,23 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
             return false;
         }
         string hex = extra.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? extra[2..] : extra;
-        if (hex.Length == 0 || hex.Length % 2 != 0 || !IsValidHex(hex))
+        if (hex.Length == 0 || hex.Length % 2 != 0)
         {
             id = [];
             err = $"Invalid payload ID: '{extra}'";
             return false;
         }
-        id = Convert.FromHexString(hex);
-        err = string.Empty;
-        return true;
-    }
-
-    private static bool IsValidHex(string s)
-    {
-        foreach (char c in s)
+        try
         {
-            if (!Uri.IsHexDigit(c)) return false;
+            id = Bytes.FromHexString(hex);
         }
+        catch (Exception)
+        {
+            id = [];
+            err = $"Invalid payload ID: '{extra}'";
+            return false;
+        }
+        err = string.Empty;
         return true;
     }
 

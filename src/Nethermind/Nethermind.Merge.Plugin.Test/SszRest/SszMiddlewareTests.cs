@@ -443,9 +443,8 @@ public class SszMiddlewareTests
     [Test]
     public async Task Oversized_body_returns_413_without_calling_engine_module()
     {
-        const int MaxBodySize = 16 * 1024 * 1024;
         DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", []);
-        ctx.Request.ContentLength = MaxBodySize + 1;
+        ctx.Request.ContentLength = SszMiddleware.MaxBodySize + 1;
         ctx.Request.Body = new MemoryStream(new byte[1]);
 
         await _middleware.InvokeAsync(ctx);
@@ -479,7 +478,20 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Malformed_ssz_body_returns_500_without_propagating_exception()
+    public async Task Path_with_consecutive_slashes_returns_404()
+    {
+        // TryRoute must reject runs of '/' so that //abc does not reach
+        // the payload-id parser and produce a confusing parse error.
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads//abc", []);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
+    }
+
+    [Test]
+    public async Task Malformed_ssz_body_returns_422_without_propagating_exception()
     {
         byte[] garbage = new byte[64];
         new Random(42).NextBytes(garbage);
@@ -489,7 +501,9 @@ public class SszMiddlewareTests
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
         await act.Should().NotThrowAsync();
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
+        // Per execution-apis spec a body that cannot be decoded is 422 Unprocessable Entity,
+        // not 500 Internal Server Error.
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status422UnprocessableEntity);
     }
 
     [Test]

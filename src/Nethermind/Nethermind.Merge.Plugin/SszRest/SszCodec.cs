@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -461,8 +460,7 @@ public static class SszCodec
         for (int i = 0; i < hashes.Length; i++)
         {
             byte[] bytes = new byte[32];
-            ValueHash256 vh = hashes[i].ValueHash256;
-            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref vh, 1)).CopyTo(bytes);
+            hashes[i].Bytes.CopyTo(bytes);
             result[i] = bytes;
         }
         return result;
