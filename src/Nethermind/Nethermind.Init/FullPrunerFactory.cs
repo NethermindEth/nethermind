@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using System.Linq;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
@@ -29,6 +30,7 @@ public class FullPrunerFactory(
     IProcessExitSource processExit,
     ChainSpec chainSpec,
     IFileSystem fileSystem,
+    [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
     ITimerFactory timerFactory,
     CompositePruningTrigger compositePruningTrigger,
     ILogManager logManager
@@ -49,7 +51,6 @@ public class FullPrunerFactory(
             compositePruningTrigger.Add(automaticTrigger);
         }
 
-        IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
         return new FullPruner(
             fullPruningDb,
             nodeStorageFactory,
@@ -60,7 +61,7 @@ public class FullPrunerFactory(
             stateReader,
             processExit,
             ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
-            drive,
+            drives.FirstOrDefault(),
             trieStore,
             logManager);
     }
