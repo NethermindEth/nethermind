@@ -210,6 +210,11 @@ namespace Nethermind.Network.Test
 
             freshSession.State.Should().Be(SessionState.Initialized);
             ctx.PeerManager.ActivePeers.Single().InSession.Should().BeSameAs(freshSession);
+
+            staleSession.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
+
+            freshSession.State.Should().Be(SessionState.Initialized);
+            ctx.PeerManager.ActivePeers.Single().InSession.Should().BeSameAs(freshSession);
         }
 
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
@@ -224,8 +229,6 @@ namespace Nethermind.Network.Test
         private static void InitSession(Session session)
         {
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
-            IChannel channel = Substitute.For<IChannel>();
-            context.Channel.Returns(channel);
 
             session.Init(5, context, Substitute.For<IPacketSender>());
         }

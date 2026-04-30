@@ -1112,7 +1112,7 @@ namespace Nethermind.Network
         private static bool HasOpenSession(ISession? session)
             => session is not null
                && !session.IsClosing
-               && (session is not Session concreteSession || !concreteSession.IsChannelClosed);
+               && !session.IsChannelClosed;
 
         private void ResolveOppositeDirectionSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
         {
