@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (!_isInBeaconModeControl)
             {
                 _beaconPivot.RemoveBeaconPivot();
-                _blockCacheService.BlockCache.Clear();
+                _blockCacheService.Clear();
             }
 
             _isInBeaconModeControl = true;

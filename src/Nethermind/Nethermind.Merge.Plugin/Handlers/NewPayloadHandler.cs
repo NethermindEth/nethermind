@@ -171,7 +171,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             }
 
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
-            _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+            _blockCacheService.TryAddBlock(block);
             return NewPayloadV1Result.Syncing;
         }
 
@@ -478,13 +478,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (current is null)
             {
                 // block not part of beacon pivot chain, save in cache
-                _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+                _blockCacheService.TryAddBlock(block);
                 return false;
             }
 
             while (stack.TryPop(out Block? child))
             {
                 _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
+                _blockCacheService.BlockCache.TryRemove(child.Hash!, out _);
             }
 
             _beaconPivot.ProcessDestination = block.Header;
