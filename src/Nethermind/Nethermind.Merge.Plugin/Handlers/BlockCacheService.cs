@@ -55,6 +55,7 @@ public class BlockCacheService : IBlockCacheService
             bool added = _blockCache.TryAdd(blockHash, block);
             if (added)
             {
+                // The cache bound is small, so pruning scans it instead of maintaining a second ordered index.
                 while (_blockCache.Count > _maxCachedBlocks &&
                        TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHashToRemove))
                 {
@@ -86,9 +87,9 @@ public class BlockCacheService : IBlockCacheService
 
     private bool TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHash)
     {
-        Hash256AsKey furthestHash = default;
-        long furthestNumber = long.MinValue;
-        bool foundFurthest = false;
+        Hash256AsKey highestNumberedHash = default;
+        long highestBlockNumber = long.MinValue;
+        bool foundBlock = false;
 
         foreach (KeyValuePair<Hash256AsKey, Block> cachedBlock in _blockCache)
         {
@@ -97,16 +98,16 @@ public class BlockCacheService : IBlockCacheService
                 continue;
             }
 
-            if (!foundFurthest || cachedBlock.Value.Number > furthestNumber)
+            if (!foundBlock || cachedBlock.Value.Number > highestBlockNumber)
             {
-                furthestHash = cachedBlock.Key;
-                furthestNumber = cachedBlock.Value.Number;
-                foundFurthest = true;
+                highestNumberedHash = cachedBlock.Key;
+                highestBlockNumber = cachedBlock.Value.Number;
+                foundBlock = true;
             }
         }
 
-        blockHash = furthestHash;
-        return foundFurthest;
+        blockHash = highestNumberedHash;
+        return foundBlock;
     }
 
     private bool IsProtected(Hash256AsKey blockHash) =>
