@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -10,6 +13,10 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.IntegrationTests;
 
@@ -64,7 +71,7 @@ public static class Utils
     /// uses the resolved image, binds the JSON-RPC (8545) and Engine (8551) ports,
     /// and (optionally) waits until <c>Initialization Completed</c> appears in logs.
     /// </summary>
-    public static async Task<ContainerBuilder> BuildNethermindContainerAsync(string[] command, bool waitForInit = true)
+    public static async Task<ContainerBuilder> BuildNethermindContainerAsync(string[] command, bool waitForInit = true, (string HostPath, string ContainerPath)? bindMount = null, IReadOnlyList<(string HostPath, string ContainerPath)> bindMounts = null)
     {
         string image = await GetNethermindImageAsync();
 
@@ -74,12 +81,42 @@ public static class Utils
             .WithPortBinding(8545, true)
             .WithPortBinding(8551, true);
 
+        if (bindMount is not null)
+        {
+            builder = builder.WithBindMount(bindMount.Value.HostPath, bindMount.Value.ContainerPath);
+        }
+
+        if (bindMounts is not null)
+        {
+            foreach ((string HostPath, string ContainerPath) m in bindMounts)
+            {
+                builder = builder.WithBindMount(m.HostPath, m.ContainerPath);
+            }
+        }
+
         if (waitForInit)
         {
             builder = builder.WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Initialization Completed"));
         }
 
         return builder;
+    }
+
+    /// <summary>
+    /// Extracts an embedded chainspec resource (under <c>Resources/</c>) to a temp file
+    /// on the host so it can be bind-mounted into the container.
+    /// </summary>
+    public static string ExtractEmbeddedChainspec(string resourceFileName)
+    {
+        Assembly assembly = typeof(Utils).Assembly;
+        string resourceName = $"{assembly.GetName().Name}.Resources.{resourceFileName}";
+        using Stream stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' not found. Available: {string.Join(", ", assembly.GetManifestResourceNames())}");
+
+        string tmpPath = Path.Combine(Path.GetTempPath(), $"nethermind-it-{Guid.NewGuid():N}-{resourceFileName}");
+        using FileStream output = File.Create(tmpPath);
+        stream.CopyTo(output);
+        return tmpPath;
     }
 
     public static async Task<string> GetCleanStdoutAsync(this IContainer container)
@@ -113,6 +150,52 @@ public static class Utils
         }
 
         return $"{header}.{payload}.{signature}";
+    }
+
+    /// <summary>
+    /// Signs a legacy (Type 0) transaction with EIP-155 replay protection and submits it
+    /// via <c>eth_sendRawTransaction</c>. Returns the resulting tx hash.
+    /// </summary>
+    public static async Task<string> SignAndSendTransactionAsync(HttpClient httpClient, PrivateKey signer, Transaction tx, ulong chainId)
+    {
+        EthereumEcdsa ecdsa = new(chainId);
+        ecdsa.Sign(signer, tx, isEip155Enabled: true);
+
+        Rlp rlp = TxDecoder.Instance.Encode(tx);
+        string raw = "0x" + rlp.Bytes.ToHexString();
+
+        JsonNode result = await SendJsonRpcRequestAsync(httpClient, "eth_sendRawTransaction", raw);
+        return result.GetValue<string>();
+    }
+
+    /// <summary>
+    /// JSON-RPC POST against the public Eth endpoint (no JWT). Same shape as
+    /// <see cref="SendEngineRequestAsync"/> but exists as a separate method so callers
+    /// can hit a different port without auth.
+    /// </summary>
+    public static async Task<JsonNode> SendJsonRpcRequestAsync(HttpClient httpClient, string method, params object[] parameters)
+    {
+        var request = new
+        {
+            jsonrpc = "2.0",
+            method = method,
+            @params = parameters,
+            id = 1
+        };
+
+        string jsonString = JsonSerializer.Serialize(request);
+        StringContent content = new(jsonString, Encoding.UTF8, "application/json");
+        HttpResponseMessage response = await httpClient.PostAsync("", content);
+        response.EnsureSuccessStatusCode();
+        string responseBody = await response.Content.ReadAsStringAsync();
+        JsonNode json = JsonNode.Parse(responseBody);
+
+        if (json["error"] != null)
+        {
+            throw new Exception($"JSON-RPC error on {method}: {json["error"]}\nRequest: {jsonString}");
+        }
+
+        return json["result"];
     }
 
     public static async Task<JsonNode> SendEngineRequestAsync(HttpClient httpClient, string method, params object[] parameters)
