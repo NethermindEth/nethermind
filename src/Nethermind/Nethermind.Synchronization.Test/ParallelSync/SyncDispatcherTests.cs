@@ -250,12 +250,13 @@ public class SyncDispatcherTests
         }
     }
 
-    [Test]
-    public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
+    // [NonParallelizable]: this test relies on the dispatcher's Task.Run reaching HandleResponse
+    // promptly. Under the class-level [Parallelizable(ParallelScope.All)] it competes with the rest
+    // of the suite for thread-pool capacity, and on slow CI the 1st HandleResponse can take >15s
+    // to fire — exhausting the budget before we even reach the assertion window.
+    [Test, NonParallelizable, CancelAfter(30_000)]
+    public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose(CancellationToken cancellationToken)
     {
-        using CancellationTokenSource cts = new();
-        cts.CancelAfter(TimeSpan.FromSeconds(15));
-
         TestSyncFeed syncFeed = new(isMultiFeed: true);
         syncFeed.LockResponse();
         TestDownloader downloader = new();
@@ -266,25 +267,25 @@ public class SyncDispatcherTests
             new TestSyncPeerPool(),
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
-        Task executorTask = dispatcher.Start(cts.Token);
+        Task executorTask = dispatcher.Start(cancellationToken);
 
-        // Load some requests
         syncFeed.Activate();
-        await syncFeed.WaitForHandleResponse();
+        await syncFeed.WaitForHandleResponse().WaitAsync(cancellationToken);
         syncFeed.Finish();
 
-        // Dispose
-        Task disposeTask = Task.Run(async () =>
-        {
-            await dispatcher.DisposeAsync();
-        });
-        await Task.Delay(200, cts.Token);
+        Task disposeTask = Task.Run(() => dispatcher.DisposeAsync().AsTask());
 
-        disposeTask.IsCompletedSuccessfully.Should().BeFalse();
+        // Production invariant: DisposeAsync must remain blocked while HandleResponse is in flight.
+        // WaitAsync throws TimeoutException iff disposeTask is still running after the window —
+        // that's the success path. Decouples this 200 ms timing window from the test's overall budget
+        // (CancelAfter), so a setup overrun no longer poisons the assertion.
+        Func<Task> waitForDisposeToEscape = () => disposeTask.WaitAsync(TimeSpan.FromMilliseconds(200));
+        await waitForDisposeToEscape.Should().ThrowAsync<TimeoutException>(
+            because: "DisposeAsync must wait for in-flight HandleResponse");
 
         syncFeed.UnlockResponse();
-        await disposeTask;
-        await executorTask;
+        await disposeTask.WaitAsync(cancellationToken);
+        await executorTask.WaitAsync(cancellationToken);
     }
 
     [Test]

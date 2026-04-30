@@ -7,7 +7,7 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 /// <summary>
 /// Base class for RLP decoders of <see cref="IIndexedChange"/> types that share the pattern:
-/// sequence of (BlockAccessIndex, value). Subclasses provide the value field operations.
+/// sequence of (Index, value). Subclasses provide the value field operations.
 /// </summary>
 public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamEncoder<T>
     where T : struct, IIndexedChange
@@ -33,17 +33,17 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     public void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.BlockAccessIndex);
+        stream.Encode(item.Index);
         EncodeValue(stream, item);
     }
 
     public int GetContentLength(T item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.BlockAccessIndex) + GetValueLength(item);
+        => Rlp.LengthOf(item.Index) + GetValueLength(item);
 
-    /// <summary>Decode BlockAccessIndex + value field and return a new T.</summary>
+    /// <summary>Decode Index + value field and return a new T.</summary>
     protected abstract T DecodeFields(ref Rlp.ValueDecoderContext ctx);
 
-    /// <summary>Encode only the value field (BlockAccessIndex is handled by the base).</summary>
+    /// <summary>Encode only the value field (Index is handled by the base).</summary>
     protected abstract void EncodeValue(RlpStream stream, T item);
 
     /// <summary>Return the RLP length of the value field.</summary>

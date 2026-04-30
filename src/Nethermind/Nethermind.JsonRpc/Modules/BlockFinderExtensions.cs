@@ -10,6 +10,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class BlockFinderExtensions
     {
+        public const string HeaderNotFound = "header not found";
 
         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
@@ -45,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             return header is null && !allowNulls
-                ? new SearchResult<BlockHeader>($"{blockParameter} could not be found", ErrorCodes.ResourceNotFound)
+                ? new SearchResult<BlockHeader>(HeaderNotFound, ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
 
@@ -79,9 +80,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 if (!allowNulls)
                 {
-                    return new SearchResult<Block>(
-                        $"Block {blockParameter} could not be found",
-                        ErrorCodes.ResourceNotFound);
+                    return new SearchResult<Block>(HeaderNotFound, ErrorCodes.ResourceNotFound);
                 }
             }
 

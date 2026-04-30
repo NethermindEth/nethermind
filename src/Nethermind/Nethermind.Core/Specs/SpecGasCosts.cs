@@ -21,6 +21,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly long ExpByteCost;
     public readonly long SStoreResetCost;
     public readonly long TxDataNonZeroMultiplier;
+    public readonly long TotalCostFloorPerToken;
 
     public readonly long NetMeteredSStoreCost;
     public readonly long ClearReversalRefund;
@@ -101,6 +102,12 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
             : GasCostOf.TxDataNonZeroMultiplier;
 
+        TotalCostFloorPerToken = spec.IsEip7976Enabled
+            ? GasCostOf.TotalCostFloorPerTokenEip7976
+            : spec.IsEip7623Enabled
+                ? GasCostOf.TotalCostFloorPerTokenEip7623
+                : GasCostOf.Free;
+
         SClearRefund = spec.IsEip3529Enabled
             ? RefundOf.SClearAfterEip3529
             : RefundOf.SClearBeforeEip3529;
@@ -110,8 +117,8 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             : RefundOf.DestroyBeforeEip3529;
 
         int hashCode1 = HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, sStoreResetCost, netMeteredSStoreCost);
-        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund);
-        _hashCode = HashCode.Combine(hashCode1, hashCode2);
+        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, TotalCostFloorPerToken, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock);
+        _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund);
     }
 
     public long RefundFromReversal<TEip8037>(bool originalIsZero)
@@ -134,6 +141,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             && ExpByteCost == other.ExpByteCost
             && SStoreResetCost == other.SStoreResetCost
             && TxDataNonZeroMultiplier == other.TxDataNonZeroMultiplier
+            && TotalCostFloorPerToken == other.TotalCostFloorPerToken
             && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && ClearReversalRefund == other.ClearReversalRefund
             && SetReversalRefund == other.SetReversalRefund

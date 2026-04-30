@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
@@ -284,7 +285,7 @@ public class BlockchainBridgeTests
     [
         (bridge, header, tx) => bridge.Call(header, tx),
         (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
-        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, default, false),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
     ];
 
     [Test, Combinatorial]
@@ -321,7 +322,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
     }
 
     [Test]
@@ -335,7 +336,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
     }
 
     [Test]
@@ -405,7 +406,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too high"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too high"));
     }
 
     [Test]
@@ -419,7 +420,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too low"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too low"));
     }
 
     [Test]
@@ -433,7 +434,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too high"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too high"));
     }
 
     [Test]
@@ -447,7 +448,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too low"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too low"));
     }
 
     [Test]
@@ -478,32 +479,51 @@ public class BlockchainBridgeTests
         Assert.That(callOutput.Error, Is.EqualTo("nonce overflow"));
     }
 
-    [Test]
-    public void Call_tx_returns_MinerPremiumIsNegativeError()
+    private static IEnumerable<TestCaseData> MinerPremiumNegativeCases()
     {
-        BlockHeader header = Build.A.BlockHeader
-            .TestObject;
-        Transaction tx = new() { GasLimit = 1 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.MinerPremiumNegative);
+        yield return new TestCaseData(
+            new Transaction { GasLimit = 1 },
+            TransactionResult.MinerPremiumNegative,
+            "miner premium is negative"
+        ).SetName("Fallback");
 
-        CallOutput callOutput = _blockchainBridge.Call(header, tx);
-
-        Assert.That(callOutput.Error, Is.EqualTo("miner premium is negative"));
+        Address sender = TestItem.AddressA;
+        UInt256 baseFee = 146_283_608_928UL;
+        UInt256 maxFeePerGas = 140_000_000_000UL;
+        Transaction descriptiveTx = new()
+        {
+            GasLimit = 56786,
+            SenderAddress = sender,
+            DecodedMaxFeePerGas = maxFeePerGas,
+            Type = TxType.EIP1559
+        };
+        yield return new TestCaseData(
+            descriptiveTx,
+            TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail($"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"),
+            $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"
+        ).SetName("Descriptive");
     }
 
-    [Test]
-    public void EstimateGas_tx_returns_MinerPremiumIsNegativeError()
+    [TestCaseSource(nameof(MinerPremiumNegativeCases))]
+    public void Call_tx_returns_MinerPremiumIsNegativeError(Transaction tx, TransactionResult result, string expectedError)
     {
-        BlockHeader header = Build.A.BlockHeader
-            .TestObject;
-        Transaction tx = new() { GasLimit = 1 };
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.MinerPremiumNegative);
+            .Returns(result);
 
-        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+        CallOutput callOutput = _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("miner premium is negative"));
+        Assert.That(callOutput.Error, Is.EqualTo(expectedError));
+    }
+
+    [TestCaseSource(nameof(MinerPremiumNegativeCases))]
+    public void EstimateGas_tx_returns_MinerPremiumIsNegativeError(Transaction tx, TransactionResult result, string expectedError)
+    {
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(result);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(Build.A.BlockHeader.TestObject, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo(expectedError));
     }
 
     [Test]
@@ -602,7 +622,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
+        Assert.That(callOutput.Error, Is.EqualTo("intrinsic gas too low"));
     }
 
     [Test]
@@ -642,7 +662,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for gas * price + value"));
     }
 
     [Test]

@@ -141,14 +141,14 @@ internal class XdcTransactionProcessor(
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec _, long minGasRequired)
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec _, long minGasRequired, bool validate)
     {
         IXdcReleaseSpec spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
         if (tx.RequiresSpecialHandling(spec))
         {
             return TransactionResult.Ok;
         }
-        return base.ValidateGas(tx, header, spec, minGasRequired);
+        return base.ValidateGas(tx, header, spec, minGasRequired, validate);
     }
 
     protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)

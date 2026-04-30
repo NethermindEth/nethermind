@@ -190,6 +190,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, VmState<EthereumGasPolicy> vmState)
+    {
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas(ref EthereumGasPolicy gas,
         long gasCost)
     {
@@ -307,14 +318,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
+        long floorTokensInAccessList = IGasPolicy<EthereumGasPolicy>.CalculateFloorTokensInAccessList(tx, spec);
         (long authRegularCost, long authStateCost) = IGasPolicy<EthereumGasPolicy>.AuthorizationListCost(tx, spec);
 
         long regularGas = GasCostOf.Transaction
                           + DataCost(tx, spec, tokensInCallData)
                           + CreateCost(tx, spec)
-                          + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
+                          + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec, floorTokensInAccessList)
                           + authRegularCost;
-        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
+        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tx, spec, tokensInCallData, floorTokensInAccessList);
         long createStateCost = CreateStateCost(tx, spec);
         long totalStateCost = authStateCost + createStateCost;
         return spec.IsEip8037Enabled

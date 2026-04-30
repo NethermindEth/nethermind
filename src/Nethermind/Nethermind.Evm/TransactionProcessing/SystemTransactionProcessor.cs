@@ -9,6 +9,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using System;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -34,6 +35,11 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
+        // EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls.
+        bool suppressSystemAccountReads = !_isAura && tx.SenderAddress == Address.SystemUser;
+
+        using IDisposable? systemAccountReadSuppression = suppressSystemAccountReads ? WorldState.BeginSystemAccountReadSuppression() : null;
+
         if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
         {
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
@@ -57,7 +63,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired) => TransactionResult.Ok;
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired, bool validate) => TransactionResult.Ok;
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 

@@ -2,6 +2,7 @@
   <Folder Name="/Nethermind/">
     <Project Path="../../src/Nethermind/Ethereum.Test.Base/Ethereum.Test.Base.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Abi/Nethermind.Abi.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Api/Nethermind.Api.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Config/Nethermind.Config.csproj" />
@@ -15,6 +16,7 @@
     <Project Path="../../src/Nethermind/Nethermind.Db.Rpc/Nethermind.Db.Rpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Db/Nethermind.Db.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Era1/Nethermind.Era1.csproj" Id="c5860ac9-1f41-4035-a873-a2f851104030" />
+    <Project Path="../../src/Nethermind/Nethermind.EraE/Nethermind.EraE.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
@@ -36,9 +38,11 @@
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" Id="3fdb2a75-9b4f-4728-b61c-d38cafb8105c" />
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" Id="5aae74fe-1ba1-4d80-9b29-f759a8dcf702" />
+    <Project Path="../../src/Nethermind/Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Sockets/Nethermind.Sockets.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.State/Nethermind.State.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Trie/Nethermind.Trie.csproj" Id="84bac49d-709a-4f36-87ef-a8d46014449e" />
