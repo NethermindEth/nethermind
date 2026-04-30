@@ -473,6 +473,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             get
             {
+                // Honour the same-block SELFDESTRUCT marker. Without this short-circuit, callers
+                // that build an Account/AccountStruct for the destroyed address pull the parent
+                // StorageRoot out of the trie store's _loadedAccounts cache, the resulting
+                // AccountStruct.IsStorageEmpty returns false, and the default
+                // IAccountStateProvider.IsStorageEmpty / IWorldState.IsNonZeroAccount routes
+                // (used by ParallelWorldState because it does not provide its own override) flag
+                // a phantom EIP-684/7610 collision when a metamorphic factory does
+                // CREATE-inside-CREATE2 at the destroyed address in the same block.
+                if (BlockChange.HasClear) return Keccak.EmptyTreeHash;
+
                 EnsureStorageTree();
                 return _backend.RootHash;
             }
