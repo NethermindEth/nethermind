@@ -266,6 +266,50 @@ public class ReceiptsSyncFeedTests
         _feed.IsFinished.Should().Be(shouldFinish);
     }
 
+    [Test]
+    public async Task When_AncientReceiptsBarrier_exceeds_SyncPivot_then_finishes_immediately()
+    {
+        // Reproduces the Hoodi case: config PivotNumber unset (0), barrier above chain length,
+        // real pivot supplied via _blockTree.SyncPivot.
+        Scenario scenario = _256BodiesWithOneTxEach;
+        _syncConfig = new TestSyncConfig
+        {
+            FastSync = true,
+            PivotNumber = 0,
+            AncientBodiesBarrier = 4_367_322,
+            AncientReceiptsBarrier = 4_367_322,
+            DownloadReceiptsInFastSync = true,
+        };
+        _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()!.Hash!));
+        _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
+            ci =>
+            {
+                Block? block = scenario.Blocks[ci.Arg<long>()];
+                return block is null
+                    ? null
+                    : new BlockInfo(block.Hash!, block.TotalDifficulty ?? 0) { BlockNumber = ci.Arg<long>() };
+            });
+        _receiptStorage.HasBlock(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(false);
+        _syncPointers = new MemorySyncPointers();
+
+        _feed = new ReceiptsSyncFeed(
+            _specProvider,
+            _blockTree,
+            _receiptStorage,
+            _syncPointers,
+            _syncPeerPool,
+            _syncConfig,
+            _syncReport,
+            _historyPruner,
+            _metadataDb,
+            LimboLogs.Instance);
+
+        _feed.InitializeFeed();
+        using ReceiptsSyncBatch? _ = await _feed.PrepareRequest();
+
+        _feed.IsFinished.Should().BeTrue();
+    }
+
     private void LoadScenario(Scenario scenario) =>
         LoadScenario(scenario, _syncConfig);
 
