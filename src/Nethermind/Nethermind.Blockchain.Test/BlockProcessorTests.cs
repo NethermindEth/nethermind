@@ -476,6 +476,65 @@ public class BlockProcessorTests
         }
     }
 
+    [Test]
+    public void Parallel_validation_forwards_parallel_safe_block_tracer_to_worker_transactions()
+    {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
+
+        const int txCount = 64;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithNonce((UInt256)i)
+                .WithGasLimit(1)
+                .TestObject;
+        }
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(txCount)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        using RecordingTransactionProcessorAdapter transactionProcessor = new(traceOperation: true);
+        IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
+        balManager.Enabled.Returns(true);
+        balManager.ParallelExecutionEnabled.Returns(true);
+        balManager.GetTxProcessor(Arg.Any<int?>()).Returns(transactionProcessor);
+
+        IBlockProcessor.IBlockTransactionsExecutor inner = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            inner,
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            balManager,
+            LimboLogs.Instance);
+        RecordingParallelSafeBlockTracer blockTracer = new();
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(blockTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+
+        TxReceipt[] receipts = executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            receiptsTracer,
+            CancellationToken.None);
+        receiptsTracer.EndBlockTrace();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(receipts, Has.Length.EqualTo(txCount));
+            Assert.That(blockTracer.StartedTransactions, Is.EqualTo(txCount));
+            Assert.That(blockTracer.EndedTransactions, Is.EqualTo(txCount));
+            Assert.That(blockTracer.OpcodeCount, Is.EqualTo(txCount));
+        });
+    }
+
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -488,7 +547,7 @@ public class BlockProcessorTests
             new WithdrawalProcessorFactory(LimboLogs.Instance));
     }
 
-    private sealed class RecordingTransactionProcessorAdapter : ITransactionProcessorAdapter, IDisposable
+    private sealed class RecordingTransactionProcessorAdapter(bool traceOperation = false) : ITransactionProcessorAdapter, IDisposable
     {
         private readonly ManualResetEventSlim _parallelExecutionStarted = new();
         private int _executedCount;
@@ -506,6 +565,10 @@ public class BlockProcessorTests
 
             _parallelExecutionStarted.Wait(TimeSpan.FromSeconds(5));
             ObservedProcessingThreadFlags.Add(ProcessingThread.IsBlockProcessingThread);
+            if (traceOperation && txTracer.IsTracingInstructions)
+            {
+                txTracer.StartOperation(0, Instruction.ADD, 0, null!);
+            }
 
             transaction.BlockGasUsed = 1;
             txTracer.MarkAsSuccess(Address.Zero, 1, [], []);
@@ -518,5 +581,54 @@ public class BlockProcessorTests
         }
 
         public void Dispose() => _parallelExecutionStarted.Dispose();
+    }
+
+    private sealed class RecordingParallelSafeBlockTracer : IParallelSafeBlockTracer
+    {
+        private int _startedTransactions;
+        private int _endedTransactions;
+        private int _opcodeCount;
+
+        public int StartedTransactions => _startedTransactions;
+        public int EndedTransactions => _endedTransactions;
+        public int OpcodeCount => _opcodeCount;
+        public bool IsTracingRewards => false;
+
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        {
+        }
+
+        public void StartNewBlockTrace(Block block)
+        {
+        }
+
+        public ITxTracer StartNewTxTrace(Transaction? tx)
+        {
+            if (tx is null)
+            {
+                return NullTxTracer.Instance;
+            }
+
+            Interlocked.Increment(ref _startedTransactions);
+            return new RecordingInstructionTxTracer(this);
+        }
+
+        public void EndTxTrace() =>
+            Interlocked.Increment(ref _endedTransactions);
+
+        public void EndBlockTrace()
+        {
+        }
+
+        private void RecordOpcode() =>
+            Interlocked.Increment(ref _opcodeCount);
+
+        private sealed class RecordingInstructionTxTracer(RecordingParallelSafeBlockTracer blockTracer) : TxTracer
+        {
+            public override bool IsTracingInstructions => true;
+
+            public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+                blockTracer.RecordOpcode();
+        }
     }
 }

@@ -61,4 +61,11 @@ namespace Nethermind.Evm.Tracing
     {
         IReadOnlyCollection<TTrace> BuildResult();
     }
+
+    /// <summary>
+    /// Marker for block tracers that support concurrent transaction tracing callbacks for one active block.
+    /// </summary>
+    public interface IParallelSafeBlockTracer : IBlockTracer
+    {
+    }
 }

@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
@@ -44,7 +45,7 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
 
             return !block.IsGenesis && balManager.ParallelExecutionEnabled
-                ? ProcessTransactionsParallel(block, processingOptions, token)
+                ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
         }
 
@@ -66,10 +67,11 @@ public partial class BlockProcessor
             return [.. receiptsTracer.TxReceipts];
         }
 
-        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, CancellationToken token)
+        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             int len = block.Transactions.Length;
             bool isBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+            IBlockTracer parallelSafeTracer = GetParallelSafeTracer(receiptsTracer.OtherTracer);
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
             TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[len];
 
@@ -77,6 +79,10 @@ public partial class BlockProcessor
             {
                 BlockReceiptsTracer tracer = new(true);
                 tracer.StartNewBlockTrace(block);
+                if (parallelSafeTracer != NullBlockTracer.Instance)
+                {
+                    tracer.SetOtherTracer(parallelSafeTracer);
+                }
                 receiptsTracers[i] = tracer;
                 gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>();
             }
@@ -172,6 +178,14 @@ public partial class BlockProcessor
             incrementalValidationTask.GetAwaiter().GetResult();
             return CombineReceipts(receiptsTracers, len, block);
         }
+
+        private static IBlockTracer GetParallelSafeTracer(IBlockTracer tracer) =>
+            tracer switch
+            {
+                IParallelSafeBlockTracer => tracer,
+                CompositeBlockTracer compositeBlockTracer => compositeBlockTracer.GetParallelSafeTracer(),
+                _ => NullBlockTracer.Instance
+            };
 
         private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
         {

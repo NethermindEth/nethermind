@@ -8,11 +8,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 
-internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockCompleted) : IBlockTracer
+internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockCompleted) : IParallelSafeBlockTracer
 {
     private readonly Action<OpcodeBlockTrace> _onBlockCompleted = onBlockCompleted ?? throw new ArgumentNullException(nameof(onBlockCompleted));
+    private readonly object _lock = new();
+    private readonly AsyncLocal<OpcodeCountingTxTracer?> _currentTxTracer = new();
     private OpcodeTraceBuilder? _builder;
-    private OpcodeCountingTxTracer? _currentTxTracer;
 
     public bool IsTracingRewards => false;
 
@@ -21,43 +22,67 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
         // Rewards do not execute opcodes, so nothing to capture here.
     }
 
-    public void StartNewBlockTrace(Block block) =>
-        _builder = new OpcodeTraceBuilder(block ?? throw new ArgumentNullException(nameof(block)));
+    public void StartNewBlockTrace(Block block)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+
+        lock (_lock)
+        {
+            _builder = new OpcodeTraceBuilder(block);
+        }
+    }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        if (_builder is null || tx is null)
+        if (tx is null)
         {
-            _currentTxTracer = null;
+            _currentTxTracer.Value = null;
             return NullTxTracer.Instance;
         }
 
+        lock (_lock)
+        {
+            if (_builder is null)
+            {
+                _currentTxTracer.Value = null;
+                return NullTxTracer.Instance;
+            }
+        }
+
         OpcodeCountingTxTracer tracer = new();
-        _currentTxTracer = tracer;
+        _currentTxTracer.Value = tracer;
         return tracer;
     }
 
     public void EndTxTrace()
     {
-        if (_builder is null || _currentTxTracer is null)
+        OpcodeCountingTxTracer? currentTxTracer = _currentTxTracer.Value;
+        _currentTxTracer.Value = null;
+        if (currentTxTracer is null)
         {
-            _currentTxTracer = null;
             return;
         }
 
-        _builder.Accumulate(_currentTxTracer);
-        _currentTxTracer = null;
+        lock (_lock)
+        {
+            _builder?.Accumulate(currentTxTracer);
+        }
     }
 
     public void EndBlockTrace()
     {
-        if (_builder is null)
+        OpcodeBlockTrace trace;
+        lock (_lock)
         {
-            return;
+            if (_builder is null)
+            {
+                return;
+            }
+
+            trace = _builder.Build();
+            _builder = null;
         }
 
-        OpcodeBlockTrace trace = _builder.Build();
-        _builder = null;
         _onBlockCompleted(trace);
     }
 }
@@ -109,4 +134,3 @@ internal sealed class OpcodeTraceBuilder(Block block)
         };
     }
 }
-
