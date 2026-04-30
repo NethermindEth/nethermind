@@ -466,17 +466,24 @@ public class DebugRpcModule(
         PrepareTransactions(bundles, header);
 
         CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-
-        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
-            .GetBundleTraces(bundles, blockParameter, timeout.Token, options);
-
-        if (_logger.IsTrace)
+        try
         {
-            int totalTransactions = bundles.Sum(b => b.Transactions?.Length ?? 0);
-            _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
-        }
+            IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
+                .GetBundleTraces(bundles, blockParameter, timeout.Token, options);
 
-        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(StreamBundleTraces(bundleTraces, timeout));
+            if (_logger.IsTrace)
+            {
+                int totalTransactions = bundles.Sum(b => b.Transactions?.Length ?? 0);
+                _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
+            }
+
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(StreamBundleTraces(bundleTraces, timeout));
+        }
+        catch
+        {
+            timeout.Dispose();
+            throw;
+        }
     }
 
     // Bind the timeout CTS lifetime to enumerator disposal so the lazy bundle pipeline
