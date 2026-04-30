@@ -26,9 +26,27 @@ defaults:
     shell: bash
 
 jobs:
+  cache-warmup:
+    name: Warm NuGet cache (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+      - uses: ./.github/actions/restore-nuget-cache
+        with:
+          save: 'true'
+      - name: Restore packages
+        run: dotnet restore src/Nethermind/Nethermind.slnx
+
   tests:
     name: Run ${{ matrix.project }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    needs: cache-warmup
     timeout-minutes: 15
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
@@ -102,12 +120,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+      - uses: ./.github/actions/restore-nuget-cache
 
       - name: ${{ matrix.project }}
         id: test
@@ -138,6 +151,7 @@ jobs:
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    needs: cache-warmup
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -183,12 +197,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+      - uses: ./.github/actions/restore-nuget-cache
 
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
@@ -221,6 +230,7 @@ jobs:
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    needs: cache-warmup
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -263,12 +273,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+      - uses: ./.github/actions/restore-nuget-cache
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test

@@ -16,9 +16,23 @@ env:
   TEST_USE_FLAT: 1
 
 jobs:
+  cache-warmup:
+    name: Warm NuGet cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+      - uses: ./.github/actions/restore-nuget-cache
+        with:
+          save: 'true'
+      - name: Restore packages
+        run: dotnet restore src/Nethermind/Nethermind.slnx
+
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
+    needs: cache-warmup
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -85,12 +99,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+      - uses: ./.github/actions/restore-nuget-cache
 
       - name: ${{ matrix.project }}
         id: test
