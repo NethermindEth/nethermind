@@ -28,6 +28,7 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Precompiles;
 using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
@@ -309,6 +310,33 @@ public class BlockchainBridgeTests
 
         _transactionProcessor.Received().SetBlockExecutionContext(
             Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
+    }
+
+    [Test]
+    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(TestItem.AddressB)
+            .TestObject;
+
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(callInfo =>
+            {
+                ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
+                tracer.ReportAccess(
+                    [PrecompiledAddresses.ECRecover, TestItem.AddressC],
+                    [new StorageCell(TestItem.AddressC, UInt256.One)]);
+                tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 0), Array.Empty<byte>(), Array.Empty<LogEntry>());
+                return TransactionResult.Ok;
+            });
+
+        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, true, null, default);
+
+        callOutput.AccessList.Should().NotBeNull();
+        callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover).Should().BeFalse();
+        callOutput.AccessList.Any(e => e.Address == TestItem.AddressC).Should().BeTrue();
     }
 
     [Test]
