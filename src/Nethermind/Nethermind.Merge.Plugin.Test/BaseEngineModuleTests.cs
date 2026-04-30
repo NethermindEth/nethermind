@@ -203,6 +203,8 @@ public abstract partial class BaseEngineModuleTests
             {
                 MergeConfig.NewPayloadBlockProcessingTimeout = 60_000;
             }
+
+            TestTimeout = Math.Max(TestTimeout, MergeConfig.NewPayloadBlockProcessingTimeout);
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

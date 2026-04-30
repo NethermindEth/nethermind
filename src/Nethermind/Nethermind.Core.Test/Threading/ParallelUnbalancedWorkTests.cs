@@ -122,12 +122,16 @@ public class ParallelUnbalancedWorkTests
         // Once one worker captures an exception, others must stop pulling new indices — otherwise
         // we burn CPU and run side effects after the operation is already faulted.
         int actionCalls = 0;
+        int hasThrown = 0;
         const int range = 100_000;
 
         Action act = () => ParallelUnbalancedWork.For(0, range, FourThreads, i =>
         {
             Interlocked.Increment(ref actionCalls);
-            if (i == 0) throw new InvalidOperationException();
+            if (Interlocked.CompareExchange(ref hasThrown, 1, 0) == 0)
+            {
+                throw new InvalidOperationException();
+            }
         });
 
         act.Should().Throw<InvalidOperationException>();
