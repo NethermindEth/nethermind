@@ -423,6 +423,43 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
+    // Stress reproducer for the Windows-only SnapSync flake observed in CI:
+    //   - run #25139586200 / job #73686059011 (PR #11422)
+    // Re-runs the same logic as SnapSync() many times, each iteration as its own NUnit case
+    // so a single flake doesn't terminate the rest. Intentionally NO [Retry] — we want every
+    // failure to surface. Marked [Explicit] so it doesn't run in normal CI; invoke with:
+    //   dotnet test --filter "FullyQualifiedName~SnapSync_StressRepro"
+    // Runs only on Flat dbMode (where the flake has been observed).
+    [Test, Explicit("Stress reproducer for SnapSync Windows flake — run manually")]
+    [TestCaseSource(nameof(StressIterations))]
+    public async Task SnapSync_StressRepro(int iteration)
+    {
+        if (dbMode != DbMode.Flat) Assert.Ignore("Stress repro only targets the Flat dbMode where the flake was observed");
+        _ = iteration; // index is purely to give NUnit a unique case per attempt
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+
+        PrivateKey clientKey = TestItem.PrivateKeyD;
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+        {
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+            syncConfig.FastSync = true;
+            syncConfig.SnapSync = true;
+
+            await SetPivot(syncConfig, cancellationTokenSource.Token);
+
+            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
+            networkConfig.P2PPort = AllocatePort();
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+        });
+
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
+    }
+
+    private const int StressIterationCount = 30;
+    private static IEnumerable<int> StressIterations() => Enumerable.Range(0, StressIterationCount);
+
     [Test]
     [Retry(5)]
     public async Task SnapSync_HalfPathServer_HashClient()
