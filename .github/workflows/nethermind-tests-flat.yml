@@ -19,6 +19,9 @@ jobs:
   cache-warmup:
     name: Warm NuGet cache
     runs-on: ubuntu-latest
+    # continue-on-error: a transient nuget.org / cache-service failure must not skip the
+    # entire workflow — consumers fall back to dotnet's implicit restore.
+    continue-on-error: true
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -33,6 +36,8 @@ jobs:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
     needs: cache-warmup
+    # Run even if cache-warmup failed — consumers fall back to restore-keys + implicit restore.
+    if: ${{ !cancelled() }}
     timeout-minutes: 20
     strategy:
       fail-fast: false

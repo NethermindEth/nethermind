@@ -14,8 +14,11 @@ inputs:
 runs:
   using: composite
   steps:
+    # Default branch — runs whenever save is anything other than the literal 'true'.
+    # Defensive against YAML booleans (e.g. save: False) which would otherwise silently
+    # disable both branches.
     - name: Restore NuGet cache (read-only)
-      if: inputs.save == 'false'
+      if: inputs.save != 'true'
       uses: actions/cache/restore@v5
       with:
         path: ~/.nuget/packages
