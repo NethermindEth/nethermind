@@ -59,7 +59,7 @@ public class ProcessingStatsTests
     public async Task UpdateStats_aggregates_multiple_updates_until_report_window() =>
         await WithRestoredBlockchainMetrics(async () =>
         {
-            ProcessingStats processingStats = CreateProcessingStats(out TaskCompletionSource<BlockStatistics> completion);
+            TestProcessingStats processingStats = CreateTestProcessingStats(out TaskCompletionSource<BlockStatistics> completion);
             processingStats.Start();
 
             BlockHeader baseBlock = Build.A.BlockHeader
@@ -79,9 +79,9 @@ public class ProcessingStatsTests
                 .WithTransactions(new Transaction())
                 .TestObject;
 
-            processingStats.UpdateStats([block1], baseBlock, 200_000);
+            processingStats.GenerateReportForTest(block1, baseBlock, blockCount: 1, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
             await Task.Delay(TimeSpan.FromMilliseconds(1_100));
-            processingStats.UpdateStats([block2], block1.Header, 300_000);
+            processingStats.GenerateReportForTest(block2, block1.Header, blockCount: 1, gasUsed: 3_000_000, transactionCount: 1, processingMicroseconds: 300_000);
 
             BlockStatistics stats = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -100,6 +100,17 @@ public class ProcessingStatsTests
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         ProcessingStats processingStats = new(stateReader, new TestLogManager(LogLevel.Warn));
+        TaskCompletionSource<BlockStatistics> statsCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        processingStats.NewProcessingStatistics += (_, stats) => statsCompletion.TrySetResult(stats);
+        completion = statsCompletion;
+        return processingStats;
+    }
+
+    private static TestProcessingStats CreateTestProcessingStats(out TaskCompletionSource<BlockStatistics> completion)
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        TestProcessingStats processingStats = new(stateReader);
         TaskCompletionSource<BlockStatistics> statsCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         processingStats.NewProcessingStatistics += (_, stats) => statsCompletion.TrySetResult(stats);
         completion = statsCompletion;
@@ -134,5 +145,27 @@ public class ProcessingStatsTests
             BlockchainMetrics.GasUsed = originalGasUsed;
             BlockchainMetrics.GasLimit = originalGasLimit;
         }
+    }
+
+    private sealed class TestProcessingStats(IStateReader stateReader)
+        : ProcessingStats(stateReader, new TestLogManager(LogLevel.Warn))
+    {
+        public void GenerateReportForTest(
+            Block block,
+            BlockHeader baseBlock,
+            long blockCount,
+            long gasUsed,
+            long transactionCount,
+            long processingMicroseconds) =>
+            GenerateReport(new BlockData
+            {
+                Block = block,
+                BaseBlock = baseBlock,
+                BlockCount = blockCount,
+                FirstBlockNumber = block.Number,
+                GasUsed = gasUsed,
+                TransactionCount = transactionCount,
+                ProcessingMicroseconds = processingMicroseconds
+            });
     }
 }
