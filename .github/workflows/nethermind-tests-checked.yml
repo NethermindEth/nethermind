@@ -101,13 +101,6 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
-
       - name: ${{ matrix.project }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
@@ -159,13 +152,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
