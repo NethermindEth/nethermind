@@ -11,10 +11,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker(bool isTracingAccess = false) : IDisposable
+public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 {
-    public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
-    public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
     public readonly IReadOnlyCollection<Address> AllAccessedAddresses => _trackingState.AllAccessedAddresses;
     public readonly IReadOnlyCollection<StorageCell> AllAccessedStorageCells => _trackingState.AllAccessedStorageCells;
     public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
@@ -28,6 +26,8 @@ public struct StackAccessTracker(bool isTracingAccess = false) : IDisposable
     private int _storageKeysSnapshots;
     private int _destroyListSnapshots;
     private int _logsSnapshots;
+
+    public StackAccessTracker() : this(false) {}
 
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
