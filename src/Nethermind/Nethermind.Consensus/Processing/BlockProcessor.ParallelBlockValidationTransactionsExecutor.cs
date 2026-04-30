@@ -69,6 +69,7 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, CancellationToken token)
         {
             int len = block.Transactions.Length;
+            bool isBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
             TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[len];
 
@@ -89,46 +90,60 @@ public partial class BlockProcessor
                     0,
                     len + 1,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
+                        txs: block.Transactions, isBlockProcessingThread),
                     static (i, state) =>
                     {
-                        if (i == 0)
-                        {
-                            // ApplyStateChanges mutates the shared stateProvider so runs inside
-                            // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                            // workers read from BAL-backed world states, not stateProvider.
-                            BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
-                            return state;
-                        }
-
-                        int txIndex = i - 1;
+                        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+                        ProcessingThread.IsBlockProcessingThread = state.isBlockProcessingThread;
                         try
                         {
-                            Transaction tx = state.txs[txIndex];
-                            ProcessTransaction(
-                                state.balManager.GetTxProcessor(i),
-                                state.stateProvider,
-                                state.block,
-                                tx,
-                                txIndex,
-                                state.receiptsTracers[txIndex],
-                                state.processingOptions);
-                            state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
-                        }
-                        catch (InvalidBlockException ex)
-                        {
-                            state.gasResults[txIndex].SetResult((state.txs[txIndex].GasLimit, 0, ex));
-                        }
-                        catch
-                        {
-                            // Ensure IncrementalValidation is not permanently blocked on gasResults[j]
-                            // if an unexpected exception escapes the worker (e.g. NRE, OCE).
-                            // SetCanceled unblocks the inner GetAwaiter().GetResult() loop.
-                            state.gasResults[txIndex].TrySetCanceled();
-                            throw;
-                        }
+                            if (i == 0)
+                            {
+                                // ApplyStateChanges mutates the shared stateProvider so runs inside
+                                // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
+                                // workers read from BAL-backed world states, not stateProvider.
+                                BlockAccessListManager.ApplyStateChanges(
+                                    state.block.BlockAccessList,
+                                    state.stateProvider,
+                                    state.specProvider.GetSpec(state.block.Header),
+                                    !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                return state;
+                            }
 
-                        return state;
+                            int txIndex = i - 1;
+                            try
+                            {
+                                Transaction tx = state.txs[txIndex];
+                                ProcessTransaction(
+                                    state.balManager.GetTxProcessor(i),
+                                    state.stateProvider,
+                                    state.block,
+                                    tx,
+                                    txIndex,
+                                    state.receiptsTracers[txIndex],
+                                    state.processingOptions);
+                                state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
+                            }
+                            catch (InvalidBlockException ex)
+                            {
+                                state.gasResults[txIndex].SetResult((state.txs[txIndex].GasLimit, 0, ex));
+                            }
+                            catch
+                            {
+                                // Ensure IncrementalValidation is not permanently blocked on gasResults[j]
+                                // if an unexpected exception escapes the worker (e.g. NRE, OCE).
+                                // SetCanceled unblocks the inner GetAwaiter().GetResult() loop.
+                                state.gasResults[txIndex].TrySetCanceled();
+                                throw;
+                            }
+
+                            return state;
+                        }
+                        finally
+                        {
+                            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+                        }
                     });
             }
             catch
