@@ -21,36 +21,36 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
 
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps, ulong genesisTimestamp = 0)
     {
-        if (OntakeTransition is not null)
+        if (OntakeTransition is { } o && o > 0)
         {
-            blockNumbers.Add(OntakeTransition.Value);
+            blockNumbers.Add(o);
         }
 
-        if (PacayaTransition is not null)
+        if (PacayaTransition is { } p && p > 0)
         {
-            blockNumbers.Add(PacayaTransition.Value);
+            blockNumbers.Add(p);
         }
 
-        if (ShastaTimestamp is not null)
+        if (ShastaTimestamp is { } s && s > genesisTimestamp)
         {
-            timestamps.Add(ShastaTimestamp.Value);
+            timestamps.Add(s);
         }
 
-        if (Rip7728TransitionTimestamp is not null)
+        if (Rip7728TransitionTimestamp is { } r && r > genesisTimestamp)
         {
-            timestamps.Add(Rip7728TransitionTimestamp.Value);
+            timestamps.Add(r);
         }
 
-        if (L1StaticCallTransitionTimestamp is not null)
+        if (L1StaticCallTransitionTimestamp is { } l && l > genesisTimestamp)
         {
-            timestamps.Add(L1StaticCallTransitionTimestamp.Value);
+            timestamps.Add(l);
         }
 
-        if (UnzenTimestamp is not null)
+        if (UnzenTimestamp is { } u && u > genesisTimestamp)
         {
-            timestamps.Add(UnzenTimestamp.Value);
+            timestamps.Add(u);
         }
     }
 }
