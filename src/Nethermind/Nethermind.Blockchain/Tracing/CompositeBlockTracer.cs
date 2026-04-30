@@ -120,19 +120,20 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
             }
         }
 
-        if (parallelSafeTracers.Count == 0)
+        int parallelSafeTracerCount = parallelSafeTracers.Count;
+        if (parallelSafeTracerCount == 0)
         {
             return NullBlockTracer.Instance;
         }
 
-        if (parallelSafeTracers.Count == 1)
+        if (parallelSafeTracerCount == 1)
         {
             return parallelSafeTracers[0];
         }
 
         CompositeBlockTracer parallelSafeCompositeBlockTracer = new();
         parallelSafeCompositeBlockTracer._childTracers.AddRange(parallelSafeTracers);
-        for (int index = 0; index < parallelSafeTracers.Count; index++)
+        for (int index = 0; index < parallelSafeTracerCount; index++)
         {
             parallelSafeCompositeBlockTracer.IsTracingRewards |= parallelSafeTracers[index].IsTracingRewards;
         }
