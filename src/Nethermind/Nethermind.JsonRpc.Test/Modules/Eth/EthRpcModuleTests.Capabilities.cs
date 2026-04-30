@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -76,6 +77,10 @@ public partial class EthRpcModuleTests
 
         Assert.That(caps.Stateproofs.Disabled, Is.False, "Archive node serves state proofs");
         Assert.That(caps.Stateproofs.OldestBlock, Is.EqualTo("0x0"));
+
+        // Archive node with blocks available: blocks not disabled
+        Assert.That(caps.Blocks.Disabled, Is.False);
+        Assert.That(caps.Blocks.OldestBlock, Is.Not.Null);
     }
 
     [Test]
@@ -101,6 +106,24 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task eth_capabilities_full_pruning_only_omits_state_oldest_block()
+    {
+        // PruningMode.Full is periodic (non-linear), so we cannot claim a predictable
+        // oldestBlock. The implementation omits it rather than reporting a misleading value.
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
+                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+                pruningConfig: new PruningConfig { Mode = PruningMode.Full }))
+            .Build();
+
+        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
+
+        Assert.That(caps.State.Disabled, Is.False, "State is still available on a full-pruned node");
+        Assert.That(caps.State.OldestBlock, Is.Null, "Full-only pruning: oldest block unknown, must not be reported");
+        Assert.That(caps.State.DeleteStrategy, Is.Null, "Full-only pruning is not a rolling window");
+    }
+
+    [Test]
     public async Task eth_capabilities_no_receipts_disables_tx_logs_receipts()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -118,6 +141,61 @@ public partial class EthRpcModuleTests
         Assert.That(caps.Tx.OldestBlock, Is.Null, "Disabled resource has no oldestBlock");
         Assert.That(caps.Logs.OldestBlock, Is.Null);
         Assert.That(caps.Receipts.OldestBlock, Is.Null);
+    }
+
+    [Test]
+    public async Task eth_capabilities_archive_node_receipts_oldest_block_is_genesis_not_one()
+    {
+        // Regression: AncientReceiptsBarrierCalc returns Math.Max(1, 0) = 1 for archive nodes.
+        // eth_capabilities must report 0x0 (genesis) when PivotNumber = 0.
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
+                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+                pruningConfig: new PruningConfig { Mode = PruningMode.None }))
+            .Build();
+
+        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
+
+        Assert.That(caps.Tx.OldestBlock, Is.EqualTo("0x0"), "Archive node tx available from genesis");
+        Assert.That(caps.Logs.OldestBlock, Is.EqualTo("0x0"), "Archive node logs available from genesis");
+        Assert.That(caps.Receipts.OldestBlock, Is.EqualTo("0x0"), "Archive node receipts available from genesis");
+    }
+
+    [Test]
+    public async Task eth_capabilities_serializes_to_spec_compliant_json_key_names()
+    {
+        // Guards against naming-policy regressions: all JSON keys must match the spec
+        // (ethereum/execution-apis#755) exactly. EthereumJsonSerializer uses camelCase.
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
+                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+                pruningConfig: new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = 64 }))
+            .Build();
+
+        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
+        string json = new EthereumJsonSerializer().Serialize(caps);
+
+        // Top-level resource keys
+        Assert.That(json, Does.Contain("\"head\""));
+        Assert.That(json, Does.Contain("\"state\""));
+        Assert.That(json, Does.Contain("\"tx\""));
+        Assert.That(json, Does.Contain("\"logs\""));
+        Assert.That(json, Does.Contain("\"receipts\""));
+        Assert.That(json, Does.Contain("\"blocks\""));
+        Assert.That(json, Does.Contain("\"stateproofs\""));
+
+        // Head field names (renamed from blockNumber/blockHash per s1na's review)
+        Assert.That(json, Does.Contain("\"number\""));
+        Assert.That(json, Does.Contain("\"hash\""));
+        Assert.That(json, Does.Not.Contain("\"blockNumber\""));
+        Assert.That(json, Does.Not.Contain("\"blockHash\""));
+
+        // Resource field names
+        Assert.That(json, Does.Contain("\"disabled\""));
+        Assert.That(json, Does.Contain("\"oldestBlock\""));
+        Assert.That(json, Does.Contain("\"deleteStrategy\""));
+        Assert.That(json, Does.Contain("\"type\""));
+        Assert.That(json, Does.Contain("\"retentionBlocks\""));
     }
 
     private static IEthRpcModule CreateEthRpcModuleWithConfig(
