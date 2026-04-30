@@ -795,7 +795,9 @@ public class EthSimulateTestsBlocksAndTransactions
     [Test]
     public async Task eth_simulateV1_sender_is_not_eoa_returns_spec_error_code()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        OverridableReleaseSpec spec = new(London.Instance) { IsEip3607Enabled = true };
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
 
         // Override TestItem.AddressC with contract code — makes it a non-EOA sender.
         SimulatePayload<TransactionForRpc> payload = new()
