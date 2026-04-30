@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -17,7 +16,6 @@ public class BlockCacheService : IBlockCacheService
 {
     private readonly int _maxCachedBlocks;
     private readonly ConcurrentDictionary<Hash256AsKey, Block> _blockCache = new();
-    private readonly Lock _pruneLock = new();
 
     /// <summary>
     /// Initializes a block cache with the default merge sync bound.
@@ -50,40 +48,25 @@ public class BlockCacheService : IBlockCacheService
     public bool TryAddBlock(Block block)
     {
         Hash256 blockHash = block.Hash ?? block.CalculateHash();
-        lock (_pruneLock)
+        bool added = _blockCache.TryAdd(blockHash, block);
+        if (added)
         {
-            bool added = _blockCache.TryAdd(blockHash, block);
-            if (added)
+            // The cache bound is small, so pruning scans it instead of maintaining a second ordered index.
+            while (_blockCache.Count > _maxCachedBlocks &&
+                   TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHashToRemove))
             {
-                // The cache bound is small, so pruning scans it instead of maintaining a second ordered index.
-                while (_blockCache.Count > _maxCachedBlocks &&
-                       TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHashToRemove))
-                {
-                    _blockCache.TryRemove(blockHashToRemove, out _);
-                }
+                _blockCache.TryRemove(blockHashToRemove, out _);
             }
-
-            return added;
         }
+
+        return added;
     }
 
     /// <inheritdoc />
-    public bool TryRemoveBlock(Hash256 blockHash)
-    {
-        lock (_pruneLock)
-        {
-            return _blockCache.TryRemove(blockHash, out _);
-        }
-    }
+    public bool TryRemoveBlock(Hash256 blockHash) => _blockCache.TryRemove(blockHash, out _);
 
     /// <inheritdoc />
-    public void Clear()
-    {
-        lock (_pruneLock)
-        {
-            _blockCache.Clear();
-        }
-    }
+    public void Clear() => _blockCache.Clear();
 
     private bool TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHash)
     {
