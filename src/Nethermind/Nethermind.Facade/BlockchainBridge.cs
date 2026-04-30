@@ -246,17 +246,19 @@ namespace Nethermind.Facade
             // and tx, neither of which change between iterations. Compute once and reuse.
             Address[] addressesToOptimize = BuildAddressesToOptimize(header, tx, optimize);
             AccessList? previousAccessList = tx.AccessList;
+            AccessTxTracer accessTracer = new(addressesToOptimize);
+            CallOutputTracer outputTracer = new();
             TransactionResult result;
-            CallOutputTracer outputTracer;
-            AccessList? discoveredAccessList;
             bool stop;
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                accessTracer.Reset();
                 tx.AccessList = previousAccessList;
-                (result, outputTracer, discoveredAccessList) = RunAccessListIteration(components, header, tx, addressesToOptimize, cancellationToken);
-                stop = !result.TransactionExecuted || HasConverged(previousAccessList, discoveredAccessList);
-                previousAccessList = discoveredAccessList;
+                result = TryCallAndRestore(components, header, tx, false,
+                    new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken));
+                stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
+                previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
             return new CallOutput
@@ -266,18 +268,8 @@ namespace Nethermind.Facade
                 OperationGas = outputTracer.OperationGas,
                 OutputData = outputTracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
-                AccessList = discoveredAccessList,
+                AccessList = accessTracer.AccessList,
             };
-        }
-
-        private (TransactionResult Result, CallOutputTracer OutputTracer, AccessList? AccessList) RunAccessListIteration(
-            BlockProcessingComponents components, BlockHeader header, Transaction tx, Address[] addressesToOptimize, CancellationToken cancellationToken)
-        {
-            AccessTxTracer accessTracer = new(addressesToOptimize);
-            CallOutputTracer outputTracer = new();
-            TransactionResult result = TryCallAndRestore(components, header, tx, false,
-                new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken));
-            return (result, outputTracer, accessTracer.AccessList);
         }
 
         private Address[] BuildAddressesToOptimize(BlockHeader header, Transaction tx, bool optimize)
