@@ -5,8 +5,6 @@ using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
-using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Taiko.TaikoSpec;
@@ -65,7 +63,7 @@ public class TaikoExecutionPayloadTests
 
         result.Block.Should().NotBeNull();
         result.Block!.Header.ParentBeaconBlockRoot.Should().Be(Keccak.Zero);
-        result.Block.Header.RequestsHash.Should().Be(ExecutionRequestExtensions.EmptyRequestsHash);
+        result.Block.Header.RequestsHash.Should().Be(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash);
     }
 
     [Test]
