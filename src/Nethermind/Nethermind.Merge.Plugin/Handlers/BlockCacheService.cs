@@ -55,7 +55,11 @@ public class BlockCacheService : IBlockCacheService
             while (_blockCache.Count > _maxCachedBlocks &&
                    TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHashToRemove))
             {
-                _blockCache.TryRemove(blockHashToRemove, out _);
+                bool removed = _blockCache.TryRemove(blockHashToRemove, out _);
+                if (removed && Equals(blockHashToRemove.Value, blockHash))
+                {
+                    added = false;
+                }
             }
         }
 

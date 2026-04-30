@@ -14,7 +14,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public class BlockCacheServiceTest
 {
     [Test]
-    public void prunes_highest_unprotected_block()
+    public void prunes_highest_unprotected_block_and_returns_false_when_added_block_is_pruned()
     {
         BlockCacheService blockCacheService = new(2);
         Block block1 = Build.A.Block.WithNumber(1).TestObject;
@@ -26,7 +26,7 @@ public class BlockCacheServiceTest
 
         blockCacheService.TryAddBlock(block1).Should().BeTrue();
         blockCacheService.TryAddBlock(block2).Should().BeTrue();
-        blockCacheService.TryAddBlock(block3).Should().BeTrue();
+        blockCacheService.TryAddBlock(block3).Should().BeFalse();
 
         blockCacheService.BlockCache.Should().HaveCount(2);
         blockCacheService.BlockCache.ContainsKey(block1Hash).Should().BeTrue();

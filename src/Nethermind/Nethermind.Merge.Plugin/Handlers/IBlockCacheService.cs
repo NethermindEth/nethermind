@@ -28,7 +28,7 @@ public interface IBlockCacheService
     /// Adds a block to the bounded cache.
     /// </summary>
     /// <param name="block">Block to add.</param>
-    /// <returns><see langword="true"/> if the block was added; otherwise <see langword="false"/>.</returns>
+    /// <returns><see langword="true"/> if the block remains cached; otherwise <see langword="false"/>.</returns>
     bool TryAddBlock(Block block);
 
     /// <summary>
