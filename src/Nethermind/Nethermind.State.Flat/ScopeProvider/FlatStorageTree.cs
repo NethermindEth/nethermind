@@ -95,25 +95,33 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
-            _trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId);
+            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId))
+                _scope.IncrementOutstandingWarmups();
         }
     }
 
     // Called by trie warmer.
     public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
     {
-        if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
+        try
         {
-            return false;
+            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
+            {
+                return false;
+            }
+
+            // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
+            // this is just to warm up the nodes.
+            ValueHash256 key = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, ref key);
+
+            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+            return true;
         }
-
-        // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
-        // this is just to warm up the nodes.
-        ValueHash256 key = ValueKeccak.Zero;
-        StorageTree.ComputeKeyWithLookup(index, ref key);
-
-        _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
-        return true;
+        finally
+        {
+            _scope.DecrementOutstandingWarmups();
+        }
     }
 
     public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");

@@ -274,6 +274,8 @@ public class SimulateTxExecutor<TTrace>(
     private static string? MapSimulateErrorMessage(TransactionResult txResult) =>
         txResult.Error switch
         {
+            TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+                => SimulateErrorMessages.IntrinsicGas,
             TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
                 or TransactionResult.ErrorType.MinerPremiumNegative
                 => SimulateErrorMessages.FeeCapBelowBaseFee,
@@ -295,6 +297,12 @@ public class SimulateTxExecutor<TTrace>(
 /// </summary>
 internal static class SimulateErrorMessages
 {
+    /// <summary>
+    /// Returned when the transaction gas limit is below the intrinsic gas cost
+    /// (error code <see cref="ErrorCodes.IntrinsicGas"/>).
+    /// </summary>
+    public const string IntrinsicGas = "Not enough gas provided to pay for intrinsic gas for a transaction";
+
     /// <summary>
     /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
     /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).

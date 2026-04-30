@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -16,6 +17,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -32,7 +34,9 @@ public sealed class BeaconHeadersSyncFeed(
     ISyncReport? syncReport,
     IPivot? pivot,
     IInvalidChainTracker invalidChainTracker,
-    ILogManager logManager) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, alwaysStartHeaderSync: true)
+    ILogManager logManager,
+    IChainLevelInfoRepository? chainLevelInfoRepository,
+    IHeaderStore? headerStore) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, chainLevelInfoRepository, headerStore, alwaysStartHeaderSync: true)
 {
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;

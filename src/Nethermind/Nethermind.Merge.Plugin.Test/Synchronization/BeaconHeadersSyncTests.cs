@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -14,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.State.Repositories;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -34,6 +36,14 @@ public class BeaconHeadersSyncTests
 {
     private class Context
     {
+        private BlockTreeBuilder? _blockTreeBuilder;
+        private BlockTreeBuilder BlockTreeBuilder => _blockTreeBuilder ??= Build.A.BlockTree()
+            .WithSyncConfig(SyncConfig)
+            .WithoutSettingHead;
+
+        public IChainLevelInfoRepository ChainLevelInfoRepository => BlockTreeBuilder.ChainLevelInfoRepository;
+        public IHeaderStore HeaderStore => BlockTreeBuilder.HeaderStore;
+
         private IBlockTree? _blockTree;
         public IBlockTree BlockTree
         {
@@ -42,10 +52,7 @@ public class BeaconHeadersSyncTests
                 if (_blockTree is null)
                 {
                     Block genesis = Build.A.Block.Genesis.TestObject;
-                    _blockTree = Build.A.BlockTree()
-                        .WithSyncConfig(SyncConfig)
-                        .WithoutSettingHead
-                        .TestObject;
+                    _blockTree = BlockTreeBuilder.TestObject;
                     _blockTree.SuggestBlock(genesis);
                     _blockTree.UpdateMainChain(new[] { genesis }, true); // MSMS do validity check on this
                 }
@@ -89,7 +96,9 @@ public class BeaconHeadersSyncTests
             Report,
             BeaconPivot,
             InvalidChainTracker,
-            LimboLogs.Instance
+            LimboLogs.Instance,
+            ChainLevelInfoRepository,
+            HeaderStore
         );
 
         private ISyncPeerPool? _peerPool;

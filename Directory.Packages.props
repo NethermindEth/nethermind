@@ -9,8 +9,8 @@
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="9.0.0" />
     <PackageVersion Include="Autofac" Version="9.1.0" />
     <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="11.0.0" />
-    <PackageVersion Include="BenchmarkDotNet" Version="0.16.0-nightly.20260324.477" />
-    <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.16.0-nightly.20260324.477" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.16.0-nightly.20260324.478" />
+    <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.16.0-nightly.20260324.478" />
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <PackageVersion Include="Ckzg.Bindings" Version="2.1.7.1596" />
     <PackageVersion Include="Collections.Pooled" Version="1.0.82" />
@@ -75,7 +75,7 @@
     <PackageVersion Include="NUnit.Analyzers" Version="4.12.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.1.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
-    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.7" />
+    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.8" />
     <PackageVersion Include="Polly" Version="8.6.6" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
