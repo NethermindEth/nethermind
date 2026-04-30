@@ -1511,6 +1511,19 @@ public partial class EngineModuleTests
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
     }
 
+    private async Task<IReadOnlyList<ExecutionPayload>> BuildChainWithLoweredFinalized(
+        MergeTestBlockchain chain, IEngineRpcModule rpc, int oldHead, int lastFinalized)
+    {
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, oldHead + 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+
+        // Lower the finalized marker to blocks[lastFinalized] while keeping the head at blocks[oldHead].
+        Hash256 finalized = blocks[lastFinalized].BlockHash;
+        ForkchoiceStateV1 setFinalized = new(headBlockHash: blocks[oldHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
+        (await rpc.engine_forkchoiceUpdatedV1(setFinalized)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        chain.BlockTree.Head!.Hash.Should().Be(blocks[oldHead].BlockHash);
+        return blocks;
+    }
+
     [TestCase(-1, TestName = "Behind finalized")]
     [TestCase(0, TestName = "Last finalized")]
     [TestCase(1, TestName = "After finalized")]
@@ -1521,14 +1534,9 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         const int oldHead = 4;
-        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, oldHead + 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
-
-        // Lower the finalized marker to blocks[2] while keeping the head at blocks[4].
         const int lastFinalized = 2;
+        IReadOnlyList<ExecutionPayload> blocks = await BuildChainWithLoweredFinalized(chain, rpc, oldHead, lastFinalized);
         Hash256 finalized = blocks[lastFinalized].BlockHash;
-        ForkchoiceStateV1 setFinalized = new(headBlockHash: blocks[oldHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
-        (await rpc.engine_forkchoiceUpdatedV1(setFinalized)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.Head!.Hash.Should().Be(blocks[oldHead].BlockHash);
 
         int newHead = lastFinalized + offset;
         ForkchoiceStateV1 fcu = new(headBlockHash: blocks[newHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
@@ -1537,14 +1545,14 @@ public partial class EngineModuleTests
 
         if (offset < 0)
         {
-            // Skip path: the FCU returns Valid without reorging; the head stays at blocks[4].
+            // Skip path: the FCU returns Valid without reorging; the head stays at blocks[oldHead].
             // Without the skip, RejectIfInconsistent would also fail this FCU because
             // finalized.Number > head.Number.
-            chain.BlockTree.Head!.Hash.Should().Be(blocks[4].BlockHash);
+            chain.BlockTree.Head!.Hash.Should().Be(blocks[oldHead].BlockHash);
         }
         else
         {
-            // No skip: the regular reorg path runs and the head is updated to blocks[idx].
+            // No skip: the regular reorg path runs and the head is updated to blocks[newHead].
             chain.BlockTree.Head!.Hash.Should().Be(blocks[newHead].BlockHash);
         }
     }
@@ -1558,18 +1566,17 @@ public partial class EngineModuleTests
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 5, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        const int oldHead = 4;
+        const int lastFinalized = 2;
+        IReadOnlyList<ExecutionPayload> blocks = await BuildChainWithLoweredFinalized(chain, rpc, oldHead, lastFinalized);
+        Hash256 finalized = blocks[lastFinalized].BlockHash;
 
-        Hash256 finalized = blocks[2].BlockHash;
-        ForkchoiceStateV1 setFinalized = new(headBlockHash: blocks[4].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
-        (await rpc.engine_forkchoiceUpdatedV1(setFinalized)).Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-
+        int newHead = lastFinalized + offset;
         // Reset the candidate's WasProcessed flag (the block stays on the main chain) so the
         // FCU enters the unprocessed branch where the first skip check lives.
-        int idx = 2 + offset;
-        FlipCanonicalMarkerTo(chain, blocks[idx]);
+        FlipCanonicalMarkerTo(chain, blocks[newHead]);
 
-        ForkchoiceStateV1 fcu = new(headBlockHash: blocks[idx].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
+        ForkchoiceStateV1 fcu = new(headBlockHash: blocks[newHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
 
         if (offset < 0)
