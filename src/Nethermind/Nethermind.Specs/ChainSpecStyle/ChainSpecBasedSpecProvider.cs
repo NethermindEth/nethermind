@@ -38,7 +38,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
             {
-                item.AddTransitions(transitionBlockNumbers, transitionTimestamps, _chainSpec.Genesis?.Timestamp ?? 0);
+                item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
             }
 
             AddTransitions(transitionBlockNumbers, _chainSpec, static n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");

@@ -36,8 +36,7 @@ public sealed class BeaconHeadersSyncFeed(
     IInvalidChainTracker invalidChainTracker,
     ILogManager logManager,
     IChainLevelInfoRepository? chainLevelInfoRepository,
-    IHeaderStore? headerStore,
-    ITotalDifficultyStrategy? totalDifficultyStrategy = null) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, chainLevelInfoRepository, headerStore, totalDifficultyStrategy, alwaysStartHeaderSync: true)
+    IHeaderStore? headerStore) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, chainLevelInfoRepository, headerStore, alwaysStartHeaderSync: true)
 {
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;

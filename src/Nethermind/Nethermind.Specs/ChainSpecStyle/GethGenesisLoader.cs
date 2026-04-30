@@ -403,7 +403,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         public SortedDictionary<long, UInt256>? BlockReward { get; } = BuildBlockRewardSchedule(config);
         public IDictionary<long, long>? DifficultyBombDelays { get; } = BuildDifficultyBombDelays(config);
 
-        public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps, ulong genesisTimestamp = 0)
+        public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
         {
             if (DifficultyBombDelays is not null)
             {
