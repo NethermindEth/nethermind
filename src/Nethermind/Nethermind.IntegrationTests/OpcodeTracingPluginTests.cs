@@ -19,6 +19,8 @@ using NUnit.Framework;
 namespace Nethermind.IntegrationTests;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class OpcodeTracingPluginTests
 {
     private const string OutputDir = "/tmp/opcode-traces";
@@ -48,10 +50,10 @@ public class OpcodeTracingPluginTests
     private static string s_testChainspecHostPath;
 
     [OneTimeSetUp]
-    public void OneTimeSetUp() => s_testChainspecHostPath = Utils.ExtractEmbeddedChainspec("sepolia-with-test-account.json");
+    public static void OneTimeSetUp() => s_testChainspecHostPath = Utils.ExtractEmbeddedChainspec("sepolia-with-test-account.json");
 
     [OneTimeTearDown]
-    public void OneTimeTearDown()
+    public static void OneTimeTearDown()
     {
         if (s_testChainspecHostPath is not null && System.IO.File.Exists(s_testChainspecHostPath))
         {

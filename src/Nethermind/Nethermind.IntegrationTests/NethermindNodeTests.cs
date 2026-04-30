@@ -14,6 +14,8 @@ using NUnit.Framework;
 namespace Nethermind.IntegrationTests;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class NethermindNodeTests
 {
     private IContainer _nethermindContainer;
