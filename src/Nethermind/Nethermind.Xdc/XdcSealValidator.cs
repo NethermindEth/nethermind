@@ -11,7 +11,6 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
