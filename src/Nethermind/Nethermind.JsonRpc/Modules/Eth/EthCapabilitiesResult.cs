@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -9,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// Response for eth_capabilities — describes the head block and the historical data availability of each resource type.
 /// Follows ethereum/execution-apis#755.
 /// </summary>
-public class EthCapabilitiesResult
+public record class EthCapabilitiesResult
 {
     /// <summary>The current chain head.</summary>
     public required CapabilityHead Head { get; init; }
@@ -34,27 +35,27 @@ public class EthCapabilitiesResult
 }
 
 /// <summary>Head block number and hash.</summary>
-public class CapabilityHead
+public readonly record struct CapabilityHead
 {
-    /// <summary>Hex-encoded block number.</summary>
-    public required string Number { get; init; }
+    /// <summary>Block number.</summary>
+    public required long Number { get; init; }
 
     /// <summary>Block hash.</summary>
-    public required string Hash { get; init; }
+    public required Hash256 Hash { get; init; }
 }
 
 /// <summary>Availability descriptor for one historical data resource.</summary>
-public class CapabilityResource
+public readonly record struct CapabilityResource
 {
     /// <summary><c>true</c> when the resource is completely unavailable on this node.</summary>
     public required bool Disabled { get; init; }
 
     /// <summary>
-    /// Hex-encoded number of the earliest block for which this resource is available.
+    /// Earliest block for which this resource is available.
     /// Omitted when <see cref="Disabled"/> is <c>true</c>.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? OldestBlock { get; init; }
+    public long? OldestBlock { get; init; }
 
     /// <summary>
     /// Retention / deletion strategy. Present only when data is pruned with a rolling window.
@@ -65,7 +66,7 @@ public class CapabilityResource
 }
 
 /// <summary>Rolling-window deletion strategy for a resource.</summary>
-public class CapabilityDeleteStrategy
+public readonly record struct CapabilityDeleteStrategy
 {
     /// <summary>Strategy type — always <c>"window"</c>.</summary>
     public required string Type { get; init; }

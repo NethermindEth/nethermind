@@ -4,6 +4,7 @@
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -25,25 +26,24 @@ public partial class EthRpcModuleTests
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c, syncConfig, pruningConfig))
             .Build();
-        return chain.EthRpcModule.eth_capabilities().Data!;
+        return chain.EthRpcModule.eth_capabilities().Data;
     }
 
     [Test]
     public async Task eth_capabilities_returns_all_resources_and_head()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
+        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data;
 
-        Assert.That(caps.Head, Is.Not.Null);
-        Assert.That(caps.Head.Number, Does.StartWith("0x"));
-        Assert.That(caps.Head.Hash, Does.StartWith("0x"));
+        Assert.That(caps.Head.Number, Is.GreaterThanOrEqualTo(0));
+        Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
 
-        Assert.That(caps.Blocks, Is.Not.Null);
-        Assert.That(caps.State, Is.Not.Null);
-        Assert.That(caps.Tx, Is.Not.Null);
-        Assert.That(caps.Logs, Is.Not.Null);
-        Assert.That(caps.Receipts, Is.Not.Null);
-        Assert.That(caps.Stateproofs, Is.Not.Null);
+        Assert.That(caps.Blocks, Is.Not.EqualTo(default(CapabilityResource)));
+        Assert.That(caps.State, Is.Not.EqualTo(default(CapabilityResource)));
+        Assert.That(caps.Tx, Is.Not.EqualTo(default(CapabilityResource)));
+        Assert.That(caps.Logs, Is.Not.EqualTo(default(CapabilityResource)));
+        Assert.That(caps.Receipts, Is.Not.EqualTo(default(CapabilityResource)));
+        Assert.That(caps.Stateproofs, Is.Not.EqualTo(default(CapabilityResource)));
     }
 
     [Test]
@@ -51,7 +51,7 @@ public partial class EthRpcModuleTests
     {
         // null configs → archive (stateproofs on, no window) + receipts enabled
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
+        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data;
 
         Assert.That(caps.Stateproofs.Disabled, Is.False);
         Assert.That(caps.State.DeleteStrategy, Is.Null);
@@ -64,24 +64,24 @@ public partial class EthRpcModuleTests
     public async Task eth_capabilities_archive_node_full_availability()
     {
         // Covers archive state+stateproofs availability AND the genesis-receipts regression
-        // (AncientReceiptsBarrierCalc would return 1 for PivotNumber=0; must be 0x0).
+        // (AncientReceiptsBarrierCalc would return 1 for PivotNumber=0; must be 0).
         EthCapabilitiesResult caps = await GetCaps(
             new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
             new PruningConfig { Mode = PruningMode.None });
 
         // State: full history, no rolling-window delete strategy
         Assert.That(caps.State.Disabled, Is.False);
-        Assert.That(caps.State.OldestBlock, Is.EqualTo("0x0"));
+        Assert.That(caps.State.OldestBlock, Is.EqualTo(0L));
         Assert.That(caps.State.DeleteStrategy, Is.Null, "Archive node has no delete strategy");
 
         // Stateproofs: enabled from genesis
         Assert.That(caps.Stateproofs.Disabled, Is.False, "Archive node serves state proofs");
-        Assert.That(caps.Stateproofs.OldestBlock, Is.EqualTo("0x0"));
+        Assert.That(caps.Stateproofs.OldestBlock, Is.EqualTo(0L));
 
-        // Receipts/tx/logs: available from genesis (not 0x1)
-        Assert.That(caps.Tx.OldestBlock, Is.EqualTo("0x0"), "Archive tx available from genesis");
-        Assert.That(caps.Logs.OldestBlock, Is.EqualTo("0x0"), "Archive logs available from genesis");
-        Assert.That(caps.Receipts.OldestBlock, Is.EqualTo("0x0"), "Archive receipts available from genesis");
+        // Receipts/tx/logs: available from genesis (not 1)
+        Assert.That(caps.Tx.OldestBlock, Is.EqualTo(0L), "Archive tx available from genesis");
+        Assert.That(caps.Logs.OldestBlock, Is.EqualTo(0L), "Archive logs available from genesis");
+        Assert.That(caps.Receipts.OldestBlock, Is.EqualTo(0L), "Archive receipts available from genesis");
 
         // Blocks: headers available
         Assert.That(caps.Blocks.Disabled, Is.False);
@@ -101,8 +101,8 @@ public partial class EthRpcModuleTests
 
         Assert.That(caps.State.Disabled, Is.False);
         Assert.That(caps.State.DeleteStrategy, Is.Not.Null);
-        Assert.That(caps.State.DeleteStrategy!.Type, Is.EqualTo("window"));
-        Assert.That(caps.State.DeleteStrategy.RetentionBlocks, Is.EqualTo(pruningBoundary));
+        Assert.That(caps.State.DeleteStrategy!.Value.Type, Is.EqualTo("window"));
+        Assert.That(caps.State.DeleteStrategy.Value.RetentionBlocks, Is.EqualTo(pruningBoundary));
     }
 
     [Test]

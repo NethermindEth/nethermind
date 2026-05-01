@@ -6,7 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
@@ -19,13 +19,12 @@ internal class EthCapabilitiesProvider(
     public EthCapabilitiesResult GetCapabilities()
     {
         BlockHeader? head = blockFinder.Head?.Header;
-        string headNumber = head is not null ? head.Number.ToHexString(skipLeadingZeros: true) : "0x0";
-        string headHash = head?.Hash?.ToString() ?? "0x0000000000000000000000000000000000000000000000000000000000000000";
+        long headNumber = head?.Number ?? 0;
+        Hash256 headHash = head?.Hash ?? Keccak.Zero;
 
         IBlockTree? blockTree = blockFinder as IBlockTree;
         bool headersAvailable = blockTree?.BestSuggestedHeader is not null;
         long lowestBlock = blockTree?.LowestInsertedHeader?.Number ?? 0;
-        string lowestBlockHex = lowestBlock.ToHexString(skipLeadingZeros: true);
 
         bool receiptsSynced = syncConfig?.DownloadReceiptsInFastSync ?? true;
         // AncientReceiptsBarrierCalc returns Math.Max(1, …) which is wrong for archive nodes
@@ -33,7 +32,6 @@ internal class EthCapabilitiesProvider(
         long oldestReceipts = (syncConfig?.PivotNumber ?? 0) == 0
             ? 0
             : syncConfig!.AncientReceiptsBarrierCalc;
-        string oldestReceiptsHex = oldestReceipts.ToHexString(skipLeadingZeros: true);
 
         PruningMode mode = pruningConfig?.Mode ?? PruningMode.None;
         bool isArchive = mode == PruningMode.None;
@@ -43,7 +41,6 @@ internal class EthCapabilitiesProvider(
         long? stateOldest = isArchive ? 0L
             : mode.IsMemory() && head is not null ? Math.Max(0L, head.Number - retentionBlocks!.Value)
             : null;
-        string? stateOldestHex = stateOldest?.ToHexString(skipLeadingZeros: true);
 
         CapabilityDeleteStrategy? windowStrategy = retentionBlocks is > 0
             ? new CapabilityDeleteStrategy { Type = "window", RetentionBlocks = retentionBlocks.Value }
@@ -52,7 +49,7 @@ internal class EthCapabilitiesProvider(
         CapabilityResource receiptResource(bool synced) => new()
         {
             Disabled = !synced,
-            OldestBlock = synced ? oldestReceiptsHex : null
+            OldestBlock = synced ? oldestReceipts : null
         };
 
         return new EthCapabilitiesResult
@@ -61,7 +58,7 @@ internal class EthCapabilitiesProvider(
             Blocks = new CapabilityResource
             {
                 Disabled = !headersAvailable,
-                OldestBlock = headersAvailable ? lowestBlockHex : null
+                OldestBlock = headersAvailable ? lowestBlock : null
             },
             State = new CapabilityResource
             {
@@ -69,7 +66,7 @@ internal class EthCapabilitiesProvider(
                 // memory-pruned node that hasn't yet synced past the first block — in which case
                 // OldestBlock is null because the rolling window lower bound cannot yet be computed.
                 Disabled = false,
-                OldestBlock = stateOldestHex,
+                OldestBlock = stateOldest,
                 DeleteStrategy = windowStrategy
             },
             Tx = receiptResource(receiptsSynced),
@@ -78,7 +75,7 @@ internal class EthCapabilitiesProvider(
             Stateproofs = new CapabilityResource
             {
                 Disabled = !isArchive,
-                OldestBlock = isArchive ? "0x0" : null
+                OldestBlock = isArchive ? 0L : null
             }
         };
     }
