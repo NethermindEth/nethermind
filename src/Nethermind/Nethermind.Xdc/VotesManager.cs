@@ -136,8 +136,8 @@ internal class VotesManager(
     {
         _votePool.EndRound(round);
 
-        foreach (ulong key in _qcBuildStartedByRound.Keys)
-            if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
+        foreach (KeyValuePair<ulong, byte> kvp in _qcBuildStartedByRound)
+            if (kvp.Key <= round) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>

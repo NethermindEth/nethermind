@@ -30,7 +30,7 @@ public static class ConfigExtensions
         );
 
     public static string[] GetPortOptionNames() =>
-        PortOptions.Keys.OrderByDescending(static x => x).ToArray();
+        PortOptions.Select(static kvp => kvp.Key).OrderByDescending(static x => x).ToArray();
 
     public static T GetDefaultValue<T>(this IConfig config, string propertyName)
     {

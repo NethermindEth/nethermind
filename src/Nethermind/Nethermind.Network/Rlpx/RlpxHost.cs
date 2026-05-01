@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
@@ -381,9 +382,9 @@ namespace Nethermind.Network.Rlpx
 
             // Detach subscriptions and dispose any sessions that weren't disconnected during shutdown.
             // Sessions whose Disconnected event fired are already disposed via OnDisconnected.
-            foreach (SessionActivitySubscription subscription in _sessionActivitySubscriptions.Values)
+            foreach (KeyValuePair<Guid, SessionActivitySubscription> kvp in _sessionActivitySubscriptions)
             {
-                subscription.DetachAndDispose();
+                kvp.Value.DetachAndDispose();
             }
 
             _sessionActivitySubscriptions.Clear();

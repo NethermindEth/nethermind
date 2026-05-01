@@ -95,13 +95,13 @@ namespace Nethermind.Network
             _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);
         }
 
-        public IReadOnlyCollection<Peer> ActivePeers => _peerPool.ActivePeers.Values.ToList();
-        public IReadOnlyCollection<Peer> CandidatePeers => _peerPool.Peers.Values.ToList();
-        public IReadOnlyCollection<Peer> ConnectedPeers => _peerPool.ActivePeers.Values.Where(IsConnected).ToList();
+        public IReadOnlyCollection<Peer> ActivePeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).ToList();
+        public IReadOnlyCollection<Peer> CandidatePeers => _peerPool.Peers.Select(static kvp => kvp.Value).ToList();
+        public IReadOnlyCollection<Peer> ConnectedPeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).Where(IsConnected).ToList();
 
         public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount;
         public int ActivePeersCount => _peerPool.ActivePeerCount;
-        public int ConnectedPeersCount => _peerPool.ActivePeers.Values.Count(IsConnected);
+        public int ConnectedPeersCount => _peerPool.ActivePeers.Select(static kvp => kvp.Value).Count(IsConnected);
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
 
         /// <summary>
@@ -218,9 +218,9 @@ namespace Nethermind.Network
                 _peerPool.PeerAdded -= PeerPoolOnPeerAdded;
                 _peerPool.PeerRemoved -= PeerPoolOnPeerRemoved;
                 _rlpxHost.SessionCreated -= RlpxHostOnSessionCreated;
-                foreach (ISession session in _sessions.Values)
+                foreach (KeyValuePair<Guid, ISession> kvp in _sessions)
                 {
-                    ToggleSessionEventListeners(session, false);
+                    ToggleSessionEventListeners(kvp.Value, false);
                 }
 
                 _sessions.Clear();
@@ -397,7 +397,7 @@ namespace Nethermind.Network
             void TraceActivePeers()
             {
                 string nl = Environment.NewLine;
-                _logger.Trace($"{nl}{nl}All active peers: {nl} {string.Join(nl, _peerPool.ActivePeers.Values.Select(x => $"{x.Node:s} | P2P: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.Eth62Initialized)} | {_stats.GetOrAdd(x.Node).P2PNodeDetails?.ClientId} | {_stats.GetOrAdd(x.Node)}"))} {nl}{nl}");
+                _logger.Trace($"{nl}{nl}All active peers: {nl} {string.Join(nl, _peerPool.ActivePeers.Select(static kvp => kvp.Value).Select(x => $"{x.Node:s} | P2P: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.Eth62Initialized)} | {_stats.GetOrAdd(x.Node).P2PNodeDetails?.ClientId} | {_stats.GetOrAdd(x.Node)}"))} {nl}{nl}");
             }
         }
 

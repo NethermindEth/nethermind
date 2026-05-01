@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -19,7 +20,7 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
 {
     private readonly ConcurrentDictionary<Hash256AsKey, byte[]> _rlpCollector = new();
 
-    public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Values;
+    public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Select(static kvp => kvp.Value);
 
     public void Dispose() => baseStore.Dispose();
 

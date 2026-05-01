@@ -30,8 +30,8 @@ namespace Nethermind.Db
         private string DbPath { get; }
         public string Name { get; }
 
-        public ICollection<byte[]> Keys => _cache.Keys.ToArray();
-        public ICollection<byte[]> Values => _cache.Values;
+        public ICollection<byte[]> Keys => _cache.Select(static kvp => kvp.Key).ToArray();
+        public ICollection<byte[]> Values => _cache.Select(static kvp => kvp.Value).ToArray();
         public int Count => _cache.Count;
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
@@ -106,9 +106,9 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Keys;
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Select(static kvp => kvp.Key);
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Select(static kvp => kvp.Value);
 
         public IWriteBatch StartWriteBatch() => this.LikeABatch(CommitBatch);
 
