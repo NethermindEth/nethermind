@@ -393,6 +393,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         IBlockProcessingQueue blockProcessingQueue = _server.Resolve<IBlockProcessingQueue>();
         await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
+        _server.Resolve<IWorldStateManager>().FlushCache(cancellationToken);
         IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
         long serverHeadNumber = serverBlockTree.Head!.Number;
         BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
