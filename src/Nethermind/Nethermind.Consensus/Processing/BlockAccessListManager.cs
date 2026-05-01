@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -477,15 +478,14 @@ public class BlockAccessListManager(
 
     private void CheckInitialized()
     {
-        if (_txProcessorWithWorldStateManager is null)
-            throw new InvalidOperationException($"{nameof(_txProcessorWithWorldStateManager)} was not initialized.");
-
-        if (_gasRemaining is null)
-            throw new InvalidOperationException($"{nameof(_gasRemaining)} was not initialized.");
-
-        if (_blockExecutionContext is null)
-            throw new InvalidOperationException($"{nameof(_blockExecutionContext)} was not initialized.");
+        if (_txProcessorWithWorldStateManager is null) ThrowNotInitialized(nameof(_txProcessorWithWorldStateManager));
+        if (_gasRemaining is null) ThrowNotInitialized(nameof(_gasRemaining));
+        if (_blockExecutionContext is null) ThrowNotInitialized(nameof(_blockExecutionContext));
     }
+
+    [DoesNotReturn]
+    private static void ThrowNotInitialized(string fieldName)
+        => throw new InvalidOperationException($"{fieldName} was not initialized.");
 
     private interface ITxProcessorWithWorldStateManager
     {
@@ -554,21 +554,29 @@ public class BlockAccessListManager(
         {
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
-            int previousSize = _lastBalIndex + 1;
-            _lastBalIndex = block.Transactions.Length + 1;
 
-            ReclaimAndResize(_lastBalIndex + 1, previousSize);
+            int previousSize = _lastBalIndex + 1;
+            int newLastBalIndex = block.Transactions.Length + 1;
+            ReclaimAndResize(newLastBalIndex + 1, previousSize);
+            _lastBalIndex = newLastBalIndex;
         }
 
+        // Thread-safety note for _inUse / _perTxBal:
+        //   Each balIndex slot has at most one writer at a time. Pre/post (idx 0 and
+        //   _lastBalIndex) are written only by the main thread; tx slots (1..len) are
+        //   each owned by a single parallel-loop iteration, so no two workers ever
+        //   touch the same slot. Cross-thread reads (validator → worker's slot) happen
+        //   strictly after the worker's gasResults[i-1].SetResult, whose pairing with
+        //   GetResult() establishes the publication barrier. Plain reads/writes are
+        //   therefore sufficient — Volatile/Interlocked would be redundant fencing.
         public TxProcessorWithWorldState Get(int? balIndex = null)
         {
-            if (_currentBlock is null)
-                throw new InvalidOperationException($"{nameof(_currentBlock)} was not initialized.");
+            if (_currentBlock is null) ThrowNotInitialized(nameof(_currentBlock));
 
             balIndex = ClampBalIndex(balIndex ?? 0);
 
             // Re-entrant Get for the same balIndex returns the already-acquired processor
-            // (lets pre/post callers share state across calls).
+            // (lets pre/post callers share state across calls — main thread only).
             TxProcessorWithWorldState? existing = _inUse[balIndex.Value];
             if (existing is not null) return existing;
 
@@ -649,14 +657,18 @@ public class BlockAccessListManager(
                 if (_inUse[i] is not null) Return(i);
 
             for (int i = 0; i < previousSize; i++)
-                if (_perTxBal[i] is { } bal) StaticPool<BlockAccessList>.Return(bal);
+            {
+                if (_perTxBal[i] is { } bal)
+                {
+                    StaticPool<BlockAccessList>.Return(bal);
+                    _perTxBal[i] = null;
+                }
+            }
 
             if (_inUse.Length < size)
                 Array.Resize(ref _inUse, Math.Max(2 * _inUse.Length, size));
             if (_perTxBal.Length < size)
                 Array.Resize(ref _perTxBal, Math.Max(2 * _perTxBal.Length, size));
-            Array.Clear(_inUse);
-            Array.Clear(_perTxBal);
         }
 
     }
