@@ -772,7 +772,7 @@ namespace Nethermind.Synchronization.FastSync
             return dependentItem.Counter == 0;
         }
 
-        private void VerifyPostSyncCleanUp()
+        internal void VerifyPostSyncCleanUp()
         {
             lock (_dependencies)
             {
@@ -799,11 +799,12 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else
                 {
-                    // The pivot rotated between root save and cleanup. Skip finalize so
-                    // the persistence layer's CurrentState is not promoted to a state root
-                    // for which no trie data exists.
+                    // State root mismatch at finalize time: the active pivot points at a
+                    // different state root than the one whose trie was just synced.
+                    // Skipping finalize prevents the persistence layer's CurrentState from
+                    // being promoted to a state root for which no trie data exists.
                     // The next sync round will retry on the new pivot.
-                    if (_logger.IsWarn) _logger.Warn($"Skipping state sync finalize: pivot rotated. Saved root: {_rootNode}, current pivot root: {pivotHeader.StateRoot}");
+                    if (_logger.IsWarn) _logger.Warn($"Skipping state sync finalize: saved root {_rootNode} does not match current pivot root {pivotHeader.StateRoot}. The next sync round will retry.");
                 }
 
                 SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(pivotHeader));
