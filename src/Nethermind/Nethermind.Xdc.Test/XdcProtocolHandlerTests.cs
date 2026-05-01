@@ -298,8 +298,9 @@ public class XdcProtocolHandlerTests
         }
     }
 
-    [Test]
-    public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes(bool sendFullTx)
     {
         // In XdcProtocolHandler tx gossip must go via TransactionsMessage (0x02),
         // never via NewPooledTransactionHashesMessage (0x08 from Eth65) which conflicts with XDC OrderTxMsg.
@@ -308,7 +309,7 @@ public class XdcProtocolHandlerTests
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
 
-            handler.SendNewTransactions([tx], sendFullTx: true);
+            handler.SendNewTransactions([tx], sendFullTx: sendFullTx);
 
             session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(m => m.PacketType == Eth62MessageCode.Transactions));
             session.DidNotReceive().DeliverMessage(Arg.Is<P2PMessage>(m => m.PacketType == Eth65MessageCode.NewPooledTransactionHashes));
