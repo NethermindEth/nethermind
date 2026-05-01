@@ -31,6 +31,11 @@ public class OpcodeTracingPluginTests
     // Sepolia Cancun activation timestamp (eip4788TransitionTimestamp = 0x65b97d60).
     private const long SepoliaCancunTimestamp = 0x65b97d60L;
 
+    // Amsterdam activation timestamp used by the Amsterdam test chainspec
+    // (eip7928TransitionTimestamp = eip7843TransitionTimestamp = 0x68edfd60).
+    // Blocks at or after this stamp activate EIP-7928 (Block-level Access Lists).
+    private const long AmsterdamTimestamp = 0x68edfd60L;
+
     private const ulong SepoliaChainId = 11155111UL;
 
     // Vitalik's well-known EIP-155 example key (no value on real Sepolia). Pre-allocated in
@@ -48,16 +53,24 @@ public class OpcodeTracingPluginTests
 
     private IContainer _container;
     private static string s_testChainspecHostPath;
+    private static string s_amsterdamChainspecHostPath;
 
     [OneTimeSetUp]
-    public static void OneTimeSetUp() => s_testChainspecHostPath = Utils.ExtractEmbeddedChainspec("sepolia-with-test-account.json");
+    public static void OneTimeSetUp()
+    {
+        s_testChainspecHostPath = Utils.ExtractEmbeddedChainspec("sepolia-with-test-account.json");
+        s_amsterdamChainspecHostPath = Utils.ExtractEmbeddedChainspec("sepolia-amsterdam-with-test-account.json");
+    }
 
     [OneTimeTearDown]
     public static void OneTimeTearDown()
     {
-        if (s_testChainspecHostPath is not null && System.IO.File.Exists(s_testChainspecHostPath))
+        foreach (string path in new[] { s_testChainspecHostPath, s_amsterdamChainspecHostPath })
         {
-            try { System.IO.File.Delete(s_testChainspecHostPath); } catch { /* best-effort */ }
+            if (path is not null && System.IO.File.Exists(path))
+            {
+                try { System.IO.File.Delete(path); } catch { /* best-effort */ }
+            }
         }
     }
 
@@ -208,9 +221,13 @@ public class OpcodeTracingPluginTests
         AssertOpcodeCountsShape(root["opcodeCounts"], requireNonEmpty: false);
     }
 
-    [TestCase(true, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_True")]
-    [TestCase(false, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_False")]
-    public async Task RealTime_CapturesOpcodes_FromSubmittedTransaction(bool parallelExecution)
+    [TestCase(true, 2, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_True_2")]
+    [TestCase(true, 0, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_True_0")]
+    [TestCase(true, -1, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_True_-1")]
+    [TestCase(false, 0, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_False_0")]
+    [TestCase(false, 2, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_False_2")]
+    [TestCase(false, -1, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_False_-1")]
+    public async Task RealTime_CapturesOpcodes_FromSubmittedTransaction(bool parallelExecution, int maxDegreeOfParallelism)
     {
         // Submits 3 contract-creation txs from a pre-funded test EOA and asserts the plugin's
         // RealTime opcodeCounts include PUSH1 + RETURN from the init code. The --Blocks.ParallelExecution
@@ -225,6 +242,7 @@ public class OpcodeTracingPluginTests
             "--OpcodeTracing.StartBlock", "1",
             "--OpcodeTracing.EndBlock", targetBlocks.ToString(),
             "--OpcodeTracing.OutputDirectory", OutputDir,
+            "--OpcodeTracing.MaxDegreeOfParallelism", maxDegreeOfParallelism.ToString().ToLowerInvariant(),
             "--Blocks.ParallelExecution", parallelExecution.ToString().ToLowerInvariant()),
             useTestChainspec: true);
 
@@ -294,9 +312,13 @@ public class OpcodeTracingPluginTests
         AssertOpcodeCountsShape(root["opcodeCounts"], requireNonEmpty: false);
     }
 
-    [TestCase(true, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_True")]
-    [TestCase(false, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_False")]
-    public async Task RetrospectiveExecution_CapturesOpcodes_FromSubmittedTransaction(bool parallelExecution)
+    [TestCase(true, 2, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_True_2")]
+    [TestCase(true, 0, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_True_0")]
+    [TestCase(true, -1, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_True_-1")]
+    [TestCase(false, 0, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_False_0")]
+    [TestCase(false, 2, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_False_2")]
+    [TestCase(false, -1, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_False_-1")]
+    public async Task RetrospectiveExecution_CapturesOpcodes_FromSubmittedTransaction(bool parallelExecution, int maxDegreeOfParallelism)
     {
         // Two-phase test:
         //   Phase A: start a container with the plugin disabled, submit contract-creation txs and produce blocks,
@@ -320,6 +342,7 @@ public class OpcodeTracingPluginTests
             // Phase A — populate chain
             await StartNodeAsync(PrivateMergeCommand(
                 "--OpcodeTracing.Enabled", "false",
+                "--Blocks.ParallelExecution", parallelExecution.ToString().ToLowerInvariant(),
                 "--Pruning.Mode", "None"),
                 useTestChainspec: true,
                 persistentDataDirHostPath: dataDir,
@@ -338,6 +361,7 @@ public class OpcodeTracingPluginTests
                 "--OpcodeTracing.StartBlock", "1",
                 "--OpcodeTracing.EndBlock", blocksProduced.ToString(),
                 "--OpcodeTracing.OutputDirectory", OutputDir,
+                "--OpcodeTracing.MaxDegreeOfParallelism", maxDegreeOfParallelism.ToString().ToLowerInvariant(),
                 "--Pruning.Mode", "None",
                 "--Blocks.ParallelExecution", parallelExecution.ToString().ToLowerInvariant()),
                 useTestChainspec: true,
@@ -358,6 +382,103 @@ public class OpcodeTracingPluginTests
             JsonObject counts = AssertOpcodeCountsShape(root["opcodeCounts"], requireNonEmpty: true);
             counts.ContainsKey("PUSH1").Should().BeTrue($"opcodeCounts should contain PUSH1 from the init code; got {counts.ToJsonString()}");
             counts.ContainsKey("RETURN").Should().BeTrue($"opcodeCounts should contain RETURN from the init code; got {counts.ToJsonString()}");
+        }
+        finally
+        {
+            try { Directory.Delete(dataDir, recursive: true); } catch { /* best-effort */ }
+            try { Directory.Delete(keystoreDir, recursive: true); } catch { /* best-effort */ }
+        }
+    }
+
+    [TestCase(true, 2, TestName = "RetrospectiveExecution_Eip7928_Sequential_2")]
+    [TestCase(true, 0, TestName = "RetrospectiveExecution_Eip7928_Sequential_0")]
+    [TestCase(true, -1, TestName = "RetrospectiveExecution_Eip7928_Sequential_-1")]
+    [TestCase(false, 2, TestName = "RetrospectiveExecution_Eip7928_Sequential_2")]
+    [TestCase(false, 0, TestName = "RetrospectiveExecution_Eip7928_Parallel_0")]
+    [TestCase(false, -1, TestName = "RetrospectiveExecution_Eip7928_Parallel_-1")]
+    public async Task RetrospectiveExecution_CapturesOpcodes_OnEip7928Chain(bool blocksParallelExecution, int maxDegreeOfParallelism)
+    {
+        // Two-phase test mirroring RetrospectiveExecution_CapturesOpcodes_FromSubmittedTransaction,
+        // but on a chainspec where Amsterdam (EIP-7928 + EIP-7843 + Pectra) activates at a known
+        // timestamp. Phase A produces real Amsterdam blocks via engine_newPayloadV5/getPayloadV6
+        // with a few contract-creation transactions on the test EOA. Phase B restarts the node
+        // with `--OpcodeTracing.Mode=RetrospectiveExecution` AND `--Blocks.ParallelExecution`
+        // flipped between false/true — the goal is to verify RetrospectiveExecution stays correct
+        // under both BAL execution modes. If the parallel BAL path (via BlockAccessListManager:
+        // `Enabled && blocksConfig.ParallelExecution && !_isBuilding && suggestedBlock.BlockAccessList is not null`)
+        // mishandles state during replay, the True case will fail with skipped blocks, missing
+        // PUSH1/RETURN opcodes, or an Unhandled/Fatal in stdout.
+        //
+        // The chainspec activates the four small Pectra/Cancun system contracts (EIP-4788 beacon
+        // root, EIP-2935 block-hash history, EIP-7002 withdrawal requests, EIP-7251 consolidation
+        // requests) by pre-deploying them in genesis with the canonical bytecode lifted from
+        // src/Nethermind/Nethermind.Specs.Test/Specs/hoodi_no_deposit_contract.json. Each block
+        // produced therefore has non-trivial BAL state writes (StoreBeaconRoot,
+        // ApplyBlockhashStateChanges, request reads), which is what the parallel BAL executor has
+        // to coordinate over. EIP-6110 (deposits) is intentionally left off so we don't have to
+        // ship the multi-kB deposit contract bytecode.
+        const int targetBlocks = 16;
+        string dataDir = Path.Combine(Path.GetTempPath(), $"nethermind-it-data-{Guid.NewGuid():N}");
+        string keystoreDir = Path.Combine(Path.GetTempPath(), $"nethermind-it-keystore-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataDir);
+        Directory.CreateDirectory(keystoreDir);
+
+        int blocksProduced;
+        try
+        {
+            // Phase A — populate the chain with Amsterdam blocks. ParallelExecution stays at
+            // its default here; we only toggle it for the replay phase under test.
+            await StartNodeAsync(PrivateMergeCommand(
+                "--OpcodeTracing.Enabled", "false",
+                "--Blocks.ParallelExecution", blocksParallelExecution.ToString().ToLowerInvariant(),
+                "--Pruning.Mode", "None"),
+                useAmsterdamChainspec: true,
+                persistentDataDirHostPath: dataDir,
+                persistentKeystoreHostPath: keystoreDir);
+
+            blocksProduced = await ProduceBlocksAsync(version: 5, count: targetBlocks, timestamp: AmsterdamTimestamp, contractCreationsToSubmit: 3);
+            TestContext.Progress.WriteLine($"Phase A done: produced {blocksProduced} Amsterdam blocks");
+
+            await _container.DisposeAsync();
+            _container = null;
+
+            // Phase B — replay with RetrospectiveExecution and the requested ParallelExecution
+            // setting. This is the configuration under test: RetrospectiveExecution must produce
+            // the same opcode counts whether the node is configured with ParallelExecution=false
+            // or true.
+            await StartNodeAsync(PrivateMergeCommand(
+                "--OpcodeTracing.Enabled", "true",
+                "--OpcodeTracing.Mode", "RetrospectiveExecution",
+                "--OpcodeTracing.StartBlock", "1",
+                "--OpcodeTracing.EndBlock", blocksProduced.ToString(),
+                "--OpcodeTracing.OutputDirectory", OutputDir,
+                "--OpcodeTracing.MaxDegreeOfParallelism", maxDegreeOfParallelism.ToString().ToLowerInvariant(),
+                "--Blocks.ParallelExecution", blocksParallelExecution.ToString().ToLowerInvariant(),
+                "--Pruning.Mode", "None"),
+                useAmsterdamChainspec: true,
+                persistentDataDirHostPath: dataDir,
+                persistentKeystoreHostPath: keystoreDir);
+
+            string json = await WaitForFileAsync($"{OutputDir}/opcode-trace-1-{blocksProduced}.json", TimeSpan.FromSeconds(180));
+            TestContext.Progress.WriteLine($"=== opcode-trace-1-{blocksProduced}.json (RetrospectiveExecution, Blocks.ParallelExecution={blocksParallelExecution}) ===\n{json}");
+
+            JsonNode root = JsonNode.Parse(json);
+            AssertCommonMetadata(root["metadata"], expectedStart: 1, expectedEnd: blocksProduced, expectedMode: "RetrospectiveExecution", requireCompletion: true);
+
+            JsonNode skipped = root["metadata"]["skippedBlocks"];
+            if (skipped is not null)
+            {
+                skipped.AsArray().Count.Should().Be(0,
+                    $"all Amsterdam blocks should replay cleanly under Blocks.ParallelExecution={blocksParallelExecution}; got skipped={skipped.ToJsonString()}");
+            }
+
+            JsonObject counts = AssertOpcodeCountsShape(root["opcodeCounts"], requireNonEmpty: true);
+            counts.ContainsKey("PUSH1").Should().BeTrue($"opcodeCounts should contain PUSH1 under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
+            counts.ContainsKey("RETURN").Should().BeTrue($"opcodeCounts should contain RETURN under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
+
+            string stdout = await _container.GetCleanStdoutAsync();
+            stdout.Should().NotContain("Unhandled", "no unhandled errors should occur during replay");
+            stdout.Should().NotContain("Fatal", "no fatal errors should occur during replay");
         }
         finally
         {
@@ -504,13 +625,14 @@ public class OpcodeTracingPluginTests
         return counts;
     }
 
-    private async Task StartNodeAsync(string[] command, bool useTestChainspec = false, string persistentDataDirHostPath = null, string persistentKeystoreHostPath = null, bool waitForInit = true)
+    private async Task StartNodeAsync(string[] command, bool useTestChainspec = false, bool useAmsterdamChainspec = false, string persistentDataDirHostPath = null, string persistentKeystoreHostPath = null, bool waitForInit = true)
     {
         List<(string HostPath, string ContainerPath)> mounts = [];
-        if (useTestChainspec)
+        if (useTestChainspec || useAmsterdamChainspec)
         {
+            string hostPath = useAmsterdamChainspec ? s_amsterdamChainspecHostPath : s_testChainspecHostPath;
             const string containerPath = "/test-sepolia.json";
-            mounts.Add((s_testChainspecHostPath, containerPath));
+            mounts.Add((hostPath, containerPath));
             command = command.Concat(["--Init.ChainSpecPath", containerPath]).ToArray();
         }
         if (persistentDataDirHostPath is not null)
@@ -652,7 +774,7 @@ public class OpcodeTracingPluginTests
             {
                 return result.Stdout;
             }
-            await Task.Delay(500);
+            await Task.Delay(100);
         }
         throw new TimeoutException($"File {path} did not appear within {timeout}.");
     }
@@ -668,7 +790,7 @@ public class OpcodeTracingPluginTests
             {
                 return match;
             }
-            await Task.Delay(500);
+            await Task.Delay(100);
         }
         throw new TimeoutException($"Cumulative opcode-trace-all-*.json did not appear within {timeout}.");
     }

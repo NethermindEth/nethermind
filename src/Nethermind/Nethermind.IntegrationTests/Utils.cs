@@ -225,6 +225,13 @@ public static class Utils
 
     public static async Task CreateBlocksAsync(HttpClient httpClient, int count, int version, long minimumTimestamp)
     {
+        // Amsterdam (EIP-7928 / EIP-7843) reuses FCU V4 but switches getPayload→V6 / newPayload→V5.
+        // We model that as `version: 5` here so callers can opt in without leaking three handler
+        // numbers everywhere.
+        int fcuVersion = version == 5 ? 4 : version;
+        int getPayloadVersion = version == 5 ? 6 : version;
+        int newPayloadVersion = version == 5 ? 5 : version;
+
         for (int i = 0; i < count; i++)
         {
             JsonNode latestBlock = await SendEngineRequestAsync(httpClient, "eth_getBlockByNumber", "latest", false);
@@ -285,12 +292,29 @@ public static class Utils
                     parentBeaconBlockRoot = "0x0000000000000000000000000000000000000000000000000000000000000000"
                 };
             }
+            else if (version == 5)
+            {
+                // EIP-7843 adds `slotNumber` to PayloadAttributes; FCU V4 requires it once Amsterdam is active.
+                // The slot number must be strictly greater than the parent block's slot number, so we
+                // anchor on the parent block number we just read (parent + 1) and add the per-call offset
+                // — this keeps slot numbers monotonic across multiple CreateBlocksAsync invocations.
+                long parentNumber = Convert.ToInt64(latestBlock["number"].GetValue<string>().Substring(2), 16);
+                payloadAttributes = new
+                {
+                    timestamp = timestampHex,
+                    prevRandao = "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    suggestedFeeRecipient = "0x0000000000000000000000000000000000000000",
+                    withdrawals = Array.Empty<object>(),
+                    parentBeaconBlockRoot = "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    slotNumber = $"0x{parentNumber + i + 1:x}"
+                };
+            }
             else
             {
                 throw new NotSupportedException($"Version {version} not supported.");
             }
 
-            JsonNode fcuResult1 = await SendEngineRequestAsync(httpClient, $"engine_forkchoiceUpdatedV{version}", forkchoiceState, payloadAttributes);
+            JsonNode fcuResult1 = await SendEngineRequestAsync(httpClient, $"engine_forkchoiceUpdatedV{fcuVersion}", forkchoiceState, payloadAttributes);
             string payloadStatus = fcuResult1["payloadStatus"]["status"].GetValue<string>();
             if (payloadStatus != "VALID")
             {
@@ -300,7 +324,7 @@ public static class Utils
             string payloadId = fcuResult1["payloadId"]?.GetValue<string>();
             payloadId.Should().NotBeNullOrEmpty();
 
-            JsonNode getPayloadResult = await SendEngineRequestAsync(httpClient, $"engine_getPayloadV{version}", payloadId);
+            JsonNode getPayloadResult = await SendEngineRequestAsync(httpClient, $"engine_getPayloadV{getPayloadVersion}", payloadId);
             JsonNode executionPayload = version == 1 ? getPayloadResult : getPayloadResult["executionPayload"];
 
             object[] newPayloadParams;
@@ -316,14 +340,34 @@ public static class Utils
             {
                 newPayloadParams = new object[] { executionPayload, Array.Empty<object>(), "0x0000000000000000000000000000000000000000000000000000000000000000" };
             }
-            else
+            else if (version == 4)
             {
                 newPayloadParams = new object[] { executionPayload, Array.Empty<object>(), "0x0000000000000000000000000000000000000000000000000000000000000000", Array.Empty<object>() };
             }
+            else
+            {
+                // newPayloadV5 keeps the V4 parameter shape; the new fields (BlockAccessList, SlotNumber)
+                // ride along inside ExecutionPayloadV4 itself, not as extra positional args.
+                //
+                // NB: pass through `executionRequests` *exactly* as engine_getPayloadV6 returned it.
+                // If Pectra (EIP-6110/7002/7251) isn't active, the producer leaves
+                // block.Header.RequestsHash null and the V6 result omits executionRequests.
+                // Substituting an empty array here would make the validator compute
+                // RequestsHash = Keccak("") and reject the very block it just produced
+                // ("Invalid block hash ... does not match calculated hash ...").
+                JsonNode executionRequests = getPayloadResult["executionRequests"];
+                newPayloadParams = new object[] { executionPayload, Array.Empty<object>(), "0x0000000000000000000000000000000000000000000000000000000000000000", executionRequests! };
+            }
 
-            JsonNode newPayloadResult = await SendEngineRequestAsync(httpClient, $"engine_newPayloadV{version}", newPayloadParams);
+            JsonNode newPayloadResult = await SendEngineRequestAsync(httpClient, $"engine_newPayloadV{newPayloadVersion}", newPayloadParams);
             string newPayloadStatus = newPayloadResult["status"].GetValue<string>();
-            newPayloadStatus.Should().BeOneOf("VALID", "SYNCING", "ACCEPTED");
+            if (newPayloadStatus != "VALID" && newPayloadStatus != "SYNCING" && newPayloadStatus != "ACCEPTED")
+            {
+                // Surface validationError verbatim — under EIP-7928 we've seen producer/validator
+                // disagree on the block hash for the same payload, and the raw error makes that
+                // diagnosable without a debugger.
+                throw new Exception($"engine_newPayloadV{newPayloadVersion} rejected the payload: {newPayloadResult.ToJsonString()}");
+            }
 
             string newBlockHash = executionPayload["blockHash"].GetValue<string>();
             var finalForkchoiceState = new
@@ -332,7 +376,7 @@ public static class Utils
                 safeBlockHash = newBlockHash,
                 finalizedBlockHash = newBlockHash
             };
-            JsonNode fcuResult2 = await SendEngineRequestAsync(httpClient, $"engine_forkchoiceUpdatedV{version}", finalForkchoiceState);
+            JsonNode fcuResult2 = await SendEngineRequestAsync(httpClient, $"engine_forkchoiceUpdatedV{fcuVersion}", finalForkchoiceState);
             fcuResult2["payloadStatus"]["status"].GetValue<string>().Should().BeOneOf("VALID", "SYNCING", "ACCEPTED");
         }
     }
