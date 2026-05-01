@@ -6,14 +6,14 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Crypto;
-using Nethermind.Xdc.Contracts;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Xdc;
 
@@ -24,35 +24,23 @@ namespace Nethermind.Xdc;
 /// - TIP-upgrade: fixed per-signer rewards for masternode/protector/observer.
 /// - Holder split remains 90% owner, 10% foundation for each signer reward.
 /// </summary>
-public class XdcRewardCalculator : IRewardCalculator
+public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
+    ISpecProvider specProvider,
+    IBlockTree blockTree,
+    IMasternodeVotingContract masternodeVotingContract,
+    IMintedRecordContract mintedRecordContract,
+    ISigningTxCache signingTxCache,
+    ITransactionProcessor transactionProcessor) : IRewardCalculator
 {
-    private readonly EthereumEcdsa _ethereumEcdsa;
-    private readonly IEpochSwitchManager _epochSwitchManager;
-    private readonly ISpecProvider _specProvider;
-    private readonly IBlockTree _blockTree;
-    private readonly IMasternodeVotingContract _masternodeVotingContract;
-    private readonly IMintedRecordContract _mintedRecordContract;
-    private readonly ISigningTxCache _signingTxCache;
-    private readonly ITransactionProcessor _transactionProcessor;
+    private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
+    private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
+    private readonly IMintedRecordContract _mintedRecordContract = mintedRecordContract;
+    private readonly ISigningTxCache _signingTxCache = signingTxCache;
+    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
 
-    public XdcRewardCalculator(
-        IEpochSwitchManager epochSwitchManager,
-        ISpecProvider specProvider,
-        IBlockTree blockTree,
-        IMasternodeVotingContract masternodeVotingContract,
-        IMintedRecordContract mintedRecordContract,
-        ISigningTxCache signingTxCache,
-        ITransactionProcessor transactionProcessor)
-    {
-        _ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId);
-        _epochSwitchManager = epochSwitchManager;
-        _specProvider = specProvider;
-        _blockTree = blockTree;
-        _masternodeVotingContract = masternodeVotingContract;
-        _mintedRecordContract = mintedRecordContract;
-        _signingTxCache = signingTxCache;
-        _transactionProcessor = transactionProcessor;
-    }
     /// <summary>
     /// Calculates block rewards according to XDPoS consensus rules.
     ///
@@ -145,8 +133,7 @@ public class XdcRewardCalculator : IRewardCalculator
         for (long i = number - 1; i >= 0; i--)
         {
             Hash256 parentHash = h.ParentHash;
-            h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
-            if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
+            h = (XdcBlockHeader)_blockTree.FindHeader(parentHash!, i) ?? throw new InvalidOperationException($"Header with hash {parentHash} not found");
             if (epochCount == 0 && !h.BaseFeePerGas.IsZero)
             {
                 UInt256 burnedInBlock = h.BaseFeePerGas * (UInt256)h.GasUsed;
@@ -209,8 +196,8 @@ public class XdcRewardCalculator : IRewardCalculator
         long start = ((startBlockNumber + mergeSignRange - 1) / mergeSignRange) * mergeSignRange;
         for (long i = start; i < endBlockNumber; i += mergeSignRange)
         {
-            if (!blockNumberToHash.TryGetValue(i, out var blockHash)) continue;
-            if (!hashToSigningAddress.TryGetValue(blockHash, out var addresses)) continue;
+            if (!blockNumberToHash.TryGetValue(i, out Hash256 blockHash)) continue;
+            if (!hashToSigningAddress.TryGetValue(blockHash, out HashSet<Address> addresses)) continue;
             foreach (Address addr in addresses)
             {
                 if (masternodes.Contains(addr))
@@ -232,7 +219,7 @@ public class XdcRewardCalculator : IRewardCalculator
         if (candidates.Length == 0)
             return [];
 
-        var candidatesAndStake = new List<CandidateStake>(candidates.Length);
+        List<CandidateStake> candidatesAndStake = new(candidates.Length);
         foreach (Address candidate in candidates)
         {
             if (candidate == Address.Zero)

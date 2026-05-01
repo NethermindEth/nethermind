@@ -203,11 +203,8 @@ namespace Nethermind.Xdc
         {
             ulong currentRound = _xdcContext.CurrentRound;
 
-            XdcBlockHeader? roundParent = GetParentForRound();
-            if (roundParent == null)
-            {
+            XdcBlockHeader? roundParent = GetParentForRound() ??
                 throw new InvalidOperationException($"Head is null or not XdcBlockHeader.");
-            }
 
             // Get XDC spec for this round
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(roundParent, currentRound);

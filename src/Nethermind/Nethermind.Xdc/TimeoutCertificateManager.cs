@@ -249,8 +249,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private void SendTimeout()
     {
         long gapNumber = 0;
-        XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
-        if (currentHeader is null) throw new InvalidOperationException("Failed to retrieve current header");
+        XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header ?? throw new InvalidOperationException("Failed to retrieve current header");
         ulong currentRound = _consensusContext.CurrentRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, currentRound);
         if (_epochSwitchManager.IsEpochSwitchAtRound(currentRound, currentHeader))
@@ -260,10 +259,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
         else
         {
-            EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader);
-            if (epochSwitchInfo is null)
-                throw new DataExtractionException(nameof(EpochSwitchInfo));
-
+            EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader) ?? throw new DataExtractionException(nameof(EpochSwitchInfo));
             long currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
         }

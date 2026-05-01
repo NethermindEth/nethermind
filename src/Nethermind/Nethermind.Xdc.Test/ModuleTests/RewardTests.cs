@@ -512,7 +512,7 @@ public class RewardTests
             LimboLogs.Instance,
             votingContract);
         ISigningTxCache signingTxCache = new SigningTxCache(tree, specProvider);
-        var rewardCalculator = new XdcRewardCalculator(
+        XdcRewardCalculator rewardCalculator = new(
             epochSwitchManager,
             specProvider,
             tree,

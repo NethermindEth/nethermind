@@ -76,10 +76,8 @@ public class MintedRecordContract : IMintedRecordContract
         return new UInt256(value, isBigEndian: true);
     }
 
-    private static void WriteStorage(IWorldState worldState, UInt256 slot, in UInt256 value)
-    {
+    private static void WriteStorage(IWorldState worldState, UInt256 slot, in UInt256 value) =>
         worldState.Set(new StorageCell(MintedRecordAddress, slot), ToStorageBytes(value));
-    }
 
     private static byte[] ToStorageBytes(in UInt256 value)
     {
@@ -102,8 +100,6 @@ public class MintedRecordContract : IMintedRecordContract
         return compact;
     }
 
-    private static UInt256 AddSaturating(UInt256 left, UInt256 right)
-    {
-        return UInt256.AddOverflow(left, right, out UInt256 result) ? UInt256.MaxValue : result;
-    }
+    private static UInt256 AddSaturating(UInt256 left, UInt256 right) =>
+        UInt256.AddOverflow(left, right, out UInt256 result) ? UInt256.MaxValue : result;
 }

@@ -45,18 +45,14 @@ internal class QuorumCertificateManager(
             _context.HighestQC = qc;
         }
 
-        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
-        if (proposedBlockHeader is null)
-            throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
+        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash) ?? throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
         //Can only look for a QC in proposed block after the switch block
         if (proposedBlockHeader.Number > spec.SwitchBlock)
         {
-            QuorumCertificate? parentQc = proposedBlockHeader.ExtraConsensusData?.QuorumCert;
-            if (parentQc is null)
-                throw new BlockchainException("QC is targeting a block without required consensus data.");
+            QuorumCertificate parentQc = proposedBlockHeader.ExtraConsensusData?.QuorumCert ?? throw new BlockchainException("QC is targeting a block without required consensus data.");
 
             if (_context.LockQC is null || parentQc.ProposedBlockInfo.Round > _context.LockQC.ProposedBlockInfo.Round)
             {
