@@ -63,9 +63,14 @@ public class BlockAccessListManager(
     // post-block (ProcessExecutionRequests) system contract calls. Captured per-call as
     // delta on TxProcessor.BlockCumulativeStateGas so it works in both sequential mode
     // (system + real txs share a processor) and parallel mode (system slots have their
-    // own processor). Folded into totalStateGas before the max(regular, state) decision
-    // in IncrementalValidation.
+    // own processor). Folded into totalStateGas by FinalizeHeaderGas, which runs after
+    // the post-block call so it sees both the pre- and post-block deltas.
     private long _systemStateGas;
+    // Tx-only running totals captured in parallel mode by IncrementalValidation. Sequential
+    // mode reads the equivalent values from the BlockReceiptsTracer in FinalizeHeaderGas,
+    // so these stay zero outside parallel.
+    private long _txTotalRegularGas;
+    private long _txTotalStateGas;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
     // Cache key guarding LoadPreStateToSuggestedBlockAccessList against double-mutation of the
@@ -82,6 +87,8 @@ public class BlockAccessListManager(
         _blockExecutionContext = null;
         _gasRemaining = null;
         _systemStateGas = 0;
+        _txTotalRegularGas = 0;
+        _txTotalStateGas = 0;
         GeneratedBlockAccessList.Reset();
     }
 
@@ -196,13 +203,11 @@ public class BlockAccessListManager(
             }
         }
 
-        // Pre/post-block system contract calls (EIP-2935 / EIP-4788 / EIP-7002 / EIP-7251)
-        // charge state gas that contributes to the block's max(regular, state) total.
-        // Captured per-call by the snapshot/delta wrappers around the system call sites.
-        totalStateGas += _systemStateGas;
-
-        // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
-        _blockExecutionContext.Value.Header.GasUsed = Math.Max(totalRegularGas, totalStateGas);
+        // Stash tx-only totals for FinalizeHeaderGas. The post-block ProcessExecutionRequests
+        // runs after this task completes, so we cannot fold _systemStateGas in here — its
+        // post-block contribution would still be missing.
+        _txTotalRegularGas = totalRegularGas;
+        _txTotalStateGas = totalStateGas;
 
         static void CheckGasUsed(int index, Block block, long totalRegularGas, long totalStateGas)
         {
@@ -213,6 +218,35 @@ public class BlockAccessListManager(
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
             }
         }
+    }
+
+    public void FinalizeHeaderGas(BlockHeader header, BlockReceiptsTracer tracer)
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        // Per-tx running totals come from IncrementalValidation in parallel mode (the
+        // shared receipts tracer never sees those txs) and from the receipts tracer in
+        // sequential mode (where IncrementalValidation never runs).
+        long totalRegular;
+        long totalState;
+        if (ParallelExecutionEnabled)
+        {
+            totalRegular = _txTotalRegularGas;
+            totalState = _txTotalStateGas;
+        }
+        else
+        {
+            totalRegular = tracer.CumulativeRegularGasUsed;
+            totalState = tracer.BlockStateGasUsed;
+        }
+
+        // EIP-8037: block gasUsed = max(sum_regular, sum_state). System contract calls
+        // (EIP-2935 / EIP-4788 / EIP-7002 / EIP-7251) charge only state gas, so they
+        // contribute to the state-side total.
+        header.GasUsed = Math.Max(totalRegular, totalState + _systemStateGas);
     }
 
     private void ValidateTransactionGasAllowance(Block block, int index, long totalRegularGas, long totalStateGas)

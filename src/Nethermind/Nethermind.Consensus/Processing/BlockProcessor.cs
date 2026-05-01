@@ -154,6 +154,10 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
+        // EIP-8037: fold pre/post-block system contract state gas into header.GasUsed.
+        // Must run after ProcessExecutionRequests so the post-block delta is captured.
+        _balManager.FinalizeHeaderGas(header, ReceiptsTracer);
+
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec, commitRoots: true);
