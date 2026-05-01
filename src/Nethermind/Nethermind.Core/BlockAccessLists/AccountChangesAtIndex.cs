@@ -69,5 +69,6 @@ public class AccountChangesAtIndex(Address address)
     {
         _storageChanges.Clear();
         _storageReads.Clear();
+        _preTxStorage?.Clear();
     }
 }
