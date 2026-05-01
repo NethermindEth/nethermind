@@ -16,7 +16,6 @@ internal class MasternodesCalculator(ISnapshotManager snapshotManager, IPenaltyH
     {
         int maxMasternodes = spec.MaxMasternodes;
         Snapshot previousSnapshot = snapshotManager.GetSnapshotByBlockNumber(blockNumber, spec) ?? throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
-
         Address[] candidates = previousSnapshot.NextEpochCandidates;
 
         if (blockNumber == spec.SwitchBlock + 1)
