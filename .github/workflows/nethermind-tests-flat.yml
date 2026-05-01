@@ -17,7 +17,7 @@ env:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    name: Run ${{ matrix.project }}${{ matrix.label && format(' [{0}]', matrix.label) || '' }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -98,102 +98,102 @@ jobs:
           # default chunks above can exclude them via FullyQualifiedName!~ filters and
           # avoid double-running the heavy Amsterdam fixture set. 16 chunks per variant
           # mirrors the default Pyspec chunking density (~213 tests/shard).
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelBlockchainTests, label: Parallel }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamBatchReadBlockchainTests, label: BatchRead }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelFullBlockchainTests, label: ParallelFull }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelEngineBlockchainTests, label: ParallelEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamBatchReadEngineBlockchainTests, label: BatchReadEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16,  filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, filter: FullyQualifiedName~AmsterdamParallelFullEngineBlockchainTests, label: ParallelFullEngine }
     steps:
       - name: Free up disk space
         if: startsWith(matrix.project, 'Ethereum.Blockchain.Pyspec')
