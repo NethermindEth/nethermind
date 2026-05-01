@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -90,6 +89,7 @@ public partial class EthRpcModule(
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+    private readonly EthCapabilitiesProvider _capabilitiesProvider = new(blockFinder, syncConfig, pruningConfig);
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
@@ -904,80 +904,8 @@ public partial class EthRpcModule(
             : ResultWrapper<BlockAccessList?>.Success(bal);
     }
 
-    public ResultWrapper<EthCapabilitiesResult> eth_capabilities()
-    {
-        BlockHeader? head = _blockFinder.Head?.Header;
-        string headNumber = head is not null ? head.Number.ToHexString(skipLeadingZeros: true) : "0x0";
-        string headHash = head?.Hash?.ToString() ?? "0x0000000000000000000000000000000000000000000000000000000000000000";
-
-        // IReadOnlyBlockTree (always passed by EthModuleFactory) implements IBlockTree.
-        // If null (misconfiguration), report blocks as unavailable rather than silently claiming genesis.
-        IBlockTree? blockTree = _blockFinder as IBlockTree;
-        bool headersAvailable = blockTree?.BestSuggestedHeader is not null;
-        // LowestInsertedHeader is set during reverse fast-sync. Null on a fully-synced archive node
-        // means all blocks are available from genesis (0), not that no blocks exist.
-        long lowestBlock = blockTree?.LowestInsertedHeader?.Number ?? 0;
-        string lowestBlockHex = lowestBlock.ToHexString(skipLeadingZeros: true);
-
-        bool receiptsSynced = syncConfig?.DownloadReceiptsInFastSync ?? true;
-        // AncientReceiptsBarrierCalc returns Math.Max(1, ...) which is wrong for archive nodes
-        // (PivotNumber = 0). When there was no fast sync, receipts are available from genesis.
-        long oldestReceipts = (syncConfig?.PivotNumber ?? 0) == 0
-            ? 0
-            : syncConfig!.AncientReceiptsBarrierCalc;
-        string oldestReceiptsHex = oldestReceipts.ToHexString(skipLeadingZeros: true);
-
-        PruningMode mode = pruningConfig?.Mode ?? PruningMode.None;
-        bool isArchive = mode == PruningMode.None;
-        // Memory (and Hybrid) pruning maintains a rolling window of PruningBoundary recent states.
-        // Full-only pruning is periodic and non-linear — we cannot claim a predictable oldest block.
-        long? retentionBlocks = mode.IsMemory() ? pruningConfig!.PruningBoundary : null;
-        long? stateOldest = isArchive ? 0L
-            : mode.IsMemory() && head is not null ? Math.Max(0L, head.Number - retentionBlocks!.Value)
-            : null;
-        string? stateOldestHex = stateOldest?.ToHexString(skipLeadingZeros: true);
-
-        static CapabilityDeleteStrategy? windowStrategy(long? retention) =>
-            retention is > 0 ? new CapabilityDeleteStrategy { Type = "window", RetentionBlocks = retention.Value } : null;
-
-        EthCapabilitiesResult result = new()
-        {
-            Head = new CapabilityHead { Number = headNumber, Hash = headHash },
-            Blocks = new CapabilityResource
-            {
-                Disabled = !headersAvailable,
-                OldestBlock = headersAvailable ? lowestBlockHex : null
-            },
-            State = new CapabilityResource
-            {
-                Disabled = false,
-                OldestBlock = stateOldestHex,
-                DeleteStrategy = windowStrategy(retentionBlocks)
-            },
-            Tx = new CapabilityResource
-            {
-                Disabled = !receiptsSynced,
-                OldestBlock = receiptsSynced ? oldestReceiptsHex : null
-            },
-            Logs = new CapabilityResource
-            {
-                Disabled = !receiptsSynced,
-                OldestBlock = receiptsSynced ? oldestReceiptsHex : null
-            },
-            Receipts = new CapabilityResource
-            {
-                Disabled = !receiptsSynced,
-                OldestBlock = receiptsSynced ? oldestReceiptsHex : null
-            },
-            Stateproofs = new CapabilityResource
-            {
-                Disabled = !isArchive,
-                OldestBlock = isArchive ? "0x0" : null
-            }
-        };
-
-        return ResultWrapper<EthCapabilitiesResult>.Success(result);
-    }
+    public ResultWrapper<EthCapabilitiesResult> eth_capabilities() =>
+        ResultWrapper<EthCapabilitiesResult>.Success(_capabilitiesProvider.GetCapabilities());
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();

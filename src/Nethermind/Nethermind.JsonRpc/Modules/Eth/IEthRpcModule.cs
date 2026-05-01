@@ -306,7 +306,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns the node's historical data availability for routing and capability discovery.",
-            IsSharable = true)]
+            IsSharable = true,
+            ExampleResponse = "{\"head\":{\"number\":\"0x1\",\"hash\":\"0xabc\"},\"state\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"tx\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"logs\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"receipts\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"blocks\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"stateproofs\":{\"disabled\":false,\"oldestBlock\":\"0x0\"}}")]
         ResultWrapper<EthCapabilitiesResult> eth_capabilities();
 
         [JsonRpcMethod(Description = "Retrieves block access list for a block by hash.")]

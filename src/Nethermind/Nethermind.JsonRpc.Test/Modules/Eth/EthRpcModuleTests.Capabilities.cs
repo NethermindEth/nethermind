@@ -16,18 +16,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 public partial class EthRpcModuleTests
 {
     /// <summary>
-    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11260
-    /// eth_capabilities should return head block info and all six resource descriptors.
+    /// Builds a chain and returns the result of eth_capabilities with the given configs.
     /// </summary>
+    private static async Task<EthCapabilitiesResult> GetCaps(
+        SyncConfig syncConfig,
+        PruningConfig pruningConfig)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c, syncConfig, pruningConfig))
+            .Build();
+        return chain.EthRpcModule.eth_capabilities().Data!;
+    }
+
     [Test]
     public async Task eth_capabilities_returns_all_resources_and_head()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-
-        ResultWrapper<EthCapabilitiesResult> result = chain.EthRpcModule.eth_capabilities();
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        EthCapabilitiesResult caps = result.Data!;
+        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
 
         Assert.That(caps.Head, Is.Not.Null);
         Assert.That(caps.Head.Number, Does.StartWith("0x"));
@@ -42,59 +47,54 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task eth_capabilities_with_null_configs_treats_as_archive_with_receipts()
+    public async Task eth_capabilities_null_configs_defaults_to_archive_with_receipts()
     {
-        // When syncConfig and pruningConfig are null (default), the node behaves as archive
-        // with receipts enabled — the safe fallback used in test environments.
+        // null configs → archive (stateproofs on, no window) + receipts enabled
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-
         EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
 
-        // Default = archive: stateproofs enabled, no window deleteStrategy
         Assert.That(caps.Stateproofs.Disabled, Is.False);
         Assert.That(caps.State.DeleteStrategy, Is.Null);
-
-        // Default = receipts synced: tx/logs/receipts enabled
         Assert.That(caps.Tx.Disabled, Is.False);
         Assert.That(caps.Logs.Disabled, Is.False);
         Assert.That(caps.Receipts.Disabled, Is.False);
     }
 
     [Test]
-    public async Task eth_capabilities_archive_node_has_stateproofs_enabled_and_no_delete_strategy()
+    public async Task eth_capabilities_archive_node_full_availability()
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
-                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-                pruningConfig: new PruningConfig { Mode = PruningMode.None }))
-            .Build();
+        // Covers archive state+stateproofs availability AND the genesis-receipts regression
+        // (AncientReceiptsBarrierCalc would return 1 for PivotNumber=0; must be 0x0).
+        EthCapabilitiesResult caps = await GetCaps(
+            new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            new PruningConfig { Mode = PruningMode.None });
 
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
-
+        // State: full history, no rolling-window delete strategy
         Assert.That(caps.State.Disabled, Is.False);
         Assert.That(caps.State.OldestBlock, Is.EqualTo("0x0"));
         Assert.That(caps.State.DeleteStrategy, Is.Null, "Archive node has no delete strategy");
 
+        // Stateproofs: enabled from genesis
         Assert.That(caps.Stateproofs.Disabled, Is.False, "Archive node serves state proofs");
         Assert.That(caps.Stateproofs.OldestBlock, Is.EqualTo("0x0"));
 
-        // Archive node with blocks available: blocks not disabled
+        // Receipts/tx/logs: available from genesis (not 0x1)
+        Assert.That(caps.Tx.OldestBlock, Is.EqualTo("0x0"), "Archive tx available from genesis");
+        Assert.That(caps.Logs.OldestBlock, Is.EqualTo("0x0"), "Archive logs available from genesis");
+        Assert.That(caps.Receipts.OldestBlock, Is.EqualTo("0x0"), "Archive receipts available from genesis");
+
+        // Blocks: headers available
         Assert.That(caps.Blocks.Disabled, Is.False);
         Assert.That(caps.Blocks.OldestBlock, Is.Not.Null);
     }
 
     [Test]
-    public async Task eth_capabilities_pruned_node_disables_stateproofs_and_reports_window()
+    public async Task eth_capabilities_memory_pruned_node_reports_window_and_disables_stateproofs()
     {
         const int pruningBoundary = 128;
-
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
-                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-                pruningConfig: new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = pruningBoundary }))
-            .Build();
-
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
+        EthCapabilitiesResult caps = await GetCaps(
+            new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = pruningBoundary });
 
         Assert.That(caps.Stateproofs.Disabled, Is.True, "Pruned node cannot serve historical state proofs");
         Assert.That(caps.Stateproofs.OldestBlock, Is.Null);
@@ -106,17 +106,12 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task eth_capabilities_full_pruning_only_omits_state_oldest_block()
+    public async Task eth_capabilities_full_pruning_omits_state_oldest_block_and_delete_strategy()
     {
-        // PruningMode.Full is periodic (non-linear), so we cannot claim a predictable
-        // oldestBlock. The implementation omits it rather than reporting a misleading value.
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
-                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-                pruningConfig: new PruningConfig { Mode = PruningMode.Full }))
-            .Build();
-
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
+        // Full pruning is periodic and non-linear — no predictable window to report.
+        EthCapabilitiesResult caps = await GetCaps(
+            new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            new PruningConfig { Mode = PruningMode.Full });
 
         Assert.That(caps.State.Disabled, Is.False, "State is still available on a full-pruned node");
         Assert.That(caps.State.OldestBlock, Is.Null, "Full-only pruning: oldest block unknown, must not be reported");
@@ -124,15 +119,11 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task eth_capabilities_no_receipts_disables_tx_logs_receipts()
+    public async Task eth_capabilities_no_receipts_disables_tx_logs_and_receipts()
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
-                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = false },
-                pruningConfig: new PruningConfig { Mode = PruningMode.None }))
-            .Build();
-
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
+        EthCapabilitiesResult caps = await GetCaps(
+            new SyncConfig { DownloadReceiptsInFastSync = false },
+            new PruningConfig { Mode = PruningMode.None });
 
         Assert.That(caps.Tx.Disabled, Is.True);
         Assert.That(caps.Logs.Disabled, Is.True);
@@ -144,35 +135,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task eth_capabilities_archive_node_receipts_oldest_block_is_genesis_not_one()
+    public async Task eth_capabilities_json_keys_match_spec()
     {
-        // Regression: AncientReceiptsBarrierCalc returns Math.Max(1, 0) = 1 for archive nodes.
-        // eth_capabilities must report 0x0 (genesis) when PivotNumber = 0.
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
-                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-                pruningConfig: new PruningConfig { Mode = PruningMode.None }))
-            .Build();
+        // Guards against naming-policy regressions: all JSON keys must match
+        // ethereum/execution-apis#755 exactly (camelCase via EthereumJsonSerializer).
+        EthCapabilitiesResult caps = await GetCaps(
+            new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = 64 });
 
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
-
-        Assert.That(caps.Tx.OldestBlock, Is.EqualTo("0x0"), "Archive node tx available from genesis");
-        Assert.That(caps.Logs.OldestBlock, Is.EqualTo("0x0"), "Archive node logs available from genesis");
-        Assert.That(caps.Receipts.OldestBlock, Is.EqualTo("0x0"), "Archive node receipts available from genesis");
-    }
-
-    [Test]
-    public async Task eth_capabilities_serializes_to_spec_compliant_json_key_names()
-    {
-        // Guards against naming-policy regressions: all JSON keys must match the spec
-        // (ethereum/execution-apis#755) exactly. EthereumJsonSerializer uses camelCase.
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c,
-                syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-                pruningConfig: new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = 64 }))
-            .Build();
-
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data!;
         string json = new EthereumJsonSerializer().Serialize(caps);
 
         // Top-level resource keys
@@ -184,7 +154,7 @@ public partial class EthRpcModuleTests
         Assert.That(json, Does.Contain("\"blocks\""));
         Assert.That(json, Does.Contain("\"stateproofs\""));
 
-        // Head field names (renamed from blockNumber/blockHash per s1na's review)
+        // Head fields (renamed from blockNumber/blockHash per spec)
         Assert.That(json, Does.Contain("\"number\""));
         Assert.That(json, Does.Contain("\"hash\""));
         Assert.That(json, Does.Not.Contain("\"blockNumber\""));
