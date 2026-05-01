@@ -884,22 +884,23 @@ namespace Nethermind.Serialization.Rlp
 
             public UInt256 DecodeUInt256(int length = -1)
             {
+                int position = Position;
                 if (PeekByte() == 0)
                 {
-                    RlpHelpers.ThrowNonCanonicalInteger(Position);
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
                 }
 
                 ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
                 if (byteSpan.Length > 32)
                 {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(byteSpan.Length);
+                    RlpHelpers.ThrowUnexpectedIntegerLength(position, byteSpan.Length);
                 }
 
                 if (length == -1)
                 {
                     if (byteSpan.Length > 1 && byteSpan[0] == 0)
                     {
-                        RlpHelpers.ThrowNonCanonicalInteger(Position);
+                        RlpHelpers.ThrowNonCanonicalInteger(position);
                     }
                 }
                 else if (byteSpan.Length != length)
@@ -907,16 +908,16 @@ namespace Nethermind.Serialization.Rlp
                     RlpHelpers.ThrowInvalidLength(byteSpan.Length, length);
                 }
 
-
                 return new UInt256(byteSpan, true);
             }
 
             public BigInteger DecodeUBigInt()
             {
+                int position = Position;
                 ReadOnlySpan<byte> bytes = DecodeByteArraySpan(RlpLimit.L32);
                 if (bytes.Length >= 1 && bytes[0] == 0)
                 {
-                    RlpHelpers.ThrowNonCanonicalInteger(Position);
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
                 }
                 return bytes.ToUnsignedBigInteger();
             }
@@ -986,12 +987,13 @@ namespace Nethermind.Serialization.Rlp
 
             public uint DecodeUInt()
             {
+                int position = Position;
                 int prefix = ReadByte();
 
                 switch (prefix)
                 {
                     case 0:
-                        return RlpHelpers.ThrowNonCanonicalInteger(Position);
+                        return RlpHelpers.ThrowNonCanonicalInteger(position);
                     case < 128:
                         return (uint)prefix;
                     case 128:
@@ -1001,7 +1003,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = prefix - 128;
                 if (length > 4)
                 {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
+                    RlpHelpers.ThrowUnexpectedIntegerLength(position, length);
                 }
 
                 uint result = 0;
@@ -1013,14 +1015,14 @@ namespace Nethermind.Serialization.Rlp
                         result |= Data[Position + length - i];
                         if (result == 0)
                         {
-                            RlpHelpers.ThrowNonCanonicalInteger(Position);
+                            RlpHelpers.ThrowNonCanonicalInteger(position);
                         }
                     }
                 }
 
                 if (result < 128)
                 {
-                    RlpHelpers.ThrowNonCanonicalInteger(Position);
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
                 }
 
                 Position += length;
@@ -1188,9 +1190,10 @@ namespace Nethermind.Serialization.Rlp
             /// </summary>
             public int DecodePositiveInt()
             {
+                int position = Position;
                 int value = DecodeInt();
                 if (value < 0)
-                    RlpHelpers.ThrowNegativeInteger(value);
+                    RlpHelpers.ThrowNegativeInteger(position, value);
                 return value;
             }
 
@@ -1200,20 +1203,22 @@ namespace Nethermind.Serialization.Rlp
             /// </summary>
             public long DecodePositiveLong()
             {
+                int position = Position;
                 long value = DecodeLong();
                 if (value < 0)
-                    RlpHelpers.ThrowNegativeInteger(value);
+                    RlpHelpers.ThrowNegativeInteger(position, value);
                 return value;
             }
 
             public ulong DecodeULong()
             {
+                int position = Position;
                 int prefix = ReadByte();
 
                 switch (prefix)
                 {
                     case 0:
-                        return RlpHelpers.ThrowNonCanonicalInteger(Position);
+                        return RlpHelpers.ThrowNonCanonicalInteger(position);
                     case < 128:
                         return (ulong)prefix;
                     case 128:
@@ -1223,7 +1228,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = prefix - 128;
                 if (length > 8)
                 {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
+                    RlpHelpers.ThrowUnexpectedIntegerLength(position, length);
                 }
 
                 ulong result = 0ul;
@@ -1235,14 +1240,14 @@ namespace Nethermind.Serialization.Rlp
                         result |= PeekByte(length - i);
                         if (result == 0)
                         {
-                            RlpHelpers.ThrowNonCanonicalInteger(Position);
+                            RlpHelpers.ThrowNonCanonicalInteger(position);
                         }
                     }
                 }
 
                 if (result < 128)
                 {
-                    RlpHelpers.ThrowNonCanonicalInteger(Position);
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
                 }
 
                 SkipBytes(length);
@@ -1274,12 +1279,13 @@ namespace Nethermind.Serialization.Rlp
 
             public ushort DecodeUShort()
             {
+                int position = Position;
                 int prefix = ReadByte();
 
                 switch (prefix)
                 {
                     case 0:
-                        RlpHelpers.ThrowNonCanonicalInteger(Position);
+                        RlpHelpers.ThrowNonCanonicalInteger(position);
                         return 0;
                     case < 128:
                         return (ushort)prefix;
@@ -1290,7 +1296,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = prefix - 128;
                 if (length > 2)
                 {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
+                    RlpHelpers.ThrowUnexpectedIntegerLength(position, length);
                 }
 
                 ushort result = 0;
@@ -1302,14 +1308,14 @@ namespace Nethermind.Serialization.Rlp
                         result |= PeekByte(length - i);
                         if (result == 0)
                         {
-                            RlpHelpers.ThrowNonCanonicalInteger(Position);
+                            RlpHelpers.ThrowNonCanonicalInteger(position);
                         }
                     }
                 }
 
                 if (result < 128)
                 {
-                    RlpHelpers.ThrowNonCanonicalInteger(Position);
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
                 }
 
                 SkipBytes(length);
@@ -1319,11 +1325,12 @@ namespace Nethermind.Serialization.Rlp
 
             public byte DecodeByte()
             {
+                int position = Position;
                 byte byteValue = PeekByte();
                 switch (byteValue)
                 {
                     case 0:
-                        RlpHelpers.ThrowNonCanonicalInteger(Position);
+                        RlpHelpers.ThrowNonCanonicalInteger(position);
                         return 0;
                     case < 128:
                         SkipBytes(1);
@@ -1332,13 +1339,13 @@ namespace Nethermind.Serialization.Rlp
                         SkipBytes(1);
                         return 0;
                     case 129 when PeekByte(Position + 1) < 128:
-                        RlpHelpers.ThrowNonCanonicalInteger(Position);
+                        RlpHelpers.ThrowNonCanonicalInteger(position);
                         return 0;
                     case 129:
                         SkipBytes(1);
                         return ReadByte();
                     default:
-                        RlpHelpers.ThrowUnexpectedByteValue(byteValue);
+                        RlpHelpers.ThrowUnexpectedByteValue(position, byteValue);
                         return 0;
                 }
             }
