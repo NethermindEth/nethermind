@@ -61,7 +61,6 @@ internal class XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blo
             MixHash = bh.MixHash,
             Nonce = bh.Nonce,
             TxRoot = bh.TxRoot,
-            TotalDifficulty = bh.TotalDifficulty,
             AuRaStep = bh.AuRaStep,
             AuRaSignature = bh.AuRaSignature,
             ReceiptsRoot = bh.ReceiptsRoot,

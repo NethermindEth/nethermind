@@ -63,12 +63,6 @@ namespace Nethermind.Blockchain
                         }
                         else
                         {
-                            if (visitor.CalculateTotalDifficultyIfMissing && (block.TotalDifficulty is null || block.TotalDifficulty == 0))
-                            {
-                                if (Logger.IsTrace) Logger.Trace($"Setting TD for block {block.Number}. Old TD: {block.TotalDifficulty}.");
-                                SetTotalDifficulty(block.Header);
-                                if (Logger.IsTrace) Logger.Trace($"Setting TD for block {block.Number}. New TD: {block.TotalDifficulty}.");
-                            }
                             if (await VisitBlock(visitor, block, cancellationToken)) break;
                         }
                     }

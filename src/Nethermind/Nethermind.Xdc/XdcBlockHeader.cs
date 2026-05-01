@@ -114,7 +114,6 @@ public class XdcBlockHeader(
             MixHash = src.MixHash,
             Nonce = src.Nonce,
             TxRoot = src.TxRoot,
-            TotalDifficulty = src.TotalDifficulty,
             AuRaStep = src.AuRaStep,
             AuRaSignature = src.AuRaSignature,
             ReceiptsRoot = src.ReceiptsRoot,

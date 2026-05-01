@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -53,9 +54,9 @@ namespace Nethermind.Blockchain.Synchronization
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;
-        public bool FixTotalDifficulty { get; set; } = false;
-        public long FixTotalDifficultyStartingBlock { get; set; } = 1;
-        public long? FixTotalDifficultyLastBlock { get; set; } = null;
+        [Obsolete] public bool FixTotalDifficulty { get; set; } = false;
+        [Obsolete] public long FixTotalDifficultyStartingBlock { get; set; } = 1;
+        [Obsolete] public long? FixTotalDifficultyLastBlock { get; set; } = null;
         public bool StrictMode { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
         public bool NonValidatorNode { get; set; } = false;

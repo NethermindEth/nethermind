@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Test;
 
@@ -102,4 +103,5 @@ internal class TestBlockTree : IBlockTree
     public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) { }
     public void RecalculateTreeLevels() { }
     public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
+    public UInt256? GetTotalDifficulty(BlockHeader? header) => null;
 }

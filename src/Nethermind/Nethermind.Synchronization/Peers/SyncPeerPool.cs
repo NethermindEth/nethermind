@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -39,6 +40,7 @@ namespace Nethermind.Synchronization.Peers
         public const int MaxAllocationSlots = byte.MaxValue;
 
         private readonly IBlockTree _blockTree;
+        private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
         private readonly ILogger _logger;
         private readonly Channel<RefreshTotalDiffTask> _peerRefreshQueue = Channel.CreateUnbounded<RefreshTotalDiffTask>();
 
@@ -64,12 +66,13 @@ namespace Nethermind.Synchronization.Peers
         private Timer? _upgradeTimer;
 
         public SyncPeerPool(IBlockTree blockTree,
+            ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
             INetworkConfig networkConfig,
             ISyncConfig syncConfig,
             ILogManager logManager)
-        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.ActivePeersMaxCount, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots)
+        : this(blockTree, skipIndexedBlockInfoStore, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.ActivePeersMaxCount, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots)
         {
 
         }
@@ -78,6 +81,7 @@ namespace Nethermind.Synchronization.Peers
         // win Autofac's "greediest resolvable constructor" race over the INetworkConfig/ISyncConfig overload.
         // Tests reach this via [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")].
         internal SyncPeerPool(IBlockTree blockTree,
+            ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager,
@@ -87,6 +91,7 @@ namespace Nethermind.Synchronization.Peers
             int allocationsUpgradeIntervalInMsInMs = DefaultUpgradeIntervalInMs)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore ?? throw new ArgumentNullException(nameof(skipIndexedBlockInfoStore));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             PeerMaxCount = peersMaxCount;
@@ -434,7 +439,7 @@ namespace Nethermind.Synchronization.Peers
                     {
                         UpgradeAllocations();
                         // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                        if (syncPeer.TotalDifficulty is { } syncPeerTD && syncPeerTD == _blockTree.BestSuggestedHeader?.TotalDifficulty &&
+                        if (syncPeer.TotalDifficulty is { } syncPeerTD && syncPeerTD == _blockTree.GetTotalDifficulty(_blockTree.BestSuggestedHeader) &&
                             syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
                             Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
@@ -603,7 +608,7 @@ namespace Nethermind.Synchronization.Peers
                                 return;
                             }
 
-                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {header.TotalDifficulty}");
+                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {_blockTree.GetTotalDifficulty(header)}");
                             if (!syncPeer.IsInitialized) _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
 
                             if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number}");
@@ -647,11 +652,12 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number}");
             BlockHeader? parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
-            if (parent is not null && (parent.TotalDifficulty ?? 0) != 0)
+            UInt256? parentTd = _blockTree.GetTotalDifficulty(parent);
+            if (parent is not null && (parentTd ?? 0) != 0)
             {
-                UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
+                UInt256 newTotalDifficulty = (parentTd ?? UInt256.Zero) + header.Difficulty;
                 bool newValueIsNotWorseThanPeer = _betterPeerStrategy.Compare((newTotalDifficulty, header.Number), syncPeer) >= 0;
-                if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number} based on totalDifficulty, newValueIsNotWorseThanPeer {newValueIsNotWorseThanPeer}, newTotalDifficulty: {newTotalDifficulty}, header.Difficulty: {header.Difficulty}, Parent total difficulty: {parent.TotalDifficulty}");
+                if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number} based on totalDifficulty, newValueIsNotWorseThanPeer {newValueIsNotWorseThanPeer}, newTotalDifficulty: {newTotalDifficulty}, header.Difficulty: {header.Difficulty}, Parent total difficulty: {parentTd}");
                 if (newValueIsNotWorseThanPeer)
                 {
                     syncPeer.TotalDifficulty = newTotalDifficulty;

@@ -3,8 +3,6 @@
 
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -24,14 +22,8 @@ public class MergeBetterPeerStrategyTests
     [TestCase(6, 2, 3, 4, 1)]
     public void Compare_with_header_and_peer_return_expected_results(long totalDifficulty, long number, long peerTotalDifficulty, long peerNumber, int expectedResult)
     {
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.TotalDifficulty.Returns((UInt256)peerTotalDifficulty);
-        syncPeer.HeadNumber.Returns(peerNumber);
-        BlockHeader header = Build.A.BlockHeader.WithTotalDifficulty(totalDifficulty).WithNumber(number).TestObject;
-
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
-
-        Assert.That(betterPeerStrategy.Compare(header, syncPeer), Is.EqualTo(expectedResult));
+        Assert.That(betterPeerStrategy.Compare(((UInt256)totalDifficulty, number), ((UInt256)peerTotalDifficulty, peerNumber)), Is.EqualTo(expectedResult));
     }
 
     [TestCase(7, 2, 6, 4, -1)]

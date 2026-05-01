@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -9,9 +10,9 @@ namespace Nethermind.Synchronization;
 
 public static class BetterPeerStrategyExtensions
 {
-    public static int Compare(this IBetterPeerStrategy peerStrategy, BlockHeader? header, ISyncPeer? peerInfo)
+    public static int Compare(this IBetterPeerStrategy peerStrategy, BlockHeader? header, ISyncPeer? peerInfo, ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore)
     {
-        UInt256? headerDifficulty = header?.TotalDifficulty;
+        UInt256? headerDifficulty = skipIndexedBlockInfoStore.GetTotalDifficulty(header);
         long headerNumber = header?.Number ?? 0;
 
         UInt256? peerDifficulty = peerInfo?.TotalDifficulty;

@@ -366,7 +366,6 @@ public class TestingRpcModuleTests
             [])
         {
             Hash = Keccak.Compute("parent"),
-            TotalDifficulty = UInt256.Zero,
             BaseFeePerGas = UInt256.One,
             GasUsed = 0,
             StateRoot = Keccak.EmptyTreeHash,

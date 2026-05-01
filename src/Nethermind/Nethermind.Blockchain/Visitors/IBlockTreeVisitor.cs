@@ -16,11 +16,6 @@ namespace Nethermind.Blockchain.Visitors
         bool PreventsAcceptingNewBlocks { get; }
 
         /// <summary>
-        /// Allows for setting total difficulty if this value is missing (null or zero).
-        /// </summary>
-        bool CalculateTotalDifficultyIfMissing => false;
-
-        /// <summary>
         /// First block tree level to visit
         /// </summary>
         long StartLevelInclusive { get; }

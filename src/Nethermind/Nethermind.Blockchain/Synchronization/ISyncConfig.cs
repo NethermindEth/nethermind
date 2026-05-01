@@ -93,13 +93,16 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
     public bool FixReceipts { get; set; }
 
-    [ConfigItem(Description = $"Whether to recalculate the total difficulty from `{nameof(FixTotalDifficultyStartingBlock)}` to `{nameof(FixTotalDifficultyLastBlock)}`.", DefaultValue = "false")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated. Total difficulty is now stored in the cumulative block info store and recomputed on demand.", DefaultValue = "false", HiddenFromDocs = true)]
     public bool FixTotalDifficulty { get; set; }
 
-    [ConfigItem(Description = "The first block to recalculate the total difficulty for.", DefaultValue = "1")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated.", DefaultValue = "1", HiddenFromDocs = true)]
     public long FixTotalDifficultyStartingBlock { get; set; }
 
-    [ConfigItem(Description = "The last block to recalculate the total difficulty for. If not specified, the best known block is used.\n", DefaultValue = "null")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated.", DefaultValue = "null", HiddenFromDocs = true)]
     public long? FixTotalDifficultyLastBlock { get; set; }
 
     [ConfigItem(Description = "Whether to disable some optimizations and do a more extensive sync. Useful when sync state is corrupted.", DefaultValue = "false")]

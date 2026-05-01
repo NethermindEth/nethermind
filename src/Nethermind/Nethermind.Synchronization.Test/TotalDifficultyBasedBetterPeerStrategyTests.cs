@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using NSubstitute;
@@ -19,13 +17,8 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
     [TestCase(11, 1)]
     public void Compare_with_header_and_peer_return_expected_results(long td, int expectedResult)
     {
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.TotalDifficulty.Returns((UInt256)10);
-        syncPeer.HeadNumber.Returns(10);
-        BlockHeader header = Build.A.BlockHeader.WithTotalDifficulty(td).TestObject;
-
         TotalDifficultyBetterPeerStrategy betterPeerStrategy = new(LimboLogs.Instance);
-        Assert.That(betterPeerStrategy.Compare(header, syncPeer), Is.EqualTo(expectedResult));
+        Assert.That(betterPeerStrategy.Compare(((UInt256)td, 0L), ((UInt256)10, 10L)), Is.EqualTo(expectedResult));
     }
 
     [TestCase(9, -1)]

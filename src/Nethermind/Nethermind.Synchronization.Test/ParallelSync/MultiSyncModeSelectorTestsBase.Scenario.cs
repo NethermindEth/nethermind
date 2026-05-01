@@ -26,33 +26,33 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public const long FastSyncLag = 32;
             public const long LargeDistanceBehindHead = 1024;
 
-            public static BlockHeader Pivot { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty((UInt256)1024)
-                .WithNumber(1024)
-                .TestObject.Header;
+            // header.TotalDifficulty was removed; track scenario TDs via a side table keyed by header.
+            private static readonly System.Collections.Generic.Dictionary<BlockHeader, UInt256> _scenarioTd = new();
+            private static BlockHeader Tag(BlockHeader header, UInt256 td)
+            {
+                _scenarioTd[header] = td;
+                return header;
+            }
+            internal static UInt256? GetTd(BlockHeader? header) =>
+                header is not null && _scenarioTd.TryGetValue(header, out UInt256 td) ? td : null;
 
-            public static BlockHeader MidWayToPivot { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty((UInt256)512)
-                .WithNumber(512)
-                .TestObject.Header;
+            public static BlockHeader Pivot { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).WithNumber(1024).TestObject.Header, (UInt256)1024);
 
-            public static BlockHeader ChainHead { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(Pivot.TotalDifficulty + 2048)
-                .WithNumber(Pivot.Number + 2048)
-                .TestObject.Header;
+            public static BlockHeader MidWayToPivot { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).WithNumber(512).TestObject.Header, (UInt256)512);
+
+            public static BlockHeader ChainHead { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).WithNumber(Pivot.Number + 2048).TestObject.Header,
+                (GetTd(Pivot) ?? 0) + 2048);
 
             public static BlockHeader ChainHeadWrongDifficulty
             {
                 get
                 {
-                    BlockHeader header = Build.A.Block
-                        .WithDifficulty(1)
-                        .WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128)
-                        .WithNumber(Pivot.Number + 2048)
-                        .TestObject.Header;
+                    BlockHeader header = Tag(
+                        Build.A.Block.WithDifficulty(1).WithNumber(Pivot.Number + 2048).TestObject.Header,
+                        (GetTd(Pivot) ?? 0) + 2048 + 128);
                     header.Hash = ChainHead.Hash;
                     return header;
                 }
@@ -62,59 +62,40 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
                 get
                 {
-                    BlockHeader header = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048).TestObject.Header;
+                    BlockHeader header = Tag(
+                        Build.A.Block.WithDifficulty(1).WithNumber(Pivot.Number + 2048).TestObject.Header,
+                        (GetTd(Pivot) ?? 0) + 2048 + 128);
                     header.Hash = ChainHead.ParentHash;
                     return header;
                 }
             }
 
-            public static BlockHeader FutureHead { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128)
-                .WithNumber(Pivot.Number + 2048 + 128)
-                .TestObject.Header;
+            public static BlockHeader FutureHead { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header,
+                (GetTd(Pivot) ?? 0) + 2048 + 128);
 
-            public static BlockHeader SlightlyFutureHead { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4)
-                .WithNumber(Pivot.Number + 2048 + 4)
-                .TestObject.Header;
+            public static BlockHeader SlightlyFutureHead { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header,
+                (GetTd(Pivot) ?? 0) + 2048 + 4);
 
-            public static BlockHeader SlightlyFutureHeadWithFastSyncLag { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4)
-                .WithNumber(ChainHead.Number + FastSyncLag + 1)
-                .TestObject.Header;
+            public static BlockHeader SlightlyFutureHeadWithFastSyncLag { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).WithNumber(ChainHead.Number + FastSyncLag + 1).TestObject.Header,
+                (GetTd(Pivot) ?? 0) + 2048 + 4);
 
-            public static BlockHeader MaliciousPrePivot { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty((UInt256)1000000)
-                .WithNumber(512)
-                .TestObject.Header;
+            public static BlockHeader MaliciousPrePivot { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).WithNumber(512).TestObject.Header, (UInt256)1000000);
 
-            public static BlockHeader NewBetterBranchWithLowerNumber { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty((UInt256)1000000)
-                .WithNumber(ChainHead.Number - 16)
-                .TestObject.Header;
+            public static BlockHeader NewBetterBranchWithLowerNumber { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).WithNumber(ChainHead.Number - 16).TestObject.Header, (UInt256)1000000);
 
-            public static BlockHeader ValidGenesis { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(UInt256.One)
-                .Genesis
-                .TestObject.Header;
+            public static BlockHeader ValidGenesis { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).Genesis.TestObject.Header, UInt256.One);
 
-            public static BlockHeader InvalidGenesis { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(UInt256.One)
-                .Genesis
-                .TestObject.Header;
+            public static BlockHeader InvalidGenesis { get; } = Tag(
+                Build.A.Block.WithDifficulty(1).Genesis.TestObject.Header, UInt256.One);
 
-            public static BlockHeader InvalidGenesisWithHighTotalDifficulty { get; } = Build.A.Block
-                .Genesis
-                .WithDifficulty((UInt256)1000000)
-                .WithTotalDifficulty((UInt256)1000000)
-                .TestObject.Header;
+            public static BlockHeader InvalidGenesisWithHighTotalDifficulty { get; } = Tag(
+                Build.A.Block.Genesis.WithDifficulty((UInt256)1000000).TestObject.Header, (UInt256)1000000);
 
             public static IEnumerable<BlockHeader> ScenarioHeaders
             {
@@ -162,7 +143,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncPeerPool.AllPeers.Returns(_peers.Select(static p => new PeerInfo(p)));
 
                     SyncProgressResolver = Substitute.For<ISyncProgressResolver>();
-                    SyncProgressResolver.ChainDifficulty.Returns(ValidGenesis.TotalDifficulty ?? 0);
+                    SyncProgressResolver.ChainDifficulty.Returns(GetTd(ValidGenesis) ?? 0);
                     SyncProgressResolver.FindBestHeader().Returns(0);
                     SyncProgressResolver.FindBestFullBlock().Returns(0);
                     SyncProgressResolver.FindBestFullState().Returns(0);
@@ -195,7 +176,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
                     syncPeer.HeadHash.Returns(header.Hash);
                     syncPeer.HeadNumber.Returns(header.Number);
-                    syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? UInt256.Zero);
+                    syncPeer.TotalDifficulty.Returns(GetTd(header) ?? UInt256.Zero);
                     syncPeer.IsInitialized.Returns(isInitialized);
                     syncPeer.ClientId.Returns(clientType);
                     return syncPeer;
@@ -224,18 +205,18 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                                 {
                                     if (scenarioHeader.Hash == hash)
                                     {
-                                        return scenarioHeader.TotalDifficulty;
+                                        return GetTd(scenarioHeader);
                                     }
                                     else if (scenarioHeader.ParentHash == hash)
                                     {
-                                        return scenarioHeader.TotalDifficulty - scenarioHeader.Difficulty;
+                                        return GetTd(scenarioHeader) - scenarioHeader.Difficulty;
                                     }
                                 }
 
                                 return null;
                             });
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
-                            SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
+                            SyncProgressResolver.ChainDifficulty.Returns(GetTd(ChainHead) ?? 0);
                             return "fully synced node";
                         }
                     );
@@ -252,7 +233,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - LargeDistanceBehindHead);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - LargeDistanceBehindHead);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
-                            SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
+                            SyncProgressResolver.ChainDifficulty.Returns(GetTd(ChainHead) ?? 0);
                             return "fully syncing";
                         }
                     );
@@ -269,7 +250,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullState().Returns(0);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
-                            SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
+                            SyncProgressResolver.ChainDifficulty.Returns(GetTd(ChainHead) ?? 0);
                             return "fully syncing";
                         }
                     );
@@ -286,7 +267,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 2);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
-                            SyncProgressResolver.ChainDifficulty.Returns((ChainHead.TotalDifficulty ?? 0) + (UInt256)2);
+                            SyncProgressResolver.ChainDifficulty.Returns((GetTd(ChainHead) ?? 0) + (UInt256)2);
                             return "fully syncing";
                         }
                     );

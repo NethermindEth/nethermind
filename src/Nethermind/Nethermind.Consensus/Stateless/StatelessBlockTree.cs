@@ -7,19 +7,36 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// This class is part of the StatelessExecution tool. It's intended to be used only inside the processing pipeline.
 /// </summary>
-public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
+public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers, ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore)
     : IBlockTree, IBlockhashCache
 {
+    public StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
+        : this(headers, CreateSkipIndexedBlockInfoStore(headers))
+    {
+    }
+
+    private static ISkipIndexedBlockInfoStore CreateSkipIndexedBlockInfoStore(IReadOnlyCollection<BlockHeader> headers)
+    {
+        IHeaderStore headerStore = new HeaderStore(new MemDb(), new MemDb());
+        headerStore.BulkInsert(headers as IReadOnlyList<BlockHeader> ?? headers.ToList());
+        return new SkipIndexedBlockInfoStore(new MemDb(), headerStore, new CumulativeTotalDifficultyStrategy(), NullTotalDifficultyAnchor.Instance, LimboLogs.Instance);
+    }
+
     private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
         headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
 
@@ -236,4 +253,6 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 
         return Task.FromResult(result);
     }
+
+    public UInt256? GetTotalDifficulty(BlockHeader? header) => skipIndexedBlockInfoStore.GetTotalDifficulty(header);
 }

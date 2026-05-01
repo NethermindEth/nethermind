@@ -555,7 +555,7 @@ public partial class ForwardHeaderProviderTests
 
             HeadNumber = BlockTree.Head!.Number;
             HeadHash = BlockTree.HeadHash!;
-            TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
+            TotalDifficulty = BlockTree.GetTotalDifficulty(BlockTree.Head.Header) ?? 0;
         }
 
         public Node Node { get; } = null!;

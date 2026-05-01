@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -24,13 +25,15 @@ public class PosForwardHeaderProvider(
     IBeaconPivot beaconPivot,
     ISealValidator sealValidator,
     IBlockTree blockTree,
+    ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
     ISyncPeerPool syncPeerPool,
     ISyncReport syncReport,
     ILogManager logManager
-) : PowForwardHeaderProvider(sealValidator, blockTree, syncPeerPool, syncReport, logManager)
+) : PowForwardHeaderProvider(sealValidator, blockTree, skipIndexedBlockInfoStore, syncPeerPool, syncReport, logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PosForwardHeaderProvider>();
     private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
     private readonly ISyncReport _syncReport = syncReport;
 
     private bool ShouldUsePreMerge() => !beaconPivot.BeaconPivotExists() && !poSSwitcher.HasEverReachedTerminalBlock();
@@ -64,7 +67,8 @@ public class PosForwardHeaderProvider(
         poSSwitcher.TryUpdateTerminalBlock(currentHeader);
 
     // Used only in get block header in pre merge forward header provider, this hook stops pre merge forward header provider.
-    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
+    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) =>
+        (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.GetTotalDifficulty(_blockTree.BestSuggestedHeader) ?? UInt256.Zero)) &&
             !poSSwitcher.HasEverReachedTerminalBlock();
 
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)

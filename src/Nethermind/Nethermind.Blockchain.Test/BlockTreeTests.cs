@@ -553,12 +553,13 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
+        long readsBefore = _headersDb.ReadsCount;
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
         Assert.That(headers.Count, Is.EqualTo(100));
         Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
         Assert.That(headers[3], Is.Null);
 
-        Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
+        Assert.That(_headersDb.ReadsCount - readsBefore, Is.EqualTo(0));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -572,12 +573,13 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
+        long readsBefore = _headersDb.ReadsCount;
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
         Assert.That(headers.Count, Is.EqualTo(100));
         Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
         Assert.That(headers[3], Is.Null);
 
-        Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
+        Assert.That(_headersDb.ReadsCount - readsBefore, Is.EqualTo(0));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -727,8 +729,9 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
         Block block1 = Build.A.Block.WithNumber(1).WithParentHash(block0.Hash!).WithDifficulty(2).TestObject;
         blockTree.SuggestBlock(block1);
-        block1.TotalDifficulty.Should().NotBeNull();
-        Assert.That((int)block1.TotalDifficulty!, Is.EqualTo(3));
+        UInt256? td = blockTree.GetTotalDifficulty(block1.Header);
+        td.Should().NotBeNull();
+        Assert.That((int)td!.Value, Is.EqualTo(3));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -741,7 +744,7 @@ public class BlockTreeTests
 
         Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParentHash(Keccak.Zero).TestObject;
         blockTree.SuggestBlock(block2);
-        Assert.That(block2.TotalDifficulty, Is.EqualTo(null));
+        Assert.That(blockTree.GetTotalDifficulty(block2.Header), Is.EqualTo(null));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1179,7 +1182,7 @@ public class BlockTreeTests
 
         for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
         {
-            tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
+            tree.Insert(Build.A.BlockHeader.WithNumber(i).TestObject);
         }
 
         builder.MetadataDb.Delete(MetadataDbKeys.LowestInsertedFastHeaderHash);
@@ -1310,7 +1313,7 @@ public class BlockTreeTests
 
         for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
         {
-            Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
+            Block block = Build.A.Block.WithNumber(i).TestObject;
             tree.Insert(block.Header);
             tree.Insert(block);
         }
@@ -1354,7 +1357,7 @@ public class BlockTreeTests
             Block block = Build.A.Block
                 .WithNumber(i)
                 .WithParent(parent)
-                .WithTotalDifficulty(i).TestObject;
+                .TestObject;
             blocks.Add(block);
             parent = block;
             if (i <= 50)
@@ -1399,7 +1402,7 @@ public class BlockTreeTests
         Block? pivotBlock = null;
         for (long i = pivotNumber; i > 0; i--)
         {
-            Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
+            Block block = Build.A.Block.WithNumber(i).TestObject;
             pivotBlock ??= block;
             tree.Insert(block.Header);
         }
@@ -1479,11 +1482,11 @@ public class BlockTreeTests
 
         Block genesis = Build.A.Block.WithDifficulty(0).TestObject;
         tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
-        tree.FindBlock(genesis.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
+        tree.GetTotalDifficulty(tree.FindBlock(genesis.Hash, BlockTreeLookupOptions.None)!.Header).Should().Be(UInt256.Zero);
 
         Block A = Build.A.Block.WithParent(genesis).WithDifficulty(0).TestObject;
         tree.SuggestBlock(A).Should().Be(AddBlockResult.Added);
-        tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
+        tree.GetTotalDifficulty(tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.Header).Should().Be(UInt256.Zero);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1509,7 +1512,7 @@ public class BlockTreeTests
 
         for (long i = 5; i > 0; i--)
         {
-            Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
+            Block block = Build.A.Block.WithNumber(i).TestObject;
             tree.Insert(block.Header);
             Received.InOrder(() =>
             {
@@ -1745,30 +1748,14 @@ public class BlockTreeTests
             ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
             if (level is not null)
             {
-                for (int j = 0; j < level.BlockInfos.Length; j++)
-                {
-                    Hash256 blockHash = level.BlockInfos[j].BlockHash;
-                    BlockHeader? header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-                    if (header is not null)
-                    {
-                        header.TotalDifficulty = null;
-                    }
-                }
-
                 blockTreeBuilder.ChainLevelInfoRepository.Delete(i);
             }
         }
 
-        blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should()
+        // TD lookup via SkipIndexedBlockInfoStore is independent of chain levels;
+        // it walks the header store, so deleted chain levels don't block the lookup.
+        blockTree.GetTotalDifficulty(blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.Header).Should()
             .Be(new UInt256(expectedTotalDifficulty));
-
-        for (int i = chainLength - 1; i >= 0; i--)
-        {
-            ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
-
-            level.Should().NotBeNull();
-            level!.BlockInfos.Should().HaveCount(1);
-        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1985,7 +1972,7 @@ public class BlockTreeTests
     {
         BlockTree blockTree = BuildBlockTree();
 
-        BlockHeader currentHeader = Build.A.BlockHeader.WithTotalDifficulty(1).WithDifficulty(1).WithNumber(1).TestObject;
+        BlockHeader currentHeader = Build.A.BlockHeader.WithDifficulty(1).WithNumber(1).TestObject;
         using ArrayPoolList<BlockHeader> batch = new(1);
         batch.Add(currentHeader);
 
@@ -1993,7 +1980,6 @@ public class BlockTreeTests
         {
             currentHeader = Build.A.BlockHeader
                 .WithDifficulty(1)
-                .WithTotalDifficulty((long)(currentHeader.TotalDifficulty + 1)!)
                 .WithParent(currentHeader)
                 .TestObject;
             batch.Add(currentHeader);
@@ -2092,7 +2078,7 @@ public class BlockTreeTests
 
         for (long i = 1; i <= 5; i++)
         {
-            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            block = Build.A.Block.WithParent(block).TestObject;
             tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
             tree.UpdateMainChain(block);
             tree.ForkChoiceUpdated(block.Hash, block.Hash);
@@ -2104,7 +2090,7 @@ public class BlockTreeTests
 
         for (long i = 6; i < 10; i++)
         {
-            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            block = Build.A.Block.WithParent(block).TestObject;
             tree.SuggestBlock(block);
             tree.UpdateMainChain(block);
             tree.ForkChoiceUpdated(block.Hash, block.Hash);
@@ -2135,7 +2121,7 @@ public class BlockTreeTests
 
         for (long i = 1; i <= 10; i++)
         {
-            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            block = Build.A.Block.WithParent(block).TestObject;
             tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
             tree.UpdateMainChain(block);
             tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
@@ -2186,7 +2172,6 @@ public class BlockTreeTests
             block = Build.A.Block
                 .WithParent(block)
                 .WithDifficulty(1L)
-                .WithTotalDifficulty(block.TotalDifficulty + 1)
                 .TestObject;
             tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
             tree.UpdateMainChain(block);
@@ -2198,7 +2183,6 @@ public class BlockTreeTests
             block = Build.A.Block
                 .WithParent(block)
                 .WithDifficulty(1L)
-                .WithTotalDifficulty(block.TotalDifficulty + 1)
                 .TestObject;
             tree.SuggestBlock(block);
             tree.UpdateMainChain(block);

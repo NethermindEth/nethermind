@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -32,12 +33,14 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IEnode _enode;
     private readonly string _dataDir;
     private readonly IStateReader _stateReader;
+    private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
     private NodeInfo _nodeInfo = null!;
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly ISubscriptionManager _subscriptionManager;
 
     public AdminRpcModule(
         IBlockTree blockTree,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         INetworkConfig networkConfig,
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
@@ -51,6 +54,7 @@ public class AdminRpcModule : IAdminRpcModule
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore ?? throw new ArgumentNullException(nameof(skipIndexedBlockInfoStore));
         _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
@@ -83,7 +87,7 @@ public class AdminRpcModule : IAdminRpcModule
 
     private void UpdateEthProtocolInfo()
     {
-        _nodeInfo.Protocols[Protocol.Eth].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
+        _nodeInfo.Protocols[Protocol.Eth].Difficulty = _blockTree.GetTotalDifficulty(_blockTree.Head?.Header) ?? 0;
         _nodeInfo.Protocols[Protocol.Eth].NetworkId = _blockTree.NetworkId;
         _nodeInfo.Protocols[Protocol.Eth].ChainId = _blockTree.ChainId;
         _nodeInfo.Protocols[Protocol.Eth].HeadHash = _blockTree.HeadHash;

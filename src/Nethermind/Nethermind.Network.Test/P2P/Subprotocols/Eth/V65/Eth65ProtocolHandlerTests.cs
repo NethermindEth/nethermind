@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -74,6 +75,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
+                Substitute.For<IBlockTree>(),
                 Policy.FullGossip,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance,

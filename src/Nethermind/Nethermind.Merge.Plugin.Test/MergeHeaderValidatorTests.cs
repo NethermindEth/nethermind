@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NSubstitute;
@@ -21,7 +22,19 @@ public class MergeHeaderValidatorTests
         public IPoSSwitcher PoSSwitcher => Substitute.For<IPoSSwitcher>();
         public IHeaderValidator PreMergeHeaderValidator => Substitute.For<IHeaderValidator>();
 
-        public IBlockTree BlockTree => Substitute.For<IBlockTree>();
+        public IBlockTree BlockTree
+        {
+            get
+            {
+                IBlockTree blockTree = Substitute.For<IBlockTree>();
+                blockTree.GetTotalDifficulty(Arg.Any<BlockHeader?>()).Returns(ci =>
+                {
+                    BlockHeader? h = (BlockHeader?)ci[0];
+                    return h is null ? null : (UInt256?)h.Difficulty;
+                });
+                return blockTree;
+            }
+        }
 
         public ISealValidator SealValidator => Substitute.For<ISealValidator>();
 
@@ -40,13 +53,11 @@ public class MergeHeaderValidatorTests
     {
         BlockHeader parent = Build.A.BlockHeader
             .WithDifficulty(900)
-            .WithTotalDifficulty(900)
             .TestObject;
 
         BlockHeader header = Build.A.BlockHeader
             .WithParent(parent)
             .WithDifficulty(0)
-            .WithTotalDifficulty(900)
             .TestObject;
 
         Context ctx = new();

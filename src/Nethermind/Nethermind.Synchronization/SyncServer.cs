@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -39,6 +40,7 @@ namespace Nethermind.Synchronization
     public class SyncServer : ISyncServer
     {
         private readonly IBlockTree _blockTree;
+        private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _pool;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -68,6 +70,7 @@ namespace Nethermind.Synchronization
             IWorldStateManager worldStateManager,
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
+            ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
             IReceiptFinder receiptFinder,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
@@ -88,6 +91,7 @@ namespace Nethermind.Synchronization
             _stateDb = worldStateManager.HashServer;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore ?? throw new ArgumentNullException(nameof(skipIndexedBlockInfoStore));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
@@ -136,11 +140,6 @@ namespace Nethermind.Synchronization
             if (!_gossipPolicy.CanGossipBlocks) return;
             if (block.Difficulty == 0) return; // don't gossip post merge blocks
 
-            if (block.TotalDifficulty is null)
-            {
-                throw new InvalidDataException("Cannot add a block with unknown total difficulty");
-            }
-
             if (block.Hash is null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown hash");
@@ -184,19 +183,14 @@ namespace Nethermind.Synchronization
 
             if (_recentlySuggested.Set(block.Hash, nodeWhoSentTheBlock))
             {
-                if (_specProvider.TerminalTotalDifficulty is not null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
+                if (_specProvider.TerminalTotalDifficulty is not null && _blockTree.GetTotalDifficulty(block.Header) >= _specProvider.TerminalTotalDifficulty)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
+                    if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {_blockTree.GetTotalDifficulty(block.Header)} higher than TTD {_specProvider.TerminalTotalDifficulty}");
                 }
 
                 Block? parent = _blockTree.FindBlock(block.ParentHash);
                 if (parent is not null)
                 {
-                    // we null total difficulty for a block in a block tree as we don't trust the message
-                    UInt256? totalDifficulty = block.TotalDifficulty;
-
-                    // Recalculate total difficulty as we don't trust total difficulty from gossip
-                    block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
                     if (!_blockValidator.ValidateSuggestedBlock(block, parent.Header, out _))
                     {
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
@@ -207,12 +201,7 @@ namespace Nethermind.Synchronization
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
 
-                    // we want to broadcast original block, lets check if TD changed
-                    Block blockToBroadCast = totalDifficulty == block.TotalDifficulty
-                        ? block
-                        : new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
-
-                    BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
+                    BroadcastBlock(block, false, nodeWhoSentTheBlock);
 
                     SyncMode syncMode = _syncModeSelector.Current;
                     bool notInFastSyncNorStateSyncNorSnap = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes | SyncMode.SnapSync)) == SyncMode.None;
@@ -253,12 +242,12 @@ namespace Nethermind.Synchronization
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
-            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD)
+            if (syncPeer.TotalDifficulty is { } peerTD && (_blockTree.GetTotalDifficulty(block.Header) ?? UInt256.Zero) > peerTD)
             {
-                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
+                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {_blockTree.GetTotalDifficulty(block.Header)}");
                 syncPeer.HeadNumber = block.Number;
                 syncPeer.HeadHash = block.Hash;
-                syncPeer.TotalDifficulty = block.TotalDifficulty ?? syncPeer.TotalDifficulty;
+                syncPeer.TotalDifficulty = _blockTree.GetTotalDifficulty(block.Header) ?? syncPeer.TotalDifficulty;
             }
         }
 
@@ -270,7 +259,7 @@ namespace Nethermind.Synchronization
                 if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, block.IsPostMerge: {block.IsPostMerge}, current head: {_blockTree.Head}");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {nodeWhoSentTheBlock} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
+            if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {nodeWhoSentTheBlock} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.GetTotalDifficulty(_blockTree.BestSuggestedBody?.Header)}, Block TD {_blockTree.GetTotalDifficulty(block.Header)}, Head: {_blockTree.Head}, Head: {_blockTree.GetTotalDifficulty(_blockTree.Head?.Header)}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
             AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.ForceDontSetAsMain : BlockTreeSuggestOptions.ShouldProcess);
             if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
         }
@@ -346,7 +335,7 @@ namespace Nethermind.Synchronization
 
             if (_logger.IsDebug)
             {
-                sb.Append($", with difficulty {block.Difficulty}/{block.TotalDifficulty}");
+                sb.Append($", with difficulty {block.Difficulty}/{_blockTree.GetTotalDifficulty(block.Header)}");
             }
 
             _logger.Info(sb.ToString());
@@ -437,7 +426,7 @@ namespace Nethermind.Synchronization
         private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
         {
             Block block = blockEventArgs.Block;
-            if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
+            if ((_blockTree.GetTotalDifficulty(_blockTree.BestSuggestedHeader) ?? 0) <= _blockTree.GetTotalDifficulty(block.Header))
             {
                 BroadcastBlock(block, true, _recentlySuggested.Get(block.Hash));
             }

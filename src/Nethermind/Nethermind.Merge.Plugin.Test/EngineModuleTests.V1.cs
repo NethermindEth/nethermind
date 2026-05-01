@@ -677,7 +677,6 @@ public partial class EngineModuleTests
         // ensuring subsequent blocks route through the recovery queue (slow path)
         Block occupyBlock = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead)
             .WithNonce(0).WithDifficulty(0).WithStateRoot(blockTreeHead.StateRoot!).TestObject;
-        occupyBlock.Header.TotalDifficulty = blockTreeHead.TotalDifficulty;
         _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
             occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
         processingStarted.Wait(TimeSpan.FromSeconds(5));
@@ -769,7 +768,6 @@ public partial class EngineModuleTests
         // ensuring subsequent blocks route through the recovery queue (slow path)
         Block occupyBlock = Build.A.Block.WithNumber(head.Number + 1).WithParent(head)
             .WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
-        occupyBlock.Header.TotalDifficulty = head.TotalDifficulty;
         _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
             occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
         processingStarted.Wait(TimeSpan.FromSeconds(5));
@@ -1907,7 +1905,6 @@ public partial class EngineModuleTests
             .WithParent(head)
             .WithNonce(0)
             .WithDifficulty(1000000)
-            .WithTotalDifficulty(2000000L)
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
 
     protected virtual BlockBuilder BuildOneMoreTerminalBlock(Block head, bool correctStateRoot = true)
@@ -1915,6 +1912,5 @@ public partial class EngineModuleTests
             .WithParent(head)
             .WithNonce(0)
             .WithDifficulty(900000)
-            .WithTotalDifficulty(1900000L)
             .WithStateRoot(new Hash256(correctStateRoot ? "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f" : "0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
 }

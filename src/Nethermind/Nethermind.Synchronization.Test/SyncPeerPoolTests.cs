@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -39,7 +40,7 @@ public class SyncPeerPoolTests
             BlockTree = Substitute.For<IBlockTree>();
             Stats = Substitute.For<INodeStatsManager>();
             PeerStrategy = new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
-            Pool = new SyncPeerPool(BlockTree, Stats, PeerStrategy, LimboLogs.Instance, 25, 50);
+            Pool = new SyncPeerPool(BlockTree, Substitute.For<ISkipIndexedBlockInfoStore>(), Stats, PeerStrategy, LimboLogs.Instance, 25, 50);
         }
 
         public async ValueTask DisposeAsync() =>
@@ -177,7 +178,7 @@ public class SyncPeerPoolTests
         const int peersMaxCount = 25;
         const int priorityPeersMaxCount = 25;
         await using Context ctx = new();
-        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, Substitute.For<ISkipIndexedBlockInfoStore>(), ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, peersMaxCount);
 
         // setting priority to all peers except one - peers[number]
@@ -199,7 +200,7 @@ public class SyncPeerPoolTests
         const int peersMaxCount = 25;
         const int priorityPeersMaxCount = 25;
         await using Context ctx = new();
-        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, Substitute.For<ISkipIndexedBlockInfoStore>(), ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, peersMaxCount);
 
         foreach (SimpleSyncPeerMock peer in peers)
@@ -217,7 +218,7 @@ public class SyncPeerPoolTests
         const int peersMaxCount = 1;
         const int priorityPeersMaxCount = 1;
         await using Context ctx = new();
-        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, Substitute.For<ISkipIndexedBlockInfoStore>(), ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
 
         SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = true };
         ctx.Pool.Start();
@@ -235,7 +236,7 @@ public class SyncPeerPoolTests
         const int peersMaxCount = 1;
         const int priorityPeersMaxCount = 1;
         await using Context ctx = new();
-        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, Substitute.For<ISkipIndexedBlockInfoStore>(), ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
 
         SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = false };
         ctx.Pool.Start();
@@ -527,7 +528,7 @@ public class SyncPeerPoolTests
         SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         allocation.Cancel();
 
-        ctx.BlockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.WithTotalDifficulty(1L).TestObject));
+        ctx.BlockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.TestObject));
     }
 
     [Test]

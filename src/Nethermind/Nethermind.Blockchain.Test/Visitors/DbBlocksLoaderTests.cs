@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -45,7 +46,7 @@ public class DbBlocksLoaderTests
                     true,
                     blockInfos: new[]
                     {
-                        new BlockInfo(ithBlock.Hash!, ithBlock.TotalDifficulty!.Value) {WasProcessed = true}
+                        new BlockInfo(ithBlock.Hash!, UInt256.Zero) {WasProcessed = true}
                     });
                 blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
             }
@@ -89,7 +90,7 @@ public class DbBlocksLoaderTests
 
                 ChainLevelInfo ithLevel = new(true, blockInfos: new[]
                 {
-                    new BlockInfo(ithBlock.Hash!, ithBlock.TotalDifficulty!.Value)
+                    new BlockInfo(ithBlock.Hash!, UInt256.Zero)
                 });
 
                 blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);

@@ -91,6 +91,7 @@ public class PooledTransactionsRequestingTests
             syncManager,
             RunImmediatelyScheduler.Instance,
             txPool,
+            Substitute.For<IBlockTree>(),
             Substitute.For<IGossipPolicy>(),
             new ForkInfo(specProvider, syncManager),
             LimboLogs.Instance);
@@ -118,6 +119,7 @@ public class PooledTransactionsRequestingTests
             syncManager,
             RunImmediatelyScheduler.Instance,
             txPool,
+            Substitute.For<IBlockTree>(),
             _gossipPolicy,
             new ForkInfo(specProvider, syncManager),
             LimboLogs.Instance);

@@ -163,7 +163,7 @@ public sealed class EraExporter(
                         }
                     }
 
-                    await eraWriter.Add(block, receipts, cancel);
+                    await eraWriter.Add(block, receipts, blockTree.GetTotalDifficulty(block.Header), cancel);
                     lastBlockHash = block.Hash!;
 
                     if (Interlocked.Increment(ref totalProcessed) % ProgressLogInterval == 0)

@@ -17,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -287,7 +288,7 @@ public class ReceiptsSyncFeedTests
                 Block? block = scenario.Blocks[ci.Arg<long>()];
                 return block is null
                     ? null
-                    : new BlockInfo(block.Hash!, block.TotalDifficulty ?? 0) { BlockNumber = ci.Arg<long>() };
+                    : new BlockInfo(block.Hash!, UInt256.Zero) { BlockNumber = ci.Arg<long>() };
             });
         _receiptStorage.HasBlock(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(false);
         _syncPointers = new MemorySyncPointers();
@@ -342,7 +343,7 @@ public class ReceiptsSyncFeedTests
                 if (block is null)
                     return null;
 
-                BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0)
+                BlockInfo blockInfo = new(block.Hash!, UInt256.Zero)
                 {
                     BlockNumber = ci.Arg<long>(),
                 };

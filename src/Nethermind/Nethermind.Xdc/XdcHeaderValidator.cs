@@ -99,16 +99,6 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
     // Extra consensus data is validated in SealValidator
     protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error) => true;
 
-    protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
-    {
-        if (header.Difficulty != 1)
-        {
-            error = "Difficulty must be 1.";
-            return false;
-        }
-        return base.ValidateTotalDifficulty(header, parent, ref error);
-    }
-
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
     {
         IXdcReleaseSpec xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -177,6 +178,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         SyncServer,
                         RunImmediatelyScheduler.Instance,
                         Substitute.For<ITxPool>(),
+                        Substitute.For<IBlockTree>(),
                         Substitute.For<IGossipPolicy>(),
                         LimboLogs.Instance);
 

@@ -178,7 +178,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             MixHash = PrevRandao,
             Author = FeeRecipient,
             IsPostMerge = true,
-            TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };

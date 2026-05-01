@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -418,7 +419,7 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc blockForRpc = new(block, returnFullTransactionObjects, _specProvider);
+        BlockForRpc blockForRpc = new(block, returnFullTransactionObjects, _specProvider, blockTree: _blockFinder as IBlockTree);
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             blockForRpc.Hash = null;
@@ -539,7 +540,7 @@ public partial class EthRpcModule(
         }
 
         BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
-        return ResultWrapper<BlockForRpc?>.Success(new BlockForRpc(new Block(uncleHeader), false, _specProvider));
+        return ResultWrapper<BlockForRpc?>.Success(new BlockForRpc(new Block(uncleHeader), false, _specProvider, blockTree: _blockFinder as IBlockTree));
     }
 
     public ResultWrapper<UInt256?> eth_newFilter(Filter filter)

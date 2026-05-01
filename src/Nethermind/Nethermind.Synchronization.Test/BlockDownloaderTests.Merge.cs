@@ -232,8 +232,6 @@ public partial class BlockDownloaderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         BlockHeader lastHeader = syncedTree.FindHeader(3, BlockTreeLookupOptions.None)!;
-        // Because the FindHeader recalculated the TD.
-        lastHeader.TotalDifficulty = 0;
 
         ctx.BeaconPivot.EnsurePivot(lastHeader);
 
@@ -251,7 +249,7 @@ public partial class BlockDownloaderTests
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
         lastBestSuggestedBlock!.Hash.Should().Be(lastHeader.Hash!);
-        lastBestSuggestedBlock.TotalDifficulty.Should().NotBeEquivalentTo(UInt256.Zero);
+        notSyncedTree.GetTotalDifficulty(lastBestSuggestedBlock.Header).Should().NotBeEquivalentTo(UInt256.Zero);
     }
 
     [Test]

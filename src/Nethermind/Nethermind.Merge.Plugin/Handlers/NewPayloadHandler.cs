@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -48,6 +49,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
@@ -63,6 +65,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IPayloadPreparationService payloadPreparationService,
         IBlockValidator blockValidator,
         IBlockTree blockTree,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         IPoSSwitcher poSSwitcher,
         IBeaconSyncStrategy beaconSyncStrategy,
         IBeaconPivot beaconPivot,
@@ -78,6 +81,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
+        _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
         _poSSwitcher = poSSwitcher;
         _beaconSyncStrategy = beaconSyncStrategy;
         _beaconPivot = beaconPivot;
@@ -151,8 +155,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
-        block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
-
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
@@ -224,9 +226,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(Keccak.Zero, errorMessage);
         }
 
-        if ((block.TotalDifficulty ?? 0) != 0 && _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
+        UInt256? parentTd = _blockTree.GetTotalDifficulty(parentHeader);
+        if ((_blockTree.GetTotalDifficulty(block.Header) ?? 0) != 0 && _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentTd))
         {
-            string errorMessage = $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.";
+            string errorMessage = $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentTd}. Request: {requestStr}.";
             if (_logger.IsWarn) _logger.Warn(errorMessage);
 
             // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
@@ -297,7 +300,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         if (!parentProcessed && processTerminalBlock) // so if parent wasn't processed
         {
-            if (_logger.IsInfo) _logger.Info($"Forced processing block {block}, block TD: {block.TotalDifficulty}, parent: {parent}, parent TD: {parent.TotalDifficulty}");
+            if (_logger.IsInfo) _logger.Info($"Forced processing block {block}, block TD: {_blockTree.GetTotalDifficulty(block.Header)}, parent: {parent}, parent TD: {_blockTree.GetTotalDifficulty(parent)}");
 
             // if parent wasn't processed and we want to force processing terminal block then we need to allow to process whole branch, not just one block
             // in all other cases when parent is processed ProcessingOptions.IgnoreParentNotOnMainChain allows us to process just this block ignoring that its not on Head
@@ -433,7 +436,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private bool ValidateWithBlockValidator(Block block, BlockHeader parent, out string? error)
     {
-        block.Header.TotalDifficulty ??= parent.TotalDifficulty + block.Difficulty;
         block.Header.IsPostMerge = true; // I think we don't need to set it again here.
         bool isValid = _blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes: false);
         if (!isValid && _logger.IsWarn) _logger.Warn($"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}.");

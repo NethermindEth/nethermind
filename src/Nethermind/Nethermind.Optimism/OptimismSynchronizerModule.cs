@@ -3,9 +3,9 @@
 
 using System;
 using Autofac;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
 

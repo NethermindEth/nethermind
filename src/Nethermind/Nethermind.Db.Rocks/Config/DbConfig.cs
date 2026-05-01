@@ -155,6 +155,9 @@ public class DbConfig : IDbConfig
         "compaction_pri=kOldestLargestSeqFirst;";
     public string? BlockInfosDbAdditionalRocksDbOptions { get; set; } = "";
 
+    public string SkipIndexedBlockInfoDbRocksDbOptions { get; set; } = "";
+    public string? SkipIndexedBlockInfoDbAdditionalRocksDbOptions { get; set; } = "";
+
     public string PendingTxsDbRocksDbOptions { get; set; } =
         "write_buffer_size=4000000;";
     public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }

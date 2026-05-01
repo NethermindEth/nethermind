@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
@@ -71,6 +72,7 @@ namespace Nethermind.Core.Test.Builders
                         MetadataDb,
                         BadBlockStore,
                         BlockAccessListStore,
+                        SkipIndexedBlockInfoStore,
                         ChainLevelInfoRepository,
                         _specProvider,
                         BloomStorage,
@@ -80,6 +82,13 @@ namespace Nethermind.Core.Test.Builders
 
                 return _blockTree;
             }
+        }
+
+        private ISkipIndexedBlockInfoStore? _skipIndexedBlockInfoStore;
+        public ISkipIndexedBlockInfoStore SkipIndexedBlockInfoStore
+        {
+            get => _skipIndexedBlockInfoStore ??= new SkipIndexedBlockInfoStore(new MemDb(), HeaderStore, new CumulativeTotalDifficultyStrategy(), NullTotalDifficultyAnchor.Instance, LimboLogs.Instance);
+            set => _skipIndexedBlockInfoStore = value;
         }
 
         protected override void BeforeReturn()
@@ -461,6 +470,7 @@ namespace Nethermind.Core.Test.Builders
             HeaderStore = otherBuilder.HeaderStore;
             BlockInfoDb = otherBuilder.BlockInfoDb;
             MetadataDb = otherBuilder.MetadataDb;
+            SkipIndexedBlockInfoStore = otherBuilder.SkipIndexedBlockInfoStore;
 
             return this;
         }

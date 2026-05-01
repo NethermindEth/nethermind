@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -35,6 +36,7 @@ public class Eth69ProtocolHandler(
     ISyncServer syncServer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
     ITxPool txPool,
+    IBlockTree blockTree,
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
@@ -42,7 +44,7 @@ public class Eth69ProtocolHandler(
     ISpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
+        blockTree, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
 {
     public override string Name => "eth69";
 

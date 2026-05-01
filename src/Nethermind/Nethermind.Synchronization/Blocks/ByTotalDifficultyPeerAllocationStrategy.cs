@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Blocks
             (PeerInfo? Info, long TransferSpeed) fastestPeer = (currentPeer, currentSpeed);
             (PeerInfo? Info, long TransferSpeed) bestDiffPeer = (currentPeer, currentSpeed);
 
-            UInt256 localTotalDiff = blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
+            UInt256 localTotalDiff = blockTree.GetTotalDifficulty(blockTree.BestSuggestedHeader) ?? UInt256.Zero;
 
             foreach (PeerInfo info in peers)
             {

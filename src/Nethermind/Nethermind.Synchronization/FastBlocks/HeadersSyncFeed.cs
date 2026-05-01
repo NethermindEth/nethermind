@@ -10,21 +10,19 @@ using System.Threading;
 using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.State.Repositories;
 using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
@@ -38,9 +36,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
-        private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-        private readonly IHeaderStore _headerStore;
+        protected readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
         private FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Headers, 0, false);
 
         private readonly Lock _handlerLock = new();
@@ -49,8 +45,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected long _lowestRequestedHeaderNumber;
         protected long _pivotNumber;
 
-        protected record NextHeader(Hash256 Hash256, UInt256? TotalDifficulty);
-        protected NextHeader _expectedNextHeader;
+        protected Hash256 _expectedNextHeaderHash;
 
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again
@@ -159,20 +154,16 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncReport? syncReport,
             IPoSSwitcher? poSSwitcher,
             ILogManager? logManager,
-            IChainLevelInfoRepository? chainLevelInfoRepository,
-            IHeaderStore? headerStore,
-            ITotalDifficultyStrategy? totalDifficultyStrategy = null,
+            ISkipIndexedBlockInfoStore? skipIndexedBlockInfoStore = null,
             bool alwaysStartHeaderSync = false)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore ?? NullSkipIndexedBlockInfoStore.Instance;
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(logManager));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _headerStore = headerStore ?? throw new ArgumentNullException(nameof(headerStore));
-            _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
             _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
 
             if (!_syncConfig.FastSync && !alwaysStartHeaderSync)
@@ -202,48 +193,15 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             (_pivotNumber, Hash256 nextHeaderHash) = _blockTree.SyncPivot;
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
-            _expectedNextHeader = new NextHeader(nextHeaderHash, TryGetPivotTotalDifficulty(nextHeaderHash));
+            _expectedNextHeaderHash = nextHeaderHash;
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            if (lowestInserted is not null && lowestInserted!.Number < _pivotNumber)
+            if (lowestInserted is not null && lowestInserted.Number < _pivotNumber)
             {
-                if (lowestInserted.TotalDifficulty is null)
-                {
-                    // When the LowestInsertedHeader is set in blockTree initializer, its TD is not set from block info.
-                    // So here we explicitly try to fetch it again.
-                    lowestInserted = _blockTree.FindHeader(lowestInserted.Number, BlockTreeLookupOptions.RequireCanonical);
-
-                    // In case of some strange corruption, we will have to reset the whole sync.
-                    if (lowestInserted!.TotalDifficulty is null)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Missing total difficulty on lowest inserted header: {lowestInserted!.ToString(BlockHeader.Format.Short)}. Resetting header sync.");
-                        _blockTree.LowestInsertedHeader = null;
-                    }
-                }
-
-                if (lowestInserted?.TotalDifficulty is not null)
-                {
-                    SetExpectedNextHeaderToParent(lowestInserted);
-                    _lowestRequestedHeaderNumber = lowestInserted.Number;
-                }
+                SetExpectedNextHeaderToParent(lowestInserted);
+                _lowestRequestedHeaderNumber = lowestInserted.Number;
             }
-        }
-
-        private UInt256 TryGetPivotTotalDifficulty(Hash256 headerHash)
-        {
-            if (_pivotNumber == _syncConfig.PivotNumber)
-                return _syncConfig.PivotTotalDifficultyParsed; // Pivot is the same as in config
-
-            // Got from header
-            BlockHeader? pivotHeader = _blockTree.FindHeader(headerHash, BlockTreeLookupOptions.RequireCanonical);
-            if (pivotHeader?.TotalDifficulty is not null) return pivotHeader.TotalDifficulty.Value;
-
-            // Probably PoS
-            if (_poSSwitcher.FinalTotalDifficulty is not null) return _poSSwitcher.FinalTotalDifficulty.Value;
-
-            throw new InvalidOperationException(
-                $"Unable to determine final total difficulty of pivot ({_pivotNumber}, {headerHash})");
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -552,26 +510,37 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <returns></returns>
         private HeadersSyncBatch? ProcessPersistedPortion(HeadersSyncBatch batch)
         {
-            ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(batch.EndNumber);
-            // Don't worry about fork — `InsertHeaders` will check for fork and retry if not on the right fork.
-            Hash256? seedHash = level?.BlockInfos is { Length: > 0 } infos ? infos[0].BlockHash : null;
-            if (seedHash is null) return batch;
+            // This only check for the last header though, which is fine as headers are so small, the time it take
+            // to download one is more or less the same as the whole batch. So many small batch is slower than
+            // less large batch.
+            BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (lastHeader is null) return batch;
 
-            using IOwnedReadOnlyList<BlockHeader> headers =
-                _headerStore.FindReversedHeaders(batch.EndNumber, seedHash, batch.RequestSize);
+            using ArrayPoolList<BlockHeader> headers = new(1);
+            headers.Add(lastHeader);
+            for (long i = batch.EndNumber - 1; i >= batch.StartNumber; i--)
+            {
+                // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
+                BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, i);
+                if (nextHeader is null) break;
+                headers.Add(nextHeader);
+                lastHeader = nextHeader;
+            }
 
-            if (headers.Count == 0) return batch;
-
+            headers.AsSpan().Reverse();
             int newRequestSize = batch.RequestSize - headers.Count;
-            using HeadersSyncBatch newBatchToProcess = new();
-            newBatchToProcess.StartNumber = headers[0].Number;
-            newBatchToProcess.RequestSize = headers.Count;
-            newBatchToProcess.Response = headers;
-            if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
-            InsertHeaders(newBatchToProcess);
-            MarkDirty();
-            HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
-            HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
+            if (headers.Count > 0)
+            {
+                using HeadersSyncBatch newBatchToProcess = new();
+                newBatchToProcess.StartNumber = lastHeader.Number;
+                newBatchToProcess.RequestSize = headers.Count;
+                newBatchToProcess.Response = headers;
+                if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
+                InsertHeaders(newBatchToProcess);
+                MarkDirty();
+                HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
+                HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
+            }
 
             if (newRequestSize == 0) return null;
 
@@ -603,7 +572,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             using ArrayPoolList<BlockHeader> headersToAdd = new(batch.Response.Count);
-            (Hash256 nextHeaderHash, UInt256? nextHeaderTotalDifficulty) = _expectedNextHeader;
+            Hash256 nextHeaderHash = _expectedNextHeaderHash;
 
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
@@ -654,13 +623,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 addedEarliest = Math.Min(addedEarliest, header.Number);
                 addedLast = Math.Max(addedLast, header.Number);
-            }
-
-            UInt256? totalDifficulty = nextHeaderTotalDifficulty;
-            foreach (BlockHeader blockHeader in headersToAdd.AsSpan())
-            {
-                blockHeader.TotalDifficulty = totalDifficulty;
-                totalDifficulty = DetermineParentTotalDifficulty(blockHeader);
             }
 
             // Remember, the above loop is in revers order, so this need to be reversed again.
@@ -844,9 +806,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree.BulkInsertHeader(headersToAdd);
         }
 
-        protected void SetExpectedNextHeaderToParent(BlockHeader header) => _expectedNextHeader = new NextHeader(header.ParentHash, DetermineParentTotalDifficulty(header));
-
-        protected virtual UInt256? DetermineParentTotalDifficulty(BlockHeader header) => _totalDifficultyStrategy.ParentTotalDifficulty(header);
+        protected void SetExpectedNextHeaderToParent(BlockHeader header) => _expectedNextHeaderHash = header.ParentHash;
 
         private bool _disposed = false;
 

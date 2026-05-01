@@ -90,7 +90,7 @@ public sealed class EraWriter : IDisposable
         }
     }
 
-    public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    public async Task Add(Block block, TxReceipt[] receipts, UInt256? totalDifficulty = null, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(block);
         ArgumentNullException.ThrowIfNull(receipts);
@@ -121,10 +121,10 @@ public sealed class EraWriter : IDisposable
 
         if (!isPostMerge)
         {
-            if (block.TotalDifficulty is null)
-                throw new ArgumentException("Pre-merge block must have TotalDifficulty set.", nameof(block));
-            if (block.TotalDifficulty < block.Difficulty)
-                throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), "Cannot be less than block difficulty.");
+            if (totalDifficulty is null)
+                throw new ArgumentException("Pre-merge block must have TotalDifficulty set.", nameof(totalDifficulty));
+            if (totalDifficulty < block.Difficulty)
+                throw new ArgumentOutOfRangeException(nameof(totalDifficulty), "Cannot be less than block difficulty.");
         }
 
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
@@ -146,17 +146,17 @@ public sealed class EraWriter : IDisposable
             long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * MillisecondsPerSecond);
             (ValueHash256 beaconBlockRoot, ValueHash256 stateRoot)? roots =
                 await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
-            _blocksRootContext!.ProcessBlock(block, roots?.beaconBlockRoot, roots?.stateRoot);
+            _blocksRootContext!.ProcessBlock(block, totalDifficulty ?? UInt256.Zero, roots?.beaconBlockRoot, roots?.stateRoot);
         }
         else
         {
-            _blocksRootContext!.ProcessBlock(block);
+            _blocksRootContext!.ProcessBlock(block, totalDifficulty ?? UInt256.Zero);
         }
 
         if (!isPostMerge)
         {
-            _totalDifficulties.Add(block.TotalDifficulty!.Value);
-            _lastPreMergeTD = block.TotalDifficulty.Value;
+            _totalDifficulties.Add(totalDifficulty!.Value);
+            _lastPreMergeTD = totalDifficulty.Value;
             _preMergeBlockCount++;
         }
         else

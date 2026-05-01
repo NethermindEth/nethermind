@@ -11,6 +11,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -31,6 +32,7 @@ namespace Nethermind.Consensus.Clique;
 public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 {
     private readonly IBlockTree _blockTree;
+    private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
     private readonly ICryptoRandom _cryptoRandom;
@@ -47,6 +49,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     public CliqueBlockProducerRunner(
         IBlockTree blockTree,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         ITimestamper timestamper,
         ICryptoRandom cryptoRandom,
         ISnapshotManager snapshotManager,
@@ -56,6 +59,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
     {
         _logger = logManager?.GetClassLogger<CliqueBlockProducerRunner>() ?? throw new ArgumentNullException(nameof(logManager));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore ?? throw new ArgumentNullException(nameof(skipIndexedBlockInfoStore));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
         _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
@@ -121,7 +125,9 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
             int wiggle = _wiggle.WiggleFor(scheduledBlock.Header);
             if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamper.UnixTime.Milliseconds)
             {
-                if (scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
+                BlockHeader? scheduledParent = _blockTree.FindParentHeader(scheduledBlock.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                UInt256? scheduledTd = scheduledParent is null ? null : _blockTree.GetTotalDifficulty(scheduledParent) + scheduledBlock.Difficulty;
+                if (scheduledTd > _blockTree.GetTotalDifficulty(_blockTree.Head?.Header))
                 {
                     if (ReferenceEquals(scheduledBlock, _scheduledBlock))
                     {
@@ -281,6 +287,8 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 public class CliqueBlockProducer : IBlockProducer
 {
     private readonly IWorldState _stateProvider;
+    private readonly IBlockTree _blockTree;
+    private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
     private readonly ITxSource _txSource;
     private readonly IBlockchainProcessor _processor;
     private readonly ISealer _sealer;
@@ -294,6 +302,8 @@ public class CliqueBlockProducer : IBlockProducer
     private readonly ConcurrentDictionary<Address, bool> _proposals = new();
 
     public CliqueBlockProducer(
+        IBlockTree blockTree,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         ITxSource txSource,
         IBlockchainProcessor blockchainProcessor,
         IWorldState stateProvider,
@@ -307,6 +317,8 @@ public class CliqueBlockProducer : IBlockProducer
         ILogManager logManager
     )
     {
+        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore ?? throw new ArgumentNullException(nameof(skipIndexedBlockInfoStore));
         _logger = logManager?.GetClassLogger<CliqueBlockProducer>() ?? throw new ArgumentNullException(nameof(logManager));
         _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
         _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
@@ -456,9 +468,8 @@ public class CliqueBlockProducer : IBlockProducer
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
         // Set the correct difficulty
         header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
-        header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
         if (_logger.IsDebug)
-            _logger.Debug($"Setting total difficulty to {parentHeader.TotalDifficulty} + {header.Difficulty}.");
+            _logger.Debug($"Setting total difficulty to {_blockTree.GetTotalDifficulty(parentHeader)} + {header.Difficulty}.");
 
         // Set extra data
         int mainBytesLength = Clique.ExtraVanityLength + Clique.ExtraSealLength;

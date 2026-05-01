@@ -58,7 +58,6 @@ namespace Nethermind.Blockchain.Visitors
         }
 
         public bool PreventsAcceptingNewBlocks => true;
-        public bool CalculateTotalDifficultyIfMissing => true;
         public long StartLevelInclusive => _startNumber;
 
         public long EndLevelExclusive => _startNumber + _blocksToLoad;

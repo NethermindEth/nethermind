@@ -219,12 +219,6 @@ public class EraImporter(
 
     private async Task SuggestAndProcessBlock(Block block)
     {
-        // Confusingly it will get the header with `BlockTreeLookupOptions.TotalDifficultyNotNeeded` then
-        // proceed to validate the total difficulty if its not null with the code
-        // `parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty`
-        // when clearly, the `parent.TotalDifficulty` is going to be null or 0.
-        block.Header.TotalDifficulty = null;
-
         // Should this be in suggest instead?
         if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
         {

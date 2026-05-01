@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
@@ -18,19 +17,18 @@ namespace Nethermind.Blockchain.Test;
 public class BlockFinderExtensionsTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_upgrade_maybe_parent()
+    public void FindParentHeader_PassesLookupOptionsThroughToBlockFinder()
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        BlockHeader parentWithTotalDiff = Build.A.BlockHeader.WithTotalDifficulty(1).TestObject;
+        BlockHeader parentForCanonical = Build.A.BlockHeader.TestObject;
         BlockHeader child = Build.A.BlockHeader.WithParent(parent).TestObject;
-        parent.TotalDifficulty.Should().BeNull(); // just to avoid the testing rig change without this test being updated
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: child.Number - 1).Returns(parent);
-        blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.None, blockNumber: child.Number - 1).Returns(parentWithTotalDiff);
+        blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.None, blockNumber: child.Number - 1).Returns(parentForCanonical);
 
         blockFinder.FindParentHeader(child, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().Be(parent);
-        blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be((UInt256?)UInt256.One);
+        blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None).Should().Be(parentForCanonical);
     }
 
     [TestCase(BlockParameterType.Latest, "latest")]

@@ -7,6 +7,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -67,6 +68,8 @@ namespace Nethermind.Consensus.Clique
             IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
 
             CliqueBlockProducer blockProducer = new(
+                getFromApi.BlockTree,
+                _nethermindApi.Context.Resolve<ISkipIndexedBlockInfoStore>(),
                 txPoolTxSource,
                 chainProcessor,
                 env.ReadOnlyStateProvider,
@@ -86,6 +89,7 @@ namespace Nethermind.Consensus.Clique
         {
             _blockProducerRunner = new CliqueBlockProducerRunner(
                 _nethermindApi.BlockTree,
+                _nethermindApi.Context.Resolve<ISkipIndexedBlockInfoStore>(),
                 _nethermindApi.Timestamper,
                 _nethermindApi.CryptoRandom,
                 _snapshotManager,

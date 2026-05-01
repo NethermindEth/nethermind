@@ -38,7 +38,7 @@ namespace Nethermind.Core.Test
             Block remoteTreeHead = _remoteTree.Head!;
             HeadNumber = remoteTreeHead.Number;
             HeadHash = remoteTreeHead.Hash!;
-            TotalDifficulty = remoteTreeHead.TotalDifficulty ?? 0;
+            TotalDifficulty = _remoteTree.GetTotalDifficulty(remoteTreeHead.Header) ?? 0;
 
             _remoteSyncServer = remoteSyncServer;
             Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234);

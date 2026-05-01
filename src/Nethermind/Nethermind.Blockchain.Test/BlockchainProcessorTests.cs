@@ -219,12 +219,11 @@ public class BlockchainProcessorTests
             _logger = _logManager.GetClassLogger<ProcessingTestContext>();
             _stateReader = Substitute.For<IStateReader>();
 
-            _blockTree = Build.A.BlockTree()
-                .WithoutSettingHead
-                .TestObject;
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().WithoutSettingHead;
+            _blockTree = blockTreeBuilder.TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, blockTreeBuilder.SkipIndexedBlockInfoStore, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 

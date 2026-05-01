@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -44,6 +45,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IStateReader _stateReader;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
+    private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
     private readonly ILogger _logger;
 
     private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>(
@@ -97,12 +99,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         IBranchProcessor branchProcessor,
         IBlockPreprocessorStep recoveryStep,
         IStateReader stateReader,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         ILogManager logManager,
         Options options,
         IProcessingStats processingStats)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
+        _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
         _branchProcessor = branchProcessor;
         _recoveryStep = recoveryStep;
         _stateReader = stateReader;
@@ -443,7 +447,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             return null;
         }
 
-        UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
+        UInt256 totalDifficulty = _blockTree.GetTotalDifficulty(suggestedBlock.Header) ?? 0;
         if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
 
         bool shouldProcess =
@@ -453,7 +457,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (!shouldProcess)
         {
-            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.GetTotalDifficulty(_blockTree.Head?.Header)}");
             return null;
         }
 
@@ -476,7 +480,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             lastProcessed = processedBlocks[^1];
             if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
-            lastProcessed.Header.TotalDifficulty = suggestedBlock.TotalDifficulty;
         }
         else
         {
@@ -769,7 +772,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 $" Current branching point: " +
                 $"{branchingPoint.Number}," +
                 $" {branchingPoint.Hash} " +
-                $"TD: {branchingPoint.TotalDifficulty} " +
+                $"TD: {_blockTree.GetTotalDifficulty(branchingPoint)} " +
                 $"Processing conditions " +
                 $"notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, " +
                 $"hasState: {hasState}, " +
@@ -821,11 +824,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             return false;
         }
 
-        if (suggestedBlock.Header.TotalDifficulty is null)
-        {
-            ThrowUnknownTotalDifficulty(suggestedBlock);
-        }
-
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && suggestedBlock.Hash is null)
         {
             ThrowUnknownBlockHash(suggestedBlock);
@@ -847,13 +845,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         [MethodImpl(MethodImplOptions.NoInlining)]
         void LogUnknownParentBlock(Block suggestedBlock)
             => _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
-
-        [DoesNotReturn, StackTraceHidden]
-        void ThrowUnknownTotalDifficulty(Block suggestedBlock)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
-            throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
-        }
 
         [DoesNotReturn, StackTraceHidden]
         void ThrowUnknownBlockHash(Block suggestedBlock)

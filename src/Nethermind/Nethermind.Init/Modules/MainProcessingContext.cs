@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -30,6 +31,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
         IProcessExitSource processExitSource,
+        ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
         ILogManager logManager)
     {
 
@@ -56,6 +58,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                         branchProcessor,
                         compositeBlockPreprocessorStep,
                         worldStateManager.GlobalStateReader,
+                        skipIndexedBlockInfoStore,
                         logManager,
                         new BlockchainProcessor.Options
                         {

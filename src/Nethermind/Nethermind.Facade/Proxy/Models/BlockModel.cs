@@ -43,7 +43,6 @@ namespace Nethermind.Facade.Proxy.Models
             block.Header.MixHash = MixHash;
             block.Header.Nonce = (ulong)Nonce;
             block.Header.ReceiptsRoot = ReceiptsRoot;
-            block.Header.TotalDifficulty = TotalDifficulty;
             block.Header.TxRoot = TransactionsRoot;
             return block;
         }

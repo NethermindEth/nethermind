@@ -86,7 +86,6 @@ namespace Nethermind.Consensus.Validators
                    && ValidateHash(header, ref error)
                    && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
                    && (orphaned || ValidateParent(header, parent, ref error))
-                   && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
                    && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
                    && ValidateGasUsed(header, ref error)
                    && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
@@ -307,40 +306,6 @@ namespace Nethermind.Consensus.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
             }
             return timestampMoreThanAtParent;
-        }
-
-        protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
-        {
-            // Same class of null-parent exposure as ValidateBlockNumber/GasLimitRange/Timestamp:
-            // ValidateParent accepts null for genesis, but the non-zero-total-difficulty branch
-            // below dereferences parent. No current fixture triggers this (TotalDifficulty is
-            // typically null on uncle headers), but the guard keeps the method consistent with
-            // its siblings.
-            if (parent is null) return true;
-
-            bool result = true;
-
-            if (header.TotalDifficulty is not null)
-            {
-                if (header.TotalDifficulty.Value.IsZero)
-                {
-                    // Same as in BlockTree.SetTotalDifficulty
-                    if (!(_blockTree.Genesis!.Difficulty.IsZero && _specProvider.TerminalTotalDifficulty?.IsZero == true))
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
-                        result = false;
-                        error = BlockErrorMessages.InvalidTotalDifficulty;
-                    }
-                }
-                else if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
-                    result = false;
-                    error = BlockErrorMessages.InvalidTotalDifficulty;
-                }
-            }
-
-            return result;
         }
 
         private bool ValidateGenesis(BlockHeader header) =>

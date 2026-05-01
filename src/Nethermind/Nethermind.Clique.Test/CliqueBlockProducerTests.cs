@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
@@ -149,6 +150,8 @@ public class CliqueBlockProducerTests
             }
 
             CliqueBlockProducer blockProducer = new(
+                blockTree,
+                container.Resolve<ISkipIndexedBlockInfoStore>(),
                 producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 minerStateProvider,
@@ -163,6 +166,7 @@ public class CliqueBlockProducerTests
 
             CliqueBlockProducerRunner producerRunner = new(
                 blockTree,
+                container.Resolve<ISkipIndexedBlockInfoStore>(),
                 _timestamper,
                 new CryptoRandom(),
                 snapshotManager,

@@ -51,7 +51,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     private static readonly Block _genesisBlock = Build.A.Block
         .Genesis
         .WithDifficulty(100000)
-        .WithTotalDifficulty((UInt256)100000).TestObject;
+        .TestObject;
 
     private class SyncPeerMock : BaseSyncPeerMock
     {
@@ -61,6 +61,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         private readonly bool _causeTimeoutOnBlocks;
         private readonly bool _causeTimeoutOnHeaders;
         private List<Block> Blocks { get; } = new();
+        private UInt256 _headTotalDifficulty;
 
         public Block HeadBlock => Blocks.Last();
 
@@ -76,6 +77,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
             _causeTimeoutOnHeaders = causeTimeoutOnHeaders;
             Blocks.Add(_genesisBlock);
+            _headTotalDifficulty = (UInt256)100000;
             UpdateHead();
             ClientId = peerName;
         }
@@ -84,7 +86,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         {
             HeadHash = HeadBlock.Hash!;
             HeadNumber = HeadBlock.Number;
-            TotalDifficulty = HeadBlock.TotalDifficulty ?? 0;
+            TotalDifficulty = _headTotalDifficulty;
         }
 
         public override Node Node { get; set; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
@@ -188,9 +190,9 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             for (long j = block.Number; j < i; j++)
             {
                 block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
-                    .WithTotalDifficulty(block.TotalDifficulty + 1000000)
                     .WithExtraData(j < branchStart ? [] : new[] { branchIndex }).TestObject;
                 Blocks.Add(block);
+                _headTotalDifficulty += 1000000;
             }
 
             UpdateHead();
@@ -202,9 +204,9 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             for (long j = block.Number; j < i; j++)
             {
                 block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
-                    .WithTotalDifficulty(block.TotalDifficulty + 2000000)
                     .WithExtraData(j < branchStart ? [] : [branchIndex]).TestObject;
                 Blocks.Add(block);
+                _headTotalDifficulty += 2000000;
             }
 
             UpdateHead();
@@ -406,7 +408,6 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public SyncingContext AfterNewBlockMessage(Block block, ISyncPeer peer)
         {
             _logger.Info($"NEW BLOCK MESSAGE {block.Number}");
-            block.Header.TotalDifficulty = block.Difficulty * (ulong)(block.Number + 1);
             SyncServer.AddNewBlock(block, peer);
             return this;
         }

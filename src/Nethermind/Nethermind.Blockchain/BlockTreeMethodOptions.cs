@@ -21,13 +21,14 @@ public enum BlockTreeLookupOptions
 public enum BlockTreeInsertHeaderOptions
 {
     None = 0,
+    [Obsolete("Insert no longer computes total difficulty; this flag has no effect.")]
     TotalDifficultyNotNeeded = 1,
     BeaconHeaderMetadata = 2,
     BeaconBodyMetadata = 4,
     NotOnMainChain = 8,
     MoveToBeaconMainChain = 16,
 
-    BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconHeaderMetadata | NotOnMainChain | BeaconBodyMetadata,
+    BeaconBlockInsert = BeaconHeaderMetadata | NotOnMainChain | BeaconBodyMetadata,
     BeaconHeaderInsert = BeaconHeaderMetadata | MoveToBeaconMainChain | NotOnMainChain
 }
 

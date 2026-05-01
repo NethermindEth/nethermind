@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
@@ -33,6 +34,8 @@ namespace Nethermind.Clique.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Signer signer = new(BlockchainIds.Sepolia, TestItem.PrivateKeyA, LimboLogs.Instance);
             CliqueBlockProducer producer = new(
+                blockTree,
+                Substitute.For<ISkipIndexedBlockInfoStore>(),
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
                 Substitute.For<IWorldState>(),
@@ -49,6 +52,7 @@ namespace Nethermind.Clique.Test
 
             CliqueBlockProducerRunner producerRunner = new(
                 blockTree,
+                Substitute.For<ISkipIndexedBlockInfoStore>(),
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
                 snapshotManager,

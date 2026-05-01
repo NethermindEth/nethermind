@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -124,6 +125,7 @@ namespace Nethermind.Synchronization.Test
                 _blockTree,
                 new FullStateFinder(_blockTree, _stateReader),
                 syncConfig,
+                Substitute.For<ISkipIndexedBlockInfoStore>(),
                 Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
                 Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
                 receiptFeed,

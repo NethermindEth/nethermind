@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Attributes;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.SkipIndexedBlockInfo;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
@@ -15,6 +16,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class NewHeadSubscription : Subscription
     {
         private readonly IBlockTree _blockTree;
+        private readonly ISkipIndexedBlockInfoStore _skipIndexedBlockInfoStore;
         private readonly bool _includeTransactions;
         private readonly ISpecProvider _specProvider;
 
@@ -23,12 +25,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public NewHeadSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             IBlockTree? blockTree,
+            ISkipIndexedBlockInfoStore skipIndexedBlockInfoStore,
             ILogManager? logManager,
             ISpecProvider specProvider,
             TransactionsOption? options = null)
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _skipIndexedBlockInfoStore = skipIndexedBlockInfoStore;
             _logger = logManager?.GetClassLogger<NewHeadSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
             _specProvider = specProvider;
@@ -39,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => ScheduleAction(async () =>
         {
-            using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
+            using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider, blockTree: _blockTree, skipIndexedBlockInfoStore: _skipIndexedBlockInfoStore));
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
         });

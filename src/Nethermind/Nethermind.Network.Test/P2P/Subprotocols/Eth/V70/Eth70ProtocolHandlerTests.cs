@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -78,6 +79,7 @@ public class Eth70ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
+            Substitute.For<IBlockTree>(),
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,

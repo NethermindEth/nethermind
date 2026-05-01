@@ -122,6 +122,8 @@ public partial class BlockProducerBaseTests
     {
         TestRpcBlockchain testRpc = await CreateTestRpc();
         CliqueBlockProducer blockProducer = new(
+            testRpc.BlockTree,
+            testRpc.SkipIndexedBlockInfoStore,
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
             testRpc.MainWorldState,
@@ -136,6 +138,7 @@ public partial class BlockProducerBaseTests
 
         CliqueBlockProducerRunner runner = new(
             testRpc.BlockTree,
+            testRpc.SkipIndexedBlockInfoStore,
             testRpc.Timestamper,
             Substitute.For<ICryptoRandom>(),
             Substitute.For<ISnapshotManager>(),

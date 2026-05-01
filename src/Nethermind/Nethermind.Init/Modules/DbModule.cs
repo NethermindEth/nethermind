@@ -67,6 +67,7 @@ public class DbModule(
             .AddDatabase(DbNames.BlockInfos)
             .AddDatabase(DbNames.Bloom)
             .AddDatabase(DbNames.BlockAccessLists)
+            .AddDatabase(DbNames.SkipIndexedBlockInfo)
 
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)

@@ -50,6 +50,6 @@ namespace Nethermind.Consensus
     {
         public static bool MisconfiguredTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher) => poSSwitcher.TerminalTotalDifficulty is null;
 
-        public static bool BlockBeforeTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher, BlockHeader blockHeader) => blockHeader.TotalDifficulty < poSSwitcher.TerminalTotalDifficulty;
+        public static bool BlockBeforeTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher, UInt256? totalDifficulty) => totalDifficulty < poSSwitcher.TerminalTotalDifficulty;
     }
 }

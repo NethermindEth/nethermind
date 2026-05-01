@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
@@ -31,8 +30,5 @@ namespace Nethermind.Crypto
         public static Hash256 GetOrCalculateHash(this BlockHeader header) => header.Hash ?? header.CalculateHash();
 
         public static Hash256 GetOrCalculateHash(this Block block) => block.Hash ?? block.CalculateHash();
-
-        public static bool IsNonZeroTotalDifficulty(this Block block) => block.Header.IsNonZeroTotalDifficulty();
-        public static bool IsNonZeroTotalDifficulty(this BlockHeader header) => header.TotalDifficulty is not null && header.TotalDifficulty != UInt256.Zero;
     }
 }

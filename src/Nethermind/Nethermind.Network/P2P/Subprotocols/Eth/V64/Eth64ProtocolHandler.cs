@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
@@ -24,12 +25,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
         ISyncServer syncServer,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ITxPool txPool,
+        IBlockTree blockTree,
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : Eth63ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, logManager, transactionsGossipPolicy)
+            blockTree, gossipPolicy, logManager, transactionsGossipPolicy)
     {
         protected readonly IForkInfo _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
 

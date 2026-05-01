@@ -386,6 +386,5 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndPeersMovedSlightlyForward()
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
-
     }
 }

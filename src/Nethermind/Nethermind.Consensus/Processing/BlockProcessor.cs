@@ -230,7 +230,6 @@ public partial class BlockProcessor(
             MixHash = bh.MixHash,
             Nonce = bh.Nonce,
             TxRoot = bh.TxRoot,
-            TotalDifficulty = bh.TotalDifficulty,
             AuRaStep = bh.AuRaStep,
             AuRaSignature = bh.AuRaSignature,
             ReceiptsRoot = bh.ReceiptsRoot,

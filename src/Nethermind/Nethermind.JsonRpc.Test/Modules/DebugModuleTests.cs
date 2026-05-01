@@ -40,6 +40,7 @@ public class DebugModuleTests
     private readonly ISpecProvider _specProvider = SpecProviderSubstitute.Create();
     private readonly IDebugBridge _debugBridge = Substitute.For<IDebugBridge>();
     private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
+    private readonly IBlockTree _blockTree = Substitute.For<IBlockTree>();
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 

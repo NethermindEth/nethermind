@@ -232,16 +232,7 @@ public class GethStyleTracer(
         return parent;
     }
 
-    private static Block GetBlockToTrace(Rlp blockRlp)
-    {
-        Block block = Rlp.Decode<Block>(blockRlp);
-        if (block.TotalDifficulty is null)
-        {
-            block.Header.TotalDifficulty = 1;
-        }
-
-        return block;
-    }
+    private Block GetBlockToTrace(Rlp blockRlp) => Rlp.Decode<Block>(blockRlp);
 
     public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);
 }

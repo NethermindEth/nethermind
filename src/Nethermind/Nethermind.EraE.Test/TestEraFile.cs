@@ -18,7 +18,7 @@ internal sealed class TestEraFile : IDisposable
 {
     private readonly TempPath _tmpFile;
     public string FilePath => _tmpFile.Path;
-    public List<(Block Block, TxReceipt[] Receipts)> Contents { get; } = [];
+    public List<(Block Block, TxReceipt[] Receipts, UInt256 TotalDifficulty)> Contents { get; } = [];
 
     private TestEraFile(TempPath tmpFile) => _tmpFile = tmpFile;
 
@@ -39,12 +39,12 @@ internal sealed class TestEraFile : IDisposable
         for (int i = 0; i < preMergeCount; i++, number++, td += BlockHeaderBuilder.DefaultDifficulty)
         {
             TxReceipt receipt = Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject;
-            Block block = Build.A.Block.WithNumber(number).WithTotalDifficulty(td).TestObject;
+            Block block = Build.A.Block.WithNumber(number).TestObject;
             block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
                 [receipt], specProvider.GetSpec(block.Header), block.ReceiptsRoot);
             block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
-            file.Contents.Add((block, [receipt]));
-            await writer.Add(block, [receipt]);
+            file.Contents.Add((block, [receipt], td));
+            await writer.Add(block, [receipt], td);
         }
 
         for (int i = 0; i < postMergeCount; i++, number++)
@@ -54,7 +54,7 @@ internal sealed class TestEraFile : IDisposable
             block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
                 [receipt], specProvider.GetSpec(block.Header), block.ReceiptsRoot);
             block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
-            file.Contents.Add((block, [receipt]));
+            file.Contents.Add((block, [receipt], UInt256.Zero));
             await writer.Add(block, [receipt]);
         }
 

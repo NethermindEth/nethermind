@@ -584,6 +584,11 @@ public partial class BlockDownloaderTests
             StateMinDistanceFromHead = fastSyncLag,
             PivotNumber = syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
+            // Needed so the TD anchor knows the pivot's TD; otherwise the skip-indexed
+            // store can't compute TD for blocks above the pivot (pre-pivot headers aren't
+            // downloaded in fast sync) and BestSuggestedImprovementRequirementsSatisfied
+            // keeps rejecting every sync'd block.
+            PivotTotalDifficulty = (syncPeer.BlockTree.GetTotalDifficulty(syncPivot) ?? 0).ToString(),
         };
 
         await using IContainer container = isMerge
@@ -1033,7 +1038,7 @@ public partial class BlockDownloaderTests
 
             HeadNumber = BlockTree.Head!.Number;
             HeadHash = BlockTree.HeadHash!;
-            TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
+            TotalDifficulty = BlockTree.GetTotalDifficulty(BlockTree.Head.Header) ?? 0;
         }
 
         public void ExtendTree(long newLength) =>

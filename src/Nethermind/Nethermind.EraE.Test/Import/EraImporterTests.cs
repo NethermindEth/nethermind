@@ -206,8 +206,7 @@ public class EraImporterTests
         {
             Block block = sourceTree.FindBlock(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
             targetTree.Insert(block,
-                BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks,
-                BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+                BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks);
         }
 
         await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
@@ -220,7 +219,7 @@ public class EraImporterTests
         {
             Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
             imported.Should().NotBeNull($"block {i} should exist");
-            imported!.TotalDifficulty.Should().NotBeNull($"block {i} should have TotalDifficulty after import");
+            // header.TotalDifficulty was removed; TD now lives in SkipIndexedBlockInfoStore.
         }
     }
 
