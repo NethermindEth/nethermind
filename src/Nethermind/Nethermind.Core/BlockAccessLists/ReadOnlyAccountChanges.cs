@@ -119,6 +119,14 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         }
     }
 
+    /// <summary>True iff this account has no balance/nonce/code/slot change at <paramref name="index"/>.
+    /// Storage reads are not changes; this only inspects mutating entries.</summary>
+    public bool HasNoChangesAtIndex(ushort index)
+        => BalanceChangeAtIndex(index) is null
+        && NonceChangeAtIndex(index) is null
+        && CodeChangeAtIndex(index) is null
+        && !HasSlotChangesAtIndex(index);
+
     /// <summary>Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.</summary>
     public UInt256? GetBalance(int blockAccessIndex) => TryGetLastBefore(_balanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
 

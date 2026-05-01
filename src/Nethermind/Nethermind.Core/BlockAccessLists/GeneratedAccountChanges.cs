@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
@@ -42,6 +44,127 @@ public class GeneratedAccountChanges(Address address)
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out GeneratedSlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
+
+    /// <summary>Per-family change lists are appended in monotonically increasing <c>Index</c>
+    /// order during <see cref="Merge"/>, so we binary-search via <see cref="IndexKey{T}"/>
+    /// rather than scanning. Mirrors <see cref="ReadOnlyAccountChanges"/>.</summary>
+    public BalanceChange? BalanceChangeAtIndex(int index) => GetExact(BalanceChanges, index);
+    public NonceChange? NonceChangeAtIndex(int index) => GetExact(NonceChanges, index);
+    public CodeChange? CodeChangeAtIndex(int index) => GetExact(CodeChanges, index);
+
+    public bool HasSlotChangesAtIndex(int index)
+    {
+        foreach (GeneratedSlotChanges slot in _storageChanges.Values)
+        {
+            if (TryGetSlotChangeAtIndex(slot, index, out _)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>True iff this account has no balance/nonce/code/slot change at <paramref name="index"/>.
+    /// Storage reads are not changes; this only inspects mutating entries.</summary>
+    public bool HasNoChangesAtIndex(ushort index)
+        => BalanceChangeAtIndex(index) is null
+        && NonceChangeAtIndex(index) is null
+        && CodeChangeAtIndex(index) is null
+        && !HasSlotChangesAtIndex(index);
+
+    /// <summary>Structural equality of the per-index slice of this account against the suggested
+    /// (decoded) account. Address is not compared (callers ensure they're matched). Walks both
+    /// sides without allocating: per-slot lookup is an O(log n) binary search via
+    /// <see cref="IndexKey{T}"/>; both storage maps iterate in sorted-by-slot-key order so
+    /// account-level slot pairing is a single linear merge-walk.</summary>
+    public bool ChangesAtIndexEqual(ReadOnlyAccountChanges other, ushort index)
+    {
+        if (BalanceChangeAtIndex(index) != other.BalanceChangeAtIndex(index)) return false;
+        if (NonceChangeAtIndex(index) != other.NonceChangeAtIndex(index)) return false;
+
+        CodeChange? thisCode = CodeChangeAtIndex(index);
+        CodeChange? otherCode = other.CodeChangeAtIndex(index);
+        if (thisCode.HasValue != otherCode.HasValue) return false;
+        if (thisCode.HasValue && !thisCode.Value.Equals(otherCode!.Value)) return false;
+
+        return SlotChangesAtIndexEqual(other, index);
+    }
+
+    private bool SlotChangesAtIndexEqual(ReadOnlyAccountChanges other, ushort index)
+    {
+        // Both sides iterate slots in sorted-by-key order:
+        //   - this:  SortedDictionary<UInt256, GeneratedSlotChanges>.Values
+        //   - other: ReadOnlySlotChanges[] (decoder produces sorted)
+        // Walk in lockstep, skipping slots that have no change at this index on either side.
+        // Concrete struct enumerator type avoids the boxing the IEnumerable/IEnumerator
+        // interface would force; Dispose chain bottoms out at empty TreeSet.Enumerator.Dispose
+        // so we skip the `using` for clarity — the manual MoveNext/Current control here is
+        // intentional, and there's no resource to release.
+        SortedDictionary<UInt256, GeneratedSlotChanges>.ValueCollection.Enumerator a
+            = _storageChanges.Values.GetEnumerator();
+        ReadOnlySlotChanges[] b = other.StorageChanges;
+        int j = 0;
+        bool aHas = a.MoveNext();
+        StorageChange aChange = default, bChange = default;
+
+        while (true)
+        {
+            // Advance each side to the next slot that has a change at `index`, capturing the
+            // change in the same binary search rather than re-searching after presence is known.
+            bool aMatched = false;
+            while (aHas)
+            {
+                if (TryGetSlotChangeAtIndex(a.Current, index, out aChange)) { aMatched = true; break; }
+                aHas = a.MoveNext();
+            }
+            bool bMatched = false;
+            while (j < b.Length)
+            {
+                if (TryGetSlotChangeAtIndex(b[j], index, out bChange)) { bMatched = true; break; }
+                j++;
+            }
+
+            if (!aMatched && !bMatched) return true;
+            if (aMatched != bMatched) return false;
+            if (a.Current.Key != b[j].Key) return false;
+            if (!aChange.Equals(bChange)) return false;
+
+            aHas = a.MoveNext();
+            j++;
+        }
+    }
+
+    private static bool TryGetSlotChangeAtIndex(GeneratedSlotChanges slot, int index, out StorageChange change)
+    {
+        ReadOnlySpan<StorageChange> span = CollectionsMarshal.AsSpan(slot.Changes);
+        int idx = span.BinarySearch(new IndexKey<StorageChange>(index));
+        if (idx >= 0)
+        {
+            change = span[idx];
+            return true;
+        }
+        change = default;
+        return false;
+    }
+
+    private static bool TryGetSlotChangeAtIndex(ReadOnlySlotChanges slot, int index, out StorageChange change)
+    {
+        ReadOnlySpan<StorageChange> span = slot.Changes;
+        int idx = span.BinarySearch(new IndexKey<StorageChange>(index));
+        if (idx >= 0)
+        {
+            change = span[idx];
+            return true;
+        }
+        change = default;
+        return false;
+    }
+
+    /// <summary>O(log n) lookup of the entry with <c>Index == index</c> over a list kept sorted
+    /// by index (the merge contract on <see cref="GeneratedAccountChanges"/> guarantees that).</summary>
+    private static T? GetExact<T>(List<T> changes, int index) where T : struct, IIndexedChange
+    {
+        ReadOnlySpan<T> span = CollectionsMarshal.AsSpan(changes);
+        int idx = span.BinarySearch(new IndexKey<T>(index));
+        return idx >= 0 ? span[idx] : null;
+    }
 
     public GeneratedSlotChanges GetOrAddSlotChanges(UInt256 key)
     {
