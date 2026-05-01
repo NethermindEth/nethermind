@@ -77,7 +77,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
     }
 
-    public ReadOnlyMemory<byte> GetEffectiveInput(ReadOnlyMemory<byte> inputData)
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
     {
         if (inputData.Length <= LengthsLengths) return inputData;
 

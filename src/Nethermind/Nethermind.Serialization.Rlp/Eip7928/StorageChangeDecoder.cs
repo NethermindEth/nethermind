@@ -14,8 +14,8 @@ public class StorageChangeDecoder : IndexedChangeDecoder<StorageChange>
         => new(ctx.DecodeUShort(), ctx.DecodeUInt256());
 
     protected override void EncodeValue(RlpStream stream, StorageChange item)
-        => stream.Encode(item.NewValue);
+        => stream.Encode(item.Value);
 
     protected override int GetValueLength(StorageChange item)
-        => Rlp.LengthOf(item.NewValue);
+        => Rlp.LengthOf(item.Value);
 }

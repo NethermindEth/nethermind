@@ -5,7 +5,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly record struct BalanceChange(ushort BlockAccessIndex, UInt256 PostBalance) : IIndexedChange
+public readonly record struct BalanceChange(int Index, UInt256 Value) : IIndexedChange
 {
-    public override string ToString() => $"{BlockAccessIndex}:{PostBalance}";
+    public override string ToString() => $"{Index}:{Value}";
 }

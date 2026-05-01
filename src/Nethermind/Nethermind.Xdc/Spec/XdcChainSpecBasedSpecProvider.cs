@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -13,6 +17,45 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
     ILogManager logManager)
     : ChainSpecBasedSpecProvider(chainSpec, logManager)
 {
+    private readonly ConcurrentDictionary<(int blockIndex, int roundIndex), XdcReleaseSpec> _specCache = new();
+
+    public IXdcReleaseSpec GetXdcSpec(XdcBlockHeader header, ulong round = 0)
+    {
+        if (round == 0)
+            round = header.ExtraConsensusData?.BlockRound ?? 0;
+        return GetXdcSpec(header.Number, round);
+    }
+
+    public IXdcReleaseSpec GetXdcSpec(long blockNumber, ulong round = 0)
+    {
+        int blockIndex = GetBlockTransitionIndex(blockNumber);
+        int roundIndex = GetRoundConfigIndex(round);
+
+        if (_specCache.TryGetValue((blockIndex, roundIndex), out XdcReleaseSpec? cached))
+            return cached;
+
+        XdcReleaseSpec baseSpec = (XdcReleaseSpec)_blockTransitions[blockIndex].Spec;
+        XdcReleaseSpec copy = (XdcReleaseSpec)baseSpec.Clone();
+        copy.ApplyV2Config(round);
+
+        return _specCache.GetOrAdd((blockIndex, roundIndex), copy);
+    }
+
+    private int GetBlockTransitionIndex(long blockNumber)
+    {
+        int result = _blockTransitions.BinarySearch(new ForkActivation(blockNumber),
+            static (a, t) => a.CompareTo(t.Activation));
+        return result >= 0 ? result : ~result - 1;
+    }
+
+    private int GetRoundConfigIndex(ulong round)
+    {
+        List<V2ConfigParams> configs = chainSpecEngineParameters.V2Configs;
+        int result = configs.BinarySearch(round,
+            static (r, c) => r.CompareTo(c.SwitchRound));
+        return result >= 0 ? result : ~result - 1;
+    }
+
     protected override ReleaseSpec CreateEmptyReleaseSpec() => new XdcReleaseSpec();
     protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
     {

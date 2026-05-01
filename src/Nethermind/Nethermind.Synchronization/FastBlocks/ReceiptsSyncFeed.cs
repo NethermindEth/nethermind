@@ -32,14 +32,16 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc
+        protected override long SyncConfigBarrierCalc => ComputeBarrier(_blockTree.SyncPivot.BlockNumber);
+
+        private long ComputeBarrier(long pivotNumber)
         {
-            get
-            {
-                long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
-                return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
-            }
+            long requested = Math.Max(_syncConfig.AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier);
+            long clamped = Math.Max(1, Math.Min(pivotNumber, requested));
+            long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
+            return cutoffBlockNumber is null ? clamped : long.Max(clamped, cutoffBlockNumber.Value);
         }
+
         protected override Func<bool> HasPivot =>
             () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
 
@@ -94,23 +96,25 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientReceiptsBarrierCalc)
+            long newPivotNumber = _blockTree.SyncPivot.BlockNumber;
+            long newBarrier = ComputeBarrier(newPivotNumber);
+            if (_pivotNumber != newPivotNumber || _barrier != newBarrier)
             {
-                _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-                _barrier = _syncConfig.AncientReceiptsBarrierCalc;
+                _pivotNumber = newPivotNumber;
+                _barrier = newBarrier;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _syncConfig.AncientReceiptsBarrierCalc);
+            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _barrier);
         }
 
         private void ResetSyncStatusList() => _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedReceiptBlockNumber,
-                _syncConfig.AncientReceiptsBarrier);
+                _barrier);
 
         protected override SyncMode ActivationSyncModes { get; }
             = SyncMode.FastReceipts & ~SyncMode.FastBlocks;
