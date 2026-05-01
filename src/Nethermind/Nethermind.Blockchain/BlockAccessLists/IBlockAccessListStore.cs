@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -12,10 +14,7 @@ public interface IBlockAccessListStore
 {
     void InsertFromBlock(Block block)
     {
-        if (block.Hash is not { } blockHash)
-        {
-            throw new ArgumentException("Block hash is required to persist a block access list.", nameof(block));
-        }
+        Hash256 blockHash = block.Hash ?? ThrowMissingBlockHash(nameof(block));
 
         if (block.EncodedBlockAccessList is not null)
         {
@@ -38,4 +37,8 @@ public interface IBlockAccessListStore
     BlockAccessList? Get(Hash256 blockHash);
     bool Exists(Hash256 blockHash);
     void Delete(Hash256 blockHash);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static Hash256 ThrowMissingBlockHash(string paramName) =>
+        throw new ArgumentException("Block hash is required to persist a block access list.", paramName);
 }

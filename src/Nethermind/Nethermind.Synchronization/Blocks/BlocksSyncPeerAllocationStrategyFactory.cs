@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -20,28 +18,9 @@ namespace Nethermind.Synchronization.Blocks
                 ? BlockAccessListsAllocationStrategy
                 : AllocationStrategy;
 
-        private sealed class BlockAccessListsPeerAllocationStrategy(IPeerAllocationStrategy strategy) : IPeerAllocationStrategy
+        private sealed class BlockAccessListsPeerAllocationStrategy(IPeerAllocationStrategy strategy) : FilterPeerAllocationStrategy(strategy)
         {
-            public PeerInfo? Allocate(
-                PeerInfo? currentPeer,
-                IEnumerable<PeerInfo> peers,
-                INodeStatsManager nodeStatsManager,
-                IBlockTree blockTree) =>
-                strategy.Allocate(IsEligible(currentPeer) ? currentPeer : null, EligiblePeers(peers), nodeStatsManager, blockTree);
-
-            private static IEnumerable<PeerInfo> EligiblePeers(IEnumerable<PeerInfo> peers)
-            {
-                foreach (PeerInfo peerInfo in peers)
-                {
-                    if (IsEligible(peerInfo))
-                    {
-                        yield return peerInfo;
-                    }
-                }
-            }
-
-            private static bool IsEligible(PeerInfo? peerInfo) =>
-                peerInfo is not null && peerInfo.SyncPeer.SupportsBlockAccessLists();
+            protected override bool Filter(PeerInfo peerInfo) => peerInfo.SyncPeer.SupportsBlockAccessLists();
         }
     }
 }

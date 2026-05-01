@@ -105,10 +105,23 @@ namespace Nethermind.Synchronization
 
         private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
         {
-            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastBlockAccessLists) || e.WasModeFinished(SyncMode.FastBlocks))
+            if (WasAnyModeFinished(e, SyncMode.StateNodes, SyncMode.FastReceipts, SyncMode.FastBlockAccessLists, SyncMode.FastBlocks))
             {
                 GC.Collect(2, GCCollectionMode.Aggressive, true, true);
             }
+        }
+
+        private static bool WasAnyModeFinished(SyncModeChangedEventArgs e, params ReadOnlySpan<SyncMode> modes)
+        {
+            foreach (SyncMode mode in modes)
+            {
+                if (e.WasModeFinished(mode))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void StartFullSyncComponents()

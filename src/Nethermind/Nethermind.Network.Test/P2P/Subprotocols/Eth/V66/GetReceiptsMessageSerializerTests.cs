@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -40,22 +41,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             SerializerTester.TestZero(serializer, message);
         }
 
-        [Test]
-        public void Rejects_request_id_longer_than_8_bytes()
+        [TestCaseSource(nameof(InvalidPayloads))]
+        public void Rejects_invalid_payload(byte[] bytes)
         {
             GetReceiptsMessageSerializer serializer = new();
-            IByteBuffer payload = Unpooled.WrappedBuffer([0xcb, 0x89, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xc0]);
+            IByteBuffer payload = Unpooled.WrappedBuffer(bytes);
 
             Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
         }
 
-        [Test]
-        public void Rejects_extra_outer_payload()
+        private static IEnumerable<TestCaseData> InvalidPayloads()
         {
-            GetReceiptsMessageSerializer serializer = new();
-            IByteBuffer payload = Unpooled.WrappedBuffer([0xc3, 0x01, 0xc0, 0x80]);
-
-            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+            yield return new TestCaseData((byte[])[0xcb, 0x89, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xc0])
+                .SetName("Rejects_request_id_longer_than_8_bytes");
+            yield return new TestCaseData((byte[])[0xc3, 0x01, 0xc0, 0x80])
+                .SetName("Rejects_extra_outer_payload");
         }
     }
 }

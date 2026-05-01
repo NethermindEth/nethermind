@@ -16,7 +16,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
     public async Task Dispatch(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (request.BodiesRequests.Count == 0 && request.BlockAccessListsRequests.Count == 0 && request.ReceiptsRequests.Count == 0)
+        if (request.AllCounts == 0)
         {
             request.DownloadTask = Task.CompletedTask;
             return;

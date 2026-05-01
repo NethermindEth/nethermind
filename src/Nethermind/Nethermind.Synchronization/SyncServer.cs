@@ -375,16 +375,10 @@ namespace Nethermind.Synchronization
 
         public TxReceipt[] GetReceipts(Hash256? blockHash) => blockHash is not null ? _receiptFinder.Get(blockHash) : [];
 
-        public byte[]? GetBlockAccessListRlp(Hash256 blockHash)
-        {
-            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header?.BlockAccessListHash is null)
-            {
-                return null;
-            }
-
-            return _blockAccessListStore.GetRlp(blockHash);
-        }
+        public byte[]? GetBlockAccessListRlp(Hash256 blockHash) =>
+            _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.BlockAccessListHash is null
+                ? null
+                : _blockAccessListStore.GetRlp(blockHash);
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 

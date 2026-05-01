@@ -19,6 +19,7 @@ public sealed class BlocksRequest : IDisposable
 
     public int? NumberOfLatestBlocksToBeIgnored { get; }
     public Task DownloadTask { get; set; }
+    public int AllCounts => BodiesRequests.Count + BlockAccessListsRequests.Count + ReceiptsRequests.Count;
     private bool _disposed;
 
     public override string ToString() => $"Blocks Request: {BodiesRequests.Count} Bodies, {BlockAccessListsRequests.Count} Block Access Lists, {ReceiptsRequests.Count} Receipts";

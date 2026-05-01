@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
@@ -38,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
             if (byteBuffer.ReaderIndex - startReaderIndex != checkPosition)
             {
-                throw new RlpException("Unexpected trailing data in eth66 message");
+                ThrowUnexpectedTrailingData();
             }
 
             return eth66Message;
@@ -53,5 +55,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
             return Rlp.LengthOfSequence(contentLength);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowUnexpectedTrailingData() =>
+            throw new RlpException("Unexpected trailing data in eth66 message");
     }
 }

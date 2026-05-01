@@ -297,7 +297,15 @@ namespace Nethermind.Synchronization.Blocks
                 BlockEntry? entry;
                 while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
                 {
-                    _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null, null));
+                    _downloadRequests.TryAdd(
+                        blockHeader.Hash,
+                        new BlockEntry(
+                            parentHeader,
+                            blockHeader,
+                            Block: null,
+                            Receipts: null,
+                            PeerInfo: null,
+                            EncodedAccessList: null));
                 }
                 parentHeader = blockHeader;
 
@@ -525,42 +533,10 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if ((blockAccessLists?.Count ?? 0) <= i)
+                if (TryHandleBlockAccessListResponse(header, entry, blockAccessLists, i, unsupportedBlockAccessListsPeer, peer, ref result))
                 {
-                    if (unsupportedBlockAccessListsPeer)
-                    {
-                        result = SyncResponseHandlingResult.LesserQuality;
-                    }
-
-                    entry.RetryAccessListRequest();
-                    continue;
+                    blockAccessListsCount++;
                 }
-
-                byte[]? encodedAccessList = blockAccessLists[i];
-                if (encodedAccessList is null)
-                {
-                    entry.RetryAccessListRequest();
-                    continue;
-                }
-
-                if (!BlockAccessListHashValidator.Validate(header, encodedAccessList, out string? errorMessage))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block access list from {peer} for block {header.ToString(BlockHeader.Format.Short)}, {errorMessage}");
-
-                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block access list received: {errorMessage}. Block: {header.ToString(BlockHeader.Format.Short)}");
-                    result = SyncResponseHandlingResult.LesserQuality;
-                    entry.RetryAccessListRequest();
-                    continue;
-                }
-
-                entry.EncodedAccessList = encodedAccessList;
-                if (entry.Block is not null)
-                {
-                    entry.Block.EncodedBlockAccessList = encodedAccessList;
-                }
-
-                entry.PeerInfo = peer;
-                blockAccessListsCount++;
             }
 
             if (result == SyncResponseHandlingResult.OK)
@@ -576,6 +552,53 @@ namespace Nethermind.Synchronization.Blocks
             HandleSyncRequestResult(response.DownloadTask, peer);
 
             return result;
+        }
+
+        private bool TryHandleBlockAccessListResponse(
+            BlockHeader header,
+            BlockEntry entry,
+            IOwnedReadOnlyList<byte[]?>? blockAccessLists,
+            int index,
+            bool unsupportedBlockAccessListsPeer,
+            PeerInfo? peer,
+            ref SyncResponseHandlingResult result)
+        {
+            if ((blockAccessLists?.Count ?? 0) <= index)
+            {
+                if (unsupportedBlockAccessListsPeer)
+                {
+                    result = SyncResponseHandlingResult.LesserQuality;
+                }
+
+                entry.RetryAccessListRequest();
+                return false;
+            }
+
+            byte[]? encodedAccessList = blockAccessLists[index];
+            if (encodedAccessList is null || encodedAccessList.Length == 0)
+            {
+                entry.RetryAccessListRequest();
+                return false;
+            }
+
+            if (!BlockAccessListHashValidator.Validate(header, encodedAccessList, out string? errorMessage))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid block access list from {peer} for block {header.ToString(BlockHeader.Format.Short)}, {errorMessage}");
+
+                if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block access list received: {errorMessage}. Block: {header.ToString(BlockHeader.Format.Short)}");
+                result = SyncResponseHandlingResult.LesserQuality;
+                entry.RetryAccessListRequest();
+                return false;
+            }
+
+            entry.EncodedAccessList = encodedAccessList;
+            if (entry.Block is not null)
+            {
+                entry.Block.EncodedBlockAccessList = encodedAccessList;
+            }
+
+            entry.PeerInfo = peer;
+            return true;
         }
 
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)

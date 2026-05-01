@@ -176,7 +176,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             int added = InsertBlockAccessLists(batch);
             return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             foreach (BlockInfo? batchInfo in batch.Infos)
             {
@@ -196,18 +196,18 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private bool IsValidAccessList(BlockInfo blockInfo, byte[] accessListRlp, out string? errorMessage)
     {
         BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+        bool isValid;
         if (header is null)
         {
             errorMessage = "missing header";
-            return false;
+            isValid = false;
         }
-
-        if (!BlockAccessListHashValidator.Validate(header, accessListRlp, out errorMessage))
+        else
         {
-            return false;
+            isValid = BlockAccessListHashValidator.Validate(header, accessListRlp, out errorMessage);
         }
 
-        return true;
+        return isValid;
     }
 
     private int InsertBlockAccessLists(BlockAccessListsSyncBatch batch)

@@ -140,7 +140,7 @@ namespace Nethermind.Synchronization.Reporting
             SyncMode currentSyncMode = _currentMode;
             if (_logger.IsDebug) WriteSyncConfigReport();
 
-            if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded && FastBlockAccessLists.HasEnded)
+            if (!_reportedFastBlocksSummary && HasAllEnded(FastBlocksHeaders, FastBlocksBodies, FastBlocksReceipts, FastBlockAccessLists))
             {
                 _reportedFastBlocksSummary = true;
                 WriteFastBlocksReport(currentSyncMode);
@@ -261,29 +261,35 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteFastBlocksReport(SyncMode currentSyncMode)
         {
-            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders && FastBlocksHeaders.HasStarted)
-            {
-                FastBlocksHeaders.LogProgress();
-            }
-
-            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies && FastBlocksBodies.HasStarted)
-            {
-                FastBlocksBodies.LogProgress();
-            }
-
-            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts && FastBlocksReceipts.HasStarted)
-            {
-                FastBlocksReceipts.LogProgress();
-            }
-
-            if ((currentSyncMode & SyncMode.FastBlockAccessLists) == SyncMode.FastBlockAccessLists && FastBlockAccessLists.HasStarted)
-            {
-                FastBlockAccessLists.LogProgress();
-            }
+            LogProgressIfActive(currentSyncMode, SyncMode.FastHeaders, FastBlocksHeaders);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastBodies, FastBlocksBodies);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastReceipts, FastBlocksReceipts);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastBlockAccessLists, FastBlockAccessLists);
         }
 
         private void WriteBeaconSyncReport() => BeaconHeaders.LogProgress();
 
         public void Dispose() => _timer.Dispose();
+
+        private static bool HasAllEnded(params ReadOnlySpan<ProgressLogger> progressLoggers)
+        {
+            foreach (ProgressLogger progressLogger in progressLoggers)
+            {
+                if (!progressLogger.HasEnded)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static void LogProgressIfActive(SyncMode currentSyncMode, SyncMode mode, ProgressLogger progressLogger)
+        {
+            if ((currentSyncMode & mode) == mode && progressLogger.HasStarted)
+            {
+                progressLogger.LogProgress();
+            }
+        }
     }
 }

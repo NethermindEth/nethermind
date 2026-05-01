@@ -674,21 +674,7 @@ public class SyncServerTests
 
         ctx.BlockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
 
-        SyncServer syncServer = new(
-            ctx.WorldStateManager,
-            new MemDb(),
-            ctx.BlockTree,
-            NullReceiptStorage.Instance,
-            blockAccessListStore,
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        SyncServer syncServer = ctx.CreateSyncServer(blockAccessListStore);
 
         syncServer.GetBlockAccessListRlp(TestItem.KeccakA).Should().BeNull();
         blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<Hash256>());
@@ -708,21 +694,7 @@ public class SyncServerTests
         ctx.BlockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
         blockAccessListStore.GetRlp(TestItem.KeccakA).Returns(expectedBal);
 
-        SyncServer syncServer = new(
-            ctx.WorldStateManager,
-            new MemDb(),
-            ctx.BlockTree,
-            NullReceiptStorage.Instance,
-            blockAccessListStore,
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        SyncServer syncServer = ctx.CreateSyncServer(blockAccessListStore);
 
         syncServer.GetBlockAccessListRlp(TestItem.KeccakA).Should().Equal(expectedBal);
     }
@@ -787,6 +759,23 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 specProvider ?? MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+        public SyncServer CreateSyncServer(IBlockAccessListStore blockAccessListStore) =>
+            new(
+                WorldStateManager,
+                new MemDb(),
+                BlockTree,
+                NullReceiptStorage.Instance,
+                blockAccessListStore,
+                Always.Valid,
+                Always.Valid,
+                PeerPool,
+                StaticSelector.Full,
+                new TestSyncConfig(),
+                Policy.FullGossip,
+                HistoryPruner,
+                MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
     }
 }
