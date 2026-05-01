@@ -302,6 +302,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ResetForHalt(ref EthereumGasPolicy gas, long initialStateReservoir, long initialStateGasUsed)
+    {
+        gas.StateReservoir = initialStateReservoir;
+        gas.StateGasUsed = initialStateGasUsed;
+        gas.StateGasSpill = 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec) =>
         spec.IsEip8037Enabled || codeInsertRefunds <= 0
             ? 0

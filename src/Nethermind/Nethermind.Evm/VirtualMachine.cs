@@ -623,24 +623,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void RefundHaltedTopLevelStateGas()
-    {
-        // EIP-8037 top-level halt: gas_left is burned, so the spilled portion of
-        // state_gas_used was paid out of gas the user can no longer reclaim. Only the
-        // reservoir-funded portion is restorable; the spilled portion is discarded from
-        // state-gas accounting so it counts only via the regular-dimension burn.
-        long stateGasFloor = _currentState.InitialStateGasUsed;
-        long stateGasSpill = TGasPolicy.GetStateGasSpill(in _currentState.Gas);
-        long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas) - stateGasSpill;
-        if (revertedStateGas > stateGasFloor)
-        {
-            TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, stateGasFloor);
-        }
-        if (stateGasSpill > 0)
-        {
-            TGasPolicy.DiscardStateGas(ref _currentState.Gas, stateGasSpill, stateGasFloor);
-        }
-    }
+    private void RefundHaltedTopLevelStateGas() =>
+        // EIP-8037 top-level halt: frame resets to (gas_left=0, reservoir=R0). All
+        // execution gas — both state gas charged from the reservoir and state gas that
+        // spilled into gas_left — is burned. The reservoir snaps back to its tx-start
+        // value and spill is zeroed; state-gas-used is reset to its intrinsic floor so a
+        // CREATE tx still bills its top-level CreateState while spentGas resolves cleanly
+        // to txGasLimit - R0.
+        TGasPolicy.ResetForHalt(ref _currentState.Gas, _currentState.InitialStateReservoir, _currentState.InitialStateGasUsed);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void CreditStateGasRefund(ref TGasPolicy gas, long amount)
