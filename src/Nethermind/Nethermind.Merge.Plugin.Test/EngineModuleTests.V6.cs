@@ -226,7 +226,7 @@ public partial class EngineModuleTests
         {
             invalidBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress)), new(Address.SystemUser)]);
         }
-        BlockAccessList invalidBal = invalidBalBuilder.TestObject;
+        ReadOnlyBlockAccessList invalidBal = invalidBalBuilder.TestObject;
 
         Block block = new(
             new(
@@ -365,7 +365,7 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
         GetPayloadV6Result res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
-        BlockAccessList bal = Rlp.Decode<BlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
 
         BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -390,7 +390,7 @@ public partial class EngineModuleTests
             expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress))]);
         }
 
-        BlockAccessList expected = expectedBalBuilder.TestObject;
+        ReadOnlyBlockAccessList expected = expectedBalBuilder.TestObject;
         Assert.That(bal, Is.EqualTo(expected));
     }
 
@@ -590,7 +590,7 @@ public partial class EngineModuleTests
             }
         }
 
-        BlockAccessList CreateBlockAccessList()
+        ReadOnlyBlockAccessList CreateBlockAccessList()
         {
             AccountChangesBuilder newContractAccount = Build.An.AccountChanges
                 .WithAddress(newContractAddress)
@@ -834,12 +834,12 @@ public partial class EngineModuleTests
         payload.ExecutionRequests = payloadResult.Data!.ExecutionRequests;
         BlockDecodingResult blockResult = payload.TryGetBlock();
         Block block = blockResult.Block!;
-        BlockAccessList validBal = block.BlockAccessList!;
+        ReadOnlyBlockAccessList validBal = block.BlockAccessList!;
 
-        SortedDictionary<Address, AccountChanges> modifiedAccounts = new();
+        SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = new();
         Address senderAddress = TestItem.AddressA;
 
-        BlockAccessList modifiedBal = CreateBlockAccessList();
+        ReadOnlyBlockAccessList modifiedBal = CreateBlockAccessList();
         byte[] modifiedBalRlp = Rlp.Encode(modifiedBal).Bytes;
         block.BlockAccessList = modifiedBal;
         block.EncodedBlockAccessList = modifiedBalRlp;
@@ -848,9 +848,9 @@ public partial class EngineModuleTests
 
         return (chain, ExecutionPayloadV4.Create(block));
 
-        BlockAccessList CreateBlockAccessList()
+        ReadOnlyBlockAccessList CreateBlockAccessList()
         {
-            foreach (AccountChanges ac in validBal.AccountChanges)
+            foreach (ReadOnlyAccountChanges ac in validBal.AccountChanges)
             {
                 if (errorKind is not BalErrorKind.MissingChange || ac.Address != senderAddress)
                 {
@@ -867,52 +867,58 @@ public partial class EngineModuleTests
 
             if (errorKind is BalErrorKind.SurplusChange)
             {
-                SortedList<int, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
-                modifiedAccounts[TestItem.AddressF] = new AccountChanges(
-                    TestItem.AddressF, new(), new SortedSet<UInt256>(), new(), fakeNonce, new());
+                NonceChange[] fakeNonce = [new NonceChange(1, 5)];
+                modifiedAccounts[TestItem.AddressF] = new ReadOnlyAccountChanges(
+                    TestItem.AddressF, [], [], [], fakeNonce, []);
             }
 
             if (errorKind is BalErrorKind.SurplusReads)
             {
-                AccountChanges entry = modifiedAccounts[senderAddress];
-                for (ulong i = 1_000_000; i < 1_000_100; i++)
-                    entry.AddStorageRead(new UInt256(i));
+                ReadOnlyAccountChanges entry = modifiedAccounts[senderAddress];
+                UInt256[] extraReads = new UInt256[100];
+                for (int i = 0; i < extraReads.Length; i++)
+                {
+                    extraReads[i] = new UInt256((ulong)(1_000_000 + i));
+                }
+                modifiedAccounts[senderAddress] = CloneAccountChanges(entry, storageReadsOverride: [.. entry.StorageReads, .. extraReads]);
             }
 
-            BlockAccessList blockAccessList = new(modifiedAccounts);
-            return blockAccessList;
+            ReadOnlyAccountChanges[] orderedAccounts = new ReadOnlyAccountChanges[modifiedAccounts.Count];
+            int itemCount = 0;
+            int idx = 0;
+            foreach (KeyValuePair<Address, ReadOnlyAccountChanges> kv in modifiedAccounts)
+            {
+                orderedAccounts[idx++] = kv.Value;
+                itemCount += 1 + kv.Value.StorageChanges.Length + kv.Value.StorageReads.Length;
+            }
+            return new ReadOnlyBlockAccessList(orderedAccounts, itemCount);
         }
     }
 
-    private static AccountChanges CloneAccountChanges(AccountChanges ac, Func<BalanceChange, BalanceChange>? balanceModifier = null)
+    private static ReadOnlyAccountChanges CloneAccountChanges(
+        ReadOnlyAccountChanges ac,
+        Func<BalanceChange, BalanceChange>? balanceModifier = null,
+        UInt256[]? storageReadsOverride = null)
     {
-        SortedList<UInt256, SlotChanges> storageChanges = new();
-        foreach (SlotChanges sc in ac.StorageChanges)
+        ReadOnlySlotChanges[] storageChanges = new ReadOnlySlotChanges[ac.StorageChanges.Length];
+        for (int i = 0; i < storageChanges.Length; i++)
         {
-            SortedList<int, StorageChange> changes = new();
-            foreach (KeyValuePair<int, StorageChange> kvp in sc.Changes)
-                changes.Add(kvp.Key, kvp.Value);
-
-            storageChanges.Add(sc.Key, sc with { Changes = changes });
+            ReadOnlySlotChanges sc = ac.StorageChanges[i];
+            storageChanges[i] = new ReadOnlySlotChanges(sc.Key, [.. sc.Changes]);
         }
 
-        SortedSet<UInt256> storageReads = new(ac.StorageReads);
+        UInt256[] storageReads = storageReadsOverride ?? [.. ac.StorageReads];
 
-        SortedList<int, BalanceChange> balanceChanges = new();
-        foreach (BalanceChange bc in ac.BalanceChanges)
+        BalanceChange[] balanceChanges = new BalanceChange[ac.BalanceChanges.Length];
+        for (int i = 0; i < ac.BalanceChanges.Length; i++)
         {
-            BalanceChange modified = balanceModifier?.Invoke(bc) ?? bc;
-            balanceChanges.Add(modified.Index, modified);
+            BalanceChange bc = ac.BalanceChanges[i];
+            balanceChanges[i] = balanceModifier?.Invoke(bc) ?? bc;
         }
 
-        SortedList<int, NonceChange> nonceChanges = new();
-        foreach (NonceChange nc in ac.NonceChanges)
-            nonceChanges.Add(nc.Index, nc);
+        NonceChange[] nonceChanges = [.. ac.NonceChanges];
+        CodeChange[] codeChanges = [.. ac.CodeChanges];
 
-        SortedList<int, CodeChange> codeChanges = new();
-        foreach (CodeChange cc in ac.CodeChanges)
-            codeChanges.Add(cc.Index, cc);
-
-        return new AccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
+        return new ReadOnlyAccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }
 }

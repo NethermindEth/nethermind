@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test;
 /// <summary>
 /// Tests for EIP-7928 Block Access Lists.
 /// Verifies that executing EVM code correctly records state accesses into a
-/// <see cref="BlockAccessList"/> via <see cref="TracedAccessWorldState"/>.
+/// <see cref="BlockAccessListAtIndex"/> via <see cref="TracedAccessWorldState"/>.
 /// </summary>
 [TestFixture(false)]
 [TestFixture(true)]
@@ -62,7 +62,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         bool useParallel = parallelOverride ?? parallel;
         TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
         ILogManager logManager = LimboLogs.Instance;
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
@@ -72,17 +72,56 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         return (tracedState, processor);
     }
 
-    private static void AssertPureAccountRead(AccountChanges? accountChanges)
+    private static void AssertPureAccountRead(AccountChangesAtIndex? accountChanges)
     {
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.BalanceChanges, Is.Empty);
-        Assert.That(accountChanges.NonceChanges, Is.Empty);
-        Assert.That(accountChanges.CodeChanges, Is.Empty);
+        Assert.That(accountChanges!.BalanceChange, Is.Null);
+        Assert.That(accountChanges.NonceChange, Is.Null);
+        Assert.That(accountChanges.CodeChange, Is.Null);
+    }
+
+    /// <summary>
+    /// Asserts equality between an expected <see cref="ReadOnlyAccountChanges"/> (single-index
+    /// expectations) and the produced <see cref="AccountChangesAtIndex"/>. The traced state
+    /// always operates at index 0 in these tests, so each scalar change list has at most one
+    /// entry.
+    /// </summary>
+    private static void AssertEqual(ReadOnlyAccountChanges expected, AccountChangesAtIndex? actual)
+    {
+        Assert.That(actual, Is.Not.Null);
+        Assert.That(actual!.Address, Is.EqualTo(expected.Address));
+
+        Assert.That(actual.BalanceChange, expected.BalanceChanges.Length == 0
+            ? Is.Null
+            : Is.EqualTo((BalanceChange?)expected.BalanceChanges[0]));
+        Assert.That(actual.NonceChange, expected.NonceChanges.Length == 0
+            ? Is.Null
+            : Is.EqualTo((NonceChange?)expected.NonceChanges[0]));
+        Assert.That(actual.CodeChange, expected.CodeChanges.Length == 0
+            ? Is.Null
+            : Is.EqualTo((CodeChange?)expected.CodeChanges[0]));
+
+        // Compare storage changes (one entry per slot, all at index 0).
+        Dictionary<UInt256, StorageChange> actualStorage = [];
+        foreach (KeyValuePair<UInt256, StorageChange> kv in actual.StorageChanges)
+        {
+            actualStorage[kv.Key] = kv.Value;
+        }
+        Assert.That(actualStorage.Count, Is.EqualTo(expected.StorageChanges.Length));
+        foreach (ReadOnlySlotChanges slot in expected.StorageChanges)
+        {
+            Assert.That(actualStorage.TryGetValue(slot.Key, out StorageChange actualChange), Is.True);
+            // Expected slot has exactly one change.
+            StorageChange expectedChange = slot.Changes[0];
+            Assert.That(actualChange, Is.EqualTo(expectedChange));
+        }
+
+        Assert.That(actual.StorageReads, Is.EquivalentTo(expected.StorageReads));
     }
 
     [TestCaseSource(nameof(CodeTestSource))]
     public async Task Constructs_BAL_when_processing_code(
-        IEnumerable<AccountChanges> expected,
+        IEnumerable<ReadOnlyAccountChanges> expected,
         byte[] code,
         byte[]? extraCode,
         bool revert)
@@ -110,7 +149,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = processor.Execute(createTx, callOutputTracer);
-        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
         UInt256 newBalance = _accountBalance - gasUsed;
@@ -118,30 +157,30 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         {
             newBalance -= value;
         }
-        AccountChanges accountChangesA = Build.An.AccountChanges
+        ReadOnlyAccountChanges accountChangesA = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
             .WithBalanceChanges([new(0, newBalance)])
             .WithNonceChanges([new(0, 1)]).TestObject;
-        AccountChanges accountChangesZero = Build.An.AccountChanges.WithBalanceChanges([new(0, gasUsed)]).TestObject;
+        ReadOnlyAccountChanges accountChangesZero = Build.An.AccountChanges.WithBalanceChanges([new(0, gasUsed)]).TestObject;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res.TransactionExecuted);
-            Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
-            Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.AccountChanges, Has.Count.EqualTo(expected.Count() + 2));
+            AssertEqual(accountChangesA, bal.GetAccountChanges(TestItem.AddressA));
+            AssertEqual(accountChangesZero, bal.GetAccountChanges(Address.Zero));
+            Assert.That(bal.AccountCount, Is.EqualTo(expected.Count() + 2));
         }
 
-        foreach (AccountChanges expectedAccountChanges in expected)
+        foreach (ReadOnlyAccountChanges expectedAccountChanges in expected)
         {
-            AccountChanges actual = bal.GetAccountChanges(expectedAccountChanges.Address);
-            Assert.That(actual, Is.EqualTo(expectedAccountChanges));
+            AccountChangesAtIndex? actual = bal.GetAccountChanges(expectedAccountChanges.Address);
+            AssertEqual(expectedAccountChanges, actual);
         }
     }
 
     [TestCaseSource(nameof(ExceptionTestSource))]
     public async Task Constructs_BAL_when_processing_code_exception(
-        IEnumerable<AccountChanges> expected,
+        IEnumerable<ReadOnlyAccountChanges> expected,
         byte[] code,
         byte[]? extraCode,
         long executionGas,
@@ -169,27 +208,27 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = processor.Execute(createTx, callOutputTracer);
-        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
-        AccountChanges accountChangesA = Build.An.AccountChanges
+        ReadOnlyAccountChanges accountChangesA = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
             .WithBalanceChanges([new(0, _accountBalance - gasUsed)])
             .WithNonceChanges([new(0, 1)]).TestObject;
-        AccountChanges accountChangesZero = Build.An.AccountChanges.WithBalanceChanges([new(0, gasUsed)]).TestObject;
+        ReadOnlyAccountChanges accountChangesZero = Build.An.AccountChanges.WithBalanceChanges([new(0, gasUsed)]).TestObject;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res.EvmExceptionType, Is.EqualTo(expectedException));
-            Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
-            Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.AccountChanges, Has.Count.EqualTo(expected.Count() + 2));
+            AssertEqual(accountChangesA, bal.GetAccountChanges(TestItem.AddressA));
+            AssertEqual(accountChangesZero, bal.GetAccountChanges(Address.Zero));
+            Assert.That(bal.AccountCount, Is.EqualTo(expected.Count() + 2));
         }
 
-        foreach (AccountChanges expectedAccountChanges in expected)
+        foreach (ReadOnlyAccountChanges expectedAccountChanges in expected)
         {
-            AccountChanges actual = bal.GetAccountChanges(expectedAccountChanges.Address);
-            Assert.That(actual, Is.EqualTo(expectedAccountChanges));
+            AccountChangesAtIndex? actual = bal.GetAccountChanges(expectedAccountChanges.Address);
+            AssertEqual(expectedAccountChanges, actual);
         }
     }
 
@@ -233,14 +272,14 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         get
         {
-            IEnumerable<AccountChanges> changes;
+            IEnumerable<ReadOnlyAccountChanges> changes;
             UInt256 slot = _delegationSlot;
             byte[] code = Prepare.EvmCode
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            AccountChanges readAccount = Build.An.AccountChanges
+            ReadOnlyAccountChanges readAccount = Build.An.AccountChanges
                 .WithAddress(_testAddress)
                 .WithStorageReads(slot)
                 .WithNonceChanges([new(0, 1)])
@@ -277,12 +316,12 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.BALANCE)
                 .Done;
-            AccountChanges testAccount = Build.An.AccountChanges
+            ReadOnlyAccountChanges testAccount = Build.An.AccountChanges
                 .WithAddress(_testAddress)
                 .WithNonceChanges([new(0, 1)])
                 .WithBalanceChanges([new(0, _testAccountBalance)])
                 .TestObject;
-            AccountChanges emptyBAccount = new(TestItem.AddressB);
+            ReadOnlyAccountChanges emptyBAccount = new(TestItem.AddressB);
             changes = [testAccount, emptyBAccount];
             yield return new TestCaseData(changes, code, null, false) { TestName = "balance" };
 
@@ -376,7 +415,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                     .WithAddress(_callTargetAddress)
                     .WithStorageReads(_delegationSlot)
                     .TestObject,
-                new AccountChanges(_delegationTargetAddress)
+                new ReadOnlyAccountChanges(_delegationTargetAddress)
             ];
             yield return new TestCaseData(changes, code, null, false) { TestName = "delegated_account" };
 
@@ -428,7 +467,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                     .WithBalanceChanges([new(0, _testAccountBalance)])
                     .WithStorageReads(slot)
                     .TestObject,
-                new AccountChanges(_callTargetAddress)
+                new ReadOnlyAccountChanges(_callTargetAddress)
             ];
             // storage read happens in test account context
             yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "callcode" };
@@ -443,7 +482,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                     .WithBalanceChanges([new(0, _testAccountBalance)])
                     .WithStorageReads(slot)
                     .TestObject,
-                new AccountChanges(_callTargetAddress)
+                new ReadOnlyAccountChanges(_callTargetAddress)
             ];
             // storage read happens in test account context
             yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "delegatecall" };
@@ -526,12 +565,12 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         get
         {
-            IEnumerable<AccountChanges> changes;
+            IEnumerable<ReadOnlyAccountChanges> changes;
             byte[] code;
             UInt256 slot = _delegationSlot;
-            AccountChanges testAccount = new(_testAddress);
-            AccountChanges addressB = new(TestItem.AddressB);
-            AccountChanges callTarget = new(_callTargetAddress);
+            ReadOnlyAccountChanges testAccount = new(_testAddress);
+            ReadOnlyAccountChanges addressB = new(TestItem.AddressB);
+            ReadOnlyAccountChanges callTarget = new(_callTargetAddress);
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -980,7 +1019,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
     {
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
 
@@ -989,7 +1028,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.Null);
-            AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(new(address)));
+            AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(new(address)));
         }
     }
 
@@ -1039,7 +1078,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress);
@@ -1049,8 +1088,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
             Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(targetCode));
             // Both the delegated account and the delegation target are traced as account reads in the BAL
-            Assert.That(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(delegatedAccount), Is.Not.Null);
-            Assert.That(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(delegationTarget), Is.Not.Null);
+            Assert.That(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(delegatedAccount), Is.Not.Null);
+            Assert.That(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(delegationTarget), Is.Not.Null);
         }
     }
 
@@ -1068,7 +1107,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
 
         CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);
@@ -1078,7 +1117,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
             Assert.That(delegationAddress, Is.Null);
             // GetCachedCodeInfo records a pure account read even through the cache layer
-            AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressB));
+            AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressB));
         }
     }
 

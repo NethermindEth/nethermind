@@ -305,9 +305,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<JsonNode> eth_config();
 
         [JsonRpcMethod(Description = "Retrieves block access list for a block by hash.")]
-        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
+        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
 
         [JsonRpcMethod(Description = "Retrieves block access list for a block by number.")]
-        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long number);
+        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(long number);
     }
 }

@@ -52,7 +52,7 @@ public class BlockAccessListManager(
             (innerException as InvalidTransactionException)?.Reason
                 ?? TransactionResult.ErrorType.MalformedTransaction.WithDetail($"Parallel execution failure: {innerException.Message}"),
             innerException);
-    public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
     private BlockExecutionContext? _blockExecutionContext;
@@ -218,11 +218,11 @@ public class BlockAccessListManager(
         }
     }
 
-    public static void ApplyStateChanges(BlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
+    public static void ApplyStateChanges(ReadOnlyBlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
-        foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].Index != -1)
+            if (accountChanges.BalanceChanges.Length > 0 && accountChanges.BalanceChanges[^1].Index != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
@@ -237,25 +237,25 @@ public class BlockAccessListManager(
                 }
             }
 
-            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].Index != -1)
+            if (accountChanges.NonceChanges.Length > 0 && accountChanges.NonceChanges[^1].Index != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
             }
 
-            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].Index != -1)
+            if (accountChanges.CodeChanges.Length > 0 && accountChanges.CodeChanges[^1].Index != -1)
             {
                 stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
             }
 
-            foreach (SlotChanges slotChange in accountChanges.StorageChanges)
+            foreach (ReadOnlySlotChanges slotChange in accountChanges.StorageChanges)
             {
                 StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
                 // could be empty since prestate loaded
-                int slotCount = slotChange.Changes.Count;
-                if (slotCount > 0 && slotChange.Changes.Keys[slotCount - 1] != -1)
+                int slotCount = slotChange.Changes.Length;
+                if (slotCount > 0 && slotChange.Changes[^1].Index != -1)
                 {
-                    stateProvider.Set(storageCell, [.. slotChange.Changes.Values[slotCount - 1].Value.ToBigEndian().WithoutLeadingZeros()]);
+                    stateProvider.Set(storageCell, [.. slotChange.Changes[^1].Value.ToBigEndian().WithoutLeadingZeros()]);
                 }
             }
         }
@@ -433,32 +433,29 @@ public class BlockAccessListManager(
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 
-    private void LoadPreStateToSuggestedBlockAccessList(BlockAccessList bal)
+    private void LoadPreStateToSuggestedBlockAccessList(ReadOnlyBlockAccessList bal)
     {
-        foreach (AccountChanges accountChanges in bal.AccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
-            // check if changed before loading prestate
-            accountChanges.CheckWasChanged();
+            // record whether the account was modified before any prestate is added
+            accountChanges.RecordWasChanged();
 
             bool exists = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
-            accountChanges.ExistedBeforeBlock = exists;
-            accountChanges.EmptyBeforeBlock = !account.HasStorage;
+            accountChanges.SetExistedBeforeBlock(exists);
+            accountChanges.SetEmptyBeforeBlock(!account.HasStorage);
 
-            accountChanges.AddBalanceChange(new(-1, account.Balance));
-            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
-            accountChanges.AddCodeChange(new(-1, stateProvider.GetCode(accountChanges.Address)));
+            accountChanges.LoadPreStateBalance(account.Balance);
+            accountChanges.LoadPreStateNonce((ulong)account.Nonce);
+            accountChanges.LoadPreStateCode(stateProvider.GetCode(accountChanges.Address) ?? []);
 
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            // snapshot keys to avoid modifying the slot collection during iteration
+            // (LoadPreStateStorage can insert a new ReadOnlySlotChanges for a previously read-only slot)
+            UInt256[] slotsToLoad = [.. accountChanges.GetSlotsForPreStateLoad()];
+            foreach (UInt256 slot in slotsToLoad)
             {
-                StorageCell storageCell = new(accountChanges.Address, slotChanges.Key);
-                slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
-            }
-
-            foreach (UInt256 storageRead in accountChanges.StorageReads)
-            {
-                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead);
-                StorageCell storageCell = new(accountChanges.Address, storageRead);
-                slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
+                StorageCell storageCell = new(accountChanges.Address, slot);
+                UInt256 value = new(stateProvider.Get(storageCell), true);
+                accountChanges.LoadPreStateStorage(slot, value);
             }
         }
     }
@@ -495,7 +492,7 @@ public class BlockAccessListManager(
         TxProcessorWithWorldState GetPostExecution() => Get(int.MaxValue);
         void NextTransaction();
         void Rollback();
-        void MergeAndReturnBal(int balIndex, BlockAccessList target);
+        void MergeAndReturnBal(int balIndex, GeneratedBlockAccessList target);
     }
 
     private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
@@ -508,10 +505,10 @@ public class BlockAccessListManager(
 
         static ParallelTxProcessorWithWorldStateManager()
         {
-            StaticPool<BlockAccessList>.SetMaxPooledCount(BalPoolSize);
+            StaticPool<BlockAccessListAtIndex>.SetMaxPooledCount(BalPoolSize);
             for (int i = 0; i < BalPoolSize; i++)
             {
-                StaticPool<BlockAccessList>.Return(new());
+                StaticPool<BlockAccessListAtIndex>.Return(new());
             }
         }
 
@@ -523,7 +520,7 @@ public class BlockAccessListManager(
         private TxProcessorWithWorldState?[] _inUse = new TxProcessorWithWorldState?[DefaultTxCount];
 
         // _perTxBal[i] holds its detached BAL until the validator merges it in order.
-        private BlockAccessList?[] _perTxBal = new BlockAccessList?[DefaultTxCount];
+        private BlockAccessListAtIndex?[] _perTxBal = new BlockAccessListAtIndex?[DefaultTxCount];
 
         // processors are not shared statically between BAL managers
         private readonly ConcurrentQueue<TxProcessorWithWorldState> _processors = [];
@@ -575,7 +572,7 @@ public class BlockAccessListManager(
             TxProcessorWithWorldState processor = RentProcessor();
 
             // Install a fresh BAL before Setup so the worker has somewhere to record changes.
-            processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessList>.Rent());
+            processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessListAtIndex>.Rent());
             processor.Setup(_currentBlock, _currentCtx, balIndex.Value);
             _inUse[balIndex.Value] = processor;
             return processor;
@@ -599,18 +596,18 @@ public class BlockAccessListManager(
         /// <summary>Merges the per-tx BAL into <paramref name="target"/> in caller-controlled
         /// order, then returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also
         /// detaches the BAL for pre/post callers that never went through Return.</summary>
-        public void MergeAndReturnBal(int balIndex, BlockAccessList target)
+        public void MergeAndReturnBal(int balIndex, GeneratedBlockAccessList target)
         {
             balIndex = ClampBalIndex(balIndex);
 
             Return(balIndex);
 
-            BlockAccessList? source = _perTxBal[balIndex];
+            BlockAccessListAtIndex? source = _perTxBal[balIndex];
             if (source is null) return;
 
             target.Merge(source);
             _perTxBal[balIndex] = null;
-            StaticPool<BlockAccessList>.Return(source);
+            StaticPool<BlockAccessListAtIndex>.Return(source);
         }
 
         public void NextTransaction() { }
@@ -649,14 +646,18 @@ public class BlockAccessListManager(
                 if (_inUse[i] is not null) Return(i);
 
             for (int i = 0; i < previousSize; i++)
-                if (_perTxBal[i] is { } bal) StaticPool<BlockAccessList>.Return(bal);
+            {
+                if (_perTxBal[i] is { } bal)
+                {
+                    StaticPool<BlockAccessListAtIndex>.Return(bal);
+                    _perTxBal[i] = null;
+                }
+            }
 
             if (_inUse.Length < size)
                 Array.Resize(ref _inUse, Math.Max(2 * _inUse.Length, size));
             if (_perTxBal.Length < size)
                 Array.Resize(ref _perTxBal, Math.Max(2 * _perTxBal.Length, size));
-            Array.Clear(_inUse);
-            Array.Clear(_perTxBal);
         }
 
     }
@@ -689,7 +690,7 @@ public class BlockAccessListManager(
 
         public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
 
-        public void MergeAndReturnBal(int _, BlockAccessList target)
+        public void MergeAndReturnBal(int _, GeneratedBlockAccessList target)
             => _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
     }
 

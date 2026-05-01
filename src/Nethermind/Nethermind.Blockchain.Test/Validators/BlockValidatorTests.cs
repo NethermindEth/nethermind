@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
 
@@ -220,8 +221,8 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new())
-                .WithEncodedBlockAccessList(Rlp.Encode(new BlockAccessList()).Bytes).TestObject,
+                .WithBlockAccessList(new ReadOnlyBlockAccessList())
+                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
             "InvalidBlockLevelAccessListHash")
@@ -232,7 +233,7 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new())
+                .WithBlockAccessList(new ReadOnlyBlockAccessList())
                 .WithEncodedBlockAccessList([0xfa]).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
@@ -244,7 +245,7 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new()).TestObject,
+                .WithBlockAccessList(new ReadOnlyBlockAccessList()).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
             "BlockLevelAccessListNotEnabled")
@@ -268,7 +269,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
         byte[] encodedBal = Rlp.Encode(bal).Bytes;
         Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
         Block suggestedBlock = Build.A.Block
@@ -305,7 +306,7 @@ public class BlockValidatorTests
         // ValidateBlockLevelAccessList is gated on a non-null BAL and therefore skipped, so
         // ValidateProcessedBlock must catch the floor against the BAL produced during execution.
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
         byte[] encodedBal = Rlp.Encode(bal).Bytes;
         Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
 
@@ -326,7 +327,22 @@ public class BlockValidatorTests
             .WithEncodedBlockAccessList(encodedBal)
             .WithBlockAccessListHash(balHash)
             .TestObject;
-        processedBlock.GeneratedBlockAccessList = bal;
+        // Build a GeneratedBlockAccessList with the same shape as the suggested BAL so the
+        // ItemCount-based gas-limit boundary check exercises the generated path identically.
+        GeneratedBlockAccessList generated = new();
+        BlockAccessListAtIndex contribution = new();
+        contribution.AddStorageChange(Eip2935Constants.BlockHashHistoryAddress, 0, 0, new UInt256(parent.Hash!.BytesToArray(), isBigEndian: true));
+        UInt256 eip4788Slot1 = 12u % Eip4788Constants.RingBufferSize;
+        UInt256 eip4788Slot2 = (12u % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
+        contribution.AddStorageChange(Eip4788Constants.BeaconRootsAddress, eip4788Slot1, 0, 12);
+        contribution.AddStorageRead(Eip4788Constants.BeaconRootsAddress, eip4788Slot2);
+        for (UInt256 i = 0; i < 4; i++)
+        {
+            contribution.AddStorageRead(Eip7002Constants.WithdrawalRequestPredeployAddress, i);
+            contribution.AddStorageRead(Eip7251Constants.ConsolidationRequestPredeployAddress, i);
+        }
+        generated.Merge(contribution);
+        processedBlock.GeneratedBlockAccessList = generated;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);

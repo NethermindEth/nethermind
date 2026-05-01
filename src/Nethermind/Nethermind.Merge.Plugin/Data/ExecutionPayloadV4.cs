@@ -39,7 +39,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         {
             try
             {
-                block.BlockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
+                block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(BlockAccessList);
             }
             catch (RlpException e)
             {

@@ -311,9 +311,12 @@ public class BlockProcessorTests
             new WithdrawalProcessorFactory(LimboLogs.Instance));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
-        BlockAccessList suggestedBal = new();
-        suggestedBal.AddAccountRead(TestItem.AddressA);
-        suggestedBal.AddStorageRead(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(1)
+                .TestObject)
+            .TestObject;
 
         Block block = Build.A.Block
             .WithNumber(1)
@@ -325,7 +328,9 @@ public class BlockProcessorTests
         balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
         balManager.Setup(block);
         // Generated BAL has the account but no storage reads
-        balManager.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressA);
+        BlockAccessListAtIndex generatedAtIndex = new();
+        generatedAtIndex.AddAccountRead(TestItem.AddressA);
+        balManager.GeneratedBlockAccessList.Merge(generatedAtIndex);
 
         if (shouldThrow)
         {

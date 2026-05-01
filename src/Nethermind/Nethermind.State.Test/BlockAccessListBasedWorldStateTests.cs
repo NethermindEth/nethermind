@@ -21,7 +21,7 @@ namespace Nethermind.Store.Test;
 
 /// <summary>
 /// Tests for <see cref="BlockAccessListBasedWorldState"/> — verifies that state reads
-/// are served from the suggested <see cref="BlockAccessList"/> and that missing entries throw.
+/// are served from the suggested <see cref="ReadOnlyBlockAccessList"/> and that missing entries throw.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
@@ -30,20 +30,9 @@ public class BlockAccessListBasedWorldStateTests
     private static readonly IReleaseSpec Spec = Amsterdam.Instance;
     private static readonly ILogManager Logger = LimboLogs.Instance;
 
-    /// <summary>
-    /// Creates a <see cref="BlockAccessListBasedWorldState"/> backed by a real inner state,
-    /// with a suggested <see cref="BlockAccessList"/> populated via <paramref name="balSetup"/>.
-    /// The inner state is initialized via <paramref name="genesisSetup"/>.
-    /// </summary>
-    private static AccountChanges AddAccountRead(BlockAccessList bal, Address address)
-    {
-        bal.AddAccountRead(address);
-        return bal.GetAccountChanges(address)!;
-    }
-
     private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
         int blockAccessIndex,
-        Action<BlockAccessList> balSetup,
+        ReadOnlyBlockAccessList suggestedBal,
         Action<IWorldState>? genesisSetup = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
@@ -57,8 +46,6 @@ public class BlockAccessListBasedWorldStateTests
         }
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
-        BlockAccessList suggestedBal = new();
-        balSetup(suggestedBal);
 
         BlockAccessListBasedWorldState bws = new(inner, Logger);
         bws.SetBlockAccessIndex(blockAccessIndex);
@@ -71,11 +58,16 @@ public class BlockAccessListBasedWorldStateTests
     [Test]
     public void GetBalance_ReturnsValueFromSuggestedBal()
     {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(-1, 100))
+                .TestObject)
+            .TestObject;
+
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 0,
-            balSetup: bal =>
-                AddAccountRead(bal, TestItem.AddressA)
-                    .AddBalanceChange(new BalanceChange(-1, 100)),
+            suggestedBal: bal,
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
         using (scope)
         {
@@ -86,14 +78,16 @@ public class BlockAccessListBasedWorldStateTests
     [Test]
     public void GetBalance_WithPriorTxChange_ReturnsUpdatedBalance()
     {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(-1, 100), new BalanceChange(0, 200))
+                .TestObject)
+            .TestObject;
+
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 1,
-            balSetup: bal =>
-            {
-                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                ac.AddBalanceChange(new BalanceChange(-1, 100));
-                ac.AddBalanceChange(new BalanceChange(0, 200));
-            },
+            suggestedBal: bal,
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
         using (scope)
         {
@@ -104,14 +98,16 @@ public class BlockAccessListBasedWorldStateTests
     [Test]
     public void GetNonce_WithPriorTxChange_ReturnsUpdatedNonce()
     {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithNonceChanges(new NonceChange(-1, 0), new NonceChange(0, 3))
+                .TestObject)
+            .TestObject;
+
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 1,
-            balSetup: bal =>
-            {
-                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                ac.AddNonceChange(new NonceChange(-1, 0));
-                ac.AddNonceChange(new NonceChange(0, 3));
-            },
+            suggestedBal: bal,
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
@@ -123,11 +119,16 @@ public class BlockAccessListBasedWorldStateTests
     public void GetCode_WithPriorTxChange_ReturnsPriorTxCode()
     {
         byte[] priorTxCode = [0xAA, 0xBB];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(0, priorTxCode))
+                .TestObject)
+            .TestObject;
+
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 1,
-            balSetup: bal =>
-                AddAccountRead(bal, TestItem.AddressA)
-                    .AddCodeChange(new CodeChange(0, priorTxCode)),
+            suggestedBal: bal,
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
@@ -139,15 +140,16 @@ public class BlockAccessListBasedWorldStateTests
     public void GetStorage_WithPriorTxChange_ReturnsPriorTxValue()
     {
         StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(cell.Index, new StorageChange(0, 99u))
+                .TestObject)
+            .TestObject;
+
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 1,
-            balSetup: bal =>
-            {
-                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                bal.AddStorageRead(cell);
-                ac.GetOrAddSlotChanges(cell.Index)
-                    .AddStorageChange(new StorageChange(0, 99u));
-            },
+            suggestedBal: bal,
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
@@ -159,16 +161,17 @@ public class BlockAccessListBasedWorldStateTests
     [Test]
     public void AccountExists_ExistedBeforeBlock_ReturnsTrue()
     {
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithNonceChanges(new NonceChange(-1, 0))
+            .WithBalanceChanges(new BalanceChange(-1, 1))
+            .TestObject;
+        ac.SetExistedBeforeBlock(true);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
+
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 0,
-            balSetup: bal =>
-            {
-                // The account exists if we can resolve it in the BAL
-                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                ac.AddNonceChange(new NonceChange(-1, 0));
-                ac.AddBalanceChange(new BalanceChange(-1, 1));
-                ac.ExistedBeforeBlock = true;
-            },
+            suggestedBal: bal,
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 1));
         using (scope)
         {
@@ -177,20 +180,32 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
-    public void AccountExists_OnlyPrestateEntryAndNotExistedBeforeBlock_ReturnsFalse()
+    public void AccountExists_CreatedAtLaterTx_ReturnsFalseForEarlierIndex()
     {
-        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+        // Account is first touched at tx 2 (balance change at index 2). For tx 1's world state,
+        // calling AccountExists(1) must return false even though prestate is loaded at index -1.
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(-1, 0), new BalanceChange(2, 100))
+            .WithNonceChanges(new NonceChange(-1, 0))
+            .TestObject;
+        // ExistedBeforeBlock = false (default) — account did not exist at start of block.
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
+
+        (BlockAccessListBasedWorldState bwsAtIndex1, IDisposable scope1) = CreateBlockAccessListState(
             blockAccessIndex: 1,
-            balSetup: bal =>
-            {
-                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
-                ac.AddNonceChange(new NonceChange(-1, 0));
-                ac.AddBalanceChange(new BalanceChange(-1, 0));
-                ac.ExistedBeforeBlock = false;
-            });
-        using (scope)
+            suggestedBal: bal);
+        using (scope1)
         {
-            Assert.That(bws.AccountExists(TestItem.AddressA), Is.False);
+            Assert.That(bwsAtIndex1.AccountExists(TestItem.AddressA), Is.False);
+        }
+
+        (BlockAccessListBasedWorldState bwsAtIndex3, IDisposable scope3) = CreateBlockAccessListState(
+            blockAccessIndex: 3,
+            suggestedBal: bal);
+        using (scope3)
+        {
+            Assert.That(bwsAtIndex3.AccountExists(TestItem.AddressA), Is.True);
         }
     }
 
@@ -199,7 +214,7 @@ public class BlockAccessListBasedWorldStateTests
     {
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 0,
-            balSetup: _ => { }); // empty BAL
+            suggestedBal: new ReadOnlyBlockAccessList());
         using (scope)
         {
             Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() =>
