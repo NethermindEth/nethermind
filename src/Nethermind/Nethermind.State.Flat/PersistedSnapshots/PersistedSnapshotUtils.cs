@@ -302,7 +302,7 @@ internal static class PersistedSnapshotUtils
                 while (addrEnum.MoveNext())
                 {
                     ReadOnlySpan<byte> addrKey = SliceFromBound(compactedData, addrEnum.Current.KeyBound);
-                    Address address = new(addrKey.ToArray());
+                    Address address = new(addrKey);
                     ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
 
                     // Validate account sub-tag (0x03)
@@ -435,7 +435,7 @@ internal static class PersistedSnapshotUtils
                         ReadOnlySpan<byte> key = SliceFromBound(compactedData, e.Current.KeyBound);
                         ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, e.Current.ValueBound);
                         ReadOnlySpan<byte> value = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
-                        TreePath path = new(new Hash256(key[..32].ToArray()), key[32]);
+                        TreePath path = new(new Hash256(key[..32]), key[32]);
 
                         byte[]? bundleRlp = bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
                         if (!value.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
@@ -458,7 +458,7 @@ internal static class PersistedSnapshotUtils
 
                         fullHashBytes.Clear();
                         addrHashPrefix.CopyTo(fullHashBytes);
-                        Hash256 addrHash = new(fullHashBytes.ToArray());
+                        Hash256 addrHash = new(fullHashBytes);
 
                         using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerBound);
                         while (innerEnum.MoveNext())
@@ -490,7 +490,7 @@ internal static class PersistedSnapshotUtils
 
                         fullHashBytesFb.Clear();
                         addrHashPrefix.CopyTo(fullHashBytesFb);
-                        Hash256 addrHash = new(fullHashBytesFb.ToArray());
+                        Hash256 addrHash = new(fullHashBytesFb);
 
                         using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerBound);
                         while (innerEnum.MoveNext())
@@ -498,7 +498,7 @@ internal static class PersistedSnapshotUtils
                             ReadOnlySpan<byte> pathKey = SliceFromBound(compactedData, innerEnum.Current.KeyBound);
                             ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, innerEnum.Current.ValueBound);
                             ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
-                            TreePath path = new(new Hash256(pathKey[..32].ToArray()), pathKey[32]);
+                            TreePath path = new(new Hash256(pathKey[..32]), pathKey[32]);
 
                             byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
                             if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
