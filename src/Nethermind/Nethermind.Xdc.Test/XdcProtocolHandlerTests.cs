@@ -23,7 +23,6 @@ using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
@@ -302,8 +301,8 @@ public class XdcProtocolHandlerTests
     [Test]
     public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes()
     {
-        // XdcProtocolHandler extends Eth63, so tx gossip must go via TransactionsMessage (0x02),
-        // never via NewPooledTransactionHashesMessage (0x08 from Eth65).
+        // In XdcProtocolHandler tx gossip must go via TransactionsMessage (0x02),
+        // never via NewPooledTransactionHashesMessage (0x08 from Eth65) which conflicts with XDC OrderTxMsg.
         (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
