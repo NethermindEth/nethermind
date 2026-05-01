@@ -39,6 +39,12 @@ public sealed class SszMiddleware(
 
     // Path: /engine/v{N}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v";
+
+    /// <summary>
+    /// Maximum allowed request body size in bytes (16 MiB).
+    /// Corresponds to <c>MAX_REQUEST_BODY_SIZE</c> defined in the Engine API SSZ-REST spec
+    /// (see https://github.com/ethereum/execution-apis/pull/764)
+    /// </summary>
     public const int MaxBodySize = 0x1000000;
     private readonly FrozenDictionary<(string Method, string Resource), List<ISszEndpointHandler>> _routes = BuildRoutes(handlers);
 
@@ -153,6 +159,8 @@ public sealed class SszMiddleware(
         span = span[(slashPos + 1)..];
         if (span.IsEmpty) return false;
 
+        // Path segments may contain ASCII alphanumerics, hyphens (kebab-case resource names),
+        // forward slashes (extra path segments), and the '0x' hex-prefix character 'x'.
         foreach (char c in span)
         {
             if (!char.IsAsciiLetterOrDigit(c) && c != '-' && c != '/')
@@ -171,10 +179,24 @@ public sealed class SszMiddleware(
     {
         handler = null;
         extra = default;
-        ReadOnlySpan<char> methodSpan = method.AsSpan();
 
-        ISszEndpointHandler? fallback = null;
-        ReadOnlySpan<char> fallbackExtraSpan = default;
+        string methodLower = method.ToLowerInvariant();
+        string segmentStr = pathSegment.ToString();
+
+        if (_routes.TryGetValue((methodLower, segmentStr), out List<ISszEndpointHandler>? exactList))
+        {
+            ISszEndpointHandler? fallback = null;
+            foreach (ISszEndpointHandler candidate in exactList)
+            {
+                if (candidate.Version == version) { handler = candidate; extra = default; return true; }
+                if (candidate.Version is null) fallback = candidate;
+            }
+            if (fallback is not null) { handler = fallback; extra = default; return true; }
+        }
+
+        ReadOnlySpan<char> methodSpan = method.AsSpan();
+        ISszEndpointHandler? prefixFallback = null;
+        ReadOnlySpan<char> prefixFallbackExtra = default;
 
         foreach (KeyValuePair<(string Method, string Resource), List<ISszEndpointHandler>> kvp in _routes)
         {
@@ -182,48 +204,39 @@ public sealed class SszMiddleware(
 
             ReadOnlySpan<char> resourceSpan = kvp.Key.Resource.AsSpan();
 
-            ReadOnlySpan<char> tailSpan;
-            bool hasExtra;
             if (MemoryExtensions.Equals(pathSegment, resourceSpan, StringComparison.OrdinalIgnoreCase))
-            {
-                tailSpan = default;
-                hasExtra = false;
-            }
-            else if (pathSegment.Length > resourceSpan.Length &&
-                     pathSegment[resourceSpan.Length] == '/' &&
-                     pathSegment.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
-            {
-                tailSpan = pathSegment[(resourceSpan.Length + 1)..];
-                hasExtra = true;
-            }
-            else
-            {
                 continue;
-            }
+
+            if (pathSegment.Length <= resourceSpan.Length || pathSegment[resourceSpan.Length] != '/')
+                continue;
+            if (!pathSegment.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            ReadOnlySpan<char> tailSpan = pathSegment[(resourceSpan.Length + 1)..];
 
             foreach (ISszEndpointHandler candidate in kvp.Value)
             {
-                if (hasExtra && !candidate.AcceptsPathExtra) continue;
+                if (!candidate.AcceptsPathExtra) continue;
 
                 if (candidate.Version == version)
                 {
                     handler = candidate;
-                    extra = hasExtra ? tailSpan : default;
+                    extra = tailSpan;
                     return true;
                 }
 
                 if (candidate.Version is null)
                 {
-                    fallback = candidate;
-                    fallbackExtraSpan = tailSpan;
+                    prefixFallback = candidate;
+                    prefixFallbackExtra = tailSpan;
                 }
             }
         }
 
-        if (fallback is not null)
+        if (prefixFallback is not null)
         {
-            handler = fallback;
-            extra = fallbackExtraSpan;
+            handler = prefixFallback;
+            extra = prefixFallbackExtra;
             return true;
         }
 

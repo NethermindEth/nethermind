@@ -108,7 +108,7 @@ public class SszMiddlewareTests
             new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result, IGetPayloadBodiesByRangeV1Handler>(_bodiesByRangeV1),
             new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result, IGetPayloadBodiesByRangeV2Handler>(_bodiesByRangeV2),
 
-            new ClientVersionSszHandler(),
+            new ClientVersionSszHandler(_engineModule),
             new CapabilitiesSszHandler(_capabilities),
             new TransitionConfigurationSszHandler(_transitionConfig),
         ];
@@ -396,6 +396,10 @@ public class SszMiddlewareTests
     [Test]
     public async Task ClientVersion_returns_non_empty_response()
     {
+        ClientVersionV1[] response = [new ClientVersionV1()];
+        _engineModule.engine_getClientVersionV1(default)
+            .ReturnsForAnyArgs(ResultWrapper<ClientVersionV1[]>.Success(response));
+
         byte[] body = BuildClientVersionRequest();
         DefaultHttpContext ctx = MakePostContext("/engine/v1/client/version", body);
 

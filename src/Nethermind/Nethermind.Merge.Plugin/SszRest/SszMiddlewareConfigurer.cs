@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Autofac;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -49,7 +50,13 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IProcessExitSource>(ctx);
 
         services.Bridge<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(ctx);
+        services.AddSingleton<Func<byte[][], Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>>>>(
+        sp => ((IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>?>)
+            sp.GetRequiredService<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>()).AsFunc()!);
+
         services.Bridge<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(ctx);
+        services.AddSingleton<Func<GetBlobsHandlerV2Request, Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>>>>(
+            sp => sp.GetRequiredService<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>().AsFunc());
 
         services.Bridge<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(ctx);
         services.Bridge<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(ctx);

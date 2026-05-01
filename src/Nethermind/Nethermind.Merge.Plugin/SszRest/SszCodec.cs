@@ -141,14 +141,12 @@ public static class SszCodec
         {
             NewPayloadV3RequestWire.Decode(buf, out NewPayloadV3RequestWire w);
             ExecutionPayloadV3 ep = w.ExecutionPayload.Unwrap();
-            ep.ParentBeaconBlockRoot = w.ParentBeaconBlockRoot;
             return (ep, HashesFromWire(w.ExpectedBlobVersionedHashes), w.ParentBeaconBlockRoot, null);
         }
         if (version == 4)
         {
             NewPayloadV4RequestWire.Decode(buf, out NewPayloadV4RequestWire w);
             ExecutionPayloadV3 ep = w.ExecutionPayload.Unwrap();
-            ep.ParentBeaconBlockRoot = w.ParentBeaconBlockRoot;
             return (ep,
                 HashesFromWire(w.ExpectedBlobVersionedHashes),
                 w.ParentBeaconBlockRoot,
@@ -158,7 +156,6 @@ public static class SszCodec
         {
             NewPayloadV5RequestWire.Decode(buf, out NewPayloadV5RequestWire w5);
             ExecutionPayloadV4 ep5 = w5.ExecutionPayload.Unwrap();
-            ep5.ParentBeaconBlockRoot = w5.ParentBeaconBlockRoot;
             return (ep5,
                 HashesFromWire(w5.ExpectedBlobVersionedHashes),
                 w5.ParentBeaconBlockRoot,

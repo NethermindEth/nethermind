@@ -274,6 +274,14 @@ public class SszCodecTests
             SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload()));
 
     [Test]
+    public void DecodeNewPayloadRequest_unsupported_version_throws_NotSupportedException()
+    {
+        byte[] emptyBody = Array.Empty<byte>();
+        Action act = () => SszCodec.DecodeNewPayloadRequest(emptyBody, version: 6);
+        act.Should().Throw<NotSupportedException>();
+    }
+
+    [Test]
     public void EncodeGetPayloadV1Response_fields_land_at_spec_defined_offsets()
     {
         ExecutionPayload ep = SszTestData.MakeMinimalPayload();
@@ -293,5 +301,202 @@ public class SszCodecTests
 
         buffer.Slice(472, 32).ToArray().Should().BeEquivalentTo(ep.BlockHash!.Bytes.ToArray(),
             "block_hash must be encoded at byte offset 472 per the Ethereum consensus spec");
+    }
+
+    [Test]
+    public void EncodeGetPayloadV1Response_all_static_fields_land_at_spec_defined_offsets()
+    {
+        ExecutionPayload ep = new()
+        {
+            ParentHash = TestItem.KeccakA,
+            FeeRecipient = TestItem.AddressA,
+            StateRoot = TestItem.KeccakB,
+            ReceiptsRoot = TestItem.KeccakC,
+            LogsBloom = Bloom.Empty,
+            PrevRandao = TestItem.KeccakD,
+            BlockNumber = (long)0x0102030405060708UL,
+            GasLimit = (long)0x1112131415161718UL,
+            GasUsed = (long)0x2122232425262728UL,
+            Timestamp = 0x3132333435363738UL,
+            ExtraData = [0xEE, 0xEF],
+            BaseFeePerGas = new UInt256(0xDEADBEEF),
+            BlockHash = TestItem.KeccakE,
+            Transactions = Array.Empty<byte[]>()
+        };
+
+        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV1Response(ep);
+        Span<byte> buf = encoded;
+
+        buf.Slice(0, 32).ToArray().Should()
+            .BeEquivalentTo(ep.ParentHash!.Bytes.ToArray(), "parent_hash @ offset 0");
+
+        buf.Slice(32, 20).ToArray().Should()
+            .BeEquivalentTo(ep.FeeRecipient!.Bytes, "fee_recipient @ offset 32");
+
+        buf.Slice(52, 32).ToArray().Should()
+            .BeEquivalentTo(ep.StateRoot!.Bytes.ToArray(), "state_root @ offset 52");
+
+        buf.Slice(84, 32).ToArray().Should()
+            .BeEquivalentTo(ep.ReceiptsRoot!.Bytes.ToArray(), "receipts_root @ offset 84");
+
+        buf.Slice(116, 256).ToArray().Should()
+            .BeEquivalentTo(((Span<byte>)Bloom.Empty.Bytes).ToArray(), "logs_bloom @ offset 116");
+
+        buf.Slice(372, 32).ToArray().Should()
+            .BeEquivalentTo(ep.PrevRandao!.Bytes.ToArray(), "prev_randao @ offset 372");
+
+        System.BitConverter.ToUInt64(buf.Slice(404, 8)).Should()
+            .Be((ulong)ep.BlockNumber, "block_number @ offset 404");
+
+        System.BitConverter.ToUInt64(buf.Slice(412, 8)).Should()
+            .Be((ulong)ep.GasLimit, "gas_limit @ offset 412");
+
+        System.BitConverter.ToUInt64(buf.Slice(420, 8)).Should()
+            .Be((ulong)ep.GasUsed, "gas_used @ offset 420");
+
+        System.BitConverter.ToUInt64(buf.Slice(428, 8)).Should()
+            .Be((ulong)ep.Timestamp, "timestamp @ offset 428");
+
+        uint extraDataOffset = System.BitConverter.ToUInt32(buf.Slice(436, 4));
+        extraDataOffset.Should().BeGreaterThanOrEqualTo(508u,
+            "extra_data variable-length offset @ offset 436 must point past the fixed section");
+
+        new UInt256(buf.Slice(440, 32), isBigEndian: false).Should()
+            .Be(ep.BaseFeePerGas, "base_fee_per_gas @ offset 440");
+
+        buf.Slice(472, 32).ToArray().Should()
+            .BeEquivalentTo(ep.BlockHash!.Bytes.ToArray(), "block_hash @ offset 472");
+
+        uint txOffset = System.BitConverter.ToUInt32(buf.Slice(504, 4));
+        txOffset.Should().BeGreaterThanOrEqualTo(508u,
+            "transactions variable-length offset @ offset 504 must point past the fixed section");
+    }
+
+    [Test]
+    public void EncodePayloadStatus_all_static_fields_land_at_spec_defined_offsets()
+    {
+        PayloadStatusV1 ps = new()
+        {
+            Status = PayloadStatus.Valid,
+            LatestValidHash = TestItem.KeccakA
+        };
+
+        using ArrayPoolSpan<byte> encoded = SszCodec.EncodePayloadStatus(ps);
+        Span<byte> buf = encoded;
+
+        buf[0].Should().Be(0, "status=VALID must encode as 0x00 at offset 0");
+
+        uint lvhOffset = BitConverter.ToUInt32(buf.Slice(1, 4));
+        lvhOffset.Should().BeGreaterThanOrEqualTo(9u,
+            "latest_valid_hash variable-length offset @ 1 must point past the 9-byte fixed section");
+
+        uint veOffset = BitConverter.ToUInt32(buf.Slice(5, 4));
+        veOffset.Should().BeGreaterThanOrEqualTo(9u,
+            "validation_error variable-length offset @ 5 must point past the 9-byte fixed section");
+
+        buf.Slice((int)lvhOffset, 32).ToArray().Should()
+            .BeEquivalentTo(TestItem.KeccakA.Bytes.ToArray(),
+                "latest_valid_hash bytes must land at the offset encoded in the fixed section");
+    }
+
+    [Test]
+    public void EncodeForkchoiceUpdatedResponse_all_static_fields_land_at_spec_defined_offsets()
+    {
+        ForkchoiceUpdatedV1Result resp = new()
+        {
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
+            PayloadId = "0x0102030405060708"
+        };
+
+        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeForkchoiceUpdatedResponse(resp);
+        Span<byte> buf = encoded;
+
+        encoded.Length.Should().BeGreaterThanOrEqualTo(8,
+            "encoded response must cover the 8-byte fixed section (two 4-byte offsets)");
+
+        uint psOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
+        psOffset.Should().BeGreaterThanOrEqualTo(8u,
+            "payload_status offset @ 0 must point past the 8-byte fixed section");
+        psOffset.Should().BeLessThan((uint)encoded.Length,
+            "payload_status offset must be within the encoded buffer");
+
+        uint pidOffset = BitConverter.ToUInt32(buf.Slice(4, 4));
+        pidOffset.Should().BeGreaterThanOrEqualTo(8u,
+            "payload_id offset @ 4 must point past the 8-byte fixed section");
+        pidOffset.Should().BeLessThan((uint)encoded.Length,
+            "payload_id offset must be within the encoded buffer");
+
+        buf[(int)psOffset].Should().Be(0,
+            "first byte of the embedded PayloadStatus sub-container must be 0x00 (VALID)");
+
+        int pidEnd = (int)pidOffset + 8;
+        encoded.Length.Should().BeGreaterThanOrEqualTo(pidEnd,
+            "encoded buffer must be large enough to hold the payload_id bytes");
+
+        buf.Slice((int)pidOffset, 8).ToArray().Should()
+            .BeEquivalentTo(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 },
+                "payload_id bytes must match the original hex string");
+    }
+
+    [Test]
+    public void EncodeGetPayloadV3Response_all_static_fields_land_at_spec_defined_offsets()
+    {
+        UInt256 blockValue = new(0xCAFEBABEu);
+        ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
+        Block block = ep.TryGetBlock().Block!;
+
+        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV3Response(
+            new GetPayloadV3Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: true));
+        Span<byte> buf = encoded;
+
+        encoded.Length.Should().BeGreaterThanOrEqualTo(41,
+            "encoded V3 response must cover the 41-byte fixed section");
+
+        uint epOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
+        epOffset.Should().BeGreaterThanOrEqualTo(41u,
+            "execution_payload offset @ 0 must point past the 41-byte fixed section");
+
+        new UInt256(buf.Slice(4, 32), isBigEndian: false).Should()
+            .Be(blockValue, "block_value must be encoded at byte offset 4");
+
+        uint bbOffset = BitConverter.ToUInt32(buf.Slice(36, 4));
+        bbOffset.Should().BeGreaterThanOrEqualTo(41u,
+            "blobs_bundle offset @ 36 must point past the 41-byte fixed section");
+
+        buf[40].Should().Be(1,
+            "should_override_builder=true must encode as 0x01 at offset 40");
+    }
+
+    [Test]
+    public void EncodeGetPayloadV4Response_all_static_fields_land_at_spec_defined_offsets()
+    {
+        UInt256 blockValue = new(0xDEADF00Du);
+        ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
+        Block block = ep.TryGetBlock().Block!;
+
+        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV4Response(
+            new GetPayloadV4Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: false, executionRequests: []));
+        Span<byte> buf = encoded;
+
+        encoded.Length.Should().BeGreaterThanOrEqualTo(45,
+            "encoded V4 response must cover the 45-byte fixed section");
+
+        uint epOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
+        epOffset.Should().BeGreaterThanOrEqualTo(45u,
+            "execution_payload offset @ 0 must point past the 45-byte fixed section");
+
+        new UInt256(buf.Slice(4, 32), isBigEndian: false).Should()
+            .Be(blockValue, "block_value must be encoded at byte offset 4");
+
+        uint bbOffset = BitConverter.ToUInt32(buf.Slice(36, 4));
+        bbOffset.Should().BeGreaterThanOrEqualTo(45u,
+            "blobs_bundle offset @ 36 must point past the 45-byte fixed section");
+
+        buf[40].Should().Be(0,
+            "should_override_builder=false must encode as 0x00 at offset 40");
+
+        uint erOffset = BitConverter.ToUInt32(buf.Slice(41, 4));
+        erOffset.Should().BeGreaterThanOrEqualTo(45u,
+            "execution_requests offset @ 41 must point past the 45-byte fixed section");
     }
 }

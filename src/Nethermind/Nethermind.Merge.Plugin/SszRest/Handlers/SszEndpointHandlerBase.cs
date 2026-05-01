@@ -84,6 +84,8 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     /// <summary>
     /// Overload for encoders that return <see cref="ArrayPoolSpan{T}"/> instead of a
     /// <c>(byte[] buffer, int length)</c> tuple. The span is written then disposed.
+    /// Uses <see cref="ArrayPoolSpan{T}.AsMemory()"/> to write directly from the rented
+    /// buffer without an intermediate copy or extra rent.
     /// </summary>
     protected static async Task WriteSszPooledAsync(HttpContext ctx, ArrayPoolSpan<byte> span)
     {
@@ -92,17 +94,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
             ctx.Response.ContentType = OctetStream;
             ctx.Response.ContentLength = span.Length;
             ctx.Response.StatusCode = StatusCodes.Status200OK;
-            // implicit Span<byte> conversion gives us the correctly-sliced data
-            byte[] tmp = ArrayPool<byte>.Shared.Rent(span.Length);
-            try
-            {
-                ((ReadOnlySpan<byte>)span).CopyTo(tmp);
-                await ctx.Response.Body.WriteAsync(tmp.AsMemory(0, span.Length), ctx.RequestAborted);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(tmp);
-            }
+            await ctx.Response.Body.WriteAsync(span.AsMemory(), ctx.RequestAborted);
             await ctx.Response.CompleteAsync();
         }
         finally

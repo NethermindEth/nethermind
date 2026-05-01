@@ -24,6 +24,15 @@ public sealed class NewPayloadSszHandler(IEngineRpcModule engineModule) : SszEnd
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
+        if (version > EngineApiVersions.NewPayload.V5)
+        {
+            await WriteSszResultAsync(ctx,
+                ResultWrapper<PayloadStatusV1>.Fail(
+                    $"Unsupported engine_newPayload version: {version}", ErrorCodes.MethodNotFound),
+                SszCodec.EncodePayloadStatus);
+            return;
+        }
+
         (ExecutionPayload payload, byte[]?[] versionedHashes, Hash256? beaconRoot, byte[][]? requests) =
             SszCodec.DecodeNewPayloadRequest(body.Span, version);
 
