@@ -83,6 +83,23 @@ public class AmsterdamSyncBlockchainTests : PyspecSyncBlockchainTestFixture<Amst
 
 public class OsakaSyncBlockchainTests : PyspecSyncBlockchainTestFixture<OsakaSyncBlockchainTests>;
 
+// Amsterdam parallel-execution / batch-read prewarm variants — Linux x64 only.
+// Each combo of (ParallelExecution, ParallelExecutionBatchRead) gets its own fixture so the
+// FlatDB workflow can chunk them on dedicated matrix entries. Default chunks exclude these
+// classes via FullyQualifiedName filter to avoid double-running.
+
+public class AmsterdamParallelBlockchainTests : PyspecAmsterdamParallelBlockchainTestFixture;
+
+public class AmsterdamBatchReadBlockchainTests : PyspecAmsterdamBatchReadBlockchainTestFixture;
+
+public class AmsterdamParallelFullBlockchainTests : PyspecAmsterdamParallelFullBlockchainTestFixture;
+
+public class AmsterdamParallelEngineBlockchainTests : PyspecAmsterdamParallelEngineBlockchainTestFixture;
+
+public class AmsterdamBatchReadEngineBlockchainTests : PyspecAmsterdamBatchReadEngineBlockchainTestFixture;
+
+public class AmsterdamParallelFullEngineBlockchainTests : PyspecAmsterdamParallelFullEngineBlockchainTestFixture;
+
 // State tests - directory derived from class name by convention (strip "StateTests", lowercase)
 
 public class FrontierStateTests : PyspecStateTestFixture<FrontierStateTests>;
