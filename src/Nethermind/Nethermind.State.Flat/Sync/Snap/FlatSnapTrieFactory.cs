@@ -24,7 +24,7 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
     private readonly Lock _lock = new();
 
-    private bool _initialized = false;
+    private volatile bool _initialized;
 
     // Tracks ISnapTree instances created via this factory that haven't been disposed yet.
     // The dispose path commits the per-tree IWriteBatch; until that completes, the tree's
@@ -84,10 +84,15 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
         using (_lock.EnterScope())
         {
             if (_initialized) return;
-            _initialized = true;
 
             _logger.Info("Clearing database");
             persistence.Clear();
+
+            // Set _initialized AFTER Clear completes so a concurrent caller can't see _initialized=true
+            // and proceed to write accounts while Clear is still iterating GetAllKeys / queueing
+            // Removes in its write batch — that race deletes freshly-written accounts when Clear's
+            // batch finally disposes. Volatile (via the field declaration) gives the publish ordering.
+            _initialized = true;
         }
     }
 }
