@@ -60,7 +60,8 @@ public class BlockAccessListBasedWorldStateTests
         BlockAccessList suggestedBal = new();
         balSetup(suggestedBal);
 
-        BlockAccessListBasedWorldState bws = new(inner, blockAccessIndex, Logger);
+        BlockAccessListBasedWorldState bws = new(inner, Logger);
+        bws.SetBlockAccessIndex(blockAccessIndex);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
         bws.Setup(block);
         IDisposable scope = bws.BeginScope(baseBlock);

@@ -54,6 +54,43 @@ public class DebugModuleTests
         );
 
     [Test]
+    public void Debug_traceCallMany_streams_under_live_cancellation_token()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _debugBridge
+            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(static c => StreamBundles(c.ArgAt<CancellationToken>(2)));
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        TransactionBundle bundle = new() { Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }] };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest);
+
+        // The first inner sequence touches WaitHandle (throws ObjectDisposedException if the
+        // timeout CTS has been disposed). The second bundle throws unconditionally, so the
+        // call only succeeds if the result is a deferred sequence and we stop after the first.
+        using IEnumerator<IEnumerable<GethLikeTxTrace>> outer = result.Data.GetEnumerator();
+        outer.MoveNext().Should().BeTrue();
+        outer.Current.Count().Should().Be(1);
+    }
+
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundles(CancellationToken token)
+    {
+        yield return YieldTrace(token);
+        throw new InvalidOperationException("second bundle should not be enumerated — streaming was lost");
+    }
+
+    private static IEnumerable<GethLikeTxTrace> YieldTrace(CancellationToken token)
+    {
+        _ = token.WaitHandle;
+        yield return new GethLikeTxTrace();
+    }
+
+    [Test]
     public async Task Get_from_db()
     {
         byte[] key = [1, 2, 3];
