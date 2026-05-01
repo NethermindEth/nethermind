@@ -72,5 +72,34 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(json, Does.Not.Contain("\"error\""));
             Assert.That(json, Does.Not.Contain("INSUFFICIENT_OUTPUT"));
         }
+
+        [Test]
+        public void Error_field_is_not_deserialized()
+        {
+            const string json = """
+            {
+                "transactionHash": "0xc55e2b90168af6972193c1f86fa4d7d7b31a29c156665d15b9cd48618b5177ef",
+                "transactionIndex": "0x0",
+                "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+                "blockNumber": "0x1",
+                "cumulativeGasUsed": "0x3e8",
+                "gasUsed": "0x3e8",
+                "from": "0x0000000000000000000000000000000000000001",
+                "to": "0x0000000000000000000000000000000000000002",
+                "contractAddress": null,
+                "logs": [],
+                "logsBloom": "0x00",
+                "status": "0x0",
+                "error": "Reverted: INSUFFICIENT_OUTPUT",
+                "type": "0x0"
+            }
+            """;
+
+            ReceiptForRpc? receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>(json);
+
+            Assert.That(receiptForRpc, Is.Not.Null);
+            Assert.That(receiptForRpc!.Error, Is.Null);
+            Assert.That(receiptForRpc.ToReceipt().Error, Is.Null);
+        }
     }
 }
