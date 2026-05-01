@@ -76,6 +76,13 @@ public class Bpo1ToBpo2AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTe
 
 public class Bpo2ToAmsterdamAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo2ToAmsterdamAtTime15kEngineBlockchainTests>;
 
+// Sync blockchain tests - exercise sync-mode payload validation alongside the standard engine flow.
+// Directory derived from class name by convention (strip "SyncBlockchainTests", lowercase)
+
+public class AmsterdamSyncBlockchainTests : PyspecSyncBlockchainTestFixture<AmsterdamSyncBlockchainTests>;
+
+public class OsakaSyncBlockchainTests : PyspecSyncBlockchainTestFixture<OsakaSyncBlockchainTests>;
+
 // State tests - directory derived from class name by convention (strip "StateTests", lowercase)
 
 public class FrontierStateTests : PyspecStateTestFixture<FrontierStateTests>;
@@ -105,3 +112,14 @@ public class OsakaStateTests : PyspecStateTestFixture<OsakaStateTests>;
 public class AmsterdamStateTests : PyspecStateTestFixture<AmsterdamStateTests>;
 
 public class ShanghaiToCancunAtTime15kStateTests : PyspecStateTestFixture<ShanghaiToCancunAtTime15kStateTests>;
+
+public class CancunToPragueAtTime15kStateTests : PyspecStateTestFixture<CancunToPragueAtTime15kStateTests>;
+
+// Transaction tests - validate raw tx decoding + validation against per-fork expected exceptions.
+// Directory derived from class name by convention (strip "TransactionTests", lowercase)
+
+public class AmsterdamTransactionTests : PyspecTransactionTestFixture<AmsterdamTransactionTests>;
+
+public class OsakaTransactionTests : PyspecTransactionTestFixture<OsakaTransactionTests>;
+
+public class PragueTransactionTests : PyspecTransactionTestFixture<PragueTransactionTests>;

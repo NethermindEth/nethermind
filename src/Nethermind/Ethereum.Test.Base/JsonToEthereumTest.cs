@@ -344,6 +344,37 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
+        public static IEnumerable<TransactionTest> ConvertTransactionTests(string json)
+        {
+            Dictionary<string, TransactionTestJson> testsInFile =
+                _serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
+
+            List<TransactionTest> tests = [];
+            foreach ((string testName, TransactionTestJson testSpec) in testsInFile)
+            {
+                if (testSpec.Result is null)
+                {
+                    continue;
+                }
+
+                (string name, string category) = GetNameAndCategory(testName);
+                foreach ((string fork, TransactionTestResultJson result) in testSpec.Result)
+                {
+                    tests.Add(new TransactionTest
+                    {
+                        Name = $"{name}::{fork}",
+                        Category = category,
+                        Fork = fork,
+                        TxBytes = testSpec.TxBytes,
+                        ExpectedException = result.Exception,
+                        ExpectedIntrinsicGas = result.IntrinsicGas,
+                    });
+                }
+            }
+
+            return tests;
+        }
+
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
         {
             Dictionary<string, BlockchainTestJson> testsInFile;

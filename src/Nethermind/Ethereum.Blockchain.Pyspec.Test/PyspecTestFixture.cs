@@ -60,6 +60,33 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestB
 }
 
 /// <summary>
+/// Generic base for pyspec sync blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
+/// Sync fixtures share the engine-payload format and additionally ship a <c>syncPayload</c>
+/// field exercising sync-mode validation; we run the engine payload through the standard
+/// blockchain test harness here and leave the sync-specific payload for a follow-up.
+/// Directory is derived by convention: strip "SyncBlockchainTests" suffix, lowercase.
+/// </summary>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public abstract class PyspecSyncBlockchainTestFixture<TSelf> : BlockchainTestBase
+{
+    protected override bool? ParallelExecutionOverride => false;
+
+    protected override bool? ParallelExecutionBatchReadOverride => false;
+
+    [SetUp]
+    public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
+
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test) =>
+        Assert.That((await RunTest(test)).Pass, Is.True);
+
+    public static IEnumerable<BlockchainTest> LoadTests() =>
+        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
+            $"fixtures/blockchain_tests_sync/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("SyncBlockchainTests")}").LoadTests<BlockchainTest>();
+}
+
+/// <summary>
 /// Generic base for pyspec state tests using <see cref="LoadPyspecTestsStrategy"/>.
 /// Directory is derived by convention: strip "StateTests" suffix, lowercase.
 /// </summary>
@@ -76,6 +103,32 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             $"fixtures/state_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("StateTests")}").LoadTests<GeneralStateTest>();
+}
+
+/// <summary>
+/// Generic base for pyspec transaction-validation tests using
+/// <see cref="LoadPyspecTestsStrategy"/>. Each fixture validates that decoding the raw
+/// <c>txbytes</c> against the per-fork expected outcome (success or a specific
+/// <c>TransactionException</c> token) lines up with Nethermind's tx decoder + validator.
+/// Directory is derived by convention: strip "TransactionTests" suffix, lowercase.
+/// </summary>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
+{
+    [SetUp]
+    public void SkipInCiOnUnsupportedRunners() => CiRunnerGuard.SkipIfNotLinuxX64Ci();
+
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(TransactionTest test)
+    {
+        (bool pass, string failMessage) = RunTest(test);
+        Assert.That(pass, Is.True, failMessage);
+    }
+
+    public static IEnumerable<TransactionTest> LoadTests() =>
+        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
+            $"fixtures/transaction_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("TransactionTests")}").LoadTests<TransactionTest>();
 }
 
 /// <summary>
