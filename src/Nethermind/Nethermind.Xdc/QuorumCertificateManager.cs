@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -13,8 +13,6 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
@@ -32,8 +30,7 @@ internal class QuorumCertificateManager(
     private ILogger _logger = logManager.GetClassLogger<QuorumCertificateManager>();
 
     private ISpecProvider _specProvider { get; } = xdcConfig;
-    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
-    private readonly static VoteDecoder _voteDecoder = new();
+    private static readonly VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
     public QuorumCertificate LockCertificate => _context.LockQC;
@@ -45,14 +42,16 @@ internal class QuorumCertificateManager(
             _context.HighestQC = qc;
         }
 
-        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash) ?? throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
+        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash)
+            ?? throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
         //Can only look for a QC in proposed block after the switch block
         if (proposedBlockHeader.Number > spec.SwitchBlock)
         {
-            QuorumCertificate parentQc = proposedBlockHeader.ExtraConsensusData?.QuorumCert ?? throw new BlockchainException("QC is targeting a block without required consensus data.");
+            QuorumCertificate? parentQc = proposedBlockHeader.ExtraConsensusData?.QuorumCert
+                ?? throw new BlockchainException("QC is targeting a block without required consensus data.");
 
             if (_context.LockQC is null || parentQc.ProposedBlockInfo.Round > _context.LockQC.ProposedBlockInfo.Round)
             {
@@ -64,7 +63,6 @@ internal class QuorumCertificateManager(
             {
                 if (_logger.IsWarn) _logger.Warn($"Could not commit block ({proposedBlockHeader.Hash}). {error}");
             }
-
         }
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
@@ -136,7 +134,7 @@ internal class QuorumCertificateManager(
 
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
         _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
-        //Mark grand parent as finalized
+        //Mark grandparent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
         error = null;
         return true;
@@ -167,35 +165,31 @@ internal class QuorumCertificateManager(
             return false;
         }
 
-        //Possible optimize here
-        Signature[] uniqueSignatures = qc.Signatures.Distinct().ToArray();
-
         ulong qcRound = qc.ProposedBlockInfo.Round;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
         double certificateThreshold = spec.CertificateThreshold;
         double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certificateThreshold);
-        if ((qcRound > 0) && (uniqueSignatures.Length < required))
-        {
-            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
-            return false;
-        }
 
-        ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
-        bool allValid = true;
-        Parallel.ForEach(uniqueSignatures, (s, state) =>
+        if (qcRound > 0)
         {
-            Address signer = _ethereumEcdsa.RecoverAddress(s, voteHash);
-            if (!epochSwitchInfo.Masternodes.Contains(signer))
+            (Address[] masternodes, Signature[] signatures) = (epochSwitchInfo.Masternodes, qc.Signatures);
+            if (signatures.Length < required)
             {
-                allValid = false;
-                state.Stop();
+                error = $"Number of signatures ({signatures.Length}) does not meet threshold of {required}";
+                return false;
             }
-        });
 
-        if (!allValid)
-        {
-            error = $"Quorum certificate contains one or more invalid vote signatures";
-            return false;
+            ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
+            if (VotesManager.CountValidSignatures(masternodes, signatures, voteHash, out error) is not { } signCount)
+            {
+                return false;
+            }
+
+            if (signCount < required)
+            {
+                error = $"Number of votes ({signCount}/{masternodes.Length}) does not meet threshold of {certificateThreshold}";
+                return false;
+            }
         }
 
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
@@ -228,7 +222,8 @@ internal class QuorumCertificateManager(
         error = null;
         return true;
     }
-    private ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
+
+    private static ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
     {
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
