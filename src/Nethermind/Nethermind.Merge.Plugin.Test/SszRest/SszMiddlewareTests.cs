@@ -34,12 +34,6 @@ public class SszMiddlewareTests
 {
     private IEngineRpcModule _engineModule = null!;
 
-    private IAsyncHandler<byte[], ExecutionPayload?> _getPayloadV1 = null!;
-    private IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadV2 = null!;
-    private IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadV3 = null!;
-    private IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadV4 = null!;
-    private IAsyncHandler<byte[], GetPayloadV5Result?> _getPayloadV5 = null!;
-    private IAsyncHandler<byte[], GetPayloadV6Result?> _getPayloadV6 = null!;
     private IHandler<IEnumerable<string>, IEnumerable<string>> _capabilities = null!;
     private IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> _getBlobsV1 = null!;
     private IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> _getBlobsV2 = null!;
@@ -66,12 +60,6 @@ public class SszMiddlewareTests
     {
         _engineModule = Substitute.For<IEngineRpcModule>();
 
-        _getPayloadV1 = Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>();
-        _getPayloadV2 = Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>();
-        _getPayloadV3 = Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>();
-        _getPayloadV4 = Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>();
-        _getPayloadV5 = Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>();
-        _getPayloadV6 = Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>();
         _capabilities = Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>();
         _getBlobsV1 = Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>();
         _getBlobsV2 = Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>();
@@ -103,26 +91,22 @@ public class SszMiddlewareTests
             new NewPayloadSszHandler(_engineModule),
             new ForkchoiceUpdatedSszHandler(_engineModule),
 
-            new GetPayloadSszHandler<ExecutionPayload>(1, _getPayloadV1.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV1Response(p))),
-            new GetPayloadSszHandler<GetPayloadV2Result>(2, _getPayloadV2.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV2Response(p))),
-            new GetPayloadSszHandler<GetPayloadV3Result>(3, _getPayloadV3.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV3Response(p))),
-            new GetPayloadSszHandler<GetPayloadV4Result>(4, _getPayloadV4.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV4Response(p))),
-            new GetPayloadSszHandler<GetPayloadV5Result>(5, _getPayloadV5.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV5Response(p))),
-            new GetPayloadSszHandler<GetPayloadV6Result>(6, _getPayloadV6.AsFunc(), p => ToPooledTuple(SszCodec.EncodeGetPayloadV6Response(p))),
+            new GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>(_engineModule),
+            new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
+            new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(_engineModule),
+            new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
+            new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
+            new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
 
             new GetBlobsV1SszHandler(_getBlobsV1),
-            new GetBlobsV2SszHandler(2, allowPartialReturn: false, _getBlobsV2, b => ToPooledTuple(SszCodec.EncodeGetBlobsV2Response(b))),
-            new GetBlobsV2SszHandler(3, allowPartialReturn: true,  _getBlobsV2, b => ToPooledTuple(SszCodec.EncodeGetBlobsV3Response(b))),
+            new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_getBlobsV2),
+            new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_getBlobsV2),
 
-            new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByHashV1,
-                bodies => ToPooledTuple(SszCodec.EncodePayloadBodiesV1Response((IReadOnlyList<ExecutionPayloadBodyV1Result?>)bodies))),
-            new GetPayloadBodiesByHashSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByHashV2,
-                bodies => ToPooledTuple(SszCodec.EncodePayloadBodiesV2Response((IReadOnlyList<ExecutionPayloadBodyV2Result?>)bodies))),
+            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_bodiesByHashV1),
+            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_bodiesByHashV2),
 
-            new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV1Result>(1, _bodiesByRangeV1.Handle,
-                bodies => ToPooledTuple(SszCodec.EncodePayloadBodiesV1Response((IReadOnlyList<ExecutionPayloadBodyV1Result?>)bodies))),
-            new GetPayloadBodiesByRangeSszHandler<ExecutionPayloadBodyV2Result>(2, _bodiesByRangeV2.Handle,
-                bodies => ToPooledTuple(SszCodec.EncodePayloadBodiesV2Response((IReadOnlyList<ExecutionPayloadBodyV2Result?>)bodies))),
+            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result, IGetPayloadBodiesByRangeV1Handler>(_bodiesByRangeV1),
+            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result, IGetPayloadBodiesByRangeV2Handler>(_bodiesByRangeV2),
 
             new ClientVersionSszHandler(),
             new CapabilitiesSszHandler(_capabilities),
@@ -232,7 +216,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task GetPayloadV1_returns_200_and_no_store_header()
     {
-        _getPayloadV1.HandleAsync(Arg.Any<byte[]>())
+        _engineModule.engine_getPayloadV1(Arg.Any<byte[]>())
             .Returns(ResultWrapper<ExecutionPayload?>.Success(SszTestData.MakeMinimalPayload()));
 
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708");
@@ -247,15 +231,15 @@ public class SszMiddlewareTests
     public async Task GetPayloadV2_routes_to_v2_handler_not_v1()
     {
         GetPayloadV2Result result = new(MakeMinimalBlock(), UInt256.One);
-        _getPayloadV2.HandleAsync(Arg.Any<byte[]>())
+        _engineModule.engine_getPayloadV2(Arg.Any<byte[]>())
             .Returns(ResultWrapper<GetPayloadV2Result?>.Success(result));
 
         DefaultHttpContext ctx = MakeGetContext("/engine/v2/payloads/0x0102030405060708");
 
         await _middleware.InvokeAsync(ctx);
 
-        await _getPayloadV2.Received(1).HandleAsync(Arg.Any<byte[]>());
-        await _getPayloadV1.DidNotReceive().HandleAsync(Arg.Any<byte[]>());
+        await _engineModule.Received(1).engine_getPayloadV2(Arg.Any<byte[]>());
+        await _engineModule.DidNotReceive().engine_getPayloadV1(Arg.Any<byte[]>());
     }
 
     [TestCase("/engine/v1/forkchoice", 1)]

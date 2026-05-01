@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -46,6 +47,13 @@ public static class SszCodec
         return result;
     }
 
+    public static (byte[] buffer, int length) EncodeGetBlobsV1ResponseFromEnumerable(IEnumerable<BlobAndProofV1?> e)
+    {
+        IReadOnlyList<BlobAndProofV1?> list = e as IReadOnlyList<BlobAndProofV1?> ?? e.ToList();
+        ArrayPoolSpan<byte> s = EncodeGetBlobsV1Response(list);
+        return (((ReadOnlySpan<byte>)s).ToArray(), s.Length);
+    }
+
     public static ArrayPoolSpan<byte> EncodePayloadStatus(PayloadStatusV1 ps)
         => EncodePooled(BuildPayloadStatusWire(ps));
 
@@ -71,40 +79,36 @@ public static class SszCodec
         });
     }
 
-    public static TResult DispatchForkchoiceVersion<TResult>(
-        ReadOnlySpan<byte> buf,
-        int version,
-        Func<ForkchoiceStateWire, PayloadAttributes?, TResult> handler)
-    {
-        (ForkchoiceStateWire state, PayloadAttributes? attrs) = version switch
-        {
-            <= 1 => DecodeForkchoice<ForkchoiceUpdatedV1RequestWire>(buf,
-                        w => w.ForkchoiceState,
-                        w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
-            2 => DecodeForkchoice<ForkchoiceUpdatedV2RequestWire>(buf,
-                        w => w.ForkchoiceState,
-                        w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
-            3 => DecodeForkchoice<ForkchoiceUpdatedV3RequestWire>(buf,
-                        w => w.ForkchoiceState,
-                        w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
-            _ => DecodeForkchoice<ForkchoiceUpdatedRequestWire>(buf,
-                        w => w.ForkchoiceState,
-                        w => w.PayloadAttributes is { Length: > 0 } a ? PayloadAttributesFromWire(a[0]) : null),
-        };
-
-        return handler(state, attrs);
-    }
-
     public static (ForkchoiceStateV1 state, PayloadAttributes? attrs)
         DecodeForkchoiceUpdatedRequest(ReadOnlySpan<byte> buf, int version)
-        => DispatchForkchoiceVersion(buf, version, (fcState, attrs) =>
+    {
+        if (version <= 1)
         {
-            ForkchoiceStateV1 state = new(
-                headBlockHash: fcState.HeadBlockHash,
-                finalizedBlockHash: fcState.FinalizedBlockHash,
-                safeBlockHash: fcState.SafeBlockHash);
-            return (state, attrs);
-        });
+            ForkchoiceUpdatedV1RequestWire.Decode(buf, out ForkchoiceUpdatedV1RequestWire w1);
+            return (ForkchoiceStateV1FromWire(w1.ForkchoiceState),
+                w1.PayloadAttributes is { Length: > 0 } a1 ? PayloadAttributesFromWire(a1[0]) : null);
+        }
+        if (version == 2)
+        {
+            ForkchoiceUpdatedV2RequestWire.Decode(buf, out ForkchoiceUpdatedV2RequestWire w2);
+            return (ForkchoiceStateV1FromWire(w2.ForkchoiceState),
+                w2.PayloadAttributes is { Length: > 0 } a2 ? PayloadAttributesFromWire(a2[0]) : null);
+        }
+        if (version == 3)
+        {
+            ForkchoiceUpdatedV3RequestWire.Decode(buf, out ForkchoiceUpdatedV3RequestWire w3);
+            return (ForkchoiceStateV1FromWire(w3.ForkchoiceState),
+                w3.PayloadAttributes is { Length: > 0 } a3 ? PayloadAttributesFromWire(a3[0]) : null);
+        }
+        ForkchoiceUpdatedRequestWire.Decode(buf, out ForkchoiceUpdatedRequestWire wN);
+        return (ForkchoiceStateV1FromWire(wN.ForkchoiceState),
+            wN.PayloadAttributes is { Length: > 0 } aN ? PayloadAttributesFromWire(aN[0]) : null);
+    }
+
+    private static ForkchoiceStateV1 ForkchoiceStateV1FromWire(ForkchoiceStateWire w) => new(
+        headBlockHash: w.HeadBlockHash,
+        finalizedBlockHash: w.FinalizedBlockHash,
+        safeBlockHash: w.SafeBlockHash);
 
     public static Task<ResultWrapper<ForkchoiceUpdatedV1Result>> DispatchForkchoiceUpdatedCall(
         IEngineRpcModule engine,
@@ -119,15 +123,6 @@ public static class SszCodec
             _ => engine.engine_forkchoiceUpdatedV4(state, attrs),
         };
 
-    private static (ForkchoiceStateWire, PayloadAttributes?) DecodeForkchoice<TWire>(
-        ReadOnlySpan<byte> buf,
-        Func<TWire, ForkchoiceStateWire> getState,
-        Func<TWire, PayloadAttributes?> getAttrs)
-        where TWire : struct, ISszCodec<TWire>
-    {
-        TWire.Decode(buf, out TWire wire);
-        return (getState(wire), getAttrs(wire));
-    }
 
     public static (ExecutionPayload payload, byte[]?[] versionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         DecodeNewPayloadRequest(ReadOnlySpan<byte> buf, int version)
@@ -525,21 +520,18 @@ public static class SszCodec
     }
 
     private static BlobsBundleV1Wire BlobsBundleToV1Wire(BlobsBundleV1? b)
-        => BuildBlobsBundleWire(b?.Commitments, b?.Proofs, b?.Blobs,
-            (c, p, bl) => new BlobsBundleV1Wire { Commitments = c, Proofs = p, Blobs = bl });
+    {
+        if (b?.Commitments is null) return new BlobsBundleV1Wire();
+        (SszKzgCommitment[] c, SszKzgCommitment[] p, SszBlob[] bl) =
+            BuildBlobBundleArrays(b.Commitments, b.Proofs!, b.Blobs!);
+        return new BlobsBundleV1Wire { Commitments = c, Proofs = p, Blobs = bl };
+    }
 
     private static BlobsBundleV2Wire BlobsBundleToV2Wire(BlobsBundleV2? b)
-        => BuildBlobsBundleWire(b?.Commitments, b?.Proofs, b?.Blobs,
-            (c, p, bl) => new BlobsBundleV2Wire { Commitments = c, Proofs = p, Blobs = bl });
-
-    private static T BuildBlobsBundleWire<T>(
-        byte[][]? commitments, byte[][]? proofs, byte[][]? blobs,
-        Func<SszKzgCommitment[], SszKzgCommitment[], SszBlob[], T> factory)
-        where T : new()
     {
-        if (commitments is null) return new T();
+        if (b?.Commitments is null) return new BlobsBundleV2Wire();
         (SszKzgCommitment[] c, SszKzgCommitment[] p, SszBlob[] bl) =
-            BuildBlobBundleArrays(commitments, proofs!, blobs!);
-        return factory(c, p, bl);
+            BuildBlobBundleArrays(b.Commitments, b.Proofs!, b.Blobs!);
+        return new BlobsBundleV2Wire { Commitments = c, Proofs = p, Blobs = bl };
     }
 }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -13,18 +14,26 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// Handles <c>POST /engine/v{N}/payloads/bodies/by-range</c>, the SSZ-REST equivalent
 /// of <c>engine_getPayloadBodiesByRangeV{N}</c>.
 /// </summary>
-public sealed class GetPayloadBodiesByRangeSszHandler<TResult>(
-    int version,
-    Func<long, long, Task<ResultWrapper<IEnumerable<TResult?>>>> handler,
-    Func<IEnumerable<TResult?>, (byte[] buffer, int length)> encode) : SszEndpointHandlerBase
+public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult, THandler>(THandler handler)
+    : SszEndpointHandlerBase
+    where TVersion : struct, IPayloadBodiesByRangeVersion<TResult, THandler>
+    where TResult : class
 {
     public override string HttpMethod => "POST";
     public override string Resource => "payloads/bodies/by-range";
-    public override int? Version => version;
+    public override int? Version => TVersion.VersionNumber;
 
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body.Span);
-        await WriteSszResultAsync(ctx, await handler(start, count), encode);
+        ResultWrapper<IEnumerable<TResult?>> result = await TVersion.Handle(handler, start, count);
+        if (result.Result != Result.Success)
+        {
+            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
+                result.Result.Error ?? "Unknown error");
+            return;
+        }
+        IReadOnlyList<TResult?> list = result.Data as IReadOnlyList<TResult?> ?? AsReadOnlyList(result.Data!);
+        await WriteSszPooledAsync(ctx, TVersion.Encode(list));
     }
 }

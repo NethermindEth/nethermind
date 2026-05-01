@@ -34,7 +34,7 @@ public sealed class ForkchoiceUpdatedSszHandler(IEngineRpcModule engineModule) :
                 ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
                     $"Unsupported engine_forkchoiceUpdated version: {version}",
                     ErrorCodes.MethodNotFound),
-                (ForkchoiceUpdatedV1Result r) => SszCodec.EncodeForkchoiceUpdatedResponse(r));
+                SszCodec.EncodeForkchoiceUpdatedResponse);
             return;
         }
 
@@ -44,6 +44,6 @@ public sealed class ForkchoiceUpdatedSszHandler(IEngineRpcModule engineModule) :
         await WriteSszResultAsync(
             ctx,
             await SszCodec.DispatchForkchoiceUpdatedCall(_engineModule, version, state, attrs),
-            (ForkchoiceUpdatedV1Result r) => SszCodec.EncodeForkchoiceUpdatedResponse(r));
+            SszCodec.EncodeForkchoiceUpdatedResponse);
     }
 }

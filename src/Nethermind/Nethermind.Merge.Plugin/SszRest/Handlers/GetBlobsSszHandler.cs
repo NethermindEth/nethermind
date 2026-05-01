@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -20,29 +21,30 @@ public sealed class GetBlobsV1SszHandler(
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
-        await WriteSszResultAsync(ctx,
-            await handler.HandleAsync(hashes),
-            (IEnumerable<BlobAndProofV1?> e) =>
-                SszCodec.EncodeGetBlobsV1Response(AsReadOnlyList(e)));
+        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await handler.HandleAsync(hashes);
+        await WriteSszResultAsync(ctx, result, static e =>
+        {
+            IReadOnlyList<BlobAndProofV1?> list = e as IReadOnlyList<BlobAndProofV1?> ?? AsReadOnlyList(e);
+            return SszCodec.EncodeGetBlobsV1Response(list);
+        });
     }
 }
 
-public sealed class GetBlobsV2SszHandler(
-    int version,
-    bool allowPartialReturn,
-    IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> handler,
-    Func<IReadOnlyList<BlobAndProofV2?>, (byte[] buffer, int length)> encode) : SszEndpointHandlerBase
+public sealed class GetBlobsV2SszHandler<TVersion>(
+    IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> handler)
+    : SszEndpointHandlerBase
+    where TVersion : struct, IGetBlobsV2Version
 {
     public override string HttpMethod => "POST";
     public override string Resource => "blobs";
-    public override int? Version => version;
+    public override int? Version => TVersion.VersionNumber;
 
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
-        await WriteSszResultAsync(ctx,
-            await handler.HandleAsync(new GetBlobsHandlerV2Request(hashes, AllowPartialReturn: allowPartialReturn)),
-            (IEnumerable<BlobAndProofV2?>? e) =>
-                encode(AsReadOnlyList(e ?? [])));
+        IEnumerable<BlobAndProofV2?>? data =
+            (IEnumerable<BlobAndProofV2?>?)await handler.HandleAsync(new GetBlobsHandlerV2Request(hashes, AllowPartialReturn: TVersion.AllowPartialReturn));
+        IReadOnlyList<BlobAndProofV2?> list = data as IReadOnlyList<BlobAndProofV2?> ?? AsReadOnlyList(data ?? []);
+        await WriteSszPooledAsync(ctx, TVersion.Encode(list));
     }
 }

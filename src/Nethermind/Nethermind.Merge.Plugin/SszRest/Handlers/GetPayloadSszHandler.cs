@@ -13,15 +13,14 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// Handles <c>GET /engine/v{N}/payloads/{payloadId}</c>, the SSZ-REST equivalent of
 /// <c>engine_getPayloadV{N}</c>.
 /// </summary>
-public sealed class GetPayloadSszHandler<TResult>(
-    int version,
-    Func<byte[], Task<ResultWrapper<TResult?>>> engineCall,
-    Func<TResult, (byte[] buffer, int length)> encode) : SszEndpointHandlerBase
+public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule engine)
+    : SszEndpointHandlerBase
+    where TVersion : struct, IGetPayloadVersion<TResult>
     where TResult : class
 {
     public override string HttpMethod => "GET";
     public override string Resource => "payloads";
-    public override int? Version => version;
+    public override int? Version => TVersion.VersionNumber;
     public override bool AcceptsPathExtra => true;
 
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
@@ -32,7 +31,7 @@ public sealed class GetPayloadSszHandler<TResult>(
             return;
         }
 
-        ResultWrapper<TResult?> result = await engineCall(id);
+        ResultWrapper<TResult?> result = await TVersion.Call(engine, id);
 
         ctx.Response.Headers["Cache-Control"] = "no-store";
 
@@ -47,6 +46,7 @@ public sealed class GetPayloadSszHandler<TResult>(
             ctx.Response.StatusCode = StatusCodes.Status204NoContent;
             return;
         }
-        await WriteSszPooledAsync(ctx, encode(result.Data));
+
+        await WriteSszPooledAsync(ctx, TVersion.Encode(result.Data));
     }
 }

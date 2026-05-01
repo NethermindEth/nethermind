@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Autofac;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -11,7 +10,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -51,7 +49,6 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IProcessExitSource>(ctx);
 
         services.Bridge<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(ctx);
-
         services.Bridge<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(ctx);
 
         services.Bridge<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(ctx);
@@ -62,75 +59,27 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IHandler<IEnumerable<string>, IEnumerable<string>>>(ctx);
         services.Bridge<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(ctx);
 
-        IEngineRpcModule engine = ctx.Resolve<IEngineRpcModule>();
+        services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>>();
+        services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>>();
+        services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>>();
+        services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>>();
+        services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>>();
+        services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>>();
 
-        void RegisterGetPayloadVersion<TResult>(
-            int version,
-            Func<byte[], Task<ResultWrapper<TResult?>>> engineCall,
-            Func<TResult, ArrayPoolSpan<byte>> encoder) where TResult : class =>
-            services.AddSingleton<ISszEndpointHandler>(
-                _ => new GetPayloadSszHandler<TResult>(version, engineCall,
-                    r => { ArrayPoolSpan<byte> s = encoder(r); return (((ReadOnlySpan<byte>)s).ToArray(), s.Length); }));
+        services.AddSingleton<ISszEndpointHandler, GetBlobsV1SszHandler>();
 
-        void AddGetPayloadBodiesByHash<TResult>(
-            int version,
-            Func<IReadOnlyList<TResult?>, ArrayPoolSpan<byte>> encoder)
-            where TResult : class =>
-            services.AddSingleton<ISszEndpointHandler>(
-                _ => new GetPayloadBodiesByHashSszHandler<TResult>(version,
-                    ctx.Resolve<IHandler<IReadOnlyList<Hash256>, IEnumerable<TResult?>>>(),
-                    (IEnumerable<TResult?> e) =>
-                    {
-                        ArrayPoolSpan<byte> s = encoder(e as IReadOnlyList<TResult?> ?? SszEndpointHandlerBase.AsReadOnlyList(e));
-                        return (((ReadOnlySpan<byte>)s).ToArray(), s.Length);
-                    }));
+        services.AddSingleton<ISszEndpointHandler, GetBlobsV2SszHandler<GetBlobsDescriptorV2>>();
+        services.AddSingleton<ISszEndpointHandler, GetBlobsV2SszHandler<GetBlobsDescriptorV3>>();
 
-        void AddGetPayloadBodiesByRange<TResult>(
-            int version,
-            Func<long, long, Task<ResultWrapper<IEnumerable<TResult?>>>> rangeHandle,
-            Func<IReadOnlyList<TResult?>, ArrayPoolSpan<byte>> encoder)
-            where TResult : class =>
-            services.AddSingleton<ISszEndpointHandler>(
-                _ => new GetPayloadBodiesByRangeSszHandler<TResult>(version, rangeHandle,
-                    (IEnumerable<TResult?> e) =>
-                    {
-                        ArrayPoolSpan<byte> s = encoder(e as IReadOnlyList<TResult?> ?? SszEndpointHandlerBase.AsReadOnlyList(e));
-                        return (((ReadOnlySpan<byte>)s).ToArray(), s.Length);
-                    }));
+        services.AddSingleton<ISszEndpointHandler,
+            GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>>();
+        services.AddSingleton<ISszEndpointHandler,
+            GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>>();
 
-        void AddGetBlobsV2(
-            int version,
-            bool allowPartialReturn,
-            Func<IReadOnlyList<BlobAndProofV2?>, ArrayPoolSpan<byte>> encoder) =>
-            services.AddSingleton<ISszEndpointHandler>(
-                _ => new GetBlobsV2SszHandler(version,
-                    allowPartialReturn,
-                    ctx.Resolve<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-                    list =>
-                    {
-                        ArrayPoolSpan<byte> s = encoder(list);
-                        return (((ReadOnlySpan<byte>)s).ToArray(), s.Length);
-                    }));
-
-        RegisterGetPayloadVersion<ExecutionPayload>(1, engine.engine_getPayloadV1, SszCodec.EncodeGetPayloadV1Response);
-        RegisterGetPayloadVersion<GetPayloadV2Result>(2, engine.engine_getPayloadV2, SszCodec.EncodeGetPayloadV2Response);
-        RegisterGetPayloadVersion<GetPayloadV3Result>(3, engine.engine_getPayloadV3, SszCodec.EncodeGetPayloadV3Response);
-        RegisterGetPayloadVersion<GetPayloadV4Result>(4, engine.engine_getPayloadV4, SszCodec.EncodeGetPayloadV4Response);
-        RegisterGetPayloadVersion<GetPayloadV5Result>(5, engine.engine_getPayloadV5, SszCodec.EncodeGetPayloadV5Response);
-        RegisterGetPayloadVersion<GetPayloadV6Result>(6, engine.engine_getPayloadV6, SszCodec.EncodeGetPayloadV6Response);
-
-        services.AddSingleton<ISszEndpointHandler>(
-            _ => new GetBlobsV1SszHandler(
-                ctx.Resolve<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>()));
-
-        AddGetBlobsV2(2, allowPartialReturn: false, SszCodec.EncodeGetBlobsV2Response);
-        AddGetBlobsV2(3, allowPartialReturn: true, SszCodec.EncodeGetBlobsV3Response);
-
-        AddGetPayloadBodiesByHash<ExecutionPayloadBodyV1Result>(1, SszCodec.EncodePayloadBodiesV1Response);
-        AddGetPayloadBodiesByHash<ExecutionPayloadBodyV2Result>(2, SszCodec.EncodePayloadBodiesV2Response);
-
-        AddGetPayloadBodiesByRange<ExecutionPayloadBodyV1Result>(1, ctx.Resolve<IGetPayloadBodiesByRangeV1Handler>().Handle, SszCodec.EncodePayloadBodiesV1Response);
-        AddGetPayloadBodiesByRange<ExecutionPayloadBodyV2Result>(2, ctx.Resolve<IGetPayloadBodiesByRangeV2Handler>().Handle, SszCodec.EncodePayloadBodiesV2Response);
+        services.AddSingleton<ISszEndpointHandler,
+            GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result, IGetPayloadBodiesByRangeV1Handler>>();
+        services.AddSingleton<ISszEndpointHandler,
+            GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result, IGetPayloadBodiesByRangeV2Handler>>();
 
         foreach (Type handler in SingletonHandlers)
             services.AddSingleton(typeof(ISszEndpointHandler), handler);
