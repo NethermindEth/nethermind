@@ -24,13 +24,15 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
     private readonly bool _enableDoubleWriteCheck;
     private readonly SnapUpperBoundAdapter _adapter;
     private readonly StateTree _tree;
+    private readonly FlatSnapTrieFactory? _ownerFactory;
     private IReadOnlyList<PathWithAccount>? _pendingEntries;
 
-    public FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, bool enableDoubleWriteCheck, ILogManager logManager)
+    public FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, bool enableDoubleWriteCheck, ILogManager logManager, FlatSnapTrieFactory? ownerFactory = null)
     {
         _reader = reader;
         _writeBatch = writeBatch;
         _enableDoubleWriteCheck = enableDoubleWriteCheck;
+        _ownerFactory = ownerFactory;
         _adapter = new SnapUpperBoundAdapter(new PersistenceTrieStoreAdapter(reader, writeBatch, enableDoubleWriteCheck));
         _tree = new StateTree(_adapter, logManager);
     }
@@ -74,8 +76,15 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
 
     public void Dispose()
     {
-        _writeBatch.Dispose();
-        _reader.Dispose();
+        try
+        {
+            _writeBatch.Dispose();
+            _reader.Dispose();
+        }
+        finally
+        {
+            _ownerFactory?.OnTreeDisposed();
+        }
     }
 
     /// <summary>

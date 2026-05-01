@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Threading;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,6 +16,8 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// <summary>
 /// ISnapTrieFactory implementation for flat state storage.
 /// Uses IPersistence to create reader/writeBatch per tree for proper resource management.
+/// Tracks in-flight trees so callers can wait for all writeBatches to drain before relying
+/// on the persisted state being complete.
 /// </summary>
 public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
 {
@@ -22,13 +26,45 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
     private bool _initialized = false;
 
+    // Tracks ISnapTree instances created via this factory that haven't been disposed yet.
+    // The dispose path commits the per-tree IWriteBatch; until that completes, the tree's
+    // accumulated writes aren't yet visible to subsequent IPersistence readers. Callers
+    // that need a consistent post-sync view (e.g. FlatTreeSyncStore.FinalizeSync) drain via
+    // <see cref="WaitForInFlightTreesDrained"/>.
+    private long _inFlightTrees;
+
+    internal void OnTreeCreated() => Interlocked.Increment(ref _inFlightTrees);
+
+    internal void OnTreeDisposed() => Interlocked.Decrement(ref _inFlightTrees);
+
+    /// <summary>
+    /// Spin-wait until all trees handed out by this factory have been disposed. Returns true
+    /// if drained within <paramref name="timeout"/>, false on timeout.
+    /// </summary>
+    public bool WaitForInFlightTreesDrained(System.TimeSpan timeout)
+    {
+        long deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
+        SpinWait spin = new();
+        while (Interlocked.Read(ref _inFlightTrees) > 0)
+        {
+            if (Stopwatch.GetTimestamp() > deadline)
+            {
+                if (_logger.IsWarn) _logger.Warn($"FlatSnapTrieFactory: {Interlocked.Read(ref _inFlightTrees)} trees still in flight after {timeout}");
+                return false;
+            }
+            spin.SpinOnce();
+        }
+        return true;
+    }
+
     public ISnapTree<PathWithAccount> CreateStateTree()
     {
         EnsureDatabaseCleared();
 
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager);
+        OnTreeCreated();
+        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager, this);
     }
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
@@ -37,7 +73,8 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager);
+        OnTreeCreated();
+        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager, this);
     }
 
     private void EnsureDatabaseCleared()

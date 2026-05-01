@@ -26,14 +26,16 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
     private readonly StorageTree _tree;
     private readonly Hash256 _addressHash;
     private readonly SnapUpperBoundAdapter _adapter;
+    private readonly FlatSnapTrieFactory? _ownerFactory;
     private IReadOnlyList<PathWithStorageSlot>? _pendingEntries;
 
-    public FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256 addressHash, bool enableDoubleWriteCheck, ILogManager logManager)
+    public FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256 addressHash, bool enableDoubleWriteCheck, ILogManager logManager, FlatSnapTrieFactory? ownerFactory = null)
     {
         _reader = reader;
         _writeBatch = writeBatch;
         _enableDoubleWriteCheck = enableDoubleWriteCheck;
         _addressHash = addressHash;
+        _ownerFactory = ownerFactory;
         _adapter = new SnapUpperBoundAdapter(new PersistenceStorageTrieStoreAdapter(reader, writeBatch, addressHash, enableDoubleWriteCheck));
         _tree = new StorageTree(_adapter, logManager);
     }
@@ -82,8 +84,15 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 
     public void Dispose()
     {
-        _writeBatch.Dispose();
-        _reader.Dispose();
+        try
+        {
+            _writeBatch.Dispose();
+            _reader.Dispose();
+        }
+        finally
+        {
+            _ownerFactory?.OnTreeDisposed();
+        }
     }
 
     /// <summary>

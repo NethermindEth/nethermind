@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -9,13 +10,14 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync;
 
-public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
+public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, FlatSnapTrieFactory snapTrieFactory, ILogManager logManager) : ITreeSyncStore
 {
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
@@ -235,6 +237,13 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     public void FinalizeSync(BlockHeader pivotHeader)
     {
         if (Interlocked.CompareExchange(ref _wasFinalized, true, false)) throw new InvalidOperationException("Db was finalized");
+
+        // Wait for any in-flight ISnapTree disposals to complete. Phase-1 / phase-2 trees
+        // hold per-tree IWriteBatch instances; until each tree's Dispose returns, its writes
+        // aren't yet committed to the underlying persistence. Without this drain a caller that
+        // observes "sync finished" can read state that's missing accounts from late-disposed
+        // trees (manifests as E2ESyncTests.SnapSync "Verification failed: N missing in flat").
+        snapTrieFactory.WaitForInFlightTreesDrained(TimeSpan.FromSeconds(30));
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateId from = reader.CurrentState;
