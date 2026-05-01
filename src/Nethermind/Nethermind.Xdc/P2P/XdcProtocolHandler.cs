@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -92,8 +92,8 @@ internal class XdcProtocolHandler(
         }
     }
 
-    private void Handle(VoteMsg voteMsg) => votesManager.OnReceiveVote(voteMsg.Vote);
-    private void Handle(TimeoutMsg timeoutMsg) => timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
+    private void Handle(VoteMsg voteMsg) => _ = votesManager.OnReceiveVote(voteMsg.Vote);
+    private void Handle(TimeoutMsg timeoutMsg) => _ = timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
         if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string error))
