@@ -242,15 +242,9 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 
     public readonly override string ToString() => ToHexString();
 
-    public static bool operator ==(in TreePath left, in TreePath right)
-    {
-        return left.Equals(right);
-    }
+    public static bool operator ==(in TreePath left, in TreePath right) => left.Equals(right);
 
-    public static bool operator !=(in TreePath left, in TreePath right)
-    {
-        return !(left == right);
-    }
+    public static bool operator !=(in TreePath left, in TreePath right) => !(left == right);
 
     public readonly bool Equals(in TreePath other) => Length == other.Length && Path.Equals(in other.Path);
 
