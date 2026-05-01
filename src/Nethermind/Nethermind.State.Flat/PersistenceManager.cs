@@ -292,10 +292,25 @@ public class PersistenceManager(
                 return (TryGetForcePersistedSnapshot(currentPersistedState, snapshotsDepth), null, null);
             }
 
-            // Memory pressure with unfinalized state: convert to persisted snapshots instead of force-persisting to RocksDB
+            // Memory pressure with unfinalized state: convert to persisted snapshots instead of force-persisting to RocksDB.
+            // Mirror the ShallowDepth floor: never convert unless the in-memory window is wider than
+            // _maxInMemoryReorgDepth + _compactSize, otherwise we end up persisting (and removing from memory)
+            // the freshest snapshot before its parent edges exist on disk — producing gaps in Persisted.Base on restart.
+            long? earliestInMemoryUnf = TryGetSnapshotLevelToConvert();
+            if (earliestInMemoryUnf == null)
+            {
+                return (null, null, null);
+            }
+
+            long inMemoryDepthUnf = lastSnapshotNumber - earliestInMemoryUnf.Value;
+            if (inMemoryDepthUnf <= _maxInMemoryReorgDepth + _compactSize)
+            {
+                return (null, null, null);
+            }
+
             if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Converting to persisted snapshots. finalized block number is {finalizedBlockNumber}.");
 
-            return (null, null, TryGetSnapshotLevelToConvert());
+            return (null, null, earliestInMemoryUnf);
         }
 
         (PersistedSnapshot? persistedSnapshot, Snapshot? snapshotToPersist) =
