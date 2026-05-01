@@ -576,9 +576,14 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             remainingRequest.Should().Be(100); // Without the cache this would be 111
         }
+    }
 
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    internal static class TreeSyncCleanUpTests
+    {
         [Test]
-        public void VerifyPostSyncCleanUp_WhenPivotStateRootMatchesRootNode_FinalizesSync()
+        public static void VerifyPostSyncCleanUp_WhenPivotStateRootMatchesRootNode_FinalizesSync()
         {
             // 1. Active pivot points at state root A.
             // 2. ResetStateRootToBestSuggested sets _rootNode = A.
@@ -602,7 +607,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void VerifyPostSyncCleanUp_WhenPivotRotatedAfterReset_SkipsFinalizeSync()
+        public static void VerifyPostSyncCleanUp_WhenPivotRotatedAfterReset_SkipsFinalizeSync()
         {
             // Issue #11457 regression guard. Previously TreeSync.SaveNode invoked
             // FinalizeSync with whatever GetPivotHeader returned at the moment of
@@ -614,7 +619,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             // 2. Pivot rotates to a different state root B (state root for which no
             //    trie data exists).
             // 3. Cleanup runs and observes pivotHeader.StateRoot != _rootNode.
-            // 4. FinalizeSync must be skipped to prevent the corruption.
+            // 4. FinalizeSync must be skipped to prevent the corruption, and
+            //    SyncCompleted must not fire (subscribers like
+            //    VerifyStateOnStateSyncFinished do a one-shot unsubscribe).
             BlockHeader pivotA = BuildPivot(100, TestItem.KeccakA);
             BlockHeader pivotB = BuildPivot(101, TestItem.KeccakB);
             IStateSyncPivot stateSyncPivot = Substitute.For<IStateSyncPivot>();
@@ -631,7 +638,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             treeSync.VerifyPostSyncCleanUp();
 
             store.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
-            syncCompletedCount.Should().Be(0, "SyncCompleted must not fire on mismatch — VerifyStateOnStateSyncFinished does a one-shot unsubscribe and would burn the subscription on a trie that was never materialized");
+            syncCompletedCount.Should().Be(0, "SyncCompleted must not fire on mismatch — would burn a one-shot subscription on a trie that was never materialized");
         }
 
         private static BlockHeader BuildPivot(long blockNumber, Hash256 stateRoot) =>
