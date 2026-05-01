@@ -62,6 +62,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         bool useParallel = parallelOverride ?? parallel;
         TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
         ILogManager logManager = LimboLogs.Instance;
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
@@ -979,6 +980,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
     {
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
 
@@ -1037,6 +1039,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress);
@@ -1065,6 +1068,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
 
         CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);
