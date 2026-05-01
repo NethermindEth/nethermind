@@ -98,6 +98,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
     private bool _isUsingSharedBlockCache;
+    private ulong _ownBlockCacheSize;
+    private long _addedMemoryPressure;
 
     public DbOnTheRocks(
         string basePath,
@@ -121,6 +123,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
 
         _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
+
+        _addedMemoryPressure = (long)_writeBufferSize + (long)_ownBlockCacheSize;
+        if (_addedMemoryPressure > 0) GC.AddMemoryPressure(_addedMemoryPressure);
     }
 
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
@@ -505,11 +510,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (dbConfig.BlockCache is not null)
         {
             tableOptions.SetBlockCache(dbConfig.BlockCache.Value);
+            _ownBlockCacheSize = blockCacheSize > 0 ? blockCacheSize : 32_000_000;
         }
         else if (sharedCache is not null && blockCacheSize == 0)
         {
             tableOptions.SetBlockCache(sharedCache.Value);
             _isUsingSharedBlockCache = true;
+        }
+        else
+        {
+            _ownBlockCacheSize = blockCacheSize > 0 ? blockCacheSize : 32_000_000;
         }
 
         // Note: the ordering is important.
@@ -1487,6 +1497,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         ReleaseUnmanagedResources();
 
         _dbsByPath.Remove(_fullPath!, out _);
+
+        if (_addedMemoryPressure > 0) GC.RemoveMemoryPressure(_addedMemoryPressure);
 
         _isDisposed = true;
     }
