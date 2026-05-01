@@ -223,8 +223,7 @@ public static class PersistedSnapshotBuilder
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter);
 
-        // Use 8-byte little-endian block numbers to avoid stackalloc scope issues
-        byte[] blockNumBytes = new byte[8];
+        Span<byte> blockNumBytes = stackalloc byte[8];
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.From.BlockNumber);
         inner.Add("from_block"u8, blockNumBytes);
@@ -361,11 +360,11 @@ public static class PersistedSnapshotBuilder
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 3);
-        byte[] keyBuffer = new byte[3];
+        Span<byte> keyBuffer = stackalloc byte[3];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
-            path.EncodeWith3Byte(keyBuffer.AsSpan(0, 3));
-            inner.Add(keyBuffer.AsSpan(0, 3), node.FullRlp.AsSpan());
+            path.EncodeWith3Byte(keyBuffer);
+            inner.Add(keyBuffer, node.FullRlp.AsSpan());
         }
 
         inner.Build();
@@ -376,11 +375,11 @@ public static class PersistedSnapshotBuilder
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8);
-        byte[] keyBuffer = new byte[8];
+        Span<byte> keyBuffer = stackalloc byte[8];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
-            path.EncodeWith8Byte(keyBuffer.AsSpan());
-            inner.Add(keyBuffer.AsSpan(0, 8), node.FullRlp.AsSpan());
+            path.EncodeWith8Byte(keyBuffer);
+            inner.Add(keyBuffer, node.FullRlp.AsSpan());
         }
 
         inner.Build();
@@ -391,12 +390,12 @@ public static class PersistedSnapshotBuilder
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter);
-        byte[] keyBuffer = new byte[33];
+        Span<byte> keyBuffer = stackalloc byte[33];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
-            path.Path.Bytes.CopyTo(keyBuffer.AsSpan());
+            path.Path.Bytes.CopyTo(keyBuffer);
             keyBuffer[32] = (byte)path.Length;
-            inner.Add(keyBuffer.AsSpan(0, 33), node.FullRlp.AsSpan());
+            inner.Add(keyBuffer, node.FullRlp.AsSpan());
         }
 
         inner.Build();
@@ -408,7 +407,7 @@ public static class PersistedSnapshotBuilder
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, minSeparatorLength: 2);
-        byte[] pathKey = new byte[8];
+        Span<byte> pathKey = stackalloc byte[8];
         int i = 0;
         while (i < storageNodes.Count)
         {
@@ -420,8 +419,8 @@ public static class PersistedSnapshotBuilder
             while (i < storageNodes.Count && storageNodes[i].Key.Addr.Equals(currentHash))
             {
                 ((Hash256 _, TreePath path) snKey, TrieNode node) = storageNodes[i];
-                snKey.path.EncodeWith8Byte(pathKey.AsSpan());
-                inner.Add(pathKey.AsSpan(0, 8), node.FullRlp.AsSpan());
+                snKey.path.EncodeWith8Byte(pathKey);
+                inner.Add(pathKey, node.FullRlp.AsSpan());
                 i++;
             }
 
@@ -438,7 +437,7 @@ public static class PersistedSnapshotBuilder
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, minSeparatorLength: 2);
-        byte[] pathKey = new byte[33];
+        Span<byte> pathKey = stackalloc byte[33];
         int i = 0;
         while (i < storageNodes.Count)
         {
@@ -450,9 +449,9 @@ public static class PersistedSnapshotBuilder
             while (i < storageNodes.Count && storageNodes[i].Key.Addr.Equals(currentHash))
             {
                 ((Hash256 _, TreePath path) snKey, TrieNode node) = storageNodes[i];
-                snKey.path.Path.Bytes.CopyTo(pathKey.AsSpan());
+                snKey.path.Path.Bytes.CopyTo(pathKey);
                 pathKey[32] = (byte)snKey.path.Length;
-                inner.Add(pathKey.AsSpan(0, 33), node.FullRlp.AsSpan());
+                inner.Add(pathKey, node.FullRlp.AsSpan());
                 i++;
             }
 
