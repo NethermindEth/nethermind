@@ -638,7 +638,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             treeSync.VerifyPostSyncCleanUp();
 
             store.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
-            syncCompletedCount.Should().Be(0, "SyncCompleted must not fire on mismatch — would burn a one-shot subscription on a trie that was never materialized");
+            syncCompletedCount.Should().Be(1, "SyncCompleted must still fire so the feed can transition out of state sync");
         }
 
         private static BlockHeader BuildPivot(long blockNumber, Hash256 stateRoot) =>

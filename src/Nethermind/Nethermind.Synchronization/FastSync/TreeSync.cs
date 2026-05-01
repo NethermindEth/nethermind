@@ -355,7 +355,7 @@ namespace Nethermind.Synchronization.FastSync
                 return (false, true);
             }
 
-            if (_stateSyncPivot.GetPivotHeader()?.StateRoot != _rootNode)
+            if (_stateSyncPivot.GetPivotHeader().StateRoot != _rootNode)
             {
                 if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - updating state root");
                 return (false, true);
@@ -796,12 +796,6 @@ namespace Nethermind.Synchronization.FastSync
                 if (pivotHeader.StateRoot == _rootNode)
                 {
                     _store.FinalizeSync(pivotHeader);
-                    // Only raise SyncCompleted when finalize actually ran. Subscribers such
-                    // as VerifyStateOnStateSyncFinished unsubscribe on the first event, so
-                    // firing with a mismatched pivot would burn the subscription on a trie
-                    // that was never fully materialized and silently skip verification on
-                    // the next correctly-completed round.
-                    SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(pivotHeader));
                 }
                 else
                 {
@@ -812,6 +806,8 @@ namespace Nethermind.Synchronization.FastSync
                     // The next sync round will retry on the new pivot.
                     if (_logger.IsWarn) _logger.Warn($"Skipping state sync finalize: saved root {_rootNode} does not match current pivot root {pivotHeader.StateRoot}. The next sync round will retry.");
                 }
+
+                SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(pivotHeader));
             }
         }
 
