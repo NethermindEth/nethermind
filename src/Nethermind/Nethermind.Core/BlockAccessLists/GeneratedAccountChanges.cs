@@ -94,8 +94,10 @@ public class GeneratedAccountChanges(Address address)
         //   - other: ReadOnlySlotChanges[] (decoder produces sorted)
         // Walk in lockstep, skipping slots that have no change at this index on either side.
         // Concrete struct enumerator type avoids the boxing the IEnumerable/IEnumerator
-        // interface would force.
-        using SortedDictionary<UInt256, GeneratedSlotChanges>.ValueCollection.Enumerator a
+        // interface would force; Dispose chain bottoms out at empty TreeSet.Enumerator.Dispose
+        // so we skip the `using` for clarity — the manual MoveNext/Current control here is
+        // intentional, and there's no resource to release.
+        SortedDictionary<UInt256, GeneratedSlotChanges>.ValueCollection.Enumerator a
             = _storageChanges.Values.GetEnumerator();
         ReadOnlySlotChanges[] b = other.StorageChanges;
         int j = 0;
