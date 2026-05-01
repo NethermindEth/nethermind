@@ -149,12 +149,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
             "CREATE tx with oversized code return should fail");
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.LessThan(gasLimit),
-            "Unused gas should still be refunded on top-level code deposit failure.");
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
-            Is.EqualTo(tracer.GasConsumedResult.SpentGas - GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit),
+            "Top-level CREATE deposit failure is a halt — all gas burned (frame resets to (0, R0=0)).");
         Assert.That(tracer.GasConsumedResult.BlockStateGas,
-            Is.EqualTo(GasCostOf.CreateState));
+            Is.EqualTo(GasCostOf.CreateState),
+            "Reverted initcode state gas (NewAccountState) must NOT contribute to block_state_gas_used.");
         Assert.That(TestState.AccountExists(TestItem.AddressC), Is.False,
             "The initcode CALL target must be reverted together with its state gas.");
     }
