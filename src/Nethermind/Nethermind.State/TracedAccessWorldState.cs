@@ -27,6 +27,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     protected IWorldState _innerWorldState = innerWorldState;
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
+    private UInt256 _scratchBalance;
+    private ValueHash256 _scratchCodeHash;
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
 
@@ -105,10 +107,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         _innerWorldState.Set(storageCell, newValue);
     }
 
-    public UInt256 GetBalance(Address address)
+    public ref readonly UInt256 GetBalance(Address address)
     {
         AddAccountRead(address);
-        return GetBalanceInternal(address);
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges?.BalanceChange is { } bc)
+        {
+            _scratchBalance = bc.Value;
+            return ref _scratchBalance;
+        }
+        return ref _innerWorldState.GetBalance(address);
     }
 
     public UInt256 GetNonce(Address address)
@@ -117,10 +125,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return GetNonceInternal(address);
     }
 
-    public ValueHash256 GetCodeHash(Address address)
+    public ref readonly ValueHash256 GetCodeHash(Address address)
     {
         AddAccountRead(address);
-        return GetCodeHashInternal(address);
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges?.CodeChange is { } cc)
+        {
+            _scratchCodeHash = cc.CodeHash;
+            return ref _scratchCodeHash;
+        }
+        return ref _innerWorldState.GetCodeHash(address);
     }
 
     public byte[]? GetCode(Address address)

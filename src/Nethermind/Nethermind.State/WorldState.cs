@@ -245,10 +245,10 @@ namespace Nethermind.State
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
-        public UInt256 GetBalance(Address address)
+        public ref readonly UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
-            return _stateProvider.GetBalance(address);
+            return ref _stateProvider.GetBalance(address);
         }
 
         public ValueHash256 GetStorageRoot(Address address)
@@ -270,10 +270,10 @@ namespace Nethermind.State
             return _stateProvider.GetCode(in codeHash);
         }
 
-        public ValueHash256 GetCodeHash(Address address)
+        public ref readonly ValueHash256 GetCodeHash(Address address)
         {
             DebugGuardInScope();
-            return _stateProvider.GetCodeHash(address);
+            return ref _stateProvider.GetCodeHash(address);
         }
 
         public bool AccountExists(Address address)

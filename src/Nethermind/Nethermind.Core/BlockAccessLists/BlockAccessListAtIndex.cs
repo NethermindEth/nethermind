@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Resettables;
 using Nethermind.Int256;
@@ -18,11 +19,13 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public class BlockAccessListAtIndex : IJournal<int>, IResettable
 {
+    private const int InitialChangeCapacity = 64;
+
     public int Index { get; set; }
 
     private readonly SortedDictionary<Address, AccountChangesAtIndex> _accountChanges
         = new(GenericComparer.GetOptimized<Address>());
-    private readonly Stack<Change> _changes = new();
+    private readonly List<Change> _changes = new(InitialChangeCapacity);
 
     public IEnumerable<AccountChangesAtIndex> AccountChanges => _accountChanges.Values;
     public int AccountCount => _accountChanges.Count;
@@ -57,22 +60,18 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             return;
         }
 
-        BalanceChange? oldBalanceChange = accountChanges.BalanceChange;
-        accountChanges.BalanceChange = null;
+        UInt256 preTxBalance = accountChanges.PreTxBalance ??= before;
 
-        _changes.Push(new()
+        _changes.Add(new()
         {
             Address = address,
             Type = ChangeType.BalanceChange,
-            PreviousBalance = oldBalanceChange,
-            PreTxBalance = before,
+            PreviousBalance = accountChanges.BalanceChange,
         });
 
-        bool changedDuringTx = HasBalanceChangedDuringTx(accountChanges, before, after);
-        if (changedDuringTx)
-        {
-            accountChanges.BalanceChange = new BalanceChange(Index, after);
-        }
+        accountChanges.BalanceChange = preTxBalance != after
+            ? new BalanceChange(Index, after)
+            : null;
     }
 
     public void AddCodeChange(Address address, byte[] before, ReadOnlyMemory<byte> after)
@@ -84,22 +83,18 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             return;
         }
 
-        CodeChange? oldCodeChange = accountChanges.CodeChange;
-        accountChanges.CodeChange = null;
+        byte[] preTxCode = accountChanges.PreTxCode ??= before;
 
-        _changes.Push(new()
+        _changes.Add(new()
         {
             Address = address,
             Type = ChangeType.CodeChange,
-            PreviousCode = oldCodeChange,
-            PreTxCode = before,
+            PreviousCode = accountChanges.CodeChange,
         });
 
-        bool changedDuringTx = HasCodeChangedDuringTx(accountChanges, before, after.Span);
-        if (changedDuringTx)
-        {
-            accountChanges.CodeChange = new CodeChange(Index, after.ToArray());
-        }
+        accountChanges.CodeChange = !preTxCode.AsSpan().SequenceEqual(after.Span)
+            ? new CodeChange(Index, after.ToArray())
+            : null;
     }
 
     public void AddNonceChange(Address address, ulong newNonce)
@@ -111,14 +106,11 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        NonceChange? oldNonceChange = accountChanges.NonceChange;
-        accountChanges.NonceChange = null;
-
-        _changes.Push(new()
+        _changes.Add(new()
         {
             Address = address,
             Type = ChangeType.NonceChange,
-            PreviousNonce = oldNonceChange,
+            PreviousNonce = accountChanges.NonceChange,
         });
 
         accountChanges.NonceChange = new NonceChange(Index, newNonce);
@@ -141,17 +133,17 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         accountChanges.TryGetStorageChange(key, out StorageChange? oldStorageChange);
         accountChanges.RemoveStorageChange(key);
 
-        _changes.Push(new()
+        UInt256 preTxStorage = accountChanges.GetOrCapturePreTxStorage(key, before);
+
+        _changes.Add(new()
         {
             Address = address,
             Slot = key,
             Type = ChangeType.StorageChange,
             PreviousStorage = oldStorageChange,
-            PreTxStorage = before,
         });
 
-        bool changedDuringTx = HasStorageChangedDuringTx(accountChanges, key, before, after);
-        if (changedDuringTx)
+        if (preTxStorage != after)
         {
             accountChanges.SetStorageChange(key, new StorageChange(Index, after));
             accountChanges.RemoveStorageRead(key);
@@ -187,7 +179,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         {
             if (accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange))
             {
-                _changes.Push(new()
+                _changes.Add(new()
                 {
                     Address = address,
                     Type = ChangeType.StorageChange,
@@ -199,7 +191,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         if (accountChanges.NonceChange is not null)
         {
-            _changes.Push(new()
+            _changes.Add(new()
             {
                 Address = address,
                 Type = ChangeType.NonceChange,
@@ -209,7 +201,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         if (accountChanges.CodeChange is not null)
         {
-            _changes.Push(new()
+            _changes.Add(new()
             {
                 Address = address,
                 Type = ChangeType.CodeChange,
@@ -234,9 +226,13 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     public void Restore(int snapshot)
     {
         snapshot = int.Max(0, snapshot);
-        while (_changes.Count > snapshot)
+        Span<Change> span = CollectionsMarshal.AsSpan(_changes);
+        int end = span.Length;
+        if (snapshot >= end) return;
+
+        for (int i = end - 1; i >= snapshot; i--)
         {
-            Change change = _changes.Pop();
+            ref readonly Change change = ref span[i];
             AccountChangesAtIndex accountChanges = _accountChanges[change.Address];
             switch (change.Type)
             {
@@ -267,6 +263,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                     break;
             }
         }
+        CollectionsMarshal.SetCount(_changes, snapshot);
     }
 
     public override string ToString()
@@ -296,61 +293,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         return existing;
     }
 
-    // To detect whether the final value at end-of-tx differs from the pre-tx value, we need
-    // the pre-tx value — but the most-recent intra-tx value is stored in the per-account
-    // single-slot fields and gets cleared during AddXxx. We recover the pre-tx value by
-    // walking _changes for the FIRST push for this (address[, slot]) — that push has
-    // PreviousXxx == null, and its PreTxXxx field captured the value before any tx-level
-    // modification.
-    private bool HasBalanceChangedDuringTx(AccountChangesAtIndex accountChanges, UInt256 beforeInstr, UInt256 afterInstr)
-    {
-        foreach (Change change in _changes)
-        {
-            if (change.Type == ChangeType.BalanceChange &&
-                change.Address == accountChanges.Address &&
-                change.PreviousBalance is null)
-            {
-                return change.PreTxBalance!.Value != afterInstr;
-            }
-        }
-
-        // No prior push found — caller must push before invoking, so this is unreachable in
-        // normal flow. Fall back to the per-instruction comparison defensively.
-        return beforeInstr != afterInstr;
-    }
-
-    private bool HasStorageChangedDuringTx(AccountChangesAtIndex accountChanges, UInt256 key, in UInt256 beforeInstr, in UInt256 afterInstr)
-    {
-        foreach (Change change in _changes)
-        {
-            if (change.Type == ChangeType.StorageChange &&
-                change.Address == accountChanges.Address &&
-                change.Slot == key &&
-                change.PreviousStorage is null)
-            {
-                return (change.PreTxStorage ?? default) != afterInstr;
-            }
-        }
-
-        return beforeInstr != afterInstr;
-    }
-
-    private bool HasCodeChangedDuringTx(AccountChangesAtIndex accountChanges, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
-    {
-        foreach (Change change in _changes)
-        {
-            if (change.Type == ChangeType.CodeChange &&
-                change.Address == accountChanges.Address &&
-                change.PreviousCode is null)
-            {
-                ReadOnlySpan<byte> preTx = change.PreTxCode ?? [];
-                return !preTx.SequenceEqual(afterInstr);
-            }
-        }
-
-        return !beforeInstr.SequenceEqual(afterInstr);
-    }
-
     private enum ChangeType
     {
         BalanceChange = 0,
@@ -368,8 +310,5 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         public NonceChange? PreviousNonce { get; init; }
         public CodeChange? PreviousCode { get; init; }
         public StorageChange? PreviousStorage { get; init; }
-        public UInt256? PreTxBalance { get; init; }
-        public UInt256? PreTxStorage { get; init; }
-        public byte[]? PreTxCode { get; init; }
     }
 }

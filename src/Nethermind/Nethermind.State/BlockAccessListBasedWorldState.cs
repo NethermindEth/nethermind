@@ -25,6 +25,8 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private BlockHeader? _suggestedBlockHeader;
     private int _blockAccessIndex = 0;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
+    private UInt256 _scratchBalance;
+    private ValueHash256 _scratchCodeHash;
 
     public void SetBlockAccessIndex(int index) => _blockAccessIndex = index;
 
@@ -106,7 +108,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public void Set(in StorageCell storageCell, byte[] newValue) { }
 
-    public UInt256 GetBalance(Address address)
+    public ref readonly UInt256 GetBalance(Address address)
     {
         CheckInitialized();
 
@@ -114,9 +116,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
         if (accountChanges is not null)
         {
-            return accountChanges.GetBalance(_blockAccessIndex)
+            _scratchBalance = accountChanges.GetBalance(_blockAccessIndex)
                 ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader,
                     $"Suggested block-level access list missing balance for {address} at index {_blockAccessIndex}.");
+            return ref _scratchBalance;
         }
 
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
@@ -138,7 +141,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
     }
 
-    public ValueHash256 GetCodeHash(Address address)
+    public ref readonly ValueHash256 GetCodeHash(Address address)
     {
         CheckInitialized();
 
@@ -146,7 +149,8 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
         if (accountChanges is not null)
         {
-            return accountChanges.GetCodeHash(_blockAccessIndex);
+            _scratchCodeHash = accountChanges.GetCodeHash(_blockAccessIndex);
+            return ref _scratchCodeHash;
         }
 
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");

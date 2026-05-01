@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -19,6 +20,10 @@ public class AccountChangesAtIndex(Address address)
     public BalanceChange? BalanceChange { get; set; }
     public NonceChange? NonceChange { get; set; }
     public CodeChange? CodeChange { get; set; }
+
+    public UInt256? PreTxBalance { get; set; }
+    public byte[]? PreTxCode { get; set; }
+    private Dictionary<UInt256, UInt256>? _preTxStorage;
 
     private readonly SortedDictionary<UInt256, StorageChange> _storageChanges
         = new(GenericComparer.GetOptimized<UInt256>());
@@ -52,9 +57,18 @@ public class AccountChangesAtIndex(Address address)
 
     public bool RemoveStorageRead(UInt256 key) => _storageReads.Remove(key);
 
+    public UInt256 GetOrCapturePreTxStorage(UInt256 key, in UInt256 captureValue)
+    {
+        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8);
+        ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
+        if (!exists) slot = captureValue;
+        return slot;
+    }
+
     public void ClearStorage()
     {
         _storageChanges.Clear();
         _storageReads.Clear();
+        _preTxStorage?.Clear();
     }
 }
