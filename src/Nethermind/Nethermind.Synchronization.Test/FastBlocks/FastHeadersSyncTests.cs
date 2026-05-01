@@ -76,7 +76,7 @@ public class FastHeadersSyncTests
             {
                 FastSync = true,
                 PivotNumber = pivotNumber,
-                PivotHash = Keccak.Zero.ToString(),
+                PivotHash = TestItem.KeccakA.ToString(),
                 PivotTotalDifficulty = "1000"
             },
             poSSwitcher: Substitute.For<IPoSSwitcher>(),
