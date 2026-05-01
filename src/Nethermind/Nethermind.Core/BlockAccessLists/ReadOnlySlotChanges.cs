@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -16,6 +17,8 @@ namespace Nethermind.Core.BlockAccessLists;
 public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquatable<ReadOnlySlotChanges>
 {
     public UInt256 Key { get; } = key;
+
+    [JsonConverter(typeof(StorageChangesByIndexConverter))]
     public StorageChange[] Changes { get; private set; } = changes;
 
     public bool Equals(ReadOnlySlotChanges? other)
