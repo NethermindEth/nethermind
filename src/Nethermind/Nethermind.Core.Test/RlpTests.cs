@@ -17,7 +17,7 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class RlpTests
     {
-        public record DecoderCase(string Name, Action<Rlp.ValueDecoderContext> Invoke, int? Size)
+        public record DecoderCase(string Name, Func<Rlp.ValueDecoderContext, dynamic> Invoke, int? Size)
         {
             public override string ToString() => Name;
         }
@@ -56,27 +56,16 @@ namespace Nethermind.Core.Test
         [Test]
         public void Decode_integer(
             [ValueSource(nameof(IntegerDecoders))] DecoderCase decoder,
-            [Values(
-                new byte[] { 0x05 },
-                new byte[] { 0x80 },
-                new byte[] { 0x81, 0x80 },
-                new byte[] { 0x81, 0x81 },
-                new byte[] { 0x81, 0xFF },
-                new byte[] { 0x82, 0x05, 0x05 },
-                new byte[] { 0x82, 0xFF, 0xFF },
-                new byte[] { 0x83, 0x05, 0x05, 0x05 },
-                new byte[] { 0x84, 0x05, 0x05, 0x05, 0x05 },
-                new byte[] { 0x84, 0xFF, 0xFF, 0xFF, 0xFF },
-                new byte[] { 0x88, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05 },
-                new byte[] { 0x88, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-                new byte[] { 0x8C, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05 },
-                new byte[] { 0x8C, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }
-            )] byte[] rlp)
+            [ValueSource(nameof(IntegerTestCases))] (byte[] rlp, string expectedHex) test)
         {
-            if (decoder.Size is { } size && RlpHelpers.PeekPrefixAndContentLength(rlp, 0).ContentLength > size)
+            int expectedSize = test.expectedHex.Length / 2 + test.expectedHex.Length % 2;
+            if (decoder.Size is { } size && size < expectedSize)
                 Assert.Ignore("Size over limit");
 
-            Assert.DoesNotThrow(() => decoder.Invoke(rlp.AsRlpValueContext()));
+            Assert.That(
+                decoder.Invoke(test.rlp.AsRlpValueContext()).ToString("X").TrimStart('0'),
+                Is.EqualTo(test.expectedHex.TrimStart('0'))
+            );
         }
 
         [TestCaseSource(nameof(IntegerDecoders))]
@@ -457,6 +446,24 @@ namespace Nethermind.Core.Test
             yield return new(nameof(Rlp.ValueDecoderContext.DecodeUInt256), static ctx => ctx.DecodeUInt256(), 256 / 8);
             yield return new(nameof(Rlp.ValueDecoderContext.DecodeUBigInt), static ctx => ctx.DecodeUBigInt(), null);
         }
+
+        private static (byte[] rlp, string expectedHex)[] IntegerTestCases() =>
+        [
+            ([0x05], "5"),
+            ([0x80], "0"),
+            ([0x81, 0x80], "80"),
+            ([0x81, 0x81], "81"),
+            ([0x81, 0xFF], "FF"),
+            ([0x82, 0x05, 0x05], "505"),
+            ([0x82, 0xFF, 0xFF], "FFFF"),
+            ([0x83, 0x05, 0x05, 0x05], "50505"),
+            ([0x84, 0x05, 0x05, 0x05, 0x05], "5050505"),
+            ([0x84, 0xFF, 0xFF, 0xFF, 0xFF], "FFFFFFFF"),
+            ([0x88, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05], "505050505050505"),
+            ([0x88, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], "FFFFFFFFFFFFFFFF"),
+            ([0x8C, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05], "50505050505050505050505"),
+            ([0x8C, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], "FFFFFFFFFFFFFFFFFFFFFFFF"),
+        ];
 
         private static RlpStream Prepare100BytesStream()
         {
