@@ -19,7 +19,7 @@ namespace Nethermind.Core;
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    public Block(BlockHeader header, BlockBody body, BlockAccessList? bal = null)
+    public Block(BlockHeader header, BlockBody body, ReadOnlyBlockAccessList? bal = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = body ?? throw new ArgumentNullException(nameof(body));
@@ -30,7 +30,7 @@ public class Block
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null,
-        BlockAccessList? blockAccessList = null)
+        ReadOnlyBlockAccessList? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
@@ -126,10 +126,10 @@ public class Block
 
     // suggested BAL from network
     [JsonIgnore]
-    public BlockAccessList? BlockAccessList { get; set; }
+    public ReadOnlyBlockAccessList? BlockAccessList { get; set; }
 
     [JsonIgnore]
-    public BlockAccessList? GeneratedBlockAccessList { get; set; }
+    public GeneratedBlockAccessList? GeneratedBlockAccessList { get; set; }
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }

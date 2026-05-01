@@ -17,9 +17,9 @@ namespace Nethermind.Core.Test.Encoding;
 public class BlockAccessListDecoderTests
 {
     [TestCaseSource(nameof(BlockAccessListTestSource))]
-    public void Can_decode_then_encode(string rlp, BlockAccessList expected)
+    public void Can_decode_then_encode(string rlp, ReadOnlyBlockAccessList expected)
     {
-        BlockAccessList bal = Rlp.Decode<BlockAccessList>(Bytes.FromHexString(rlp));
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(Bytes.FromHexString(rlp));
 
         Assert.That(bal, Is.EqualTo(expected));
 
@@ -63,12 +63,12 @@ public class BlockAccessListDecoderTests
     public void Can_decode_then_encode_slot_change()
     {
         StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-        SlotChanges expected = new(0, new SortedList<int, StorageChange> { { 0, parentHashStorageChange } });
+        ReadOnlySlotChanges expected = new(0, [parentHashStorageChange]);
 
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
 
         Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(expectedRlp));
-        SlotChanges slotChange = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        ReadOnlySlotChanges slotChange = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         Assert.That(slotChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
@@ -111,10 +111,10 @@ public class BlockAccessListDecoderTests
     }
 
     [TestCaseSource(nameof(AccountChangesTestSource))]
-    public void Can_decode_then_encode_account_change(string rlp, AccountChanges expected)
+    public void Can_decode_then_encode_account_change(string rlp, ReadOnlyAccountChanges expected)
     {
         Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
-        AccountChanges accountChange = AccountChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        ReadOnlyAccountChanges accountChange = AccountChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
 
         Assert.That(accountChange, Is.EqualTo(expected));
 
@@ -136,10 +136,10 @@ public class BlockAccessListDecoderTests
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        SortedList<int, StorageChange> storageChanges = new() { { 10, storageChange } };
-        SlotChanges slotChanges = new(0xbad, storageChanges);
+        StorageChange[] storageChanges = [storageChange];
+        ReadOnlySlotChanges slotChanges = new(0xbad, storageChanges);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
-        SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
+        ReadOnlySlotChanges slotChangesDecoded = Rlp.Decode<ReadOnlySlotChanges>(slotChangesBytes, RlpBehaviors.None);
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
 
         UInt256 storageRead = 0xbababa;
@@ -164,7 +164,7 @@ public class BlockAccessListDecoderTests
         CodeChange codeChangeDecoded = Rlp.Decode<CodeChange>(codeChangeBytes, RlpBehaviors.None);
         Assert.That(codeChange, Is.EqualTo(codeChangeDecoded));
 
-        AccountChanges accountChanges = Build.An.AccountChanges
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
             .WithStorageChanges(slotChanges.Key, storageChange)
             .WithStorageReads(0xbababa, 0xcacaca)
@@ -173,46 +173,31 @@ public class BlockAccessListDecoderTests
             .WithCodeChanges(codeChange)
             .TestObject;
         byte[] accountChangesBytes = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-        AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);
+        ReadOnlyAccountChanges accountChangesDecoded = Rlp.Decode<ReadOnlyAccountChanges>(accountChangesBytes, RlpBehaviors.None);
         Assert.That(accountChanges, Is.EqualTo(accountChangesDecoded));
 
-        Dictionary<Address, AccountChanges> accountChangesDict = new()
-        {
-            { accountChanges.Address, accountChanges }
-        };
-
-        BlockAccessList blockAccessList = new(accountChangesDict);
+        ReadOnlyBlockAccessList blockAccessList = Build.A.BlockAccessList.WithAccountChanges(accountChanges).TestObject;
         byte[] blockAccessListBytes = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
-        BlockAccessList blockAccessListDecoded = Rlp.Decode<BlockAccessList>(blockAccessListBytes, RlpBehaviors.None);
+        ReadOnlyBlockAccessList blockAccessListDecoded = Rlp.Decode<ReadOnlyBlockAccessList>(blockAccessListBytes, RlpBehaviors.None);
         Assert.That(blockAccessList, Is.EqualTo(blockAccessListDecoded));
     }
 
     [Test]
     public void Decoding_block_access_list_with_unsorted_account_changes_throws()
     {
-        // Use addresses with known ordering: 0x00...01 < 0xff...ff
-        Address lowAddress = new("0x0000000000000000000000000000000000000001");
-        Address highAddress = new("0xffffffffffffffffffffffffffffffffffffffff");
-        AccountChanges accountLow = Build.An.AccountChanges.WithAddress(lowAddress).TestObject;
-        AccountChanges accountHigh = Build.An.AccountChanges.WithAddress(highAddress).TestObject;
+        // Use explicit, lexicographically-ordered addresses (low < high) — TestItem.Address* are
+        // derived from public keys and don't have a predictable ordering.
+        Address low = new("0x0000000000000000000000000000000000000001");
+        Address high = new("0x0000000000000000000000000000000000000002");
 
-        // Encode correctly ordered [low, high], then manually swap order in the RLP
-        // First encode each item
-        int lowLen = AccountChangesDecoder.GetContentLength(accountLow, RlpBehaviors.None);
-        int highLen = AccountChangesDecoder.GetContentLength(accountHigh, RlpBehaviors.None);
-        int lowSeqLen = Rlp.LengthOfSequence(lowLen);
-        int highSeqLen = Rlp.LengthOfSequence(highLen);
-
-        // Outer sequence wraps [high, low] in wrong order
-        int contentLength = highSeqLen + lowSeqLen;
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
-        AccountChangesDecoder.Instance.Encode(stream, accountHigh, RlpBehaviors.None);
-        AccountChangesDecoder.Instance.Encode(stream, accountLow, RlpBehaviors.None);
-        byte[] encoded = stream.Data.ToArray()!;
+        ReadOnlyAccountChanges accountChangesLow = Build.An.AccountChanges.WithAddress(low).TestObject;
+        ReadOnlyAccountChanges accountChangesHigh = Build.An.AccountChanges.WithAddress(high).TestObject;
+        // produce an out-of-order encoding by hand: high before low
+        ReadOnlyBlockAccessList badBal = new([accountChangesHigh, accountChangesLow], 2);
+        byte[] encoded = Rlp.Encode(badBal, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<BlockAccessList>(encoded, RlpBehaviors.None),
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Account changes were in incorrect order."));
     }
 
@@ -221,12 +206,9 @@ public class BlockAccessListDecoderTests
     {
         UInt256 slot1 = UInt256.One;
         UInt256 slot2 = new(2);
-        SortedList<UInt256, SlotChanges> storageChanges = new(DescendingComparer<UInt256>())
-        {
-            { slot1, new SlotChanges(slot1) },
-            { slot2, new SlotChanges(slot2) }
-        };
-        AccountChanges accountChanges = new(
+        // Pass slot changes in descending order so encoding emits unsorted RLP.
+        ReadOnlySlotChanges[] storageChanges = [new ReadOnlySlotChanges(slot2), new ReadOnlySlotChanges(slot1)];
+        ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             storageChanges,
             [],
@@ -237,19 +219,15 @@ public class BlockAccessListDecoderTests
         byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order."));
     }
 
     [Test]
     public void Decoding_account_changes_with_unsorted_storage_reads_throws()
     {
-        SortedSet<UInt256> storageReads = new(DescendingComparer<UInt256>())
-        {
-            UInt256.One,
-            new UInt256(2)
-        };
-        AccountChanges accountChanges = new(
+        UInt256[] storageReads = [new UInt256(2), UInt256.One];
+        ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             [],
             storageReads,
@@ -260,19 +238,15 @@ public class BlockAccessListDecoderTests
         byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage reads were in incorrect order."));
     }
 
     [Test]
     public void Decoding_account_changes_with_unsorted_balance_changes_throws()
     {
-        SortedList<int, BalanceChange> balanceChanges = new(DescendingComparer<int>())
-        {
-            { 1, new(1, UInt256.One) },
-            { 2, new(2, UInt256.Zero) }
-        };
-        AccountChanges accountChanges = new(
+        BalanceChange[] balanceChanges = [new(2, UInt256.Zero), new(1, UInt256.One)];
+        ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             [],
             [],
@@ -283,19 +257,15 @@ public class BlockAccessListDecoderTests
         byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Balance changes were in incorrect order."));
     }
 
     [Test]
     public void Decoding_account_changes_with_unsorted_nonce_changes_throws()
     {
-        SortedList<int, NonceChange> nonceChanges = new(DescendingComparer<int>())
-        {
-            { 1, new(1, 1) },
-            { 2, new(2, 2) }
-        };
-        AccountChanges accountChanges = new(
+        NonceChange[] nonceChanges = [new(2, 2), new(1, 1)];
+        ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             [],
             [],
@@ -306,19 +276,15 @@ public class BlockAccessListDecoderTests
         byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Nonce changes were in incorrect order."));
     }
 
     [Test]
     public void Decoding_account_changes_with_unsorted_code_changes_throws()
     {
-        SortedList<int, CodeChange> codeChanges = new(DescendingComparer<int>())
-        {
-            { 1, new(1, [0x01]) },
-            { 2, new(2, [0x02]) }
-        };
-        AccountChanges accountChanges = new(
+        CodeChange[] codeChanges = [new(2, [0x02]), new(1, [0x01])];
+        ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             [],
             [],
@@ -329,23 +295,19 @@ public class BlockAccessListDecoderTests
         byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Code changes were in incorrect order."));
     }
 
     [Test]
     public void Decoding_slot_changes_with_unsorted_storage_changes_throws()
     {
-        SortedList<int, StorageChange> storageChanges = new(DescendingComparer<int>())
-        {
-            { 1, new(1, UInt256.One) },
-            { 2, new(2, UInt256.Zero) }
-        };
-        SlotChanges slotChanges = new(UInt256.One, storageChanges);
+        StorageChange[] storageChanges = [new(2, UInt256.Zero), new(1, UInt256.One)];
+        ReadOnlySlotChanges slotChanges = new(UInt256.One, storageChanges);
         byte[] encoded = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
-            () => Rlp.Decode<SlotChanges>(encoded, RlpBehaviors.None),
+            () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order. index=1, lastIndex=2"));
     }
 
@@ -355,64 +317,42 @@ public class BlockAccessListDecoderTests
         {
             StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
             StorageChange timestampStorageChange = new(0, 0xc);
-            Dictionary<Address, AccountChanges> expectedAccountChanges = new()
-            {
-                {
-                    Eip7002Constants.WithdrawalRequestPredeployAddress,
+
+            ReadOnlyBlockAccessList expected = Build.A.BlockAccessList
+                .WithAccountChanges(
                     Build.An.AccountChanges
                         .WithAddress(Eip7002Constants.WithdrawalRequestPredeployAddress)
                         .WithStorageReads(0, 1, 2, 3)
-                        .TestObject
-                },
-                {
-                    Eip7251Constants.ConsolidationRequestPredeployAddress,
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(Eip7251Constants.ConsolidationRequestPredeployAddress)
                         .WithStorageReads(0, 1, 2, 3)
-                        .TestObject
-                },
-                {
-                    Eip2935Constants.BlockHashHistoryAddress,
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
                         .WithStorageChanges(0, parentHashStorageChange)
-                        .TestObject
-                },
-                {
-                    Eip4788Constants.BeaconRootsAddress,
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(Eip4788Constants.BeaconRootsAddress)
                         .WithStorageChanges(0xc, timestampStorageChange)
                         .WithStorageReads(0x200b)
-                        .TestObject
-                },
-                {
-                    new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"),
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"))
                         .WithBalanceChanges([new(1, 0x1319718811c8)])
-                        .TestObject
-                },
-                {
-                    new("0xaccc7d92b051544a255b8a899071040739bada75"),
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(new("0xaccc7d92b051544a255b8a899071040739bada75"))
                         .WithBalanceChanges([new(1, new UInt256(Bytes.FromHexString("0x3635c99aac6d15af9c"), isBigEndian: true))])
                         .WithNonceChanges([new(1, 1)])
-                        .TestObject
-                },
-                {
-                    new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"),
+                        .TestObject,
                     Build.An.AccountChanges
                         .WithAddress(new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"))
                         .WithBalanceChanges([new(1, 0x64)])
-                        .TestObject
-                },
-            };
-            BlockAccessList expected = new(expectedAccountChanges);
+                        .TestObject)
+                .TestObject;
             string balanceChangesRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
-            yield return new TestCaseData(balanceChangesRlp, expected)
-            { TestName = "balance_changes" };
+            yield return new TestCaseData(balanceChangesRlp, expected) { TestName = "balance_changes" };
         }
     }
 
@@ -420,26 +360,22 @@ public class BlockAccessListDecoderTests
     {
         get
         {
-            AccountChanges storageReadsExpected = Build.An.AccountChanges
+            ReadOnlyAccountChanges storageReadsExpected = Build.An.AccountChanges
                 .WithAddress(Eip7002Constants.WithdrawalRequestPredeployAddress)
                 .WithStorageReads(0, 1, 2, 3)
                 .TestObject;
             string storageReadsRlp = "0x" + Bytes.ToHexString(Rlp.Encode(storageReadsExpected).Bytes);
-            yield return new TestCaseData(storageReadsRlp, storageReadsExpected)
-            { TestName = "storage_reads" };
+            yield return new TestCaseData(storageReadsRlp, storageReadsExpected) { TestName = "storage_reads" };
 
-            AccountChanges storageChangesExpected = Build.An.AccountChanges
+            ReadOnlyAccountChanges storageChangesExpected = Build.An.AccountChanges
                 .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
                 .WithStorageChanges(
                     0,
                     [new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))])
                 .TestObject;
             string storageChangesRlp = "0x" + Bytes.ToHexString(Rlp.Encode(storageChangesExpected).Bytes);
-            yield return new TestCaseData(storageChangesRlp, storageChangesExpected)
-            { TestName = "storage_changes" };
+            yield return new TestCaseData(storageChangesRlp, storageChangesExpected) { TestName = "storage_changes" };
         }
     }
 
-    private static IComparer<T> DescendingComparer<T>() where T : IComparable<T>
-        => Comparer<T>.Create((left, right) => right.CompareTo(left));
 }

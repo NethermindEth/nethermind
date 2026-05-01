@@ -311,7 +311,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithBlockAccessList(BlockAccessList? bal)
+        public BlockBuilder WithBlockAccessList(ReadOnlyBlockAccessList? bal)
         {
             TestObjectInternal.BlockAccessList = bal;
             return this;

@@ -19,7 +19,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
 
     private NullBlockAccessListManager() { }
 
-    public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled => false;
     public bool ParallelExecutionEnabled => false;
 

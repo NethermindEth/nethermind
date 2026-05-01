@@ -6,7 +6,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
@@ -451,12 +450,12 @@ public class BlockValidator(
 
     private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
     {
-        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
+        int itemCount = block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0;
         int maxBalItems = (int)(block.Header.GasLimit / Eip7928Constants.ItemCost);
 
-        if (bal.ItemCount > maxBalItems)
+        if (itemCount > maxBalItems)
         {
-            error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(bal.ItemCount, maxBalItems);
+            error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(itemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }

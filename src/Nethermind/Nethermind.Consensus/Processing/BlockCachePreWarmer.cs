@@ -86,7 +86,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
                 // is in use, drive warmup directly off the suggested block's access list.
-                BlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
+                ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
@@ -316,12 +316,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, BlockAccessList? bal = null)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
-        private readonly BlockAccessList? Bal = bal;
+        private readonly ReadOnlyBlockAccessList? Bal = bal;
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
@@ -423,9 +423,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
         {
-            using ArrayPoolList<AccountChanges> accounts = Bal!.AccountChanges.ToPooledList(Bal!.AccountChanges.Count);
+            using ArrayPoolList<ReadOnlyAccountChanges> accounts = Bal!.AccountChanges.ToPooledList(Bal!.AccountChanges.Count);
 
-            WarmingState<ArrayPoolList<AccountChanges>> baseState = new(envPool, accounts, parent);
+            WarmingState<ArrayPoolList<ReadOnlyAccountChanges>> baseState = new(envPool, accounts, parent);
 
             ParallelUnbalancedWork.For(
                 0,
@@ -434,17 +434,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 baseState.InitThreadState,
                 static (i, state) =>
                 {
-                    AccountChanges ac = state.Payload[i];
+                    ReadOnlyAccountChanges ac = state.Payload[i];
                     IWorldState worldState = state.Scope!.WorldState;
 
                     WarmupBalAccount(ac, worldState);
 
                     return state;
                 },
-                WarmingState<ArrayPoolList<AccountChanges>>.FinallyAction);
+                WarmingState<ArrayPoolList<ReadOnlyAccountChanges>>.FinallyAction);
         }
 
-        private static void WarmupBalAccount(AccountChanges ac, IWorldState worldState)
+        private static void WarmupBalAccount(ReadOnlyAccountChanges ac, IWorldState worldState)
         {
             try
             {
@@ -455,26 +455,26 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // ascending pass for better trie path locality
                 IList<UInt256> changed = ac.ChangedSlots;
                 int slotIndex = 0;
-                using SortedSet<UInt256>.Enumerator readEnumerator = ac.StorageReads.GetEnumerator();
-                bool hasRead = readEnumerator.MoveNext();
+                ReadOnlySpan<UInt256> reads = ac.StorageReads;
+                int readIndex = 0;
 
-                while (slotIndex < changed.Count || hasRead)
+                while (slotIndex < changed.Count || readIndex < reads.Length)
                 {
                     UInt256 slot;
-                    if (!hasRead)
+                    if (readIndex >= reads.Length)
                     {
                         slot = changed[slotIndex++];
                     }
                     else
                     {
-                        slot = readEnumerator.Current;
+                        slot = reads[readIndex];
                         if (slotIndex < changed.Count && changed[slotIndex].CompareTo(in slot) <= 0)
                         {
                             slot = changed[slotIndex++];
                         }
                         else
                         {
-                            hasRead = readEnumerator.MoveNext();
+                            readIndex++;
                         }
                     }
                     worldState.Get(new StorageCell(address, slot));

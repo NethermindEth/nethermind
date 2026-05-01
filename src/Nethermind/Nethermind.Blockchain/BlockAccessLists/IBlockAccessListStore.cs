@@ -27,8 +27,8 @@ public interface IBlockAccessListStore
     }
 
     void Insert(Hash256 blockHash, byte[] bal);
-    void Insert(Hash256 blockHash, BlockAccessList bal);
+    void Insert(Hash256 blockHash, ReadOnlyBlockAccessList bal);
     byte[]? GetRlp(Hash256 blockHash);
-    BlockAccessList? Get(Hash256 blockHash);
+    ReadOnlyBlockAccessList? Get(Hash256 blockHash);
     void Delete(Hash256 blockHash);
 }

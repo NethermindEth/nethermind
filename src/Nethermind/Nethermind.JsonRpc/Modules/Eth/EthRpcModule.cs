@@ -875,28 +875,28 @@ public partial class EthRpcModule(
         }
     }
 
-    public ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash)
+    public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash)
         => GetBlockAccessList(blockHash, null);
 
-    public ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long blockNumber)
+    public ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(long blockNumber)
         => GetBlockAccessList(null, blockNumber);
-    private ResultWrapper<BlockAccessList?> GetBlockAccessList(Hash256? blockHash, long? blockNumber)
+    private ResultWrapper<ReadOnlyBlockAccessList?> GetBlockAccessList(Hash256? blockHash, long? blockNumber)
     {
         Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber.Value) : _blockFinder.FindBlock(blockHash);
         if (block is null)
         {
-            return ResultWrapper<BlockAccessList?>.Fail("Cannot return block access list, block not found.");
+            return ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Cannot return block access list, block not found.");
         }
         else if (block.BlockAccessListHash is null)
         {
-            return ResultWrapper<BlockAccessList?>.Fail("Cannot return block access list for block from before Amsterdam fork.", ErrorCodes.UnavailableBeforeFork);
+            return ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Cannot return block access list for block from before Amsterdam fork.", ErrorCodes.UnavailableBeforeFork);
         }
 
-        BlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Hash);
+        ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Hash);
 
         return bal is null ?
-            ResultWrapper<BlockAccessList?>.Fail("Cannot return pruned historical block access list.", ErrorCodes.PrunedHistoryUnavailable)
-            : ResultWrapper<BlockAccessList?>.Success(bal);
+            ResultWrapper<ReadOnlyBlockAccessList?>.Fail("Cannot return pruned historical block access list.", ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<ReadOnlyBlockAccessList?>.Success(bal);
     }
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();

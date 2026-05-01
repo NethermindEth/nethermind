@@ -25,10 +25,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
     protected IWorldState _innerWorldState = innerWorldState;
-    private BlockAccessList? _generatingBlockAccessList;
+    private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
-    public BlockAccessList? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
-    public void SetGeneratingBlockAccessList(BlockAccessList? bal) => _generatingBlockAccessList = bal;
+    public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
+    public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
@@ -198,8 +198,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         _systemAccountReadSuppressionDepth = 0;
     }
 
-    public void MergeGeneratingBal(BlockAccessList other)
-        => other.Merge(_generatingBlockAccessList);
+    public void MergeGeneratingBal(GeneratedBlockAccessList target)
+        => target.Merge(_generatingBlockAccessList);
 
     public void Restore(Snapshot snapshot)
     {
@@ -283,12 +283,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private UInt256? GetBalanceCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.BalanceChanges.Count >= 1)
-        {
-            return accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].Value;
-        }
-        return null;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        return accountChanges?.BalanceChange?.Value;
     }
 
     private UInt256 GetNonceInternal(Address address)
@@ -296,13 +292,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private UInt256? GetNonceCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.NonceChanges.Count >= 1)
-        {
-            return accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].Value;
-        }
-
-        return null;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        return accountChanges?.NonceChange?.Value;
     }
 
     private byte[]? GetCodeCurrent(Address address)
@@ -321,15 +312,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
-        {
-            codeChange = accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1];
-            return true;
-        }
-
-        codeChange = null;
-        return false;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        codeChange = accountChanges?.CodeChange;
+        return codeChange is not null;
     }
 
     private byte[]? GetCodeInternal(Address address)
@@ -342,15 +327,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         if (parallel)
         {
-            AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
-            if (accountChanges is not null)
+            AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
+            if (accountChanges is not null && accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
             {
-                accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
-
-                if (slotChanges is not null && slotChanges.Changes.Count >= 1)
-                {
-                    return slotChanges.Changes.Values[slotChanges.Changes.Count - 1].Value.ToBigEndian();
-                }
+                return change.Value.Value.ToBigEndian();
             }
         }
 
@@ -362,14 +342,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private bool? AccountExistsCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && (accountChanges.NonceChanges.Count >= 1 || accountChanges.BalanceChanges.Count >= 1))
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges is not null && (accountChanges.NonceChange is not null || accountChanges.BalanceChange is not null))
         {
-            // if nonce or balance is changed in this tx must exist
-            // could have been created this tx
+            // if nonce or balance is changed in this tx must exist (could have been created this tx)
             return true;
         }
-
         return null;
     }
 

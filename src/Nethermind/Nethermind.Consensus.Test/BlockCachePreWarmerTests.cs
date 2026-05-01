@@ -128,7 +128,7 @@ public class BlockCachePreWarmerTests
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
 
-        BlockAccessList bal = Build.A.BlockAccessList
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject,
                 Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
@@ -157,7 +157,7 @@ public class BlockCachePreWarmerTests
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
 
-        BlockAccessList bal = Build.A.BlockAccessList
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressA)
@@ -198,7 +198,7 @@ public class BlockCachePreWarmerTests
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10, parallelExecutionBatchRead: false);
 
-        BlockAccessList bal = Build.A.BlockAccessList
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges.WithAddress(TestItem.AddressC).TestObject)
             .TestObject;
@@ -225,7 +225,7 @@ public class BlockCachePreWarmerTests
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
 
-        BlockAccessList bal = Build.A.BlockAccessList
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
             .TestObject;
@@ -262,7 +262,7 @@ public class BlockCachePreWarmerTests
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution, batchRead);
 
-        BlockAccessList? bal = hasBal
+        ReadOnlyBlockAccessList? bal = hasBal
             ? Build.A.BlockAccessList
                 .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
                 .TestObject

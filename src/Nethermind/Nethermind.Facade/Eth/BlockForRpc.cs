@@ -161,7 +161,7 @@ public class BlockForRpc
     public Hash256? BlockAccessListHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public BlockAccessList? BlockAccessList { get; set; }
+    public ReadOnlyBlockAccessList? BlockAccessList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? SlotNumber { get; set; }

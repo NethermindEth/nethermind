@@ -21,7 +21,7 @@ namespace Nethermind.State;
 public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogManager logManager) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
-    private BlockAccessList? _suggestedBlockAccessList;
+    private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private int _blockAccessIndex = 0;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
@@ -64,11 +64,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         CheckInitialized();
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
 
         if (accountChanges is not null)
         {
-            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+            accountChanges.TryGetSlotChanges(storageCell.Index, out ReadOnlySlotChanges? slotChanges);
 
             if (slotChanges is not null)
             {
@@ -82,11 +82,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public byte[] GetOriginal(in StorageCell storageCell)
     {
         CheckInitialized();
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
 
         if (accountChanges is not null)
         {
-            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+            accountChanges.TryGetSlotChanges(storageCell.Index, out ReadOnlySlotChanges? slotChanges);
 
             if (slotChanges is not null)
             {
@@ -110,7 +110,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         CheckInitialized();
 
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
         if (accountChanges is not null)
         {
@@ -126,7 +126,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         CheckInitialized();
 
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
         if (accountChanges is not null)
         {
@@ -142,7 +142,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         CheckInitialized();
 
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
         if (accountChanges is not null)
         {
@@ -156,7 +156,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         CheckInitialized();
 
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
         if (accountChanges is not null)
         {
@@ -202,7 +202,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         CheckInitialized();
 
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null)
         {
             // check if existed before current tx
@@ -221,7 +221,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
         // see https://eips.ethereum.org/EIPS/eip-7610
         // storage could only be non-empty for 28 old accounts
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null)
         {
             return accountChanges.EmptyBeforeBlock;
@@ -254,7 +254,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         CheckInitialized();
 
         ArrayPoolList<AddressAsKey> result = new(_suggestedBlockAccessList.AccountChanges.Count);
-        foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
             if (accountChanges.AccountChanged)
             {
