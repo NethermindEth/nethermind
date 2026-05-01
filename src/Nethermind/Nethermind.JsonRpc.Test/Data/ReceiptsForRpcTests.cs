@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
@@ -43,6 +44,33 @@ namespace Nethermind.JsonRpc.Test.Data
             long?[] expected = { 0, 1, 2 };
 
             Assert.That(indexes, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Error_field_is_not_serialized()
+        {
+            Hash256 txHash = Keccak.OfAnEmptyString;
+            TxReceipt receipt = new()
+            {
+                Bloom = Bloom.Empty,
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = TestItem.KeccakA,
+                BlockNumber = 1,
+                GasUsed = 1000,
+                TxHash = txHash,
+                StatusCode = 0,
+                GasUsedTotal = 1000,
+                Logs = [],
+                Error = "Reverted: INSUFFICIENT_OUTPUT"
+            };
+
+            ReceiptForRpc receiptForRpc = new(txHash, receipt, 0, new(new UInt256(1)));
+            string json = new EthereumJsonSerializer().Serialize(receiptForRpc);
+
+            Assert.That(json, Does.Not.Contain("\"error\""));
+            Assert.That(json, Does.Not.Contain("INSUFFICIENT_OUTPUT"));
         }
     }
 }

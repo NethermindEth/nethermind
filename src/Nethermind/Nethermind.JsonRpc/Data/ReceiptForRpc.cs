@@ -63,6 +63,8 @@ namespace Nethermind.JsonRpc.Data
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
         public long? Status { get; set; }
+
+        [JsonIgnore]
         public string? Error { get; set; }
         public TxType Type { get; set; }
 
