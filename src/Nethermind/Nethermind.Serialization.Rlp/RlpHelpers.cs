@@ -251,8 +251,12 @@ internal static class RlpHelpers
     }
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowUnexpectedByteValue(int buffer0)
-        => throw new RlpException($"Unexpected byte value {buffer0}");
+    public static void ThrowUnexpectedBoolValue(byte value)
+        => throw new RlpException($"Unexpected value for a boolean: {value}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowUnexpectedByteValue(int value)
+        => throw new RlpException($"Unexpected byte value: {value}");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowInvalidLength(int actualLength, int decodedLength)
@@ -280,13 +284,13 @@ internal static class RlpHelpers
 
     [DoesNotReturn, StackTraceHidden]
     public static uint ThrowNonCanonicalInteger(int position)
-        => throw new RlpException($"Non-canonical integer (leading zero bytes) at position {position}");
+        => throw new RlpException($"Non-canonical integer at position {position}");
 
     [DoesNotReturn, StackTraceHidden]
-    public static uint ThrowUnexpectedIntegerLength(int length)
-        => throw new RlpException($"Unexpected length of long value: {length}");
+    public static void ThrowUnexpectedIntegerLength(int length)
+        => throw new RlpException($"Unexpected length of integer value: {length}");
 
     [DoesNotReturn, StackTraceHidden]
-    public static long ThrowNotPositiveLong()
-        => throw new RlpException("Long value is not a non-negative value");
+    public static void ThrowNegativeInteger(long value)
+        => throw new RlpException($"Expected non-negative integer, got {value}");
 }
