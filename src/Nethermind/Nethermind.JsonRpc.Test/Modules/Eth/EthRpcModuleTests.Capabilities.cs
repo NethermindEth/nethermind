@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -16,12 +17,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
-    /// <summary>
-    /// Builds a chain and returns the result of eth_capabilities with the given configs.
-    /// </summary>
-    private static async Task<EthCapabilitiesResult> GetCaps(
-        SyncConfig syncConfig,
-        PruningConfig pruningConfig)
+    /// <summary>Builds a chain and returns the result of eth_capabilities with the given configs.</summary>
+    private static async Task<EthCapabilitiesResult> GetCaps(SyncConfig syncConfig, PruningConfig pruningConfig)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c, syncConfig, pruningConfig))
@@ -30,108 +27,101 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task eth_capabilities_returns_all_resources_and_head()
+    public async Task eth_capabilities_returns_head_and_resources_on_default_build()
     {
+        // Default TestRpcBlockchain build is archive with full receipts: nothing should be disabled.
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data;
 
         Assert.That(caps.Head.Number, Is.GreaterThanOrEqualTo(0));
         Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
 
-        Assert.That(caps.Blocks, Is.Not.EqualTo(default(CapabilityResource)));
-        Assert.That(caps.State, Is.Not.EqualTo(default(CapabilityResource)));
-        Assert.That(caps.Tx, Is.Not.EqualTo(default(CapabilityResource)));
-        Assert.That(caps.Logs, Is.Not.EqualTo(default(CapabilityResource)));
-        Assert.That(caps.Receipts, Is.Not.EqualTo(default(CapabilityResource)));
-        Assert.That(caps.Stateproofs, Is.Not.EqualTo(default(CapabilityResource)));
-    }
-
-    [Test]
-    public async Task eth_capabilities_null_configs_defaults_to_archive_with_receipts()
-    {
-        // null configs → archive (stateproofs on, no window) + receipts enabled
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        EthCapabilitiesResult caps = chain.EthRpcModule.eth_capabilities().Data;
-
         Assert.That(caps.Stateproofs.Disabled, Is.False);
+        Assert.That(caps.State.Disabled, Is.False);
         Assert.That(caps.State.DeleteStrategy, Is.Null);
         Assert.That(caps.Tx.Disabled, Is.False);
         Assert.That(caps.Logs.Disabled, Is.False);
         Assert.That(caps.Receipts.Disabled, Is.False);
-    }
-
-    [Test]
-    public async Task eth_capabilities_archive_node_full_availability()
-    {
-        // Covers archive state+stateproofs availability AND the genesis-receipts regression
-        // (AncientReceiptsBarrierCalc would return 1 for PivotNumber=0; must be 0).
-        EthCapabilitiesResult caps = await GetCaps(
-            new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            new PruningConfig { Mode = PruningMode.None });
-
-        // State: full history, no rolling-window delete strategy
-        Assert.That(caps.State.Disabled, Is.False);
-        Assert.That(caps.State.OldestBlock, Is.EqualTo(0L));
-        Assert.That(caps.State.DeleteStrategy, Is.Null, "Archive node has no delete strategy");
-
-        // Stateproofs: enabled from genesis
-        Assert.That(caps.Stateproofs.Disabled, Is.False, "Archive node serves state proofs");
-        Assert.That(caps.Stateproofs.OldestBlock, Is.EqualTo(0L));
-
-        // Receipts/tx/logs: available from genesis (not 1)
-        Assert.That(caps.Tx.OldestBlock, Is.EqualTo(0L), "Archive tx available from genesis");
-        Assert.That(caps.Logs.OldestBlock, Is.EqualTo(0L), "Archive logs available from genesis");
-        Assert.That(caps.Receipts.OldestBlock, Is.EqualTo(0L), "Archive receipts available from genesis");
-
-        // Blocks: headers available
         Assert.That(caps.Blocks.Disabled, Is.False);
         Assert.That(caps.Blocks.OldestBlock, Is.Not.Null);
     }
 
-    [Test]
-    public async Task eth_capabilities_memory_pruned_node_reports_window_and_disables_stateproofs()
+    public sealed record CapabilitiesScenario(
+        string Name,
+        SyncConfig SyncConfig,
+        PruningConfig PruningConfig,
+        CapabilityResource State,
+        CapabilityResource Stateproofs,
+        CapabilityResource Tx,
+        CapabilityResource Logs,
+        CapabilityResource Receipts)
     {
-        const int pruningBoundary = 128;
+        public override string ToString() => Name;
+    }
+
+    private static IEnumerable<CapabilitiesScenario> CapabilitiesScenarios()
+    {
+        // Archive — covers the genesis-receipts regression (AncientReceiptsBarrierCalc returns
+        // Math.Max(1, …) which is wrong for PivotNumber=0; receipts must be available from 0).
+        yield return new CapabilitiesScenario(
+            Name: "archive_full_availability",
+            SyncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            PruningConfig: new PruningConfig { Mode = PruningMode.None },
+            State: new CapabilityResource(Disabled: false, OldestBlock: 0L),
+            Stateproofs: new CapabilityResource(Disabled: false, OldestBlock: 0L),
+            Tx: new CapabilityResource(Disabled: false, OldestBlock: 0L),
+            Logs: new CapabilityResource(Disabled: false, OldestBlock: 0L),
+            Receipts: new CapabilityResource(Disabled: false, OldestBlock: 0L));
+
+        // Full pruning is periodic and non-linear — no predictable window to report.
+        yield return new CapabilitiesScenario(
+            Name: "full_pruning_omits_oldest_and_strategy",
+            SyncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            PruningConfig: new PruningConfig { Mode = PruningMode.Full },
+            State: new CapabilityResource(Disabled: false, OldestBlock: null, DeleteStrategy: null),
+            Stateproofs: new CapabilityResource(Disabled: true, OldestBlock: null),
+            Tx: new CapabilityResource(Disabled: false, OldestBlock: 0L),
+            Logs: new CapabilityResource(Disabled: false, OldestBlock: 0L),
+            Receipts: new CapabilityResource(Disabled: false, OldestBlock: 0L));
+
+        // No receipts download → tx/logs/receipts unavailable.
+        yield return new CapabilitiesScenario(
+            Name: "no_receipts_disables_tx_logs_receipts",
+            SyncConfig: new SyncConfig { DownloadReceiptsInFastSync = false },
+            PruningConfig: new PruningConfig { Mode = PruningMode.None },
+            State: new CapabilityResource(Disabled: false, OldestBlock: 0L),
+            Stateproofs: new CapabilityResource(Disabled: false, OldestBlock: 0L),
+            Tx: new CapabilityResource(Disabled: true, OldestBlock: null),
+            Logs: new CapabilityResource(Disabled: true, OldestBlock: null),
+            Receipts: new CapabilityResource(Disabled: true, OldestBlock: null));
+    }
+
+    [TestCaseSource(nameof(CapabilitiesScenarios))]
+    public async Task eth_capabilities_scenario(CapabilitiesScenario s)
+    {
+        EthCapabilitiesResult caps = await GetCaps(s.SyncConfig, s.PruningConfig);
+
+        Assert.That(caps.State, Is.EqualTo(s.State), nameof(caps.State));
+        Assert.That(caps.Stateproofs, Is.EqualTo(s.Stateproofs), nameof(caps.Stateproofs));
+        Assert.That(caps.Tx, Is.EqualTo(s.Tx), nameof(caps.Tx));
+        Assert.That(caps.Logs, Is.EqualTo(s.Logs), nameof(caps.Logs));
+        Assert.That(caps.Receipts, Is.EqualTo(s.Receipts), nameof(caps.Receipts));
+    }
+
+    [Test]
+    public async Task eth_capabilities_memory_pruned_reports_window_and_disables_stateproofs()
+    {
+        // Memory pruning maintains a rolling window of PruningBoundary recent states.
+        // OldestBlock for State depends on chain head, so it is not asserted here.
+        const int retention = 128;
         EthCapabilitiesResult caps = await GetCaps(
             new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = pruningBoundary });
+            new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = retention });
 
-        Assert.That(caps.Stateproofs.Disabled, Is.True, "Pruned node cannot serve historical state proofs");
-        Assert.That(caps.Stateproofs.OldestBlock, Is.Null);
+        Assert.That(caps.Stateproofs, Is.EqualTo(new CapabilityResource(Disabled: true, OldestBlock: null)));
 
         Assert.That(caps.State.Disabled, Is.False);
-        Assert.That(caps.State.DeleteStrategy, Is.Not.Null);
-        Assert.That(caps.State.DeleteStrategy!.Value.Type, Is.EqualTo("window"));
-        Assert.That(caps.State.DeleteStrategy.Value.RetentionBlocks, Is.EqualTo(pruningBoundary));
-    }
-
-    [Test]
-    public async Task eth_capabilities_full_pruning_omits_state_oldest_block_and_delete_strategy()
-    {
-        // Full pruning is periodic and non-linear — no predictable window to report.
-        EthCapabilitiesResult caps = await GetCaps(
-            new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            new PruningConfig { Mode = PruningMode.Full });
-
-        Assert.That(caps.State.Disabled, Is.False, "State is still available on a full-pruned node");
-        Assert.That(caps.State.OldestBlock, Is.Null, "Full-only pruning: oldest block unknown, must not be reported");
-        Assert.That(caps.State.DeleteStrategy, Is.Null, "Full-only pruning is not a rolling window");
-    }
-
-    [Test]
-    public async Task eth_capabilities_no_receipts_disables_tx_logs_and_receipts()
-    {
-        EthCapabilitiesResult caps = await GetCaps(
-            new SyncConfig { DownloadReceiptsInFastSync = false },
-            new PruningConfig { Mode = PruningMode.None });
-
-        Assert.That(caps.Tx.Disabled, Is.True);
-        Assert.That(caps.Logs.Disabled, Is.True);
-        Assert.That(caps.Receipts.Disabled, Is.True);
-
-        Assert.That(caps.Tx.OldestBlock, Is.Null, "Disabled resource has no oldestBlock");
-        Assert.That(caps.Logs.OldestBlock, Is.Null);
-        Assert.That(caps.Receipts.OldestBlock, Is.Null);
+        Assert.That(caps.State.DeleteStrategy, Is.EqualTo(new CapabilityDeleteStrategy("window", retention)));
     }
 
     [Test]

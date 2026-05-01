@@ -10,67 +10,37 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// Response for eth_capabilities — describes the head block and the historical data availability of each resource type.
 /// Follows ethereum/execution-apis#755.
 /// </summary>
-public record class EthCapabilitiesResult
-{
-    /// <summary>The current chain head.</summary>
-    public required CapabilityHead Head { get; init; }
-
-    /// <summary>Historical account and storage state availability.</summary>
-    public required CapabilityResource State { get; init; }
-
-    /// <summary>Historical transaction lookup availability.</summary>
-    public required CapabilityResource Tx { get; init; }
-
-    /// <summary>Historical log search / filter availability.</summary>
-    public required CapabilityResource Logs { get; init; }
-
-    /// <summary>Receipt lookup availability.</summary>
-    public required CapabilityResource Receipts { get; init; }
-
-    /// <summary>Historical block and header availability.</summary>
-    public required CapabilityResource Blocks { get; init; }
-
-    /// <summary>Proof / trie-node availability (eth_getProof depth window).</summary>
-    public required CapabilityResource Stateproofs { get; init; }
-}
+/// <param name="Head">The current chain head.</param>
+/// <param name="State">Historical account and storage state availability.</param>
+/// <param name="Tx">Historical transaction lookup availability.</param>
+/// <param name="Logs">Historical log search / filter availability.</param>
+/// <param name="Receipts">Receipt lookup availability.</param>
+/// <param name="Blocks">Historical block and header availability.</param>
+/// <param name="Stateproofs">Proof / trie-node availability (eth_getProof depth window).</param>
+public record class EthCapabilitiesResult(
+    CapabilityHead Head,
+    CapabilityResource State,
+    CapabilityResource Tx,
+    CapabilityResource Logs,
+    CapabilityResource Receipts,
+    CapabilityResource Blocks,
+    CapabilityResource Stateproofs);
 
 /// <summary>Head block number and hash.</summary>
-public readonly record struct CapabilityHead
-{
-    /// <summary>Block number.</summary>
-    public required long Number { get; init; }
-
-    /// <summary>Block hash.</summary>
-    public required Hash256 Hash { get; init; }
-}
+/// <param name="Number">Block number.</param>
+/// <param name="Hash">Block hash.</param>
+public readonly record struct CapabilityHead(long Number, Hash256 Hash);
 
 /// <summary>Availability descriptor for one historical data resource.</summary>
-public readonly record struct CapabilityResource
-{
-    /// <summary><c>true</c> when the resource is completely unavailable on this node.</summary>
-    public required bool Disabled { get; init; }
-
-    /// <summary>
-    /// Earliest block for which this resource is available.
-    /// Omitted when <see cref="Disabled"/> is <c>true</c>.
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? OldestBlock { get; init; }
-
-    /// <summary>
-    /// Retention / deletion strategy. Present only when data is pruned with a rolling window.
-    /// Omitted for archive nodes or disabled resources.
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public CapabilityDeleteStrategy? DeleteStrategy { get; init; }
-}
+/// <param name="Disabled"><c>true</c> when the resource is completely unavailable on this node.</param>
+/// <param name="OldestBlock">Earliest block for which this resource is available. Omitted when <paramref name="Disabled"/> is <c>true</c>.</param>
+/// <param name="DeleteStrategy">Retention / deletion strategy. Present only when data is pruned with a rolling window. Omitted for archive nodes or disabled resources.</param>
+public readonly record struct CapabilityResource(
+    bool Disabled,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? OldestBlock = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CapabilityDeleteStrategy? DeleteStrategy = null);
 
 /// <summary>Rolling-window deletion strategy for a resource.</summary>
-public readonly record struct CapabilityDeleteStrategy
-{
-    /// <summary>Strategy type — always <c>"window"</c>.</summary>
-    public required string Type { get; init; }
-
-    /// <summary>Number of recent blocks retained.</summary>
-    public required long RetentionBlocks { get; init; }
-}
+/// <param name="Type">Strategy type — always <c>"window"</c>.</param>
+/// <param name="RetentionBlocks">Number of recent blocks retained.</param>
+public readonly record struct CapabilityDeleteStrategy(string Type, long RetentionBlocks);

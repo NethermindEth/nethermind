@@ -43,40 +43,22 @@ internal class EthCapabilitiesProvider(
             : null;
 
         CapabilityDeleteStrategy? windowStrategy = retentionBlocks is > 0
-            ? new CapabilityDeleteStrategy { Type = "window", RetentionBlocks = retentionBlocks.Value }
+            ? new CapabilityDeleteStrategy("window", retentionBlocks.Value)
             : null;
 
-        CapabilityResource receiptResource(bool synced) => new()
-        {
-            Disabled = !synced,
-            OldestBlock = synced ? oldestReceipts : null
-        };
+        CapabilityResource receiptResource(bool synced) =>
+            new(Disabled: !synced, OldestBlock: synced ? oldestReceipts : null);
 
-        return new EthCapabilitiesResult
-        {
-            Head = new CapabilityHead { Number = headNumber, Hash = headHash },
-            Blocks = new CapabilityResource
-            {
-                Disabled = !headersAvailable,
-                OldestBlock = headersAvailable ? lowestBlock : null
-            },
-            State = new CapabilityResource
-            {
-                // State is always available (at minimum the genesis trie exists), even on a
-                // memory-pruned node that hasn't yet synced past the first block — in which case
-                // OldestBlock is null because the rolling window lower bound cannot yet be computed.
-                Disabled = false,
-                OldestBlock = stateOldest,
-                DeleteStrategy = windowStrategy
-            },
-            Tx = receiptResource(receiptsSynced),
-            Logs = receiptResource(receiptsSynced),
-            Receipts = receiptResource(receiptsSynced),
-            Stateproofs = new CapabilityResource
-            {
-                Disabled = !isArchive,
-                OldestBlock = isArchive ? 0L : null
-            }
-        };
+        return new EthCapabilitiesResult(
+            Head: new CapabilityHead(headNumber, headHash),
+            // State is always available (at minimum the genesis trie exists), even on a
+            // memory-pruned node that hasn't yet synced past the first block — in which case
+            // OldestBlock is null because the rolling window lower bound cannot yet be computed.
+            State: new CapabilityResource(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: windowStrategy),
+            Tx: receiptResource(receiptsSynced),
+            Logs: receiptResource(receiptsSynced),
+            Receipts: receiptResource(receiptsSynced),
+            Blocks: new CapabilityResource(Disabled: !headersAvailable, OldestBlock: headersAvailable ? lowestBlock : null),
+            Stateproofs: new CapabilityResource(Disabled: !isArchive, OldestBlock: isArchive ? 0L : null));
     }
 }
