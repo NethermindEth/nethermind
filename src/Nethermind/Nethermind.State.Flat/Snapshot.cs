@@ -37,9 +37,11 @@ public class Snapshot(
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => content.Storages;
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => content.StorageNodes;
-    public IEnumerable<(Hash256, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Keys.Select(k => k.Key);
+    // Enumerate KeyValuePairs instead of `.Keys`: ConcurrentDictionary.Keys snapshots into a fresh
+    // List<TKey> sized to Count, which lands on the LOH for 100k+ node snapshots.
+    public IEnumerable<(Hash256, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Select(kv => kv.Key.Key);
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => content.StateNodes;
-    public IEnumerable<TreePath> StateNodeKeys => content.StateNodes.Keys.Select(k => k.Key);
+    public IEnumerable<TreePath> StateNodeKeys => content.StateNodes.Select(kv => kv.Key.Key);
     public int AccountsCount => content.Accounts.Count;
     public int StoragesCount => content.Storages.Count;
     public int StateNodesCount => content.StateNodes.Count;
