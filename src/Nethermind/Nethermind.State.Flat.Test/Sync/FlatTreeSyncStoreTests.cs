@@ -7,10 +7,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync;
+using Nethermind.State.Flat.Sync.Snap;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -72,7 +74,8 @@ public class FlatTreeSyncStoreTests
 
         Assert.That(HasStorageEntries(address), Is.True, "Storage entries should exist before cleanup");
 
-        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        FlatSnapTrieFactory snapTrieFactory = new(_persistence, Substitute.For<ISyncConfig>(), LimboLogs.Instance);
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), snapTrieFactory, LimboLogs.Instance);
         store.EnsureStorageEmpty(Keccak.Compute(address.Bytes));
 
         Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -19,6 +18,8 @@ namespace Nethermind.State.Flat.Sync;
 
 public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, FlatSnapTrieFactory snapTrieFactory, ILogManager logManager) : ITreeSyncStore
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<FlatTreeSyncStore>();
+
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
 
@@ -243,7 +244,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         // aren't yet committed to the underlying persistence. Without this drain a caller that
         // observes "sync finished" can read state that's missing accounts from late-disposed
         // trees (manifests as E2ESyncTests.SnapSync "Verification failed: N missing in flat").
-        snapTrieFactory.WaitForInFlightTreesDrained(TimeSpan.FromSeconds(30));
+        if (!snapTrieFactory.WaitForInFlightTreesDrained(TimeSpan.FromSeconds(30)))
+            if (_logger.IsWarn) _logger.Warn("FlatTreeSyncStore.FinalizeSync proceeding despite in-flight ISnapTrees not draining within 30s — committed state may be incomplete.");
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateId from = reader.CurrentState;

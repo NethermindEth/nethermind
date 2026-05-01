@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Threading;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -62,9 +61,30 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
         EnsureDatabaseCleared();
 
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        IPersistence.IWriteBatch writeBatch;
+        try
+        {
+            writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        }
+        catch
+        {
+            reader.Dispose();
+            throw;
+        }
         OnTreeCreated();
-        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager, this);
+        try
+        {
+            return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager, this);
+        }
+        catch
+        {
+            // Constructor failed: pair the OnTreeCreated above with OnTreeDisposed and release
+            // the per-tree resources ourselves, since no FlatSnapStateTree.Dispose will run.
+            OnTreeDisposed();
+            writeBatch.Dispose();
+            reader.Dispose();
+            throw;
+        }
     }
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
@@ -72,9 +92,28 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
         EnsureDatabaseCleared();
 
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        IPersistence.IWriteBatch writeBatch;
+        try
+        {
+            writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        }
+        catch
+        {
+            reader.Dispose();
+            throw;
+        }
         OnTreeCreated();
-        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager, this);
+        try
+        {
+            return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager, this);
+        }
+        catch
+        {
+            OnTreeDisposed();
+            writeBatch.Dispose();
+            reader.Dispose();
+            throw;
+        }
     }
 
     private void EnsureDatabaseCleared()
