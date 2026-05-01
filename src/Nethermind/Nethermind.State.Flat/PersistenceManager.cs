@@ -546,9 +546,10 @@ public class PersistenceManager(
                     }
                 }
 
-                stateNodesSize += node.FullRlp.Length;
+                ReadOnlySpan<byte> rlp = node.FullRlp.AsSpan();
+                stateNodesSize += rlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node);
+                batch.SetStateTrieNode(path, rlp);
 
                 node.IsPersisted = true;
             }
@@ -574,9 +575,10 @@ public class PersistenceManager(
                     }
                 }
 
-                storageNodesSize += node.FullRlp.Length;
+                ReadOnlySpan<byte> rlp = node.FullRlp.AsSpan();
+                storageNodesSize += rlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node);
+                batch.SetStorageTrieNode(address, path, rlp);
                 node.IsPersisted = true;
             }
 
@@ -617,10 +619,10 @@ public class PersistenceManager(
                 batch.SetStorage(entry.Address, entry.Slot, entry.Value);
 
             foreach (PersistedSnapshotScanner.StateNodeEntry entry in scanner.StateNodes)
-                batch.SetStateTrieNode(entry.Path, entry.Node);
+                batch.SetStateTrieNode(entry.Path, entry.Rlp);
 
             foreach (PersistedSnapshotScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                batch.SetStorageTrieNode(entry.AddressHash, entry.Path, entry.Node);
+                batch.SetStorageTrieNode(entry.AddressHash, entry.Path, entry.Rlp);
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);

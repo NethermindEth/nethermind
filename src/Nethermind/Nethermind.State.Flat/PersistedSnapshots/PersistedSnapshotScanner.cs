@@ -289,7 +289,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 };
             }
         }
-        public TrieNode Node => new(NodeType.Unknown, _snapshot.ResolveValueAt(_value));
+        public ReadOnlySpan<byte> Rlp => _snapshot.ResolveValueAt(_value);
     }
 
     public readonly ref struct StateNodeEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)
@@ -374,7 +374,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     : new(new ValueHash256(k[..32]), k[32]);
             }
         }
-        public TrieNode Node => new(NodeType.Unknown, _snapshot.ResolveValueAt(_value));
+        public ReadOnlySpan<byte> Rlp => _snapshot.ResolveValueAt(_value);
     }
 
     public readonly ref struct StorageNodeEnumerable(PersistedSnapshot snapshot, ReadOnlySpan<byte> data)

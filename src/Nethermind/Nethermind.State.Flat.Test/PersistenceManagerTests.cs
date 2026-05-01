@@ -337,18 +337,19 @@ public class PersistenceManagerTests
         TrieNode node = new(NodeType.Leaf, Keccak.Zero);
         snapshot.Content.StateNodes[path] = node;
 
-        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
+        FakeTrieWriteBatch writeBatch = new(innerBatch);
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
         // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
         // Assert
-        writeBatch.Received().SetAccount(TestItem.AddressA, Arg.Any<Account?>());
-        writeBatch.Received().SetAccount(TestItem.AddressB, Arg.Any<Account?>());
-        writeBatch.Received().SetStorage(TestItem.AddressA, (UInt256)1, Arg.Any<SlotValue?>());
-        writeBatch.Received().SetStorage(TestItem.AddressA, (UInt256)2, Arg.Any<SlotValue?>());
-        writeBatch.Received().SetStateTrieNode(Arg.Any<TreePath>(), Arg.Any<TrieNode>());
+        innerBatch.Received().SetAccount(TestItem.AddressA, Arg.Any<Account?>());
+        innerBatch.Received().SetAccount(TestItem.AddressB, Arg.Any<Account?>());
+        innerBatch.Received().SetStorage(TestItem.AddressA, (UInt256)1, Arg.Any<SlotValue?>());
+        innerBatch.Received().SetStorage(TestItem.AddressA, (UInt256)2, Arg.Any<SlotValue?>());
+        Assert.That(writeBatch.StateTrieNodeCalls, Is.GreaterThanOrEqualTo(1));
         Assert.That(node.IsPersisted, Is.True);
     }
 

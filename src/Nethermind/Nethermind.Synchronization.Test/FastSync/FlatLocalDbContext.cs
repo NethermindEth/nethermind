@@ -137,7 +137,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                writeBatch.SetStateTrieNode(path, node);
+                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
                 FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
                 return node;
             }
@@ -169,7 +169,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
                 return node;
             }
