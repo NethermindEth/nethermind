@@ -721,10 +721,6 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
-                {
-                    _store.FinalizeSync(pivotHeader);
-                }
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
@@ -797,6 +793,19 @@ namespace Nethermind.Synchronization.FastSync
 
             if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
             {
+                if (pivotHeader.StateRoot == _rootNode)
+                {
+                    _store.FinalizeSync(pivotHeader);
+                }
+                else
+                {
+                    // The pivot rotated between root save and cleanup. Skip finalize so
+                    // the persistence layer's CurrentState is not promoted to a state root
+                    // for which no trie data exists.
+                    // The next sync round will retry on the new pivot.
+                    if (_logger.IsWarn) _logger.Warn($"Skipping state sync finalize: pivot rotated. Saved root: {_rootNode}, current pivot root: {pivotHeader.StateRoot}");
+                }
+
                 SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(pivotHeader));
             }
         }
