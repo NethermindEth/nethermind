@@ -25,9 +25,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
     protected IWorldState _innerWorldState = innerWorldState;
-    private readonly BlockAccessList _generatingBlockAccessList = new();
+    private BlockAccessList? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
-    internal BlockAccessList GetGeneratingBlockAccessList() => _generatingBlockAccessList;
+    public BlockAccessList? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
+    public void SetGeneratingBlockAccessList(BlockAccessList? bal) => _generatingBlockAccessList = bal;
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
@@ -192,7 +193,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         => _generatingBlockAccessList.Index++;
 
     public void Clear()
-        => _generatingBlockAccessList.Clear();
+    {
+        _generatingBlockAccessList.Clear();
+        _systemAccountReadSuppressionDepth = 0;
+    }
 
     public void MergeGeneratingBal(BlockAccessList other)
         => other.Merge(_generatingBlockAccessList);

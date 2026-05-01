@@ -101,6 +101,10 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: |
+            src/Nethermind/**/packages.lock.json
 
       - name: ${{ matrix.project }}
         id: test
@@ -175,6 +179,10 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: |
+            src/Nethermind/**/packages.lock.json
 
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
@@ -248,6 +256,10 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: |
+            src/Nethermind/**/packages.lock.json
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
