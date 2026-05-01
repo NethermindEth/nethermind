@@ -14,6 +14,35 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
 
     public new XdcSubnetBlockHeader TestObject => (XdcSubnetBlockHeader)base.TestObject;
 
+    public new XdcSubnetBlockHeaderBuilder WithParent(BlockHeader parentHeader)
+    {
+        base.WithParent(parentHeader);
+        return this;
+    }
+
+    public new XdcSubnetBlockHeaderBuilder WithNumber(long blockNumber)
+    {
+        base.WithNumber(blockNumber);
+        return this;
+    }
+
+    public new XdcSubnetBlockHeaderBuilder WithTimestamp(ulong timestamp)
+    {
+        base.WithTimestamp(timestamp);
+        return this;
+    }
+
+    public new XdcSubnetBlockHeaderBuilder WithMixHash(Hash256 mixHash)
+    {
+        base.WithMixHash(mixHash);
+        return this;
+    }
+
+    public new XdcSubnetBlockHeaderBuilder WithGeneratedExtraConsensusData(int signatureNumber = 72)
+    {
+        base.WithGeneratedExtraConsensusData(signatureNumber);
+        return this;
+    }
 
     public XdcSubnetBlockHeaderBuilder() =>
         TestObjectInternal = new XdcSubnetBlockHeader(
