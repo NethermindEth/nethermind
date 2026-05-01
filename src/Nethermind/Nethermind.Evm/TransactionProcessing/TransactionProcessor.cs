@@ -75,6 +75,12 @@ namespace Nethermind.Evm.TransactionProcessing
         private long _blockCumulativeStateGas;
         private long _blockCumulativeReceiptGas;
 
+        /// <summary>Per-block running total of state gas charged across every tx executed by
+        /// this processor (real and system). Reset by <see cref="SetBlockExecutionContext"/>.
+        /// Used by callers to attribute pre/post-block system contract state-gas to the
+        /// block's <c>max(regular, state)</c> gas total.</summary>
+        public long BlockCumulativeStateGas => _blockCumulativeStateGas;
+
         [Flags]
         protected enum ExecutionOptions
         {
@@ -278,10 +284,15 @@ namespace Nethermind.Evm.TransactionProcessing
                 tx.BlockGasUsed = spentGas.EffectiveBlockGas;
             }
 
+            // State gas accumulates for system txs too — pre/post-block system contract
+            // calls (EIP-2935 / EIP-4788 / EIP-7002 / EIP-7251) charge state gas that must
+            // contribute to the block's max(regular, state) total. The Skip Validation
+            // path still excludes regular and receipt gas because system txs aren't part
+            // of the block's tx list.
+            _blockCumulativeStateGas += spentGas.BlockStateGas;
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
                 _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
-                _blockCumulativeStateGas += spentGas.BlockStateGas;
                 _blockCumulativeReceiptGas += spentGas.SpentGas;
             }
 
