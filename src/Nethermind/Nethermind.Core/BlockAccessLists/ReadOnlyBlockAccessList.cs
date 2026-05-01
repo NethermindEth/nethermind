@@ -49,25 +49,6 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
         ItemCount = itemCount;
     }
 
-    public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
-    {
-        foreach (ReadOnlyAccountChanges acc in _accountChanges.Values)
-        {
-            bool isSystemContract =
-                acc.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
-                acc.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
-
-            yield return new ChangeAtIndex(
-                acc.Address,
-                acc.BalanceChangeAtIndex(index),
-                acc.NonceChangeAtIndex(index),
-                acc.CodeChangeAtIndex(index),
-                acc.SlotChangesAtIndex(index),
-                acc.HasSlotChangesAtIndex(index),
-                isSystemContract ? 0 : acc.StorageReads.Length);
-        }
-    }
-
     public bool Equals(ReadOnlyBlockAccessList? other)
     {
         if (other is null) return false;

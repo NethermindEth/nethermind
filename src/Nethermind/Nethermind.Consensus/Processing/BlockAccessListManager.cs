@@ -300,7 +300,6 @@ public class BlockAccessListManager(
         }
     }
 
-    // todo: optimize early validation
     public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true)
     {
         if (block.BlockAccessList is null)
@@ -310,85 +309,60 @@ public class BlockAccessListManager(
 
         CheckInitialized();
 
-        IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
-        IEnumerator<ChangeAtIndex> suggestedChanges = block.BlockAccessList.GetChangesAtIndex(index).GetEnumerator();
-
-        ChangeAtIndex? generatedHead;
-        ChangeAtIndex? suggestedHead;
+        GeneratedBlockAccessList generated = GeneratedBlockAccessList;
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList;
 
         int generatedReads = 0;
         int suggestedReads = 0;
 
-        void AdvanceGenerated()
+        // Pass 1: walk generated; for each account, look up the matching entry in suggested
+        // via the dictionary (O(1)) instead of a sorted merge-walk. Catches "missing-from-
+        // suggested" and "incorrect changes at this index".
+        foreach (GeneratedAccountChanges gen in generated.AccountChanges)
         {
-            generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
-            if (generatedHead is not null) generatedReads += generatedHead.Value.Reads;
+            int genReads = IsSystemContract(gen.Address) ? 0 : gen.StorageReads.Count;
+            generatedReads += genReads;
+
+            ReadOnlyAccountChanges? sug = suggested.GetAccountChanges(gen.Address);
+            if (sug is not null)
+            {
+                if (!gen.ChangesAtIndexEqual(sug, index))
+                {
+                    throw new InvalidBlockLevelAccessListException(block.Header,
+                        $"Suggested block-level access list contained incorrect changes for {gen.Address} at index {index}.");
+                }
+                continue;
+            }
+
+            // Generated has the account, suggested doesn't. Tolerated only when there are no
+            // changes at this index AND the entry is either a system-user read at index 0 or
+            // a generic storage-read-only entry.
+            if (gen.HasNoChangesAtIndex(index) &&
+                ((index == 0 && gen.Address == Address.SystemUser && genReads == 0) || genReads > 0))
+            {
+                continue;
+            }
+
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Suggested block-level access list missing account changes for {gen.Address} at index {index}.");
         }
 
-        void AdvanceSuggested()
+        // Pass 2: walk suggested; only accounts NOT present in generated need attention.
+        // Tally suggested reads here for the storage-read gas-budget check below.
+        foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
         {
-            suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
-            if (suggestedHead is not null) suggestedReads += suggestedHead.Value.Reads;
-        }
+            suggestedReads += IsSystemContract(sug.Address) ? 0 : sug.StorageReads.Length;
 
-        AdvanceGenerated();
-        AdvanceSuggested();
-
-        while (generatedHead is not null || suggestedHead is not null)
-        {
-            if (suggestedHead is null)
+            if (generated.HasAccount(sug.Address))
             {
-                if (IsSystemAccountRead(generatedHead.Value, index) || HasOptionalStorageReads(generatedHead.Value))
-                {
-                    AdvanceGenerated();
-                    continue;
-                }
-                throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
-            }
-            else if (generatedHead is null)
-            {
-                if (HasNoChanges(suggestedHead.Value))
-                {
-                    AdvanceSuggested();
-                    continue;
-                }
-                throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                continue;
             }
 
-            int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
-
-            if (cmp == 0)
+            if (!sug.HasNoChangesAtIndex(index))
             {
-                if (generatedHead.Value.BalanceChange != suggestedHead.Value.BalanceChange ||
-                    generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
-                    generatedHead.Value.CodeChange.HasValue != suggestedHead.Value.CodeChange.HasValue ||
-                    generatedHead.Value.CodeChange is not null && !generatedHead.Value.CodeChange.Value.Equals(suggestedHead.Value.CodeChange.Value) ||
-                    !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
-                {
-                    throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
-                }
+                throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"Suggested block-level access list contained surplus changes for {sug.Address} at index {index}.");
             }
-            else if (cmp > 0)
-            {
-                if (HasNoChanges(suggestedHead.Value))
-                {
-                    AdvanceSuggested();
-                    continue;
-                }
-                throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
-            }
-            else
-            {
-                if (IsSystemAccountRead(generatedHead.Value, index) || HasOptionalStorageReads(generatedHead.Value))
-                {
-                    AdvanceGenerated();
-                    continue;
-                }
-                throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
-            }
-
-            AdvanceGenerated();
-            AdvanceSuggested();
         }
 
         int surplusSuggestedReads = suggestedReads - generatedReads;
@@ -397,6 +371,10 @@ public class BlockAccessListManager(
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
     }
+
+    private static bool IsSystemContract(Address address)
+        => address == Eip7002Constants.WithdrawalRequestPredeployAddress
+        || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
 
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
@@ -459,18 +437,6 @@ public class BlockAccessListManager(
             }
         }
     }
-
-    private static bool HasNoChanges(in ChangeAtIndex c)
-        => c.BalanceChange is null &&
-            c.NonceChange is null &&
-            c.CodeChange is null &&
-            !c.HasSlotChanges;
-
-    private static bool HasOptionalStorageReads(in ChangeAtIndex c)
-        => HasNoChanges(c) && c.Reads > 0;
-
-    private static bool IsSystemAccountRead(in ChangeAtIndex c, ushort index)
-        => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
 
     private void CheckInitialized()
     {

@@ -54,25 +54,6 @@ public class GeneratedBlockAccessList
     public void Clear() => _accountChanges.Clear();
     public void Reset() => Clear();
 
-    public IEnumerable<ChangeAtIndex> GetChangesAtIndex(ushort index)
-    {
-        foreach (GeneratedAccountChanges acc in _accountChanges.Values)
-        {
-            bool isSystemContract =
-                acc.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
-                acc.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
-
-            yield return new ChangeAtIndex(
-                acc.Address,
-                BalanceAtIndex(acc, index),
-                NonceAtIndex(acc, index),
-                CodeAtIndex(acc, index),
-                SlotChangesAtIndex(acc, index),
-                HasSlotChangesAtIndex(acc, index),
-                isSystemContract ? 0 : acc.StorageReads.Count);
-        }
-    }
-
     /// <summary>For tests only — builds the accountChanges dictionary directly.</summary>
     internal static GeneratedBlockAccessList FromAccounts(IEnumerable<GeneratedAccountChanges> accounts)
     {
@@ -93,85 +74,5 @@ public class GeneratedBlockAccessList
             sb.Append("  ").AppendLine(ac.ToString());
         }
         return sb.ToString();
-    }
-
-    private static BalanceChange? BalanceAtIndex(GeneratedAccountChanges acc, int index)
-    {
-        // Linear scan — most accounts have very few entries; lists are sorted by index.
-        foreach (BalanceChange b in acc.BalanceChanges)
-        {
-            if (b.Index == index) return b;
-            if (b.Index > index) break;
-        }
-        return null;
-    }
-
-    private static NonceChange? NonceAtIndex(GeneratedAccountChanges acc, int index)
-    {
-        foreach (NonceChange n in acc.NonceChanges)
-        {
-            if (n.Index == index) return n;
-            if (n.Index > index) break;
-        }
-        return null;
-    }
-
-    private static CodeChange? CodeAtIndex(GeneratedAccountChanges acc, int index)
-    {
-        foreach (CodeChange c in acc.CodeChanges)
-        {
-            if (c.Index == index) return c;
-            if (c.Index > index) break;
-        }
-        return null;
-    }
-
-    private static IEnumerable<SlotChangeAtIndex> SlotChangesAtIndex(GeneratedAccountChanges acc, int index)
-    {
-        foreach (GeneratedSlotChanges slot in acc.StorageChanges)
-        {
-            foreach (StorageChange c in slot.Changes)
-            {
-                if (c.Index == index)
-                {
-                    yield return new SlotChangeAtIndex(slot.Key, c);
-                    break;
-                }
-                if (c.Index > index) break;
-            }
-        }
-    }
-
-    private static bool HasSlotChangesAtIndex(GeneratedAccountChanges acc, int index)
-    {
-        foreach (GeneratedSlotChanges slot in acc.StorageChanges)
-        {
-            foreach (StorageChange c in slot.Changes)
-            {
-                if (c.Index == index) return true;
-                if (c.Index > index) break;
-            }
-        }
-        return false;
-    }
-}
-
-public record struct ChangeAtIndex(
-    Address Address,
-    BalanceChange? BalanceChange,
-    NonceChange? NonceChange,
-    CodeChange? CodeChange,
-    IEnumerable<SlotChangeAtIndex> SlotChanges,
-    bool HasSlotChanges,
-    int Reads)
-{
-    public override string ToString()
-    {
-        int slotChangeCount = 0;
-        foreach (SlotChangeAtIndex _ in SlotChanges)
-        {
-            slotChangeCount++;
-        }
-        return $"{nameof(ChangeAtIndex)}({Address}, Balance={BalanceChange?.Value}, Nonce={NonceChange?.Value}, Code={CodeChange is not null}, Slots={slotChangeCount}, Reads={Reads})";
     }
 }
