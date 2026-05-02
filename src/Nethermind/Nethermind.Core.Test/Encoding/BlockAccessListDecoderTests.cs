@@ -431,5 +431,5 @@ public class BlockAccessListDecoderTests
     }
 
     private static IComparer<T> DescendingComparer<T>() where T : IComparable<T>
-        => Comparer<T>.Create((left, right) => right.CompareTo(left));
+        => Comparer<T>.Create(static (left, right) => right.CompareTo(left));
 }

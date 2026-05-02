@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -185,7 +185,7 @@ public class BloomStorageTests
     [TestCase(ushort.MaxValue, Explicit = true)]
     [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
     [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
-    public void Can_safely_insert_in_batch(int maxBlock) => RunInsertAndVerify(maxBlock, (storage, count) =>
+    public void Can_safely_insert_in_batch(int maxBlock) => RunInsertAndVerify(maxBlock, static (storage, count) =>
     {
         using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(count);
         for (int i = 0; i < count; i++)

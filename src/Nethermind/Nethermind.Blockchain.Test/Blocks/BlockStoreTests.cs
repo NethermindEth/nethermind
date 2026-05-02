@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Blocks;
 [Parallelizable(ParallelScope.All)]
 public class BlockStoreTests
 {
-    private readonly Func<EquivalencyAssertionOptions<Block>, EquivalencyAssertionOptions<Block>> _ignoreEncodedSize = options => options.Excluding(b => b.EncodedSize);
+    private readonly Func<EquivalencyAssertionOptions<Block>, EquivalencyAssertionOptions<Block>> _ignoreEncodedSize = static options => options.Excluding(static b => b.EncodedSize);
     [TestCase(true)]
     [TestCase(false)]
     public void Test_can_insert_get_and_remove_blocks(bool cached)

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -121,8 +121,8 @@ public partial class EthRpcModuleTests
     {
         OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
         TestSpecProvider specProvider = new(releaseSpec) { AllowTestChainOverride = false };
-        using Context ctx = await Context.Create(specProvider, configurer: builder => builder
-            .WithGenesisPostProcessor((block, state) =>
+        using Context ctx = await Context.Create(specProvider, configurer: static builder => builder
+            .WithGenesisPostProcessor(static (block, state) =>
             {
                 state.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
             }));

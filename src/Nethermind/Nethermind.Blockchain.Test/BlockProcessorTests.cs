@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -238,7 +238,7 @@ public class BlockProcessorTests
         IBlockProcessor processor = NullBlockProcessor.Instance;
 
         // Should not throw
-        Action handler = () => { };
+        Action handler = static () => { };
         processor.TransactionsExecuted += handler;
         processor.TransactionsExecuted -= handler;
     }

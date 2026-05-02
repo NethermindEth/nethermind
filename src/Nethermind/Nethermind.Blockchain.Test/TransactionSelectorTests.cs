@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -213,8 +213,8 @@ namespace Nethermind.Blockchain.Test
                 ];
 
                 higherPriorityTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    higherPriorityTransactionsSelected.Transactions.Where(tx => tx.GetBlobCount() == 1)
-                    .OrderByDescending(t => t.MaxFeePerGas).Take(5));
+                    higherPriorityTransactionsSelected.Transactions.Where(static tx => tx.GetBlobCount() == 1)
+                    .OrderByDescending(static t => t.MaxFeePerGas).Take(5));
 
                 Random rnd = new(12345);
                 for (int i = 0; i < 20; i++)
@@ -475,7 +475,7 @@ namespace Nethermind.Blockchain.Test
         {
             IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
             selectedTransactions.Should()
-                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, static o => o.WithStrictOrdering());
         }
 
         [Test]
@@ -503,7 +503,7 @@ namespace Nethermind.Blockchain.Test
 
             IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
             selectedTransactions.Should()
-                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, static o => o.WithStrictOrdering());
         }
 
         private static IReadOnlyList<Transaction> SelectTransactions(ProperTransactionsSelectedTestCase testCase)

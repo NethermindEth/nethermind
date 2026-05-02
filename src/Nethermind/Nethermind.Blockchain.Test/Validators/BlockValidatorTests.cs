@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Validators;
@@ -92,11 +92,11 @@ public class BlockValidatorTests
     {
         yield return new TestCaseData(null)
             .Returns(true).SetName("ValidateBodyAgainstHeader_BlockIsValid_ReturnsTrue");
-        yield return new TestCaseData(new Action<BlockHeader>(h => h.TxRoot = Keccak.OfAnEmptyString))
+        yield return new TestCaseData(new Action<BlockHeader>(static h => h.TxRoot = Keccak.OfAnEmptyString))
             .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidTxRoot_ReturnsFalse");
-        yield return new TestCaseData(new Action<BlockHeader>(h => h.UnclesHash = Keccak.OfAnEmptyString))
+        yield return new TestCaseData(new Action<BlockHeader>(static h => h.UnclesHash = Keccak.OfAnEmptyString))
             .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidUnclesRoot_ReturnsFalse");
-        yield return new TestCaseData(new Action<BlockHeader>(h => h.WithdrawalsRoot = Keccak.OfAnEmptyString))
+        yield return new TestCaseData(new Action<BlockHeader>(static h => h.WithdrawalsRoot = Keccak.OfAnEmptyString))
             .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidWithdrawalsRoot_ReturnsFalse");
     }
 
@@ -157,7 +157,7 @@ public class BlockValidatorTests
             .TestObject;
 
         TxReceipt[] receipts = Enumerable.Range(0, receiptCount)
-            .Select(_ => Build.A.Receipt.TestObject).ToArray();
+            .Select(static _ => Build.A.Receipt.TestObject).ToArray();
 
         bool result = sut.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock);
 

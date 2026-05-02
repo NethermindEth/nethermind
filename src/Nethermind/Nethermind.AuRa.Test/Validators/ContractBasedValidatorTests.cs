@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -80,7 +80,7 @@ public class ContractBasedValidatorTests
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
         _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(
             _transactionProcessor,
-            new Reactive.AnonymousDisposable(() => { }),
+            new Reactive.AnonymousDisposable(static () => { }),
             _stateProvider));
         _blockTree.Head.Returns(_block);
 

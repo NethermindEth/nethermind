@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -98,7 +98,7 @@ public class BlockchainProcessorTests
                     throw new InvalidBlockException(suggestedBlocks[0], "wrong tracer");
                 }
 
-                Processed.AddRange(suggestedBlocks.Select(x => x.Hash!));
+                Processed.AddRange(suggestedBlocks.Select(static x => x.Hash!));
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 int nextBlock = 0;
@@ -534,7 +534,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext AssertProcessedBlocks(params IEnumerable<Block> blocks)
         {
-            _branchProcessor.Processed.Should().BeEquivalentTo(blocks.Select(b => b.Hash));
+            _branchProcessor.Processed.Should().BeEquivalentTo(blocks.Select(static b => b.Hash));
             return this;
         }
 
@@ -628,10 +628,10 @@ public class BlockchainProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_process_fast_sync()
     {
-        BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(configurer: builder =>
+        BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(configurer: static builder =>
         {
             // Need the release spec to be fixed
-            builder.AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
+            builder.AddSingleton<IChainHeadInfoProvider, IComponentContext>(static (ctx) =>
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();

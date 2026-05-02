@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -475,7 +475,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         // Create 5 large JSON-RPC requests (~10KB each)
         List<string> requests = Enumerable.Range(0, 5)
-            .Select(i => CreateLargeRequest(i, targetSize: 10_000))
+            .Select(static i => CreateLargeRequest(i, targetSize: 10_000))
             .ToList();
 
         string allRequestsJson = string.Join("\n", requests);

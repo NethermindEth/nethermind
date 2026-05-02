@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -489,7 +489,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private IEnumerable<Block> GetBlocksBeforeAncientBarrier()
-        => GetBlocksByNumber(_deletePointer, long.Min(_ancientBarrier, _blockTree.SyncPivot.BlockNumber) - 1, (_) => false);
+        => GetBlocksByNumber(_deletePointer, long.Min(_ancientBarrier, _blockTree.SyncPivot.BlockNumber) - 1, static (_) => false);
 
     private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
         => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber - 1, b => b.Timestamp >= cutoffTimestamp);

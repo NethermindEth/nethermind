@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -98,7 +98,7 @@ public class BlockchainBridgeTests
         Block block = Build.A.Block
             .WithTransactions(transactions.ToArray())
             .TestObject;
-        TxReceipt[] receipts = block.Transactions.Select((t, i) => Build.A.Receipt
+        TxReceipt[] receipts = block.Transactions.Select(static (t, i) => Build.A.Receipt
             .WithBlockHash(TestItem.KeccakB)
             .WithIndex(i)
             .WithTransactionHash(t.Hash)
@@ -283,9 +283,9 @@ public class BlockchainBridgeTests
 
     private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
     [
-        (bridge, header, tx) => bridge.Call(header, tx),
-        (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
-        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
+        static (bridge, header, tx) => bridge.Call(header, tx),
+        static (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
+        static (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
     ];
 
     [Test, Combinatorial]
@@ -754,7 +754,7 @@ public class BlockchainBridgeTests
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(ci =>
+            .Returns(static ci =>
             {
                 Transaction tx = ci.Arg<Transaction>();
                 tx.SpentGas = 10_000;

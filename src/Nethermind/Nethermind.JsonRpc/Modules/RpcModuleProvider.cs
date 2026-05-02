@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules
                 _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
             }
 
-            _registerMethod = GetType().GetMethods().First(m => m.Name == nameof(Register));
+            _registerMethod = GetType().GetMethods().First(static m => m.Name == nameof(Register));
             foreach (RpcModuleInfo rpcModuleInfo in rpcModules)
             {
                 RegisterNonGeneric(rpcModuleInfo.ModuleType, rpcModuleInfo.Pool);

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -21,10 +21,10 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     : IBlockTree, IBlockhashCache
 {
     private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
-        headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
+        headers.ToDictionary(static header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), static header => header);
 
     private readonly Dictionary<long, BlockHeader> _numberToHeader =
-        headers.ToDictionary(header => header.Number, header => header);
+        headers.ToDictionary(static header => header.Number, static header => header);
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         throw new NotSupportedException();

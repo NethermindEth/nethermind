@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -507,7 +507,7 @@ public partial class EthRpcModuleTests
             .SetName("Eth_get_storage_values_WhenAllSlotArraysAreEmpty_ReturnsInvalidParams");
 
         yield return new TestCaseData(
-                new Dictionary<Address, UInt256[]> { [TestItem.AddressA] = Enumerable.Range(0, EthRpcModule.MaxGetStorageSlots + 1).Select(i => (UInt256)i).ToArray() },
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressA] = Enumerable.Range(0, EthRpcModule.MaxGetStorageSlots + 1).Select(static i => (UInt256)i).ToArray() },
                 $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"too many slots (max {EthRpcModule.MaxGetStorageSlots})\"}},\"id\":67}}")
             .SetName("Eth_get_storage_values_WhenSlotCountExceedsLimit_ReturnsInvalidParams");
     }
@@ -957,7 +957,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_proof_withTooManyKeys()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), $"[{string.Join(", ", Enumerable.Range(1, EthRpcModule.GetProofStorageKeyLimit + 1).Select(i => "\"" + i.ToHexString() + "\""))}]", "0x2");
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), $"[{string.Join(", ", Enumerable.Range(1, EthRpcModule.GetProofStorageKeyLimit + 1).Select(static i => "\"" + i.ToHexString() + "\""))}]", "0x2");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"storageKeys: 1001 is over the query limit 1000.\"},\"id\":67}"));
     }
 

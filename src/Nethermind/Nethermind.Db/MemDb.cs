@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -86,9 +86,9 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Key) : Keys;
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => ordered ? OrderedDb.Select(static kvp => kvp.Key) : Keys;
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Value) : Values;
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => ordered ? OrderedDb.Select(static kvp => kvp.Value) : Values;
 
         public virtual IWriteBatch StartWriteBatch() => this.LikeABatch();
 
@@ -135,6 +135,6 @@ namespace Nethermind.Db
 
         public virtual IDbMeta.DbMetric GatherMetric() => new() { Size = Count };
 
-        private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
+        private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(static kvp => kvp.Key, Bytes.Comparer);
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -187,7 +187,7 @@ public class BackgroundTaskSchedulerTests
         // Fill the queue with tasks that expire in 1ms
         for (int i = 0; i < capacity; i++)
         {
-            scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
+            scheduler.TryScheduleTask(1, static (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
         }
 
         // Expired tasks are drained (run with cancelled token) during block processing, freeing queue space
@@ -196,7 +196,7 @@ public class BackgroundTaskSchedulerTests
         // New tasks should be accepted because expired tasks freed up queue space
         for (int i = 0; i < capacity; i++)
         {
-            bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
+            bool accepted = scheduler.TryScheduleTask(1, static (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
             accepted.Should().BeTrue($"Task {i} should be accepted after expired tasks freed queue space");
         }
 
@@ -215,7 +215,7 @@ public class BackgroundTaskSchedulerTests
         // Fill the queue with short-lived tasks
         for (int i = 0; i < capacity; i++)
         {
-            scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1)).Should().BeTrue();
+            scheduler.TryScheduleTask(1, static (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1)).Should().BeTrue();
         }
 
         // Wait for deadlines to pass and expired tasks to be drained with cancelled tokens
@@ -224,7 +224,7 @@ public class BackgroundTaskSchedulerTests
         // New tasks should be accepted because expired tasks freed up queue space
         for (int i = 0; i < capacity; i++)
         {
-            bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
+            bool accepted = scheduler.TryScheduleTask(1, static (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
             accepted.Should().BeTrue($"Task {i} should be accepted after expired tasks were drained");
         }
 
