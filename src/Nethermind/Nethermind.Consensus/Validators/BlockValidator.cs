@@ -461,7 +461,7 @@ public class BlockValidator(
 
         if (bal.ItemCount > maxBalItems)
         {
-            error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(bal.ItemCount, maxBalItems);
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(bal.ItemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }

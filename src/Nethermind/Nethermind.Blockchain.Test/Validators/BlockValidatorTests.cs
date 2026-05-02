@@ -292,7 +292,7 @@ public class BlockValidatorTests
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
         }
     }
 
@@ -340,7 +340,7 @@ public class BlockValidatorTests
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
         }
     }
 
