@@ -229,6 +229,50 @@ public class SpanToArrayAtCallSiteAnalyzerTests
     }
 
     [Test]
+    public async Task Direct_ReadOnlySpan_param_from_Span_caller_reports()
+    {
+        // M(ReadOnlySpan<byte>) only; Span<byte>.ToArray() -> byte[] -> ReadOnlySpan<byte>.
+        string source = """
+            using System;
+            class C
+            {
+                static void M(ReadOnlySpan<byte> x) { }
+                static void Use(Span<byte> s) => M({|#0:s.ToArray()|});
+            }
+            """;
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("M", "ReadOnlySpan", "byte"));
+    }
+
+    [Test]
+    public async Task Direct_ReadOnlySpan_param_from_ReadOnlySpan_caller_reports()
+    {
+        string source = """
+            using System;
+            class C
+            {
+                static void M(ReadOnlySpan<byte> x) { }
+                static void Use(ReadOnlySpan<byte> s) => M({|#0:s.ToArray()|});
+            }
+            """;
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("M", "ReadOnlySpan", "byte"));
+    }
+
+    [Test]
+    public async Task Direct_Span_param_from_ReadOnlySpan_caller_no_diagnostic()
+    {
+        // ReadOnlySpan<byte> cannot fit into Span<byte> param; ToArray is required.
+        string source = """
+            using System;
+            class C
+            {
+                static void M(Span<byte> x) { }
+                static void Use(ReadOnlySpan<byte> s) => M(s.ToArray());
+            }
+            """;
+        await Verify(source);
+    }
+
+    [Test]
     public async Task Element_type_mismatch_no_diagnostic()
     {
         string source = """
