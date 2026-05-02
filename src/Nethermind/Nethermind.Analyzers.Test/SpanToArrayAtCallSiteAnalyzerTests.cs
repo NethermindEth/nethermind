@@ -164,6 +164,21 @@ public class SpanToArrayAtCallSiteAnalyzerTests
     }
 
     [Test]
+    public async Task Span_overload_chaining_to_array_overload_no_diagnostic()
+    {
+        string source = """
+            using System;
+            class Box
+            {
+                public byte[] Bytes { get; }
+                public Box(byte[] bytes) { Bytes = bytes; }
+                public Box(ReadOnlySpan<byte> s) : this(s.ToArray()) { }
+            }
+            """;
+        await Verify(source);
+    }
+
+    [Test]
     public async Task Element_type_mismatch_no_diagnostic()
     {
         string source = """

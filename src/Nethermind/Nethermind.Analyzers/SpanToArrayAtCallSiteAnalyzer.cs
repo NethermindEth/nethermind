@@ -132,7 +132,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             overloads ??= candidateOverloads.ToArray();
 
             int paramIndex = parameter.Ordinal;
-            string? overloadKind = FindSpanOverloadKind(overloads, currentMethod, paramIndex, elementType, isSpan, spanTypes);
+            string? overloadKind = FindSpanOverloadKind(overloads, currentMethod, paramIndex, elementType, isSpan, spanTypes, context.ContainingSymbol);
             if (overloadKind is null)
                 continue;
 
@@ -151,15 +151,24 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         int paramIndex,
         ITypeSymbol elementType,
         bool callerIsSpan,
-        SpanTypes spanTypes)
+        SpanTypes spanTypes,
+        ISymbol? containingSymbol)
     {
         IMethodSymbol currentOriginal = currentMethod.OriginalDefinition;
         ImmutableArray<IParameterSymbol> currentParams = currentOriginal.Parameters;
+        ISymbol? containingOriginal = containingSymbol?.OriginalDefinition;
         string? bestMatch = null;
 
         foreach (IMethodSymbol candidate in overloads)
         {
             if (SymbolEqualityComparer.Default.Equals(candidate, currentOriginal))
+                continue;
+            // Skip when the matching overload IS the method making this call —
+            // delegating from the span overload to the array overload (e.g.
+            // `Foo(ReadOnlySpan<byte> s) : this(s.ToArray())`) is the canonical
+            // way to share storage and would self-recurse if "fixed".
+            if (containingOriginal is not null
+                && SymbolEqualityComparer.Default.Equals(candidate, containingOriginal))
                 continue;
             if (candidate.Parameters.Length != currentParams.Length)
                 continue;
