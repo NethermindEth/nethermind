@@ -51,13 +51,7 @@ public readonly struct TinyTreePath : IEquatable<TinyTreePath>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal int GetChainedHashCode(uint seed) => (int)BitOperations.Crc32C(seed, (ulong)_data);
 
-    public static bool operator ==(in TinyTreePath left, in TinyTreePath right)
-    {
-        return left.Equals(in right);
-    }
+    public static bool operator ==(in TinyTreePath left, in TinyTreePath right) => left.Equals(in right);
 
-    public static bool operator !=(in TinyTreePath left, in TinyTreePath right)
-    {
-        return !(left == right);
-    }
+    public static bool operator !=(in TinyTreePath left, in TinyTreePath right) => !(left == right);
 }
