@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,6 +19,8 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -367,6 +372,38 @@ public partial class DebugRpcModuleTests
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .TestObject,
         ];
+    }
+
+    [TestCase(1)]
+    [TestCase(100)]
+    [TestCase(1000)]
+    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(int traceCount)
+    {
+        List<GethLikeTxTrace> traces = new(traceCount);
+        for (int i = 0; i < traceCount; i++)
+        {
+            GethLikeTxTrace trace = new();
+            trace.TxHash = new Core.Crypto.Hash256(Keccak.Compute(i.ToString()).Bytes);
+            trace.Entries.Add(new GethTxTraceEntry { ProgramCounter = i, Opcode = "STOP", Gas = 21000, GasCost = 0, Depth = 1 });
+            traces.Add(trace);
+        }
+
+        using GethLikeTxTraceStreamingResult result = new(traces);
+
+        Pipe pipe = new();
+        await result.WriteToAsync(pipe.Writer, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+
+        ReadResult readResult = await pipe.Reader.ReadAsync();
+        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
+        pipe.Reader.AdvanceTo(readResult.Buffer.End);
+
+        string stjJson = JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions);
+
+        Assert.That(JsonElement.DeepEquals(
+            JsonDocument.Parse(streamedJson).RootElement,
+            JsonDocument.Parse(stjJson).RootElement),
+            $"Streamed JSON differs from serializer output for {traceCount} traces");
     }
 
 }

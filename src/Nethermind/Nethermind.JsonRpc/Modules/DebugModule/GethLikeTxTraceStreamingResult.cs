@@ -1,12 +1,12 @@
- // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -18,6 +18,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// Streams a block's Geth-style tx traces as a JSON array, flushing after each entry
 /// to avoid buffering the entire (potentially hundreds-of-MB) response in memory.
 /// </summary>
+[JsonConverter(typeof(GethLikeTxTraceStreamingResultConverter))]
 public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeTxTrace> traces)
     : IStreamableResult, IReadOnlyCollection<GethLikeTxTrace>, IDisposable
 {
@@ -35,10 +36,8 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
 
         foreach (GethLikeTxTrace trace in traces)
         {
-            // Write separator before each entry except the first.
-            // Safe to write directly: jsonWriter was flushed at end of previous iteration.
-            if (!first) writer.Write(","u8);
-            first = false;
+            if (first) first = false;
+            else writer.Write(","u8);
 
             jsonWriter.WriteStartObject();
             jsonWriter.WritePropertyName("result"u8);
@@ -53,5 +52,17 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
         }
 
         writer.Write("]"u8);
+    }
+}
+
+public class GethLikeTxTraceStreamingResultConverter : JsonConverter<GethLikeTxTraceStreamingResult>
+{
+    public override GethLikeTxTraceStreamingResult Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => throw new NotSupportedException();
+
+    public override void Write(Utf8JsonWriter writer, GethLikeTxTraceStreamingResult? value, JsonSerializerOptions options)
+    {
+        if (value is null) { writer.WriteNullValue(); return; }
+        JsonSerializer.Serialize(writer, new GethLikeTxTraceCollection(value), options);
     }
 }
