@@ -140,7 +140,7 @@ public class JsonRpcSocketsClientTests
             await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
 
             int concurrentCall = 0;
-            TaskCompletionSource completeSource = new();
+            TaskCompletionSource completeSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo c)
             {
                 Interlocked.Increment(ref concurrentCall);
