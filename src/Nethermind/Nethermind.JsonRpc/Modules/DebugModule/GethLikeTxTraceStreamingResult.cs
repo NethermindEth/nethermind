@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
@@ -10,6 +11,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -25,7 +27,11 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
     public int Count => traces.Count;
     public IEnumerator<GethLikeTxTrace> GetEnumerator() => traces.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-    public void Dispose() => (traces as IDisposable)?.Dispose();
+    public void Dispose()
+    {
+        traces.DisposeItems();
+        (traces as IDisposable)?.Dispose();
+    }
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
     {
