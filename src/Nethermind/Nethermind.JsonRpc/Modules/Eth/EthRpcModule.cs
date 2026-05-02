@@ -4,8 +4,6 @@
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Db;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -72,8 +70,7 @@ public partial class EthRpcModule(
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
     ulong? secondsPerSlot,
-    ISyncConfig? syncConfig = null,
-    IPruningConfig? pruningConfig = null) : IEthRpcModule
+    IEthCapabilitiesProvider capabilitiesProvider) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -89,7 +86,7 @@ public partial class EthRpcModule(
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-    private readonly EthCapabilitiesProvider _capabilitiesProvider = new(blockFinder, syncConfig, pruningConfig);
+    private readonly IEthCapabilitiesProvider _capabilitiesProvider = capabilitiesProvider ?? throw new ArgumentNullException(nameof(capabilitiesProvider));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
@@ -904,8 +901,8 @@ public partial class EthRpcModule(
             : ResultWrapper<BlockAccessList?>.Success(bal);
     }
 
-    public ResultWrapper<EthCapabilitiesResult> eth_capabilities() =>
-        ResultWrapper<EthCapabilitiesResult>.Success(_capabilitiesProvider.GetCapabilities());
+    public ResultWrapper<EthCapabilities> eth_capabilities() =>
+        ResultWrapper<EthCapabilities>.Success(_capabilitiesProvider.GetCapabilities());
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();

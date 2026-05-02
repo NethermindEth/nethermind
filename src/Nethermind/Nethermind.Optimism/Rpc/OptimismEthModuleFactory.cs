@@ -13,6 +13,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -42,6 +43,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly ITxSealer _sealer;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
+    private readonly IEthCapabilitiesProvider _capabilitiesProvider;
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IProtocolsManager _protocolsManager;
     private readonly IForkInfo _forkInfo;
@@ -53,6 +55,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IBlockchainBridgeFactory blockchainBridgeFactory,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
+        IEthCapabilitiesProvider capabilitiesProvider,
         IStateReader stateReader,
         ITxPool txPool,
         ITxSender txSender,
@@ -88,6 +91,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _ecdsa = ecdsa;
         _blockFinder = blockFinder;
         _receiptFinder = receiptFinder;
+        _capabilitiesProvider = capabilitiesProvider;
         _opSpecHelper = opSpecHelper;
         _protocolsManager = protocolsManager;
         _forkInfo = forkInfo;
@@ -129,6 +133,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _ecdsa,
             _sealer,
             _logIndexConfig,
-            _opSpecHelper
+            _opSpecHelper,
+            _capabilitiesProvider
         );
 }

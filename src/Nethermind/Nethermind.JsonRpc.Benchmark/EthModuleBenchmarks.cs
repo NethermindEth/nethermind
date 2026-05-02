@@ -82,7 +82,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
                 new LogIndexConfig(),
-                new BlocksConfig().SecondsPerSlot);
+                new BlocksConfig().SecondsPerSlot,
+                new EthCapabilitiesProvider(blockTree));
         }
 
         [GlobalCleanup]

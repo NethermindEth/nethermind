@@ -3,10 +3,8 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -38,8 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IBlocksConfig blocksConfig,
         IForkInfo forkInfo,
         ILogIndexConfig logIndexConfig,
-        ISyncConfig? syncConfig = null,
-        IPruningConfig? pruningConfig = null)
+        IEthCapabilitiesProvider capabilitiesProvider)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -63,7 +60,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 forkInfo,
                 logIndexConfig,
                 _secondsPerSlot,
-                syncConfig,
-                pruningConfig);
+                capabilitiesProvider);
     }
 }

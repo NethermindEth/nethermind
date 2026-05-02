@@ -17,30 +17,30 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// <param name="Receipts">Receipt lookup availability.</param>
 /// <param name="Blocks">Historical block and header availability.</param>
 /// <param name="Stateproofs">Proof / trie-node availability (eth_getProof depth window).</param>
-public record class EthCapabilitiesResult(
-    CapabilityHead Head,
-    CapabilityResource State,
-    CapabilityResource Tx,
-    CapabilityResource Logs,
-    CapabilityResource Receipts,
-    CapabilityResource Blocks,
-    CapabilityResource Stateproofs);
+public record class EthCapabilities(
+    ChainHead Head,
+    ResourceAvailability State,
+    ResourceAvailability Tx,
+    ResourceAvailability Logs,
+    ResourceAvailability Receipts,
+    ResourceAvailability Blocks,
+    ResourceAvailability Stateproofs);
 
 /// <summary>Head block number and hash.</summary>
 /// <param name="Number">Block number.</param>
 /// <param name="Hash">Block hash.</param>
-public readonly record struct CapabilityHead(long Number, Hash256 Hash);
+public readonly record struct ChainHead(long Number, Hash256 Hash);
 
 /// <summary>Availability descriptor for one historical data resource.</summary>
 /// <param name="Disabled"><c>true</c> when the resource is completely unavailable on this node.</param>
 /// <param name="OldestBlock">Earliest block for which this resource is available. Omitted when <paramref name="Disabled"/> is <c>true</c>.</param>
 /// <param name="DeleteStrategy">Retention / deletion strategy. Present only when data is pruned with a rolling window. Omitted for archive nodes or disabled resources.</param>
-public readonly record struct CapabilityResource(
+public readonly record struct ResourceAvailability(
     bool Disabled,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? OldestBlock = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CapabilityDeleteStrategy? DeleteStrategy = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DeleteStrategy? DeleteStrategy = null);
 
 /// <summary>Rolling-window deletion strategy for a resource.</summary>
 /// <param name="Type">Strategy type — always <c>"window"</c>.</param>
 /// <param name="RetentionBlocks">Number of recent blocks retained.</param>
-public readonly record struct CapabilityDeleteStrategy(string Type, long RetentionBlocks);
+public readonly record struct DeleteStrategy(string Type, long RetentionBlocks);
