@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -17,6 +18,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Config;
@@ -99,7 +101,16 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        GethLikeTxTrace transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+        }
+        catch (InsufficientBalanceException ex)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Message), ErrorCodes.InvalidInput);
+        }
+
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {tx.Hash}", ErrorCodes.ResourceNotFound);
@@ -454,19 +465,42 @@ public class DebugRpcModule(
     {
         PrepareTransactions(bundles, header);
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-
-        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
-            .GetBundleTraces(bundles, blockParameter, cancellationToken, options);
-
-        if (_logger.IsTrace)
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        try
         {
-            int totalTransactions = bundles.Sum(b => b.Transactions?.Length ?? 0);
-            _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
-        }
+            IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
+                .GetBundleTraces(bundles, blockParameter, timeout.Token, options);
 
-        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+            if (_logger.IsTrace)
+            {
+                int totalTransactions = bundles.Sum(b => b.Transactions?.Length ?? 0);
+                _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
+            }
+
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(StreamBundleTraces(bundleTraces, timeout));
+        }
+        catch
+        {
+            timeout.Dispose();
+            throw;
+        }
+    }
+
+    // Bind the timeout CTS lifetime to enumerator disposal so the lazy bundle pipeline
+    // can keep using the cancellation token after this method returns (JSON-RPC serializes
+    // the result lazily). Disposing the CTS earlier breaks downstream token consumers
+    // (e.g. WaitHandle access throws ObjectDisposedException).
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundleTraces(
+        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces,
+        CancellationTokenSource cancellationTokenSource)
+    {
+        using (cancellationTokenSource)
+        {
+            foreach (IEnumerable<GethLikeTxTrace> traces in bundleTraces)
+            {
+                yield return traces;
+            }
+        }
     }
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
@@ -481,6 +515,18 @@ public class DebugRpcModule(
                 Calls = bundle.Transactions
             }).ToList()
         };
+
+        // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
+        // Pre-compute the block number each bundle targets so we can drop fillers from the result and
+        // keep a 1:1 mapping to the input bundles.
+        HashSet<long> bundleBlockNumbers = new(bundles.Length);
+        long lastBlockNumber = header.Number;
+        foreach (TransactionBundle bundle in bundles)
+        {
+            long number = (long)bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
+            bundleBlockNumbers.Add(number);
+            lastBlockNumber = number;
+        }
 
         BlockParameter concreteBlockParameter = new(header.Number);
 
@@ -503,7 +549,9 @@ public class DebugRpcModule(
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
         }
 
-        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data.Select(blockResult => blockResult.Traces);
+        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data
+            .Where(blockResult => blockResult.Number is long n && bundleBlockNumbers.Contains(n))
+            .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
     }

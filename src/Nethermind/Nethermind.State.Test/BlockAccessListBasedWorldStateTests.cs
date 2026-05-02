@@ -60,7 +60,8 @@ public class BlockAccessListBasedWorldStateTests
         BlockAccessList suggestedBal = new();
         balSetup(suggestedBal);
 
-        BlockAccessListBasedWorldState bws = new(inner, blockAccessIndex, Logger);
+        BlockAccessListBasedWorldState bws = new(inner, Logger);
+        bws.SetBlockAccessIndex(blockAccessIndex);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
         bws.Setup(block);
         IDisposable scope = bws.BeginScope(baseBlock);
@@ -172,6 +173,24 @@ public class BlockAccessListBasedWorldStateTests
         using (scope)
         {
             Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
+    public void AccountExists_OnlyPrestateEntryAndNotExistedBeforeBlock_ReturnsFalse()
+    {
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            balSetup: bal =>
+            {
+                AccountChanges ac = AddAccountRead(bal, TestItem.AddressA);
+                ac.AddNonceChange(new NonceChange(-1, 0));
+                ac.AddBalanceChange(new BalanceChange(-1, 0));
+                ac.ExistedBeforeBlock = false;
+            });
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.False);
         }
     }
 
