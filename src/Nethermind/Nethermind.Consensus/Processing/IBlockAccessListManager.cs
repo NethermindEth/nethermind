@@ -27,7 +27,6 @@ public interface IBlockAccessListManager
     void NextTransaction();
     void Rollback();
     void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
-    void FinalizeHeaderGas(BlockHeader header, BlockReceiptsTracer tracer);
     void SetBlockAccessList(Block block);
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
