@@ -7,14 +7,19 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.History;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class EthCapabilitiesProvider(
     IBlockTree blockTree,
     ISyncConfig? syncConfig = null,
-    IPruningConfig? pruningConfig = null) : IEthCapabilitiesProvider
+    IPruningConfig? pruningConfig = null,
+    IHistoryConfig? historyConfig = null,
+    IHistoryPruner? historyPruner = null) : IEthCapabilitiesProvider
 {
+    private const int SlotsPerEpoch = 32;
+
     public EthCapabilities GetCapabilities()
     {
         BlockHeader? head = blockTree.Head?.Header;
@@ -26,18 +31,21 @@ public class EthCapabilitiesProvider(
         // (PivotNumber = 0). When there was no fast sync, receipts are available from genesis.
         long oldestReceipts = (syncConfig?.PivotNumber ?? 0) == 0 ? 0 : syncConfig!.AncientReceiptsBarrierCalc;
 
-        PruningMode mode = pruningConfig?.Mode ?? PruningMode.None;
-        bool isArchive = mode == PruningMode.None;
+        PruningMode statePruningMode = pruningConfig?.Mode ?? PruningMode.None;
+        bool isArchive = statePruningMode == PruningMode.None;
         // Memory (and Hybrid) pruning maintains a rolling window of PruningBoundary recent states.
         // Full-only pruning is periodic and non-linear — we cannot claim a predictable oldest block.
-        long? retentionBlocks = mode.IsMemory() ? pruningConfig!.PruningBoundary : null;
+        long? stateRetention = statePruningMode.IsMemory() ? pruningConfig!.PruningBoundary : null;
         long? stateOldest = isArchive ? 0L
-            : retentionBlocks is not null && head is not null ? Math.Max(0L, head.Number - retentionBlocks.Value)
+            : stateRetention is not null && head is not null ? Math.Max(0L, head.Number - stateRetention.Value)
             : null;
 
-        ResourceAvailability receipts = new(
-            Disabled: !receiptsSynced,
-            OldestBlock: receiptsSynced ? oldestReceipts : null);
+        // History pruning (EIP-4444) deletes old blocks/receipts. The post-pruning floor is
+        // historyPruner.OldestBlockHeader.Number; Rolling mode produces a known retention window.
+        long historyFloor = historyPruner?.OldestBlockHeader?.Number ?? 0;
+        DeleteStrategy? historyWindow = historyConfig?.Pruning == PruningModes.Rolling
+            ? new DeleteStrategy("window", historyConfig.RetentionEpochs * SlotsPerEpoch)
+            : null;
 
         return new EthCapabilities(
             Head: new ChainHead(head?.Number ?? 0, head?.Hash ?? Keccak.Zero),
@@ -47,11 +55,17 @@ public class EthCapabilitiesProvider(
             State: new ResourceAvailability(
                 Disabled: false,
                 OldestBlock: stateOldest,
-                DeleteStrategy: retentionBlocks > 0 ? new DeleteStrategy("window", retentionBlocks.Value) : null),
-            Tx: receipts,
-            Logs: receipts,
-            Receipts: receipts,
-            Blocks: new ResourceAvailability(Disabled: !headersAvailable, OldestBlock: headersAvailable ? lowestBlock : null),
+                DeleteStrategy: stateRetention > 0 ? new DeleteStrategy("window", stateRetention.Value) : null),
+            // Receipts/Tx/Logs share storage and pruning policy in Nethermind — one descriptor covers
+            // all three. EthCapabilities.Tx and .Logs are computed properties that alias .Receipts.
+            Receipts: new ResourceAvailability(
+                Disabled: !receiptsSynced,
+                OldestBlock: receiptsSynced ? Math.Max(oldestReceipts, historyFloor) : null,
+                DeleteStrategy: receiptsSynced ? historyWindow : null),
+            Blocks: new ResourceAvailability(
+                Disabled: !headersAvailable,
+                OldestBlock: headersAvailable ? Math.Max(lowestBlock, historyFloor) : null,
+                DeleteStrategy: headersAvailable ? historyWindow : null),
             Stateproofs: new ResourceAvailability(Disabled: !isArchive, OldestBlock: isArchive ? 0L : null));
     }
 }
