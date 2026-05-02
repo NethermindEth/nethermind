@@ -49,6 +49,9 @@ public class FullPrunerFactory(
             compositePruningTrigger.Add(automaticTrigger);
         }
 
+        // Resolve the drive from pruningDbPath rather than the BaseDbPath-keyed registration:
+        // if the pruning subdirectory is symlinked or bind-mounted to a different volume, we
+        // want the free-space trigger to read that volume, not BaseDbPath's drive.
         IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
         return new FullPruner(
             fullPruningDb,
