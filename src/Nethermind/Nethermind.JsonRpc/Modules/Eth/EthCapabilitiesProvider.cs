@@ -18,8 +18,6 @@ public class EthCapabilitiesProvider(
     IHistoryConfig? historyConfig = null,
     IHistoryPruner? historyPruner = null) : IEthCapabilitiesProvider
 {
-    private const int SlotsPerEpoch = 32;
-
     public EthCapabilities GetCapabilities()
     {
         BlockHeader? head = blockTree.Head?.Header;
@@ -44,7 +42,7 @@ public class EthCapabilitiesProvider(
         // historyPruner.OldestBlockHeader.Number; Rolling mode produces a known retention window.
         long historyFloor = historyPruner?.OldestBlockHeader?.Number ?? 0;
         DeleteStrategy? historyWindow = historyConfig?.Pruning == PruningModes.Rolling
-            ? new DeleteStrategy("window", historyConfig.RetentionEpochs * SlotsPerEpoch)
+            ? new DeleteStrategy("window", historyConfig.RetentionEpochs * HistoryPruner.SlotsPerEpoch)
             : null;
 
         return new EthCapabilities(
@@ -52,20 +50,27 @@ public class EthCapabilitiesProvider(
             // State is always available (at minimum the genesis trie exists), even on a memory-pruned
             // node that hasn't yet synced past the first block — in which case OldestBlock is null
             // because the rolling window lower bound cannot yet be computed.
-            State: new ResourceAvailability(
-                Disabled: false,
-                OldestBlock: stateOldest,
-                DeleteStrategy: stateRetention > 0 ? new DeleteStrategy("window", stateRetention.Value) : null),
+            State: Resource(
+                enabled: true,
+                oldestBlock: stateOldest,
+                deleteStrategy: stateRetention > 0 ? new DeleteStrategy("window", stateRetention.Value) : null),
             // Receipts/Tx/Logs share storage and pruning policy in Nethermind — one descriptor covers
             // all three. EthCapabilities.Tx and .Logs are computed properties that alias .Receipts.
-            Receipts: new ResourceAvailability(
-                Disabled: !receiptsSynced,
-                OldestBlock: receiptsSynced ? Math.Max(oldestReceipts, historyFloor) : null,
-                DeleteStrategy: receiptsSynced ? historyWindow : null),
-            Blocks: new ResourceAvailability(
-                Disabled: !headersAvailable,
-                OldestBlock: headersAvailable ? Math.Max(lowestBlock, historyFloor) : null,
-                DeleteStrategy: headersAvailable ? historyWindow : null),
-            Stateproofs: new ResourceAvailability(Disabled: !isArchive, OldestBlock: isArchive ? 0L : null));
+            Receipts: Resource(receiptsSynced, Math.Max(oldestReceipts, historyFloor), historyWindow),
+            Blocks: Resource(headersAvailable, Math.Max(lowestBlock, historyFloor), historyWindow),
+            Stateproofs: Resource(isArchive, 0L));
     }
+
+    /// <summary>
+    /// Builds a single resource descriptor. When <paramref name="enabled"/> is false, the spec
+    /// requires <c>disabled: true</c> with no other fields present — the helper enforces that
+    /// by zeroing <c>OldestBlock</c> and <c>DeleteStrategy</c> regardless of what was passed.
+    /// </summary>
+    private static ResourceAvailability Resource(
+        bool enabled,
+        long? oldestBlock,
+        DeleteStrategy? deleteStrategy = null) =>
+        new(Disabled: !enabled,
+            OldestBlock: enabled ? oldestBlock : null,
+            DeleteStrategy: enabled ? deleteStrategy : null);
 }

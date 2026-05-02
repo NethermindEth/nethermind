@@ -30,7 +30,7 @@ public class HistoryPruner : IHistoryPruner
 {
     private const int MaxOptimisticSearchAttempts = 3;
     private const int LockWaitTimeoutMs = 100;
-    private const int SlotsPerEpoch = 32;
+    public const int SlotsPerEpoch = 32;
 
     // only one pruning and one searching thread at a time
     private readonly object _pruneLock = new();

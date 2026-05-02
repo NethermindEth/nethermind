@@ -196,8 +196,8 @@ public partial class EthRpcModuleTests
                   "additionalProperties": false,
                   "required": ["type", "retentionBlocks"],
                   "properties": {
-                    "type": { "type": "string" },
-                    "retentionBlocks": { "type": "string", "pattern": "^0x[0-9a-fA-F]+$" }
+                    "type": { "type": "string", "enum": ["window"] },
+                    "retentionBlocks": { "type": "integer", "minimum": 0 }
                   }
                 }
               }

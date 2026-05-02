@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -16,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// <param name="Receipts">Receipt lookup availability (also exposed as <see cref="Tx"/> and <see cref="Logs"/>).</param>
 /// <param name="Blocks">Historical block and header availability.</param>
 /// <param name="Stateproofs">Proof / trie-node availability (eth_getProof depth window).</param>
-public record class EthCapabilities(
+public record EthCapabilities(
     [property: JsonPropertyOrder(0)] ChainHead Head,
     [property: JsonPropertyOrder(1)] ResourceAvailability State,
     [property: JsonPropertyOrder(4)] ResourceAvailability Receipts,
@@ -47,6 +48,8 @@ public readonly record struct ResourceAvailability(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DeleteStrategy? DeleteStrategy = null);
 
 /// <summary>Rolling-window deletion strategy for a resource.</summary>
-/// <param name="Type">Strategy type — always <c>"window"</c>.</param>
-/// <param name="RetentionBlocks">Number of recent blocks retained.</param>
-public readonly record struct DeleteStrategy(string Type, long RetentionBlocks);
+/// <param name="Type">Strategy type — currently always <c>"window"</c>; the spec uses <c>oneOf</c> to leave room for future strategies.</param>
+/// <param name="RetentionBlocks">Number of recent blocks retained. Per spec this is a JSON integer (not a hex quantity), so the default Ethereum hex converter is overridden.</param>
+public readonly record struct DeleteStrategy(
+    string Type,
+    [property: JsonConverter(typeof(LongRawJsonConverter))] long RetentionBlocks);
