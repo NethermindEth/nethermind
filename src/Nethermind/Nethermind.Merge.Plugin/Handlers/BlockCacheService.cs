@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -47,7 +48,7 @@ public class BlockCacheService : IBlockCacheService
     /// <inheritdoc />
     public bool TryAddBlock(Block block)
     {
-        Hash256 blockHash = block.Hash ?? block.CalculateHash();
+        Hash256 blockHash = block.GetOrCalculateHash();
         if (!_blockCache.TryAdd(blockHash, block))
         {
             return false;
