@@ -64,6 +64,8 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         public INamedTypeSymbol ReadOnlySpan { get; } = readOnlySpan;
     }
 
+    private enum ParamShape { Array, Span, ReadOnlySpan }
+
     private static void AnalyzeInvocation(OperationAnalysisContext context, SpanTypes spanTypes)
     {
         IInvocationOperation invocation = (IInvocationOperation)context.Operation;
@@ -113,8 +115,32 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
                 continue;
             if (parameter.IsParams)
                 continue;
-            if (parameter.Type is not IArrayTypeSymbol arrayType)
+
+            ITypeSymbol? expectedElementType = null;
+            ParamShape paramShape;
+            if (parameter.Type is IArrayTypeSymbol arrayType)
+            {
+                paramShape = ParamShape.Array;
+                expectedElementType = arrayType.ElementType;
+            }
+            else if (parameter.Type is INamedTypeSymbol namedParam
+                && namedParam.TypeArguments.Length == 1
+                && SymbolEqualityComparer.Default.Equals(namedParam.OriginalDefinition, spanTypes.Span))
+            {
+                paramShape = ParamShape.Span;
+                expectedElementType = namedParam.TypeArguments[0];
+            }
+            else if (parameter.Type is INamedTypeSymbol namedRosParam
+                && namedRosParam.TypeArguments.Length == 1
+                && SymbolEqualityComparer.Default.Equals(namedRosParam.OriginalDefinition, spanTypes.ReadOnlySpan))
+            {
+                paramShape = ParamShape.ReadOnlySpan;
+                expectedElementType = namedRosParam.TypeArguments[0];
+            }
+            else
+            {
                 continue;
+            }
 
             IOperation value = argument.Value;
             while (value is IConversionOperation conv)
@@ -137,24 +163,36 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
                 continue;
 
             ITypeSymbol elementType = receiverType.TypeArguments[0];
-            if (!SymbolEqualityComparer.Default.Equals(elementType, arrayType.ElementType))
+            if (!SymbolEqualityComparer.Default.Equals(elementType, expectedElementType))
                 continue;
 
-            if (overloads.IsDefault)
-                overloads = isConstructor
-                    ? containingType.InstanceConstructors
-                    : CollectMethodOverloads(containingType, currentMethod.Name);
+            string? overloadKind;
+            if (paramShape == ParamShape.Array)
+            {
+                if (overloads.IsDefault)
+                    overloads = isConstructor
+                        ? containingType.InstanceConstructors
+                        : CollectMethodOverloads(containingType, currentMethod.Name);
 
-            int paramIndex = parameter.Ordinal;
-            string? overloadKind = FindSpanOverloadKind(
-                overloads,
-                currentMethod,
-                paramIndex,
-                elementType,
-                isSpan,
-                spanTypes,
-                context.ContainingSymbol,
-                context.Compilation);
+                overloadKind = FindSpanOverloadKind(
+                    overloads,
+                    currentMethod,
+                    parameter.Ordinal,
+                    elementType,
+                    isSpan,
+                    spanTypes,
+                    context.ContainingSymbol,
+                    context.Compilation);
+            }
+            else
+            {
+                // Param is already (ReadOnly)Span<T>; ToArray is just heap allocation.
+                // ReadOnlySpan<T> caller cannot fit a Span<T> param.
+                if (paramShape == ParamShape.Span && !isSpan)
+                    continue;
+                overloadKind = paramShape == ParamShape.Span ? "Span" : "ReadOnlySpan";
+            }
+
             if (overloadKind is null)
                 continue;
 

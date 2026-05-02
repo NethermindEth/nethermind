@@ -213,6 +213,22 @@ public class SpanToArrayAtCallSiteAnalyzerTests
     }
 
     [Test]
+    public async Task Direct_span_param_with_implicit_array_conversion_reports()
+    {
+        // No array overload exists — param is already Span<byte>; the array from ToArray()
+        // is implicitly converted to Span<byte>. The .ToArray() is pointless.
+        string source = """
+            using System;
+            class C
+            {
+                static void M(Span<byte> x) { }
+                static void Use(Span<byte> s) => M({|#0:s.ToArray()|});
+            }
+            """;
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("M", "Span", "byte"));
+    }
+
+    [Test]
     public async Task Element_type_mismatch_no_diagnostic()
     {
         string source = """
