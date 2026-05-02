@@ -71,8 +71,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         if (method.ContainingType is not INamedTypeSymbol containingType)
             return;
 
-        IEnumerable<IMethodSymbol> overloads = containingType.GetMembers(method.Name).OfType<IMethodSymbol>();
-        AnalyzeArguments(context, spanTypes, invocation.Arguments, method, overloads);
+        AnalyzeArguments(context, spanTypes, invocation.Arguments, method, containingType, isConstructor: false);
     }
 
     private static void AnalyzeObjectCreation(OperationAnalysisContext context, SpanTypes spanTypes)
@@ -83,7 +82,19 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         if (ctor.ContainingType is not INamedTypeSymbol containingType)
             return;
 
-        AnalyzeArguments(context, spanTypes, creation.Arguments, ctor, containingType.InstanceConstructors);
+        AnalyzeArguments(context, spanTypes, creation.Arguments, ctor, containingType, isConstructor: true);
+    }
+
+    private static ImmutableArray<IMethodSymbol> CollectMethodOverloads(INamedTypeSymbol containingType, string name)
+    {
+        ImmutableArray<ISymbol> members = containingType.GetMembers(name);
+        ImmutableArray<IMethodSymbol>.Builder builder = ImmutableArray.CreateBuilder<IMethodSymbol>(members.Length);
+        foreach (ISymbol member in members)
+        {
+            if (member is IMethodSymbol method)
+                builder.Add(method);
+        }
+        return builder.Count == builder.Capacity ? builder.MoveToImmutable() : builder.ToImmutable();
     }
 
     private static void AnalyzeArguments(
@@ -91,9 +102,10 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         SpanTypes spanTypes,
         ImmutableArray<IArgumentOperation> arguments,
         IMethodSymbol currentMethod,
-        IEnumerable<IMethodSymbol> candidateOverloads)
+        INamedTypeSymbol containingType,
+        bool isConstructor)
     {
-        IMethodSymbol[]? overloads = null;
+        ImmutableArray<IMethodSymbol> overloads = default;
 
         foreach (IArgumentOperation argument in arguments)
         {
@@ -128,10 +140,21 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             if (!SymbolEqualityComparer.Default.Equals(elementType, arrayType.ElementType))
                 continue;
 
-            overloads ??= candidateOverloads.ToArray();
+            if (overloads.IsDefault)
+                overloads = isConstructor
+                    ? containingType.InstanceConstructors
+                    : CollectMethodOverloads(containingType, currentMethod.Name);
 
             int paramIndex = parameter.Ordinal;
-            string? overloadKind = FindSpanOverloadKind(overloads, currentMethod, paramIndex, elementType, isSpan, spanTypes, context.ContainingSymbol);
+            string? overloadKind = FindSpanOverloadKind(
+                overloads,
+                currentMethod,
+                paramIndex,
+                elementType,
+                isSpan,
+                spanTypes,
+                context.ContainingSymbol,
+                context.Compilation);
             if (overloadKind is null)
                 continue;
 
@@ -145,17 +168,19 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
     }
 
     private static string? FindSpanOverloadKind(
-        IMethodSymbol[] overloads,
+        ImmutableArray<IMethodSymbol> overloads,
         IMethodSymbol currentMethod,
         int paramIndex,
         ITypeSymbol elementType,
         bool callerIsSpan,
         SpanTypes spanTypes,
-        ISymbol? containingSymbol)
+        ISymbol? containingSymbol,
+        Compilation compilation)
     {
         IMethodSymbol currentOriginal = currentMethod.OriginalDefinition;
         ImmutableArray<IParameterSymbol> currentParams = currentOriginal.Parameters;
         ISymbol? containingOriginal = containingSymbol?.OriginalDefinition;
+        ISymbol withinAccessibility = containingSymbol?.ContainingType ?? containingSymbol ?? currentMethod.ContainingType;
         string? bestMatch = null;
 
         foreach (IMethodSymbol candidate in overloads)
@@ -174,6 +199,9 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             if (candidate.IsStatic != currentMethod.IsStatic)
                 continue;
             if (candidate.TypeParameters.Length != currentOriginal.TypeParameters.Length)
+                continue;
+            // Suggesting an inaccessible overload would produce uncompilable code.
+            if (!compilation.IsSymbolAccessibleWithin(candidate, withinAccessibility))
                 continue;
 
             string? matchKind = MatchingSpanParamKind(

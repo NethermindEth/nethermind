@@ -164,6 +164,40 @@ public class SpanToArrayAtCallSiteAnalyzerTests
     }
 
     [Test]
+    public async Task Inaccessible_span_overload_no_diagnostic()
+    {
+        // Helper.M(byte[]) is public; Helper.M(Span<byte>) is private. From outside the class
+        // the analyzer must NOT suggest the span overload because applying the fix would not compile.
+        string source = """
+            using System;
+            class Helper
+            {
+                public static void M(byte[] x) { }
+                private static void M(Span<byte> x) { }
+            }
+            class Caller
+            {
+                static void Use(Span<byte> s) => Helper.M(s.ToArray());
+            }
+            """;
+        await Verify(source);
+    }
+
+    [Test]
+    public async Task Method_level_span_overload_chaining_to_array_no_diagnostic()
+    {
+        string source = """
+            using System;
+            class C
+            {
+                static void Foo(byte[] x) { }
+                static void Foo(ReadOnlySpan<byte> s) => Foo(s.ToArray());
+            }
+            """;
+        await Verify(source);
+    }
+
+    [Test]
     public async Task Span_overload_chaining_to_array_overload_no_diagnostic()
     {
         string source = """
