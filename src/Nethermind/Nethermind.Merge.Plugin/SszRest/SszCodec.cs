@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -13,9 +12,6 @@ using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Ssz;
-using Nethermind.Consensus;
-using System.Threading.Tasks;
-using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
@@ -45,13 +41,6 @@ public static class SszCodec
         T[] result = new T[src.Length];
         for (int i = 0; i < src.Length; i++) result[i] = ctor(src[i]);
         return result;
-    }
-
-    public static (byte[] buffer, int length) EncodeGetBlobsV1ResponseFromEnumerable(IEnumerable<BlobAndProofV1?> e)
-    {
-        IReadOnlyList<BlobAndProofV1?> list = e as IReadOnlyList<BlobAndProofV1?> ?? e.ToList();
-        ArrayPoolSpan<byte> s = EncodeGetBlobsV1Response(list);
-        return (((ReadOnlySpan<byte>)s).ToArray(), s.Length);
     }
 
     public static ArrayPoolSpan<byte> EncodePayloadStatus(PayloadStatusV1 ps)
@@ -109,19 +98,6 @@ public static class SszCodec
         headBlockHash: w.HeadBlockHash,
         finalizedBlockHash: w.FinalizedBlockHash,
         safeBlockHash: w.SafeBlockHash);
-
-    public static Task<ResultWrapper<ForkchoiceUpdatedV1Result>> DispatchForkchoiceUpdatedCall(
-        IEngineRpcModule engine,
-        int version,
-        ForkchoiceStateV1 state,
-        PayloadAttributes? attrs)
-        => version switch
-        {
-            <= EngineApiVersions.Fcu.V1 => engine.engine_forkchoiceUpdatedV1(state, attrs),
-            EngineApiVersions.Fcu.V2 => engine.engine_forkchoiceUpdatedV2(state, attrs),
-            EngineApiVersions.Fcu.V3 => engine.engine_forkchoiceUpdatedV3(state, attrs),
-            _ => engine.engine_forkchoiceUpdatedV4(state, attrs),
-        };
 
 
     public static (ExecutionPayload payload, byte[]?[] versionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)

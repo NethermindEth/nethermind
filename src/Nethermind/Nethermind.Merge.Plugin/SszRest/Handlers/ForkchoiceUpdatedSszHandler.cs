@@ -36,7 +36,8 @@ public sealed class ForkchoiceUpdatedSszHandler(IEngineRpcModule engineModule) :
             EngineApiVersions.Fcu.V2 => _engineModule.engine_forkchoiceUpdatedV2(state, attrs),
             EngineApiVersions.Fcu.V3 => _engineModule.engine_forkchoiceUpdatedV3(state, attrs),
             EngineApiVersions.Fcu.V4 => _engineModule.engine_forkchoiceUpdatedV4(state, attrs),
-            _ => throw new NotSupportedException($"Unsupported engine_forkchoiceUpdated version: {version}")
+            _ => Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
+                $"Unsupported engine_forkchoiceUpdated version: {version}", ErrorCodes.MethodNotFound))
         };
 
         await WriteSszResultAsync(ctx, await call, SszCodec.EncodeForkchoiceUpdatedResponse);
