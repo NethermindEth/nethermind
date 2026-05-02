@@ -25,7 +25,7 @@ namespace Nethermind.Core.Extensions
         /// <returns></returns>
         public static Task AsTask(this CancellationToken token)
         {
-            TaskCompletionSource taskCompletionSource = new();
+            TaskCompletionSource taskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             token.Register(() => taskCompletionSource.TrySetCanceled(), false);
             return taskCompletionSource.Task;
         }

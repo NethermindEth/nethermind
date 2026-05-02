@@ -175,7 +175,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     private Task RunConsumeSignal()
     {
-        TaskCompletionSource tcs = new();
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Thread thread = new(() =>
         {

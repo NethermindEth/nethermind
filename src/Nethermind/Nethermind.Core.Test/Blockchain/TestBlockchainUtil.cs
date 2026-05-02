@@ -55,7 +55,7 @@ public class TestBlockchainUtil(
         bool mayHaveExtraTx = (flags & AddBlockFlags.MayHaveExtraTx) != 0;
 
         _previousAddBlock.IsCompleted.Should().BeTrue("Multiple block produced at once. Please make sure this does not happen for test consistency.");
-        TaskCompletionSource tcs = new();
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _previousAddBlock = tcs.Task;
 
         AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
