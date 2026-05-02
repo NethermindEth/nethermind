@@ -176,7 +176,7 @@ internal class HeaderVerificationTests
     public void NonEpochBlock_With_Penalties_Fails()
     {
         XdcBlockHeader invalidPenaltiesExistBlock = GetLastHeader(false);
-        invalidPenaltiesExistBlock.Penalties = TestItem.AddressF.Bytes;
+        invalidPenaltiesExistBlock.Penalties = TestItem.AddressF.Bytes.ToArray();
         BlockHeader? invalidPenaltiesExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidPenaltiesExistBlock.ParentHash!);
         bool result = xdcHeaderValidator.Validate(invalidPenaltiesExistBlock, invalidPenaltiesExistBlockParent!);
         Assert.That(result, Is.False);
@@ -226,7 +226,7 @@ internal class HeaderVerificationTests
     public void NonEpochSwitch_Block_With_ValidatorsSet()
     {
         XdcBlockHeader nonEpochSwitchWithValidators = GetLastHeader(false);
-        nonEpochSwitchWithValidators.Validators = xdcTestBlockchain.MasterNodeCandidates.SelectMany(addr => addr.Address.Bytes).ToArray(); // implement helper to return acc1 addr bytes
+        nonEpochSwitchWithValidators.Validators = xdcTestBlockchain.MasterNodeCandidates.SelectMany(addr => addr.Address.Bytes.ToArray()).ToArray(); // implement helper to return acc1 addr bytes
         BlockHeader? nonEpochSwitchWithValidatorsParent = xdcTestBlockchain.BlockTree.FindHeader(nonEpochSwitchWithValidators.ParentHash!);
         bool result = xdcHeaderValidator.Validate(nonEpochSwitchWithValidators, nonEpochSwitchWithValidatorsParent);
         Assert.That(result, Is.False);
