@@ -346,6 +346,91 @@ internal static class SszCodecHelpers
         }
         Merkle.MixIn(ref root, bits.Length);
     }
+
+    internal static void MerkleizeFixedSizeBytes(ReadOnlySpan<byte> bytes, out UInt256 root)
+    {
+        if (bytes.Length <= 32)
+        {
+            Span<byte> chunk = stackalloc byte[32];
+            chunk.Clear();
+            bytes.CopyTo(chunk);
+            root = new UInt256(chunk);
+            Merkle.Merkleize(out root, chunk);
+        }
+        else
+        {
+            MerkleizeProgressiveBytes(bytes, out root);
+        }
+    }
+
+    internal delegate void EncodeItem<T>(T item, Span<byte> buffer);
+
+    internal static void MerkleizeRefTypeVector<T>(ReadOnlySpan<T> items, ulong length, int itemSize, EncodeItem<T> encode, out UInt256 root)
+    {
+        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
+        UInt256[] subRoots = new UInt256[items.Length];
+        try
+        {
+            for (int i = 0; i < items.Length; i++)
+            {
+                Span<byte> span = buf.AsSpan(0, itemSize);
+                span.Clear();
+                encode(items[i], span);
+                MerkleizeFixedSizeBytes(span, out subRoots[i]);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buf);
+        }
+        Merkle.Merkleize(out root, subRoots);
+    }
+
+    internal static void MerkleizeRefTypeList<T>(ReadOnlySpan<T> items, ulong limit, int itemSize, EncodeItem<T> encode, out UInt256 root)
+    {
+        int count = items.Length;
+        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
+        UInt256[] subRoots = new UInt256[count];
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> span = buf.AsSpan(0, itemSize);
+                span.Clear();
+                encode(items[i], span);
+                MerkleizeFixedSizeBytes(span, out subRoots[i]);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buf);
+        }
+        Merkle.Merkleize(out root, subRoots, limit);
+        Merkle.MixIn(ref root, count);
+    }
+
+    internal static void MerkleizeRefTypeProgressiveList<T>(ReadOnlySpan<T> items, int itemSize, EncodeItem<T> encode, out UInt256 root)
+    {
+        int count = items.Length;
+        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
+        UInt256[] subRoots = new UInt256[count];
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> span = buf.AsSpan(0, itemSize);
+                span.Clear();
+                encode(items[i], span);
+                MerkleizeFixedSizeBytes(span, out subRoots[i]);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buf);
+        }
+        Merkle.MerkleizeProgressive(out root, subRoots);
+        Merkle.MixIn(ref root, count);
+    }
 }
 """;
 
@@ -469,16 +554,49 @@ internal static class SszCodecHelpers
         return string.IsNullOrEmpty(validation2) ? $"{decode} {assignment2}" : $"{decode} {assignment2} {validation2}";
     }
 
+    /// <summary>
+    /// Emits code that encodes a ref-typed basic (Hash256, Address, Bloom) to a stackalloc byte span
+    /// using its CustomEncodeTemplate, then merkleizes those raw bytes into <paramref name="rootName"/>.
+    /// Template placeholder: {0} = dest span expr, {1} = value expr.
+    /// </summary>
+    /// <summary>
+    /// Encodes a ref-typed basic (Hash256, Address, Bloom) to a stackalloc byte span then merkleizes it.
+    /// When rootName is of the form "UInt256 varName" (a declaration), the UInt256 is pre-declared
+    /// before the braced block so it stays in scope afterward.
+    /// </summary>
+    private static string RefTypeBasicMerkleizeStatement(SszProperty property, string expression, string rootName)
+    {
+        int size = property.Type.StaticLength;
+        string encodeIntoSpan = property.Type.CustomEncodeTemplate!
+            .Replace("{0}", "__refBytes")
+            .Replace("{1}", expression);
+
+        // If rootName includes the type ("UInt256 fooRoot"), pre-declare outside the block
+        // so the variable remains in scope after the closing brace.
+        const string prefix = "UInt256 ";
+        if (rootName.StartsWith(prefix))
+        {
+            string varOnly = rootName.Substring(prefix.Length);
+            return $"UInt256 {varOnly}; {{ Span<byte> __refBytes = stackalloc byte[{size}]; {encodeIntoSpan} MerkleizeFixedSizeBytes(__refBytes, out {varOnly}); }}";
+        }
+
+        return $"{{ Span<byte> __refBytes = stackalloc byte[{size}]; {encodeIntoSpan} MerkleizeFixedSizeBytes(__refBytes, out {rootName}); }}";
+    }
+
     private static string MerkleizeRootStatement(SszProperty property, string expression, string rootName) =>
         property.Kind switch
         {
+            Kind.Basic when property.Type.IsRefType => RefTypeBasicMerkleizeStatement(property, expression, rootName),
             Kind.Basic => $"Merkle.Merkleize(out {rootName}, {expression});",
             Kind.BitVector => $"Merkle.Merkleize(out {rootName}, {expression}!);",
             Kind.BitList => $"Merkle.Merkleize(out {rootName}, {expression} ?? new BitArray(0), {property.Limit});",
             Kind.ProgressiveBitList => $"MerkleizeProgressiveBitList({expression}, out {rootName});",
-            Kind.Vector when property.Type.Kind == Kind.Basic => $"MerkleizeBasicVector({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic => $"MerkleizeBasicList({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}, out {rootName});",
-            Kind.ProgressiveList when property.Type.Kind == Kind.Basic => $"MerkleizeProgressiveBasicList({SpanExpression(property, expression)}, out {rootName});",
+            Kind.Vector when property.Type.Kind == Kind.Basic && !property.Type.IsRefType => $"MerkleizeBasicVector({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && !property.Type.IsRefType => $"MerkleizeBasicList({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}, out {rootName});",
+            Kind.ProgressiveList when property.Type.Kind == Kind.Basic && !property.Type.IsRefType => $"MerkleizeProgressiveBasicList({SpanExpression(property, expression)}, out {rootName});",
+            Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.IsRefType => $"MerkleizeRefTypeVector({SpanExpression(property, expression)}, {property.Length}, {property.Type.StaticLength}, (item, buf) => {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", "buf").Replace("{1}", "item")} }}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsRefType => $"MerkleizeRefTypeList({SpanExpression(property, expression)}, {property.Limit}, {property.Type.StaticLength}, (item, buf) => {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", "buf").Replace("{1}", "item")} }}, out {rootName});",
+            Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.IsRefType => $"MerkleizeRefTypeProgressiveList({SpanExpression(property, expression)}, {property.Type.StaticLength}, (item, buf) => {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", "buf").Replace("{1}", "item")} }}, out {rootName});",
             Kind.Vector => $"{property.Type.Name}.MerkleizeVector({SpanExpression(property, expression)}, out {rootName});",
             Kind.List => $"{property.Type.Name}.MerkleizeList({SpanExpression(property, expression)}, {property.Limit}, out {rootName});",
             Kind.ProgressiveList => $"{property.Type.Name}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
@@ -488,6 +606,8 @@ internal static class SszCodecHelpers
     private static string MerkleizeFeedStatement(SszProperty property, string expression) =>
         property.Kind switch
         {
+            // Ref-typed basics cannot be fed directly — compute their root first then feed it.
+            Kind.Basic when property.Type.IsRefType => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
             Kind.Basic or Kind.BitVector => $"merkleizer.Feed({expression});",
             Kind.BitList => $"merkleizer.Feed({expression} ?? new BitArray(0), {property.Limit});",
             _ => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
