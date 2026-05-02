@@ -193,10 +193,14 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return false;
     }
 
-    public void Restore(Snapshot snapshot) { }
+    public void Restore(Snapshot snapshot)
+        => _transientStorageProvider.Restore(snapshot.StorageSnapshot.TransientStorageSnapshot);
 
     public Snapshot TakeSnapshot(bool newTransactionStart = false)
-        => Snapshot.Empty;
+    {
+        int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
+        return new Snapshot(new Snapshot.Storage(Snapshot.EmptyPosition, transientSnapshot), Snapshot.EmptyPosition);
+    }
 
     public bool AccountExists(Address address)
     {

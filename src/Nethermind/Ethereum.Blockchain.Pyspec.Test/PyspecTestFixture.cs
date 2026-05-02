@@ -3,37 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
-
-/// <summary>
-/// Tests known to fail because Nethermind's generated BlockAccessList disagrees with the
-/// fixture's suggested BAL on storage slot values within frames whose effects are reverted.
-/// All four are EEST-synthesized blockchain_test_engine_from_state_test variants of state
-/// tests; the original state tests still execute against the same scenarios via the state
-/// test fixtures, so filtering here doesn't lose coverage.
-/// TODO: investigate Nethermind BAL-on-revert behavior (TSTORE/SSTORE in reverted frames).
-/// </summary>
-internal static class KnownPyspecBalRevertBugs
-{
-    // Each substring uniquely identifies a single failing _from_state_test parameter combo.
-    private static readonly string[] s_testNameSubstrings =
-    [
-        "test_tstore_reentrancy[fork_Amsterdam-blockchain_test_engine_from_state_test-call_dest_type_CallDestType.REENTRANCY-call_return_REVERT-call_type_CALL]",
-        "test_subcall[fork_Amsterdam-blockchain_test_engine_from_state_test-delegatecall_with_invalid]",
-        "test_trans_storage_reset[fork_Amsterdam-blockchain_test_engine_from_state_test-reverter-code-delegate-revert]",
-        "test_set_code_max_depth_call_stack[fork_Amsterdam-blockchain_test_engine_from_state_test]",
-    ];
-
-    public static bool IsAffected(BlockchainTest test) =>
-        test.Name is { } name
-        && s_testNameSubstrings.Any(s => name.Contains(s, StringComparison.Ordinal));
-}
 
 /// <summary>
 /// Generic base for pyspec blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
@@ -57,8 +32,7 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             $"fixtures/blockchain_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("BlockchainTests")}")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -84,8 +58,7 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestB
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             $"fixtures/blockchain_tests_engine/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("EngineBlockchainTests")}")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -111,8 +84,7 @@ public abstract class PyspecAmsterdamParallelBlockchainTestFixture : BlockchainT
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             "fixtures/blockchain_tests/for_amsterdam")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -135,8 +107,7 @@ public abstract class PyspecAmsterdamBatchReadBlockchainTestFixture : Blockchain
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             "fixtures/blockchain_tests/for_amsterdam")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -159,8 +130,7 @@ public abstract class PyspecAmsterdamParallelFullBlockchainTestFixture : Blockch
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             "fixtures/blockchain_tests/for_amsterdam")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -183,8 +153,7 @@ public abstract class PyspecAmsterdamParallelEngineBlockchainTestFixture : Block
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             "fixtures/blockchain_tests_engine/for_amsterdam")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -207,8 +176,7 @@ public abstract class PyspecAmsterdamBatchReadEngineBlockchainTestFixture : Bloc
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             "fixtures/blockchain_tests_engine/for_amsterdam")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -231,8 +199,7 @@ public abstract class PyspecAmsterdamParallelFullEngineBlockchainTestFixture : B
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             "fixtures/blockchain_tests_engine/for_amsterdam")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -260,8 +227,7 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf> : BlockchainTestBas
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             $"fixtures/blockchain_tests_sync/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("SyncBlockchainTests")}")
-            .LoadTests<BlockchainTest>()
-            .Where(t => !KnownPyspecBalRevertBugs.IsAffected(t));
+            .LoadTests<BlockchainTest>();
 }
 
 /// <summary>
