@@ -138,7 +138,7 @@ public abstract class StateSyncFeedTestsBase(
             .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<IStateSyncTestOperation, LocalDbContext>()
 
-            // Substitute the sync mode selector so StateSyncRunner.RunRound's
+            // Substitute the sync mode selector so StateSyncRunner.RunStateSyncRounds'
             // WaitUntilMode(StateNodes) returns immediately in tests rather than
             // blocking on real MultiSyncModeSelector state transitions.
             .AddSingleton<ISyncModeSelector>(static _ =>
@@ -146,6 +146,23 @@ public abstract class StateSyncFeedTestsBase(
                 ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
                 selector.Current.Returns(SyncMode.StateNodes);
                 return selector;
+            })
+
+            // Substitute progress resolver + beacon strategy so StateSyncPrecursorWait's
+            // close-to-head poll returns immediately (default test peers have HeadNumber=0
+            // so the real predicate would never be satisfied).
+            .AddSingleton<ISyncProgressResolver>(static _ =>
+            {
+                ISyncProgressResolver resolver = Substitute.For<ISyncProgressResolver>();
+                resolver.FindBestHeader().Returns(0L);
+                resolver.FindBestFullState().Returns(0L);
+                return resolver;
+            })
+            .AddSingleton<IBeaconSyncStrategy>(static _ =>
+            {
+                IBeaconSyncStrategy strategy = Substitute.For<IBeaconSyncStrategy>();
+                strategy.GetTargetBlockHeight().Returns((long?)0L);
+                return strategy;
             });
 
         containerBuilder.RegisterBuildCallback((ctx) =>
@@ -208,7 +225,7 @@ public abstract class StateSyncFeedTestsBase(
             treeSync.Value.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
         }
 
-        public Task RunFeed(CancellationToken cancellationToken) => stateSyncRunner.Value.RunRound(cancellationToken);
+        public Task RunFeed(CancellationToken cancellationToken) => stateSyncRunner.Value.RunStateSyncRounds(cancellationToken);
 
         public void Dispose()
         {

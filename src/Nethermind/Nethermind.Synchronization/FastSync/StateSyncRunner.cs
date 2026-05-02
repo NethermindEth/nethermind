@@ -42,8 +42,7 @@ public class StateSyncRunner(
                 return;
             }
 
-            await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
-            await WaitForCloseToHead(token);
+            await StateSyncPrecursorWait(token);
             TuneStateDb(syncConfig.TuneDbMode);
             try
             {
@@ -54,7 +53,7 @@ public class StateSyncRunner(
                     if (_logger.IsInfo) _logger.Info("Snap sync completed.");
                 }
 
-                await RunRound(token);
+                await RunStateSyncRounds(token);
             }
             finally
             {
@@ -67,16 +66,17 @@ public class StateSyncRunner(
         }
     }
 
-    public async Task RunRound(CancellationToken token)
+    public async Task RunStateSyncRounds(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting state sync.");
 
         while (!token.IsCancellationRequested)
         {
             // Yield between rounds when the mode selector has moved away from StateNodes
-            // (e.g. beacon control, UpdatingPivot, fast-sync re-entry) so those phases
-            // can claim peers. WaitUntilMode returns immediately if already in StateNodes.
-            await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
+            // (e.g. beacon control, UpdatingPivot, fast-sync re-entry) or when we've drifted
+            // away from head, so those phases can claim peers. Returns immediately if already
+            // in StateNodes mode and close to head.
+            await StateSyncPrecursorWait(token);
 
             treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
             await stateSyncDispatcher.Run(token);
@@ -98,8 +98,10 @@ public class StateSyncRunner(
         codeDb?.Tune(tuneType);
     }
 
-    private async Task WaitForCloseToHead(CancellationToken token)
+    private async Task StateSyncPrecursorWait(CancellationToken token)
     {
+        await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
+
         int totalSyncLag = syncConfig.StateMinDistanceFromHead + syncConfig.HeaderStateDistance;
 
         while (!token.IsCancellationRequested)

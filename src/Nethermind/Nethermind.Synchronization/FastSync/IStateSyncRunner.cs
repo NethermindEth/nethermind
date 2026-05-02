@@ -10,5 +10,5 @@ public interface IStateSyncRunner
 {
     Task Run(CancellationToken token);
 
-    Task RunRound(CancellationToken token);
+    Task RunStateSyncRounds(CancellationToken token);
 }
