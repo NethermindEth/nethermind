@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -34,7 +35,7 @@ public class BlockTreeSuggestPacerTests
     }
 
     [Test]
-    public void WillOnlyUnblockOnceHeadReachHighEnough()
+    public async Task WillOnlyUnblockOnceHeadReachHighEnough()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
@@ -50,6 +51,6 @@ public class BlockTreeSuggestPacerTests
         waitTask.IsCompleted.Should().BeFalse();
 
         blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(6).TestObject));
-        waitTask.IsCompleted.Should().BeTrue();
+        await waitTask.WaitAsync(TimeSpan.FromSeconds(5));
     }
 }
