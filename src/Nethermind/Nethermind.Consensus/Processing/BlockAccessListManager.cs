@@ -59,13 +59,6 @@ public class BlockAccessListManager(
     private const int GasValidationChunkSize = 8;
     private const long SystemTransactionGasLimit = 30_000_000L;
     private long? _gasRemaining;
-    // State gas charged by pre-block (StoreBeaconRoot, ApplyBlockhashStateChanges) and
-    // post-block (ProcessExecutionRequests) system contract calls. Captured per-call as
-    // delta on TxProcessor.BlockCumulativeStateGas so it works in both sequential mode
-    // (system + real txs share a processor) and parallel mode (system slots have their
-    // own processor). Folded into totalStateGas before the max(regular, state) decision
-    // in IncrementalValidation.
-    private long _systemStateGas;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
     // Cache key guarding LoadPreStateToSuggestedBlockAccessList against double-mutation of the
@@ -81,7 +74,6 @@ public class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
-        _systemStateGas = 0;
         GeneratedBlockAccessList.Reset();
     }
 
@@ -195,11 +187,6 @@ public class BlockAccessListManager(
                 ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
             }
         }
-
-        // Pre/post-block system contract calls (EIP-2935 / EIP-4788 / EIP-7002 / EIP-7251)
-        // charge state gas that contributes to the block's max(regular, state) total.
-        // Captured per-call by the snapshot/delta wrappers around the system call sites.
-        totalStateGas += _systemStateGas;
 
         // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
         _blockExecutionContext.Value.Header.GasUsed = Math.Max(totalRegularGas, totalStateGas);
@@ -442,9 +429,7 @@ public class BlockAccessListManager(
         CheckInitialized();
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        long stateGasBefore = preExecution.TxProcessor.BlockCumulativeStateGas;
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
-        _systemStateGas += preExecution.TxProcessor.BlockCumulativeStateGas - stateGasBefore;
     }
 
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
@@ -473,9 +458,7 @@ public class BlockAccessListManager(
         };
         systemCall.Hash = systemCall.CalculateHash();
 
-        long stateGasBefore = preExecution.TxProcessor.BlockCumulativeStateGas;
         preExecution.TxProcessor.Execute(systemCall, NullTxTracer.Instance);
-        _systemStateGas += preExecution.TxProcessor.BlockCumulativeStateGas - stateGasBefore;
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
@@ -496,9 +479,7 @@ public class BlockAccessListManager(
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        long stateGasBefore = postExecution.TxProcessor.BlockCumulativeStateGas;
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
-        _systemStateGas += postExecution.TxProcessor.BlockCumulativeStateGas - stateGasBefore;
     }
 
     private void LoadPreStateToSuggestedBlockAccessList(BlockAccessList bal)
