@@ -20,7 +20,7 @@ defaults:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }} (${{ matrix.variant.label }})
+    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -115,7 +115,7 @@ jobs:
             ${{ matrix.variant.dotnet-args }}
 
   tests-chunked:
-    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}, ${{ matrix.variant.label }})
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
