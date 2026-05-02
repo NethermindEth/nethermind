@@ -81,10 +81,7 @@ public class Bloom : IEquatable<Bloom>
 
     public override string ToString() => ReadOnlyBytes.ToHexString();
 
-    public static bool operator !=(Bloom? a, Bloom? b)
-    {
-        return !(a == b);
-    }
+    public static bool operator !=(Bloom? a, Bloom? b) => !(a == b);
 
     public static bool operator ==(Bloom? a, Bloom? b)
     {
