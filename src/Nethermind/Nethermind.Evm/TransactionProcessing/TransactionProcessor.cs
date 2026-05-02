@@ -1204,12 +1204,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
             long initialReservoir = Math.Max(0, txGasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
             long initialRegularGas = txGasLimit - intrinsicRegularGas - intrinsicStateGas - initialReservoir;
-            // EIP-8037: state-gas spill (state ops charged from regular budget when reservoir
-            // ran dry) reduces gas_left directly. Per EELS amsterdam/fork.py:1167-1172, the
-            // spill counts in BOTH dimensions — block_regular_gas via gas_left, block_state_gas
-            // via state_gas_used — and max(regular, state) single-counts it in the result.
-            // Subtracting it here causes a block.gasUsed undercount when sum_regular dominates.
-            long executionRegularGasUsed = initialRegularGas - remainingRegularGas;
+            long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution);
+            long executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill;
             long blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
             return Math.Max(blockRegularGas, floorGas);
         }

@@ -304,9 +304,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(259_698));
-        // Parent's SSTORE state-gas spill is counted in regular dim (per EELS gas_left
-        // reduction includes spill), so EffectiveBlockGas = pre-fix-227K + 1×SSetState.
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(264_498));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(226_930));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }));
         Assert.That(TestState.Get(new StorageCell(Recipient, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
@@ -499,38 +497,26 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         // Child's SSTOREs reverted on halt.
         AssertStorage(new StorageCell(TestItem.AddressC, 0), UInt256.Zero);
         AssertStorage(new StorageCell(TestItem.AddressC, 1), UInt256.Zero);
-        // Per EELS amsterdam/fork.py:1167-1172, state-gas spill counts in BOTH dims and the
-        // block's max(regular, state) single-counts it. Calculate8037BlockRegularGas no longer
-        // subtracts spill, so the parent's spilled SSTORE state gas now contributes to the
-        // regular dim. Pre-spill-subtract-removal this asserted 526_935.
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(564_503));
+        // The child's spilled state-gas stays burned with the child's regular gas — must NOT
+        // propagate to the parent's StateGasSpill bucket, otherwise Calculate8037BlockRegularGas
+        // would subtract the already-burned amount from the block's regular gas total and
+        // undercount block.gasUsed by 1×SSetState. Pre-fix this asserted 489_367.
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(526_935));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(2 * GasCostOf.SSetState));
     }
 
     [Test]
     public void Eip8037_block_validation_must_not_use_header_max_gas_used_as_remaining_tx_budget()
     {
-        // State-dim dominance now requires gasLimit > TX_CAP plus enough SSTOREs to outweigh
-        // intrinsic regular. Per EELS, sub-cap txs have reservoir = 0 so every state op spills
-        // and lands in the regular dim — so this test uses a high-gasLimit tx with multiple
-        // SSTOREs charged from the reservoir (no spill).
         byte[] stateHeavyCode = Prepare.EvmCode
             .PushData(1)
             .PushData(0)
-            .Op(Instruction.SSTORE)
-            .PushData(1)
-            .PushData(1)
-            .Op(Instruction.SSTORE)
-            .PushData(1)
-            .PushData(2)
             .Op(Instruction.SSTORE)
             .Op(Instruction.STOP)
             .Done;
 
         const long blockGasLimit = DynamicStatePricingBlockGasLimit;
-        // gasLimit = TX_CAP + reservoir excess sized to cover three cold SSTOREs (3 × SSetState).
-        long firstTxGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 200_000;
-        (Block block, Transaction firstTx) = PrepareTx(Activation, firstTxGasLimit, stateHeavyCode, value: 0, blockGasLimit: blockGasLimit);
+        (Block block, Transaction firstTx) = PrepareTx(Activation, 100_000, stateHeavyCode, value: 0, blockGasLimit: blockGasLimit);
 
         TestAllTracerWithOutput tracer = CreateTracer();
         TransactionResult firstResult = _processor.Execute(
@@ -686,45 +672,6 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
             "CREATE account state and code-deposit state gas should both be refunded after same-tx SELFDESTRUCT.");
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
-    }
-
-    /// <summary>
-    /// Regression for a sub-cap CREATE-tx whose init code spills state gas before reverting.
-    /// The spilled portion is debited from regular execution gas (reservoir=0 for sub-cap txs)
-    /// and per EELS amsterdam/fork.py:1167-1172 contributes to <c>block_regular_gas</c> via
-    /// <c>gas_left</c>. <c>max(regular, state)</c> single-counts it. A previous
-    /// <c>Calculate8037BlockRegularGas - stateGasSpill</c> subtraction caused
-    /// <c>HeaderGasUsedMismatch</c> when sum_regular dominated across the block.
-    /// </summary>
-    [Test]
-    public void Eip8037_top_level_create_init_code_revert_spill_counted_in_block_regular_gas()
-    {
-        // Init code: 3× cold SSTORE (slots 0/1/2), then top-level REVERT.
-        // Per cold SSTORE: regular = SSetRegular (~22100), state = SSetState (~37568).
-        // Sub-cap tx (gasLimit < TX_CAP) ⇒ initial reservoir = 0 ⇒ each state charge spills.
-        byte[] initCode = Prepare.EvmCode
-            .PushData(1).PushData(0).Op(Instruction.SSTORE)
-            .PushData(1).PushData(1).Op(Instruction.SSTORE)
-            .PushData(1).PushData(2).Op(Instruction.SSTORE)
-            .PushData(0).PushData(0).Op(Instruction.REVERT)
-            .Done;
-
-        (Block block, Transaction transaction) = PrepareInitTx(Activation, 1_000_000, initCode);
-        block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
-        TestAllTracerWithOutput tracer = CreateTracer();
-
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        // Top-level revert refunds execution-level state gas back to reservoir, so block-level
-        // state gas equals the intrinsic CREATE state cost only.
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState));
-        // Regular dim must include the 3× spilled SSetState — gas_left was reduced by them
-        // and they are not refunded to the user (paid in regular gas) on top-level error.
-        long expectedSpill = 3 * GasCostOf.SSetState;
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.GreaterThan(expectedSpill),
-            "Spilled state gas must remain in the regular dim — not subtracted out — so " +
-            "block.gasUsed = max(regular, state) is consistent with EELS reference.");
     }
 
     [Test]
