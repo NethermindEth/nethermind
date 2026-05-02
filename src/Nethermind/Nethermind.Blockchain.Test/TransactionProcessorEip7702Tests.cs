@@ -180,7 +180,7 @@ internal class TransactionProcessorEip7702Tests
 
         ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
-        Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
+        Assert.That(new Address(cell), Is.EqualTo(sender.Address));
     }
 
     public static IEnumerable<TestCaseData> DelegatedAndNotDelegatedCodeCases()
