@@ -453,6 +453,7 @@ public abstract class BlockchainTestBase
         ("BlockException.INVALID_STATE_ROOT", "InvalidStateRoot: State root in header does not match"),
         ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
         ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
+        ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
     ];
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
