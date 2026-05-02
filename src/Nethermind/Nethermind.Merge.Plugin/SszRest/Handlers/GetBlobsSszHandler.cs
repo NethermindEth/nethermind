@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -42,9 +43,20 @@ public sealed class GetBlobsV2SszHandler<TVersion>(
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
-        IEnumerable<BlobAndProofV2?>? data =
-            (IEnumerable<BlobAndProofV2?>?)await handler.HandleAsync(new GetBlobsHandlerV2Request(hashes, AllowPartialReturn: TVersion.AllowPartialReturn));
-        IReadOnlyList<BlobAndProofV2?> list = data as IReadOnlyList<BlobAndProofV2?> ?? AsReadOnlyList(data ?? []);
+        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await handler.HandleAsync(
+            new GetBlobsHandlerV2Request(hashes, AllowPartialReturn: TVersion.AllowPartialReturn));
+        if (result.Result != Result.Success)
+        {
+            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
+                result.Result.Error ?? "Unknown error");
+            return;
+        }
+        if (result.Data is null)
+        {
+            ctx.Response.StatusCode = StatusCodes.Status204NoContent;
+            return;
+        }
+        IReadOnlyList<BlobAndProofV2?> list = result.Data as IReadOnlyList<BlobAndProofV2?> ?? AsReadOnlyList(result.Data);
         await WriteSszPooledAsync(ctx, TVersion.Encode(list));
     }
 }

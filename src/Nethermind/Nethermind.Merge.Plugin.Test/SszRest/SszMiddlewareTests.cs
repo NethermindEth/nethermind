@@ -310,6 +310,7 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         capturedRequest!.Value.AllowPartialReturn.Should().Be(expectedAllowPartial);
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
     }
 
     [Test]

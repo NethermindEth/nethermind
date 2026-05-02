@@ -165,6 +165,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         MergeErrorCodes.InvalidForkchoiceState => StatusCodes.Status409Conflict,
         MergeErrorCodes.InvalidPayloadAttributes => StatusCodes.Status422UnprocessableEntity,
         MergeErrorCodes.TooLargeRequest => StatusCodes.Status413PayloadTooLarge,
+        ErrorCodes.MethodNotFound => StatusCodes.Status404NotFound,
         ErrorCodes.InternalError => StatusCodes.Status500InternalServerError,
         _ => StatusCodes.Status400BadRequest
     };
