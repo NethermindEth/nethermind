@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -33,29 +34,36 @@ public class StateSyncRunner(
 
     public async Task Run(CancellationToken token)
     {
-        if (syncProgressResolver.FindBestFullState() != 0)
-        {
-            if (_logger.IsInfo) _logger.Info("State sync unnecessary - already have state.");
-            return;
-        }
-
-        await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
-        await WaitForCloseToHead(token);
-        TuneStateDb(syncConfig.TuneDbMode);
         try
         {
-            if (syncConfig.SnapSync)
+            if (syncProgressResolver.FindBestFullState() != 0)
             {
-                if (_logger.IsInfo) _logger.Info("Starting snap sync.");
-                await snapSyncRunner.Run(token);
-                if (_logger.IsInfo) _logger.Info("Snap sync completed.");
+                if (_logger.IsInfo) _logger.Info("State sync unnecessary - already have state.");
+                return;
             }
 
-            await RunRound(token);
+            await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
+            await WaitForCloseToHead(token);
+            TuneStateDb(syncConfig.TuneDbMode);
+            try
+            {
+                if (syncConfig.SnapSync)
+                {
+                    if (_logger.IsInfo) _logger.Info("Starting snap sync.");
+                    await snapSyncRunner.Run(token);
+                    if (_logger.IsInfo) _logger.Info("Snap sync completed.");
+                }
+
+                await RunRound(token);
+            }
+            finally
+            {
+                TuneStateDb(ITunableDb.TuneType.Default);
+            }
         }
-        finally
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            TuneStateDb(ITunableDb.TuneType.Default);
+            // Clean shutdown — swallow so Synchronizer doesn't log "State sync failed".
         }
     }
 

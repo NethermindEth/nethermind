@@ -26,9 +26,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         public async Task<SnapSyncBatch?> PrepareRequest(CancellationToken token)
         {
-            try
+            while (!token.IsCancellationRequested)
             {
-                while (!token.IsCancellationRequested)
+                try
                 {
                     bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
 
@@ -42,21 +42,20 @@ namespace Nethermind.Synchronization.SnapSync
                         _snapProvider.Dispose();
                         return null;
                     }
-
-                    await Task.Delay(50, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return EmptyBatch;
+                }
+                catch (Exception e)
+                {
+                    _logger.Error("Error when preparing a batch", e);
                 }
 
-                return EmptyBatch;
+                await Task.Delay(50, token);
             }
-            catch (OperationCanceledException)
-            {
-                return EmptyBatch;
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error when preparing a batch", e);
-                return EmptyBatch;
-            }
+
+            return EmptyBatch;
         }
 
         public SyncResponseHandlingResult HandleResponse(SnapSyncBatch batch, PeerInfo? peer = null)
