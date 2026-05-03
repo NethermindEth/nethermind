@@ -36,7 +36,7 @@ public class PersistedSnapshotCompactorTests
     private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
+        using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);

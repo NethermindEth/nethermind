@@ -9,14 +9,28 @@ namespace Nethermind.State.Flat.Storage;
 /// <summary>
 /// A reservation of space within an arena. Delegates span access to the owning <see cref="IArenaManager"/>.
 /// </summary>
-public sealed class ArenaReservation(IArenaManager arenaManager, int arenaId, long offset, int size)
-    : RefCountingDisposable(1)
+public sealed class ArenaReservation : RefCountingDisposable
 {
-    private readonly IArenaManager _arenaManager = arenaManager;
+    private readonly IArenaManager _arenaManager;
+    private readonly long _initialSize;
 
-    internal int ArenaId { get; } = arenaId;
-    internal long Offset { get; } = offset;
-    public int Size { get; internal set; } = size;
+    internal int ArenaId { get; }
+    internal long Offset { get; }
+    public int Size { get; internal set; }
+    public string Tag { get; }
+
+    public ArenaReservation(IArenaManager arenaManager, int arenaId, long offset, int size, string tag)
+        : base(1)
+    {
+        _arenaManager = arenaManager;
+        ArenaId = arenaId;
+        Offset = offset;
+        Size = size;
+        Tag = tag;
+        _initialSize = size;
+        Metrics.ArenaReservationCountByTag.AddOrUpdate(tag, 1L, static (_, c) => c + 1);
+        Metrics.ArenaReservationBytesByTag.AddOrUpdate(tag, static (_, s) => s, static (_, b, s) => b + s, (long)size);
+    }
 
     /// <summary>
     /// Direct span access used internally by <see cref="WholeReadSession"/> and the reader
@@ -48,5 +62,7 @@ public sealed class ArenaReservation(IArenaManager arenaManager, int arenaId, lo
     {
         AdviseDontNeed();
         _arenaManager.MarkDead(new SnapshotLocation(ArenaId, Offset, Size));
+        Metrics.ArenaReservationCountByTag.AddOrUpdate(Tag, 0L, static (_, c) => Math.Max(0, c - 1));
+        Metrics.ArenaReservationBytesByTag.AddOrUpdate(Tag, static (_, _) => 0L, static (_, b, s) => Math.Max(0, b - s), _initialSize);
     }
 }

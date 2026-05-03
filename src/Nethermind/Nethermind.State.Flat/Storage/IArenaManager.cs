@@ -6,10 +6,10 @@ namespace Nethermind.State.Flat.Storage;
 public interface IArenaManager : IDisposable
 {
     void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
-    ArenaWriter CreateWriter(int estimatedSize);
-    (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize);
+    ArenaWriter CreateWriter(int estimatedSize, string tag);
+    (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize, string tag);
     void CancelWrite(int arenaId, long startOffset);
-    ArenaReservation Open(in SnapshotLocation location);
+    ArenaReservation Open(in SnapshotLocation location, string tag);
     ReadOnlySpan<byte> GetSpan(ArenaReservation reservation);
     IArenaWholeView OpenWholeView(ArenaReservation reservation);
     void MarkDead(in SnapshotLocation location);

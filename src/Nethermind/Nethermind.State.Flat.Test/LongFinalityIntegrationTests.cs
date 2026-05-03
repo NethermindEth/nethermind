@@ -65,7 +65,7 @@ public class LongFinalityIntegrationTests
     private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
+        using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
@@ -361,6 +361,6 @@ public class LongFinalityIntegrationTests
         Assert.That(config.EnableLongFinality, Is.False);
         Assert.That(config.LongFinalityReorgDepth, Is.EqualTo(90000));
         Assert.That(config.PersistedSnapshotPath, Is.EqualTo("snapshots"));
-        Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(4L * 1024 * 1024 * 1024));
+        Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
     }
 }

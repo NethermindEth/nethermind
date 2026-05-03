@@ -115,7 +115,7 @@ public class PersistedSnapshotCompactor(
         BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
             ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
             : null;
-        using (ArenaWriter arenaWriter = arenaManager.CreateWriter((int)estimatedSize))
+        using (ArenaWriter arenaWriter = arenaManager.CreateWriter((int)estimatedSize, ArenaReservationTags.LinkedCompacted))
         {
             long sw = Stopwatch.GetTimestamp();
             PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds, mergedBloom);

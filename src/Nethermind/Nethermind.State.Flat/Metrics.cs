@@ -128,4 +128,14 @@ public static class Metrics
     [GaugeMetric]
     [Description("Total mmap size of arena files backing persisted snapshots in bytes")]
     public static long ArenaMappedBytes { get; set; }
+
+    [DetailedMetric]
+    [Description("Live arena reservations by tag")]
+    [KeyIsLabel("tag")]
+    public static ConcurrentDictionary<string, long> ArenaReservationCountByTag { get; } = new();
+
+    [DetailedMetric]
+    [Description("Live arena reservation bytes by tag")]
+    [KeyIsLabel("tag")]
+    public static ConcurrentDictionary<string, long> ArenaReservationBytesByTag { get; } = new();
 }

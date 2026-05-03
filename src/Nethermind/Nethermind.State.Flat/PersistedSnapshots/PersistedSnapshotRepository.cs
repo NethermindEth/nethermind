@@ -76,7 +76,13 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
 
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
-        ArenaReservation reservation = ArenaForEntry(entry).Open(entry.Location);
+        string tag = entry.Type switch
+        {
+            PersistedSnapshotType.Full when !IsPersistableSize(entry) => ArenaReservationTags.FullBase,
+            PersistedSnapshotType.Full => ArenaReservationTags.FullPersistable,
+            _ => ArenaReservationTags.LinkedCompacted,
+        };
+        ArenaReservation reservation = ArenaForEntry(entry).Open(entry.Location, tag);
 
         PersistedSnapshot[]? referencedSnapshots = null;
         if (entry.Type == PersistedSnapshotType.Linked)
@@ -135,7 +141,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
 
         SnapshotLocation location;
         ArenaReservation reservation;
-        using (ArenaWriter arenaWriter = arena.CreateWriter(PersistedSnapshotBuilder.EstimateSize(snapshot)))
+        string writeTag = isPersistable ? ArenaReservationTags.FullPersistable : ArenaReservationTags.FullBase;
+        using (ArenaWriter arenaWriter = arena.CreateWriter(PersistedSnapshotBuilder.EstimateSize(snapshot), writeTag))
         {
             PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter(), bloom);
             if (isPersistable)

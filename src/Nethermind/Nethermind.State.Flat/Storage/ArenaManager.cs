@@ -56,7 +56,7 @@ public sealed class ArenaManager : IArenaManager
         }
     }
 
-    public ArenaManager(string basePath, long maxArenaSize = 2L * 1024 * 1024 * 1024, long pageCacheBytes = DefaultPageCacheBytes)
+    public ArenaManager(string basePath, long maxArenaSize = 1L * 1024 * 1024 * 1024, long pageCacheBytes = DefaultPageCacheBytes)
     {
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
@@ -129,7 +129,7 @@ public sealed class ArenaManager : IArenaManager
     /// Create an <see cref="ArenaWriter"/> for buffered writes.
     /// The arena is marked as reserved until <see cref="CompleteWrite"/> or <see cref="CancelWrite"/>.
     /// </summary>
-    public ArenaWriter CreateWriter(int estimatedSize)
+    public ArenaWriter CreateWriter(int estimatedSize, string tag)
     {
         lock (_lock)
         {
@@ -139,21 +139,21 @@ public sealed class ArenaManager : IArenaManager
             long offset = _frontiers[file.Id];
             _reservedArenas.Add(file.Id);
             FileStream stream = file.CreateWriteStream(offset);
-            return new ArenaWriter(this, file.Id, offset, stream);
+            return new ArenaWriter(this, file.Id, offset, stream, tag);
         }
     }
 
     /// <summary>
     /// Complete a buffered write. Updates frontier and returns location + reservation.
     /// </summary>
-    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize)
+    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize, string tag)
     {
         lock (_lock)
         {
             _frontiers[arenaId] = startOffset + actualSize;
             _reservedArenas.Remove(arenaId);
             SnapshotLocation location = new(arenaId, startOffset, actualSize);
-            ArenaReservation reservation = new(this, arenaId, startOffset, actualSize);
+            ArenaReservation reservation = new(this, arenaId, startOffset, actualSize, tag);
             return (location, reservation);
         }
     }
@@ -185,8 +185,8 @@ public sealed class ArenaManager : IArenaManager
     /// <summary>
     /// Open an existing snapshot location as an <see cref="ArenaReservation"/> for zero-copy reads.
     /// </summary>
-    public ArenaReservation Open(in SnapshotLocation location) =>
-        new(this, location.ArenaId, location.Offset, location.Size);
+    public ArenaReservation Open(in SnapshotLocation location, string tag) =>
+        new(this, location.ArenaId, location.Offset, location.Size, tag);
 
     /// <summary>
     /// Get a read-only span for the reservation's data region.

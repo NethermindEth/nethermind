@@ -9,14 +9,16 @@ public sealed class ArenaWriter : IDisposable
     private readonly IArenaManager _manager;
     private readonly int _arenaId;
     private readonly long _startOffset;
+    private readonly string _tag;
     private bool _completed;
 
-    internal ArenaWriter(IArenaManager manager, int arenaId, long startOffset, Stream stream)
+    internal ArenaWriter(IArenaManager manager, int arenaId, long startOffset, Stream stream, string tag)
     {
         _manager = manager;
         _arenaId = arenaId;
         _startOffset = startOffset;
         _writer = new StreamBufferWriter(stream);
+        _tag = tag;
     }
 
     public ref StreamBufferWriter GetWriter() => ref _writer;
@@ -26,7 +28,7 @@ public sealed class ArenaWriter : IDisposable
         _writer.Flush();
         _completed = true;
         int actualSize = _writer.Written;
-        return _manager.CompleteWrite(_arenaId, _startOffset, actualSize);
+        return _manager.CompleteWrite(_arenaId, _startOffset, actualSize, _tag);
     }
 
     public void Dispose()

@@ -318,7 +318,7 @@ public class SnapshotRepositoryTests
         Snapshot snap = CreateSnapshot(from, to);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
         snap.Dispose();
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
+        using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);

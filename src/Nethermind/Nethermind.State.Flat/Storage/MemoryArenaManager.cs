@@ -19,16 +19,16 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) { }
 
-    public ArenaWriter CreateWriter(int estimatedSize)
+    public ArenaWriter CreateWriter(int estimatedSize, string tag)
     {
         int arenaId = GetOrCreateArena(estimatedSize);
         long offset = _frontiers[arenaId];
         MemoryStream stream = new();
         _pendingStreams[(arenaId, offset)] = stream;
-        return new ArenaWriter(this, arenaId, offset, stream);
+        return new ArenaWriter(this, arenaId, offset, stream, tag);
     }
 
-    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize)
+    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize, string tag)
     {
         if (_pendingStreams.Remove((arenaId, startOffset), out MemoryStream? stream))
         {
@@ -39,15 +39,15 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
         _frontiers[arenaId] = startOffset + actualSize;
         SnapshotLocation location = new(arenaId, startOffset, actualSize);
-        ArenaReservation reservation = new(this, arenaId, startOffset, actualSize);
+        ArenaReservation reservation = new(this, arenaId, startOffset, actualSize, tag);
         return (location, reservation);
     }
 
     public void CancelWrite(int arenaId, long startOffset) =>
         _pendingStreams.Remove((arenaId, startOffset));
 
-    public ArenaReservation Open(in SnapshotLocation location) =>
-        new(this, location.ArenaId, location.Offset, location.Size);
+    public ArenaReservation Open(in SnapshotLocation location, string tag) =>
+        new(this, location.ArenaId, location.Offset, location.Size, tag);
 
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].AsSpan((int)reservation.Offset, reservation.Size);
