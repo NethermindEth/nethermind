@@ -501,9 +501,13 @@ namespace Nethermind.Evm.TransactionProcessing
                     //   2. intrinsic_state alone overflows the state dim
                     //   3. minRequired exceeds the combined remaining capacity
                     // Mirrors BlockAccessListManager.ValidateTransactionGasAllowance.
+                    // Combined-capacity check is reformulated to avoid long overflow
+                    // when pyspec fixtures use block gas_limit near i64.MaxValue.
+                    bool combinedShortfall = regularGasAvailable < minGasRequired
+                        && minGasRequired - regularGasAvailable > stateGasAvailable;
                     if (intrinsicRegularGas > regularGasAvailable
                         || intrinsicStateGas > stateGasAvailable
-                        || minGasRequired > regularGasAvailable + stateGasAvailable)
+                        || combinedShortfall)
                     {
                         TraceLogInvalidTx(tx,
                             $"BLOCK_GAS_LIMIT_EXCEEDED regular_intrinsic {intrinsicRegularGas}/{regularGasAvailable}, state_intrinsic {intrinsicStateGas}/{stateGasAvailable}, min_required {minGasRequired}");
