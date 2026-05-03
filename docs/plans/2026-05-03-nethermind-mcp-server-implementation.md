@@ -4,7 +4,7 @@
 
 **Goal:** Ship an opt-in `Nethermind.Mcp` plugin that exposes a Model Context Protocol HTTP/SSE server on a dedicated Kestrel host, surfacing 3 diagnostic tools, 1 chain query tool, and 2 resources, with optional Bearer-key auth.
 
-**Architecture:** New project `src/Nethermind/Nethermind.Mcp/` registered as an embedded plugin. The plugin owns its own Kestrel host, mounts the `ModelContextProtocol.AspNetCore` SSE handler at `/mcp`, and routes tool/resource calls through a thin read-only `INethermindNodeAdapter` that wraps `IBlockTree`, `ISyncServer`, `IPeerPool`, and process/GC stats. Default off (`Mcp.Enabled=false`). Sibling test project `Nethermind.Mcp.Test` covers adapter, tools, resources, middleware, and end-to-end SSE flow.
+**Architecture:** New project `src/Nethermind/Nethermind.Mcp/` registered as an embedded plugin. The plugin owns its own Kestrel host, mounts the `ModelContextProtocol.AspNetCore` SSE handler at `/mcp`, and routes tool/resource calls through a thin read-only `INethermindNodeAdapter` that wraps `IBlockTree`, `ISyncServer`, `ISyncPeerPool`, and process/GC stats. Default off (`Mcp.Enabled=false`). Sibling test project `Nethermind.Mcp.Test` covers adapter, tools, resources, middleware, and end-to-end SSE flow.
 
 **Tech Stack:** .NET 10, C# 14, NUnit, NSubstitute, Autofac, ASP.NET Core Kestrel, `ModelContextProtocol` 1.1, `ModelContextProtocol.AspNetCore` 1.1, `System.Text.Json` source generation.
 
@@ -507,7 +507,7 @@ git commit -m "feat(mcp): add NethermindNodeAdapter.GetNodeVersion"
 
 ## Task 5: `NethermindNodeAdapter.GetSyncStatus`
 
-**Goal:** Exercise `IBlockTree`, `ISyncServer`, `IPeerPool` against a `TestBlockchain`-style setup. Substitute mocks for v1 — `TestBlockchain` integration is reserved for the integration test in Task 16.
+**Goal:** Exercise `IBlockTree`, `ISyncServer`, `ISyncPeerPool` against a `TestBlockchain`-style setup. Substitute mocks for v1 — `TestBlockchain` integration is reserved for the integration test in Task 16.
 
 **Files:**
 - Modify: `src/Nethermind/Nethermind.Mcp/Adapter/INethermindNodeAdapter.cs`
@@ -526,7 +526,7 @@ public void GetSyncStatus_returns_current_and_best_known_block_with_peer_count()
     api.BlockTree!.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
     api.BlockTree!.BestSuggestedHeader.Returns(bestSuggested);
     api.SyncServer!.Returns(Substitute.For<ISyncServer>());
-    api.PeerPool!.PeerCount.Returns(7);
+    api.SyncPeerPool!.PeerCount.Returns(7);
 
     INethermindNodeAdapter adapter = new NethermindNodeAdapter(api);
     var status = adapter.GetSyncStatus();
@@ -558,7 +558,7 @@ public SyncStatusDto GetSyncStatus()
     long current = api.BlockTree?.Head?.Number ?? 0;
     long highest = api.BlockTree?.BestSuggestedHeader?.Number ?? current;
     long behind = System.Math.Max(0, highest - current);
-    int peerCount = api.PeerPool?.PeerCount ?? 0;
+    int peerCount = api.SyncPeerPool?.PeerCount ?? 0;
     string mode = behind == 0 ? "Idle" : "Syncing";
 
     return new SyncStatusDto(current, highest, mode, behind, peerCount);

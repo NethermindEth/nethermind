@@ -91,8 +91,8 @@ Maps automatically to CLI (`--Mcp.Enabled true`), env (`NETHERMIND_MCPCONFIG_ENA
 
 | Method | Backing services |
 |---|---|
-| `SyncStatusDto GetSyncStatus()` | `IBlockTree`, `ISyncServer`, `IPeerPool` |
-| `NodeHealthDto GetNodeHealth()` | `IBlockTree`, `IPeerPool`, `Process.GetCurrentProcess()`, `GC.GetGCMemoryInfo()`, `DriveInfoExtensions` |
+| `SyncStatusDto GetSyncStatus()` | `IBlockTree`, `ISyncServer`, `ISyncPeerPool` |
+| `NodeHealthDto GetNodeHealth()` | `IBlockTree`, `ISyncPeerPool`, `Process.GetCurrentProcess()`, `GC.GetGCMemoryInfo()`, `DriveInfoExtensions` |
 | `NodeVersionDto GetNodeVersion()` | `Nethermind.Core.ProductInfo.ClientId`, `RuntimeInformation`, RPC module enable flags |
 | `BlockSummaryDto? GetBlock(BlockParameter)` | `IBlockTree.FindBlock` |
 
