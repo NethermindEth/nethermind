@@ -96,17 +96,26 @@ public class PersistedSnapshotCompactor(
 
         SnapshotLocation location;
         ArenaReservation reservation;
-        int estimatedSize = 0;
+        long estimatedSize = 0;
         long bloomCapacity = 0;
         for (int i = 0; i < snapshots.Count; i++)
         {
             estimatedSize += snapshots[i].Size;
             bloomCapacity += snapshots[i].KeyBloomCount;
         }
+
+        const long MaxCompactedSourceBytes = 2L * 1024 * 1024 * 1024;
+        if (estimatedSize > MaxCompactedSourceBytes)
+        {
+            if (_logger.IsDebug) _logger.Debug(
+                $"Skipping compactSize={compactSize}: source bytes {estimatedSize} > 2 GiB cap");
+            return false;
+        }
+
         BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
             ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
             : null;
-        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
+        using (ArenaWriter arenaWriter = arenaManager.CreateWriter((int)estimatedSize))
         {
             long sw = Stopwatch.GetTimestamp();
             PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds, mergedBloom);
