@@ -714,7 +714,6 @@
           "Nethermind.Crypto.SecP256k1": "[1.6.0, )",
           "Nethermind.Logging": "[1.38.0-unstable, )",
           "Nethermind.Numerics.Int256": "[1.5.0, )",
-          "Nethermind.Zkvm.Abstractions": "[1.0.0-preview.3, )",
           "NonBlocking": "[2.1.2, )",
           "Testably.Abstractions": "[10.2.0, )"
         }
@@ -727,7 +726,6 @@
           "Nethermind.Core": "[1.38.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.0.5, )",
           "Nethermind.Serialization.Rlp": "[1.38.0-unstable, )",
-          "Nethermind.Zkvm.Abstractions": "[1.0.0-preview.3, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.7, )"
         }
       },
@@ -1565,12 +1563,6 @@
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
-      },
-      "Nethermind.Zkvm.Abstractions": {
-        "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.3, )",
-        "resolved": "1.0.0-preview.3",
-        "contentHash": "blJL+EDCURkEasrR9CAMTB++lOjJjHRJ9JQlUBhHWPQhpNPhAR7JMHlb4mTyvPooZ+UwMJUXUw6rowBCZqj1OQ=="
       },
       "Nito.Collections.Deque": {
         "type": "CentralTransitive",
