@@ -556,6 +556,37 @@ jobs:
             fi
           fi
 
+      - name: Write performance summary to run page
+        if: inputs.is_performance_check == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## RPC Performance Diff"
+            echo ""
+            echo "Current branch vs \`${{ inputs.branch_to_compare }}\`, identical hardware, mainnet snap-synced."
+            echo ""
+            echo "Per-method p50 / p95 / p99 at the configured RPS steps. Same shape as Wojtek's manual table."
+            echo ""
+
+            shopt -s nullglob
+            dirs=(*_perf_result)
+            if [[ ${#dirs[@]} -eq 0 ]]; then
+              echo "_No \`*_perf_result\` directories found in working tree._"
+              exit 0
+            fi
+
+            for d in "${dirs[@]}"; do
+              name=$(basename "$d" _perf_result)
+              echo "### ${name}"
+              echo ""
+              echo '```'
+              flood report "$d" 2>&1 || echo "(flood report failed for $name — see uploaded artifact)"
+              echo '```'
+              echo ""
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload results as files
         uses: actions/upload-artifact@v7
         with:
