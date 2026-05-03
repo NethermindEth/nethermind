@@ -68,21 +68,27 @@ public ref struct HsstBuilder<TWriter>
     /// Create builder writing via the given writer.
     /// Writes version byte (0x01 normal, 0x81 inline).
     /// Allocates working buffers from ArrayPool — call Dispose() to return them.
+    /// <paramref name="expectedKeyCount"/> sizes the entry/separator working buffers up front;
+    /// pass an estimate when known to avoid resize allocations. The buffers still grow on demand.
     /// </summary>
-    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0, bool inlineValues = false)
+    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0, bool inlineValues = false, int expectedKeyCount = 16)
     {
         _writer = ref writer;
         _baseOffset = _writer.Written;
         _minSeparatorLength = minSeparatorLength;
         _inlineValues = inlineValues;
-        _separatorBuffer = new ArrayPoolListRef<byte>(65536);
-        _entriesBuffer = new ArrayPoolListRef<HsstEntry>(10000);
+
+        // Heuristic: ~32 bytes per separator/value. ArrayPool buckets are power-of-2,
+        // so this just selects a starting bucket — the buffers grow as needed.
+        int byteCap = Math.Max(64, expectedKeyCount * 32);
+        _separatorBuffer = new ArrayPoolListRef<byte>(byteCap);
+        _entriesBuffer = new ArrayPoolListRef<HsstEntry>(expectedKeyCount);
         _prevKeyBuffer = new ArrayPoolListRef<byte>(256);
 
         if (inlineValues)
         {
-            _inlineValueBuffer = new ArrayPoolListRef<byte>(65536);
-            _inlineValueLengths = new ArrayPoolListRef<int>(10000);
+            _inlineValueBuffer = new ArrayPoolListRef<byte>(byteCap);
+            _inlineValueLengths = new ArrayPoolListRef<int>(expectedKeyCount);
         }
 
         // Write version byte
