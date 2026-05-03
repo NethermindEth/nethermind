@@ -115,6 +115,8 @@ public static class PersistedSnapshotBuilder
                     if (path.Length <= TopPathThreshold) top.Add((path, kv.Value));
                     else if (path.Length <= CompactPathThreshold) compact.Add((path, kv.Value));
                     else fallback.Add((path, kv.Value));
+                    kv.Value.IsPersisted = true;
+                    kv.Value.PrunePersistedRecursively(1);
                 }
                 Parallel.Invoke(
                     () => top.Sort(StateNodeComparer),
@@ -133,6 +135,8 @@ public static class PersistedSnapshotBuilder
                     (Hash256 addr, TreePath path) = kv.Key.Key;
                     if (path.Length <= CompactPathThreshold) compact.Add(((addr, path), kv.Value));
                     else fallback.Add(((addr, path), kv.Value));
+                    kv.Value.IsPersisted = true;
+                    kv.Value.PrunePersistedRecursively(1);
                 }
                 Parallel.Invoke(
                     () => compact.Sort(StorageNodeComparer),
