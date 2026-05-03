@@ -542,7 +542,9 @@ jobs:
             echo "Processing performance check repositories:"
             for repo in $(ls -d *_perf_result); do
               echo "Flood report for $repo"
-              flood report "$repo"
+              # Capture each report once into a sibling .report.txt file so the
+              # subsequent summary step can reuse it without re-invoking flood.
+              flood report "$repo" 2>&1 | tee "${repo}.report.txt"
             done
           else
             if [ "$COMPARE_TO_OTHER_BRANCH" == "true" ]; then
@@ -559,33 +561,48 @@ jobs:
       - name: Write performance summary to run page
         if: inputs.is_performance_check == true
         shell: bash
+        # Inputs are passed via env to avoid `${{ ... }}` expansion into shell —
+        # branch names containing backticks or $() would otherwise execute.
+        env:
+          BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
+          # GitHub silently truncates $GITHUB_STEP_SUMMARY past 1 MiB.
+          # We cap our own writes well below that and link to the artifact for the rest.
+          SUMMARY_BUDGET_BYTES: "900000"
         run: |
           set -euo pipefail
+
+          shopt -s nullglob
+          report_files=(*_perf_result.report.txt)
+
+          tmp_summary=$(mktemp)
           {
-            echo "## RPC Performance Diff"
-            echo ""
-            echo "Current branch vs \`${{ inputs.branch_to_compare }}\`, identical hardware, mainnet snap-synced."
-            echo ""
-            echo "Per-method p50 / p95 / p99 at the configured RPS steps."
-            echo ""
+            printf '## RPC Performance Diff\n\n'
+            printf 'Current branch vs `%s`, identical hardware, mainnet snap-synced.\n\n' "$BRANCH_TO_COMPARE"
+            printf 'Per-method p50 / p95 / p99 at the configured RPS steps.\n\n'
 
-            shopt -s nullglob
-            dirs=(*_perf_result)
-            if [[ ${#dirs[@]} -eq 0 ]]; then
-              echo "_No \`*_perf_result\` directories found in working tree._"
-              exit 0
+            if [[ ${#report_files[@]} -eq 0 ]]; then
+              printf '_No `*_perf_result.report.txt` files found — flood report step may have produced no output. See uploaded artifact._\n'
+            else
+              for f in "${report_files[@]}"; do
+                name=$(basename "$f" _perf_result.report.txt)
+                printf '### %s\n\n```\n' "$name"
+                cat "$f"
+                printf '\n```\n\n'
+              done
             fi
+          } > "$tmp_summary"
 
-            for d in "${dirs[@]}"; do
-              name=$(basename "$d" _perf_result)
-              echo "### ${name}"
-              echo ""
-              echo '```'
-              flood report "$d" 2>&1 || echo "(flood report failed for $name — see uploaded artifact)"
-              echo '```'
-              echo ""
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
+          # Truncation guard: keep the summary under the configured byte budget;
+          # if exceeded, replace tail with a pointer to the full artifact.
+          actual_size=$(wc -c < "$tmp_summary")
+          if (( actual_size > SUMMARY_BUDGET_BYTES )); then
+            head -c "$SUMMARY_BUDGET_BYTES" "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
+            printf '\n\n_Summary truncated at %s bytes (limit %s). See the `flood-results` artifact for the full per-method reports._\n' \
+              "$actual_size" "$SUMMARY_BUDGET_BYTES" >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$tmp_summary"
 
       - name: Upload results as files
         uses: actions/upload-artifact@v7
@@ -597,4 +614,5 @@ jobs:
             output_archive.txt
             *_perf_result
             *_perf_result.txt
+            *_perf_result.report.txt
             equality_result_*
