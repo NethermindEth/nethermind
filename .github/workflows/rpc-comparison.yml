@@ -566,7 +566,7 @@ jobs:
             echo ""
             echo "Current branch vs \`${{ inputs.branch_to_compare }}\`, identical hardware, mainnet snap-synced."
             echo ""
-            echo "Per-method p50 / p95 / p99 at the configured RPS steps. Same shape as Wojtek's manual table."
+            echo "Per-method p50 / p95 / p99 at the configured RPS steps."
             echo ""
 
             shopt -s nullglob
