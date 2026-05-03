@@ -33,9 +33,12 @@ public class SnapSyncRunnerTests
         SnapSyncRunner runner = new(token =>
         {
             calls.Add("dispatcher");
-            if (outcome == DispatcherOutcome.Throws) throw new InvalidOperationException("boom");
-            if (outcome == DispatcherOutcome.Cancels) token.ThrowIfCancellationRequested();
-            return Task.CompletedTask;
+            return outcome switch
+            {
+                DispatcherOutcome.Throws => throw new InvalidOperationException("boom"),
+                DispatcherOutcome.Cancels => throw new OperationCanceledException(token),
+                _ => Task.CompletedTask,
+            };
         }, factory);
 
         Func<Task> act = () => runner.Run(cts.Token);
