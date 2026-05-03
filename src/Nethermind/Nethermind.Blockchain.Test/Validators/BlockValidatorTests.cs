@@ -344,6 +344,65 @@ public class BlockValidatorTests
         }
     }
 
+    [Test]
+    public void ValidateProcessedBlock_bal_size_check_uses_fresh_item_count_when_generated_bal_instance_is_reused()
+    {
+        // BlockAccessListManager reuses the same generated-BAL instance across blocks;
+        // a stale cached ItemCount on that instance would let an oversized BAL slip past
+        // the EIP-7928 floor (or reject a valid one). This regression validates two blocks
+        // through the same BAL instance and verifies the second validation sees the new count.
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        const long gasLimit = 30_000; // floor = 30_000 / Eip7928Constants.ItemCost (2000) = 15 items
+
+        BlockAccessList sharedBal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Assert.That(sharedBal.ItemCount, Is.EqualTo(15), "fixture sized at the boundary");
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+        // Block 1 — at the boundary, must pass and cache ItemCount=15.
+        Block suggestedBlock1 = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .TestObject;
+        Block processedBlock1 = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .TestObject;
+        processedBlock1.GeneratedBlockAccessList = sharedBal;
+
+        bool block1Valid = sut.ValidateProcessedBlock(processedBlock1, [], suggestedBlock1, out string? error1);
+        Assert.That(block1Valid, Is.True, "block 1 sized at the floor should pass");
+        Assert.That(error1, Is.Null);
+
+        // Mutate the shared BAL to push it one item over the floor.
+        sharedBal.AddAccountRead(TestItem.AddressA);
+        Assert.That(sharedBal.ItemCount, Is.EqualTo(16), "fresh count must reflect the new account read");
+
+        // Block 2 — same gas limit, same BAL instance, now over the floor. Must fail.
+        Block suggestedBlock2 = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .TestObject;
+        Block processedBlock2 = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .TestObject;
+        processedBlock2.GeneratedBlockAccessList = sharedBal;
+
+        bool block2Valid = sut.ValidateProcessedBlock(processedBlock2, [], suggestedBlock2, out string? error2);
+        Assert.That(block2Valid, Is.False, "block 2 over the floor must be rejected — stale cached count would let it through");
+        Assert.That(error2, Does.StartWith("BlockAccessListGasLimitExceeded"));
+    }
+
     // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
     // 1..n = transaction indices, n+1 = post-execution. Geth bal-devnet-4 enforces
     // index < txCount + 2; nethermind enforces index <= txCount + 1.

@@ -78,6 +78,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     public void Merge(BlockAccessList other)
     {
+        _itemCount = null;
         foreach (AccountChanges otherAccountChange in other.AccountChanges)
         {
             if (_accountChanges.TryGetValue(otherAccountChange.Address, out AccountChanges? accountChange))
@@ -95,6 +96,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     public void Clear()
     {
+        _itemCount = null;
         _accountChanges.Clear();
         _changes.Clear();
     }
@@ -107,6 +109,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
+        _itemCount = null;
         bool isZeroBalanceChange = before == after;
         if (address == Address.SystemUser && isZeroBalanceChange)
         {
@@ -141,6 +144,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     public void AddCodeChange(Address address, byte[] before, ReadOnlyMemory<byte> after)
     {
+        _itemCount = null;
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
         if (before.AsSpan().SequenceEqual(after.Span))
@@ -167,6 +171,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     public void AddNonceChange(Address address, ulong newNonce)
     {
+        _itemCount = null;
         if (newNonce == 0)
         {
             return;
@@ -189,12 +194,14 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
     {
         if (!_accountChanges.ContainsKey(address))
         {
+            _itemCount = null;
             _accountChanges.Add(address, new(address));
         }
     }
 
     public void AddStorageChange(Address address, UInt256 key, UInt256 before, UInt256 after)
     {
+        _itemCount = null;
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
         if (before != after)
@@ -211,6 +218,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     public void AddStorageRead(Address address, UInt256 key)
     {
+        _itemCount = null;
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
         if (!accountChanges.HasStorageChange(key))
@@ -221,6 +229,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     public void DeleteAccount(Address address, UInt256 oldBalance)
     {
+        _itemCount = null;
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
         // todo: this will be optimized when bal structure changes, no need to iterate list
@@ -310,6 +319,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
     public void Restore(int snapshot)
     {
         snapshot = int.Max(0, snapshot);
+        if (_changes.Count > snapshot)
+        {
+            _itemCount = null;
+        }
         while (_changes.Count > snapshot)
         {
             Change change = _changes.Pop();
@@ -398,6 +411,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
     // for testing
     internal void AddAccountChanges(params AccountChanges[] accountChanges)
     {
+        _itemCount = null;
         foreach (AccountChanges change in accountChanges)
         {
             _accountChanges.Add(change.Address, change);
@@ -406,6 +420,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     internal void RemoveAccountChanges(params Address[] addresses)
     {
+        _itemCount = null;
         foreach (Address address in addresses)
         {
             _accountChanges.Remove(address);
