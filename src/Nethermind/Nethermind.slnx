@@ -66,6 +66,7 @@
     <Project Path="Nethermind.History.Test/Nethermind.History.Test.csproj" />
     <Project Path="Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj" />
     <Project Path="Nethermind.KeyStore.Test/Nethermind.KeyStore.Test.csproj" />
+    <Project Path="Nethermind.Mcp.Test/Nethermind.Mcp.Test.csproj" />
     <Project Path="Nethermind.Merge.AuRa.Test/Nethermind.Merge.AuRa.Test.csproj" />
     <Project Path="Nethermind.Mining.Test/Nethermind.Mining.Test.csproj" />
     <Project Path="Nethermind.Monitoring.Test/Nethermind.Monitoring.Test.csproj" />
@@ -119,6 +120,7 @@
   <Project Path="Nethermind.Init/Nethermind.Init.csproj" />
   <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
   <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
+  <Project Path="Nethermind.Mcp/Nethermind.Mcp.csproj" />
   <Project Path="Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
   <Project Path="Nethermind.Merkleization/Nethermind.Merkleization.csproj" />
   <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
