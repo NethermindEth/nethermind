@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -24,13 +25,13 @@ public partial class BN254PairingPrecompile
         }
         else
         {
-            byte result = ZiskBindings.Crypto.bn254_pairing_check_c(
+            success = Accelerators.BN254Pairing(
                 inputData.Span,
-                (nuint)inputData.Length / BN254.PairSize
-            );
-            success = result <= 1;
+                (nuint)inputData.Length / BN254.PairSize,
+                out bool verified
+            ) == Accelerators.Status.OK;
 
-            if (result == 0)
+            if (verified)
                 output[31] = 1;
         }
 
