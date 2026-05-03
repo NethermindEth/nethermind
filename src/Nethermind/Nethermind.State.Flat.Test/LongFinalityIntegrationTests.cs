@@ -78,7 +78,7 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -122,11 +122,12 @@ public class LongFinalityIntegrationTests
         TreePath path2 = new(Keccak.Compute("path2"), 4);
         byte[] rlp1 = [0xC0];
         byte[] rlp2 = [0xC1, 0x80];
+        MemDb catalogDb = new();
 
         // Session 1: persist two snapshots
         using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
 
@@ -146,7 +147,7 @@ public class LongFinalityIntegrationTests
         // Session 2: reload and verify
         using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(2));
@@ -222,7 +223,7 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId prev = new(0, Keccak.EmptyTreeHash);
@@ -244,7 +245,7 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -293,11 +294,12 @@ public class LongFinalityIntegrationTests
         StateId s1 = new(1, Keccak.Compute("1"));
         StateId s2 = new(2, Keccak.Compute("2"));
         StateId s5 = new(5, Keccak.Compute("5"));
+        MemDb catalogDb = new();
 
         // Session 1: persist snapshots
         using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
             repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>
@@ -311,7 +313,7 @@ public class LongFinalityIntegrationTests
         // Session 2: reload and prune
         using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(3));
@@ -324,7 +326,7 @@ public class LongFinalityIntegrationTests
         // Session 3: verify pruned state persists
         using (ArenaManager baseArena3 = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096))
         using (ArenaManager compactedArena3 = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096))
-        using (PersistedSnapshotRepository repo = new(baseArena3, compactedArena3, _testDir, new FlatDbConfig()))
+        using (PersistedSnapshotRepository repo = new(baseArena3, compactedArena3, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(1));
@@ -336,7 +338,7 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), maxArenaSize: 4096);
         using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, _testDir, new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);

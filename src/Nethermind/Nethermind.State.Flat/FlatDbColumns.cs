@@ -12,4 +12,5 @@ public enum FlatDbColumns
     StateTopNodes,
     StorageNodes,
     FallbackNodes,
+    PersistedSnapshotCatalog,
 }

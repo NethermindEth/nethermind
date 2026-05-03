@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
 using NUnit.Framework;
@@ -55,12 +56,12 @@ public class StorageLayerTests
     [Test]
     public void SnapshotCatalog_SaveLoad_RoundTrips()
     {
-        string catalogPath = Path.Combine(_testDir, "catalog.bin");
+        MemDb catalogDb = new();
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(100, Keccak.Compute("block100"));
         StateId s2 = new(200, Keccak.Compute("block200"));
 
-        SnapshotCatalog catalog = new(catalogPath);
+        SnapshotCatalog catalog = new(catalogDb);
         int id1 = catalog.NextId();
         int id2 = catalog.NextId();
         catalog.Add(new(id1, s0, s1, PersistedSnapshotType.Full, new(0, 0, 1024)));
@@ -68,7 +69,7 @@ public class StorageLayerTests
         catalog.Save();
 
         // Load in new instance
-        SnapshotCatalog loaded = new(catalogPath);
+        SnapshotCatalog loaded = new(catalogDb);
         loaded.Load();
 
         Assert.That(loaded.Entries.Count, Is.EqualTo(2));
@@ -94,11 +95,10 @@ public class StorageLayerTests
     [Test]
     public void SnapshotCatalog_Remove_And_Find()
     {
-        string catalogPath = Path.Combine(_testDir, "catalog.bin");
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        SnapshotCatalog catalog = new(catalogPath);
+        SnapshotCatalog catalog = new(new MemDb());
         int id1 = catalog.NextId();
         int id2 = catalog.NextId();
         catalog.Add(new(id1, s0, s1, PersistedSnapshotType.Full, new(0, 0, 100)));
@@ -114,11 +114,10 @@ public class StorageLayerTests
     [Test]
     public void SnapshotCatalog_UpdateLocation()
     {
-        string catalogPath = Path.Combine(_testDir, "catalog.bin");
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        SnapshotCatalog catalog = new(catalogPath);
+        SnapshotCatalog catalog = new(new MemDb());
         int id = catalog.NextId();
         SnapshotLocation origLoc = new(0, 0, 100);
         SnapshotLocation newLoc = new(1, 500, 100);
@@ -132,8 +131,7 @@ public class StorageLayerTests
     [Test]
     public void SnapshotCatalog_Load_EmptyOrMissing_ReturnsEmpty()
     {
-        string catalogPath = Path.Combine(_testDir, "nonexistent.bin");
-        SnapshotCatalog catalog = new(catalogPath);
+        SnapshotCatalog catalog = new(new MemDb());
         catalog.Load();
 
         Assert.That(catalog.Entries, Is.Empty);

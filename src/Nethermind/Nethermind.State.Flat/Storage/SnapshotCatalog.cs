@@ -3,15 +3,18 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots;
 
 namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
-/// Persists snapshot metadata to a binary catalog file.
-/// Supports add, remove, save, and load operations.
+/// Persists snapshot metadata in a key-value store (RocksDB column or MemDb).
+/// Each entry is stored under a 4-byte big-endian id key. The reserved key
+/// <c>0x00000000</c> stores the next-id metadata word so an id is durable as
+/// soon as <see cref="Add"/> commits — no separate flush needed.
 /// </summary>
-public sealed class SnapshotCatalog(string catalogPath)
+public sealed class SnapshotCatalog(IDb db)
 {
     /// <summary>
     /// A single catalog entry describing a persisted snapshot's identity and location.
@@ -26,15 +29,36 @@ public sealed class SnapshotCatalog(string catalogPath)
     // Binary layout per entry: Id(4) + From.Block(8) + From.Root(32) + To.Block(8) + To.Root(32) + Type(1) + ArenaId(4) + Offset(8) + Size(4) = 101
     internal const int EntrySize = 101;
 
-    private readonly string _catalogPath = catalogPath;
-    private readonly string _tempPath = catalogPath + ".tmp";
+    // Reserved id 0 holds (nextId:int32). Entry ids start at 1.
+    private static readonly byte[] MetadataKey = new byte[4];
+
+    private readonly IDb _db = db;
     private readonly List<CatalogEntry> _entries = [];
     private int _nextId = 1;
 
     public IReadOnlyList<CatalogEntry> Entries => _entries;
-    public int NextId() => _nextId++;
 
-    public void Add(CatalogEntry entry) => _entries.Add(entry);
+    public int NextId()
+    {
+        int id = _nextId++;
+        WriteMetadata();
+        return id;
+    }
+
+    public void Add(CatalogEntry entry)
+    {
+        _entries.Add(entry);
+        Span<byte> key = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(key, entry.Id);
+        byte[] value = new byte[EntrySize];
+        WriteEntry(value, entry);
+        _db.Set(key, value);
+        if (entry.Id >= _nextId)
+        {
+            _nextId = entry.Id + 1;
+            WriteMetadata();
+        }
+    }
 
     public bool Remove(int snapshotId)
     {
@@ -43,6 +67,9 @@ public sealed class SnapshotCatalog(string catalogPath)
             if (_entries[i].Id == snapshotId)
             {
                 _entries.RemoveAt(i);
+                Span<byte> key = stackalloc byte[4];
+                BinaryPrimitives.WriteInt32BigEndian(key, snapshotId);
+                _db.Remove(key);
                 return true;
             }
         }
@@ -67,58 +94,57 @@ public sealed class SnapshotCatalog(string catalogPath)
         {
             if (_entries[i].Id == snapshotId)
             {
-                _entries[i] = _entries[i] with { Location = newLocation };
+                CatalogEntry updated = _entries[i] with { Location = newLocation };
+                _entries[i] = updated;
+                Span<byte> key = stackalloc byte[4];
+                BinaryPrimitives.WriteInt32BigEndian(key, snapshotId);
+                byte[] value = new byte[EntrySize];
+                WriteEntry(value, updated);
+                _db.Set(key, value);
                 return;
             }
         }
     }
 
     /// <summary>
-    /// Save catalog to disk using atomic temp-file + rename.
+    /// Each mutating operation persists immediately, so Save is a no-op.
+    /// Kept for source-compat with the previous file-backed catalog.
     /// </summary>
-    public void Save()
-    {
-        int totalSize = 8 + _entries.Count * EntrySize; // header(8) + entries
-        byte[] buffer = new byte[totalSize];
-        Span<byte> span = buffer;
-
-        BinaryPrimitives.WriteInt32LittleEndian(span, _entries.Count);
-        BinaryPrimitives.WriteInt32LittleEndian(span[4..], _nextId);
-
-        int offset = 8;
-        foreach (CatalogEntry entry in _entries)
-        {
-            WriteEntry(span[offset..], entry);
-            offset += EntrySize;
-        }
-
-        File.WriteAllBytes(_tempPath, buffer);
-        File.Move(_tempPath, _catalogPath, overwrite: true);
-    }
+    public void Save() { }
 
     /// <summary>
-    /// Load catalog from disk.
+    /// Load all entries from the underlying DB into the in-memory list.
     /// </summary>
     public void Load()
     {
         _entries.Clear();
         _nextId = 1;
 
-        if (!File.Exists(_catalogPath)) return;
+        byte[]? meta = _db.Get(MetadataKey);
+        if (meta is { Length: 4 })
+            _nextId = BinaryPrimitives.ReadInt32LittleEndian(meta);
 
-        byte[] buffer = File.ReadAllBytes(_catalogPath);
-        if (buffer.Length < 8) return;
-
-        ReadOnlySpan<byte> span = buffer;
-        int count = BinaryPrimitives.ReadInt32LittleEndian(span);
-        _nextId = BinaryPrimitives.ReadInt32LittleEndian(span[4..]);
-
-        int offset = 8;
-        for (int i = 0; i < count && offset + EntrySize <= buffer.Length; i++)
+        foreach (KeyValuePair<byte[], byte[]?> kv in _db.GetAll(ordered: false))
         {
-            _entries.Add(ReadEntry(span[offset..]));
-            offset += EntrySize;
+            // Skip metadata key (id 0)
+            if (kv.Key.Length == 4 && BinaryPrimitives.ReadInt32BigEndian(kv.Key) == 0) continue;
+            if (kv.Value is null || kv.Value.Length != EntrySize) continue;
+            _entries.Add(ReadEntry(kv.Value));
         }
+
+        // Stable order by id so callers that depend on insertion order keep working.
+        _entries.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+
+        // If metadata was missing, reconstruct nextId from max(entry.Id) + 1.
+        if (meta is null && _entries.Count > 0)
+            _nextId = _entries[^1].Id + 1;
+    }
+
+    private void WriteMetadata()
+    {
+        byte[] value = new byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(value, _nextId);
+        _db.Set(MetadataKey, value);
     }
 
     private static void WriteEntry(Span<byte> span, CatalogEntry entry)

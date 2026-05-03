@@ -16,11 +16,11 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Manages persisted snapshots on disk with a two-layer design (base + compacted),
 /// mirroring <see cref="SnapshotRepository"/>'s pattern.
 /// </summary>
-public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, IArenaManager compactedArenaManager, string basePath, IFlatDbConfig config) : IPersistedSnapshotRepository
+public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, IArenaManager compactedArenaManager, IDb catalogDb, IFlatDbConfig config) : IPersistedSnapshotRepository
 {
     private readonly IArenaManager _baseArenaManager = baseArenaManager;
     private readonly IArenaManager _compactedArenaManager = compactedArenaManager;
-    private readonly SnapshotCatalog _catalog = new(Path.Combine(basePath, "catalog.bin"));
+    private readonly SnapshotCatalog _catalog = new(catalogDb);
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
