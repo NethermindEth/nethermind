@@ -188,6 +188,15 @@ public class BlockAccessListManager(
             for (int j = chunkStart; j < chunkEnd; j++)
             {
                 (long blockGasUsed, long blockStateGasUsed, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+
+                // Surface the worker's original tx-rejection reason before running any
+                // downstream gas accounting. Otherwise CheckGasUsed (or the admission rule)
+                // can throw a follow-on "block gas limit exceeded" that masks the true cause
+                // and diverges from the sequential path, which never reaches accounting on
+                // a rejected tx.
+                if (ex is not null)
+                    throw new ParallelExecutionException(ex);
+
                 ValidateTransactionGasAllowance(block, j, totalRegularGas, totalStateGas);
 
                 totalRegularGas += blockGasUsed;
@@ -195,9 +204,6 @@ public class BlockAccessListManager(
                 SpendGas(blockGasUsed);
 
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
-
-                if (ex is not null)
-                    throw new ParallelExecutionException(ex);
 
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 

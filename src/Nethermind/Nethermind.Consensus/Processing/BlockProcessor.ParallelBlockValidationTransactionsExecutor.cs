@@ -124,7 +124,13 @@ public partial class BlockProcessor
                         }
                         catch (InvalidBlockException ex)
                         {
-                            state.gasResults[txIndex].SetResult((tx.GasLimit, 0, ex));
+                            // A rejected tx contributes nothing to block accumulators —
+                            // the sequential path never reaches gas accounting for it because
+                            // the exception bubbles up immediately. IncrementalValidation also
+                            // rethrows on `ex is not null` before doing any accounting, so the
+                            // tuple values here are observed only as cross-mode telemetry; we
+                            // still report (0, 0) so any future consumer agrees with sequential.
+                            state.gasResults[txIndex].SetResult((0, 0, ex));
                         }
                         catch
                         {

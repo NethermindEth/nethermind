@@ -408,6 +408,88 @@ public class BlockProcessorTests
         Assert.That(exception!.Reason, Is.EqualTo(TransactionResult.BlockGasLimitExceeded));
     }
 
+    [Test]
+    public void IncrementalValidation_surfaces_worker_exception_before_admission_rule()
+    {
+        // tx0's worker rejected the tx (e.g. signature/nonce/balance check inside ProcessTransaction
+        // produced an InvalidBlockException). Even if tx0's worst-case gas would also trip the
+        // admission rule in ValidateTransactionGasAllowance, the validator must surface the worker's
+        // original cause — not the downstream admission rejection — so parallel mode reports the
+        // same root cause as sequential.
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction onlyTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(100_001) // exceeds block gas limit — would also fail admission
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(onlyTx)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        InvalidBlockException workerException = new(block, "worker-original-cause");
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new()
+        ];
+        gasResults[0].SetResult((0, 0, workerException));
+
+        BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[1], null, CancellationToken.None));
+
+        Assert.That(thrown!.InnerException, Is.SameAs(workerException));
+    }
+
+    [Test]
+    public void IncrementalValidation_surfaces_worker_exception_even_when_reported_gas_would_trip_block_limit()
+    {
+        // Regression guard: the legacy parallel worker reported (tx.GasLimit, 0, ex) on rejection.
+        // That value can push cumulative gas past block.GasLimit so CheckGasUsed throws an
+        // InvalidBlockException("Block gas limit exceeded") that masks the worker's original cause.
+        // Even with the worker now reporting (0, 0, ex), this test feeds the legacy shape so the
+        // validator's exception-first ordering is verified directly, independent of worker behaviour.
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(50_000)
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithGasLimit(50_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(firstTx, secondTx)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        InvalidBlockException workerException = new(block, "worker-original-cause");
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new(),
+            new()
+        ];
+        gasResults[0].SetResult((80_000, 0, null));
+        // Legacy buggy shape: charges tx.GasLimit on rejection. Cumulative 80k+50k > 100k limit.
+        gasResults[1].SetResult((50_000, 0, workerException));
+
+        BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
+
+        Assert.That(thrown!.InnerException, Is.SameAs(workerException));
+    }
+
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
