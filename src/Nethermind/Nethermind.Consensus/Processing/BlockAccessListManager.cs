@@ -258,13 +258,9 @@ public class BlockAccessListManager(
         // Worst-case-OR (the previous check) wrongly rejected blocks where each dim's
         // worst-case alone would overflow but the actual two-dim split fits. Devnet-6
         // surfaced this on a 60M block with 4×~16M txs whose actual max(Σr,Σs)=57.8M.
-        // The combined-capacity check is reformulated to avoid long overflow when
-        // pyspec fixtures use block gas_limit close to i64.MaxValue.
-        bool combinedShortfall = regularGasAvailable < minGasRequired
-            && minGasRequired - regularGasAvailable > stateGasAvailable;
         if (intrinsicRegularGas > regularGasAvailable
             || intrinsicStateGas > stateGasAvailable
-            || combinedShortfall)
+            || minGasRequired > regularGasAvailable + stateGasAvailable)
         {
             throw new InvalidTransactionException(block.Header,
                 $"Transaction {tx.Hash} at index {index} failed with error {TransactionResult.BlockGasLimitExceeded.ErrorDescription}",
