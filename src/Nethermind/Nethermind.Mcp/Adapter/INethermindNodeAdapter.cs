@@ -10,4 +10,6 @@ public interface INethermindNodeAdapter
     NodeVersionDto GetNodeVersion();
 
     SyncStatusDto GetSyncStatus();
+
+    NodeHealthDto GetNodeHealth();
 }
