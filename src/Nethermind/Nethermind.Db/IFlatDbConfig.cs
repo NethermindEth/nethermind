@@ -58,7 +58,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Path for persisted snapshot arena files (relative to data dir)", DefaultValue = "snapshots")]
     string PersistedSnapshotPath { get; set; }
 
-    [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "4294967296")]
+    [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "2147483648")]
     long ArenaFileSizeBytes { get; set; }
 
     [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer)", DefaultValue = "1024")]

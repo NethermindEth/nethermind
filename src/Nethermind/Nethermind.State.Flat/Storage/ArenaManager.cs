@@ -56,7 +56,7 @@ public sealed class ArenaManager : IArenaManager
         }
     }
 
-    public ArenaManager(string basePath, long maxArenaSize = 4L * 1024 * 1024 * 1024, long pageCacheBytes = DefaultPageCacheBytes)
+    public ArenaManager(string basePath, long maxArenaSize = 2L * 1024 * 1024 * 1024, long pageCacheBytes = DefaultPageCacheBytes)
     {
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
