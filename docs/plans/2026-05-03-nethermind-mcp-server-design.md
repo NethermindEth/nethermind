@@ -93,7 +93,7 @@ Maps automatically to CLI (`--Mcp.Enabled true`), env (`NETHERMIND_MCPCONFIG_ENA
 |---|---|
 | `SyncStatusDto GetSyncStatus()` | `IBlockTree`, `ISyncServer`, `IPeerPool` |
 | `NodeHealthDto GetNodeHealth()` | `IBlockTree`, `IPeerPool`, `Process.GetCurrentProcess()`, `GC.GetGCMemoryInfo()`, `DriveInfoExtensions` |
-| `NodeVersionDto GetNodeVersion()` | `INethermindApi.ClientVersion`, `RuntimeInformation`, RPC module enable flags |
+| `NodeVersionDto GetNodeVersion()` | `Nethermind.Core.ProductInfo.ClientId`, `RuntimeInformation`, RPC module enable flags |
 | `BlockSummaryDto? GetBlock(BlockParameter)` | `IBlockTree.FindBlock` |
 
 All methods read-only. DTOs are plain records, serialized via `System.Text.Json`. The adapter is the single seam through which tools touch node internals.

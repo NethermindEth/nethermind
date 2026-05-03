@@ -432,13 +432,12 @@ public class NethermindNodeAdapterTests
     public void GetNodeVersion_returns_client_version_and_runtime()
     {
         INethermindApi api = Substitute.For<INethermindApi>();
-        api.ClientVersion.Returns("Nethermind/v1.30.0/linux-x64/dotnet10.0");
 
         INethermindNodeAdapter adapter = new NethermindNodeAdapter(api);
 
-        var version = adapter.GetNodeVersion();
+        NodeVersionDto version = adapter.GetNodeVersion();
 
-        Assert.That(version.ClientVersion, Is.EqualTo("Nethermind/v1.30.0/linux-x64/dotnet10.0"));
+        Assert.That(version.ClientVersion, Is.EqualTo(ProductInfo.ClientId));
         Assert.That(version.DotNetRuntime, Does.StartWith(".NET"));
         Assert.That(version.OperatingSystem, Is.Not.Empty);
     }
@@ -483,7 +482,7 @@ namespace Nethermind.Mcp.Adapter;
 public sealed class NethermindNodeAdapter(INethermindApi api) : INethermindNodeAdapter
 {
     public NodeVersionDto GetNodeVersion() => new(
-        ClientVersion: api.ClientVersion ?? string.Empty,
+        ClientVersion: ProductInfo.ClientId,
         DotNetRuntime: RuntimeInformation.FrameworkDescription,
         OperatingSystem: RuntimeInformation.OSDescription,
         EnabledRpcModules: System.Array.Empty<string>());
@@ -903,7 +902,7 @@ Expected: PASS.
 **Step 1: Identify the in-process MCP client from `ModelContextProtocol` 1.1 SDK** (`McpClientFactory.CreateAsync` against an `HttpTransport` pointing at the started WebHost URL).
 
 **Step 2: Write failing test** that:
-1. Builds an Autofac container with `INethermindApi` substitute (filled with sane returns: `BlockTree.Head` numbered 100, `BestSuggestedHeader` numbered 100, `PeerCount` 5, `ClientVersion` set).
+1. Builds an Autofac container with `INethermindApi` substitute (filled with sane returns: `BlockTree.Head` numbered 100, `BestSuggestedHeader` numbered 100, `PeerCount` 5). `NodeVersionDto.ClientVersion` is sourced from `Nethermind.Core.ProductInfo.ClientId` directly, no mock needed.
 2. Starts `McpWebHost` on an ephemeral port.
 3. Connects an SDK client over HTTP/SSE.
 4. Calls `client.ListToolsAsync()`, asserts the four tool names are present.
