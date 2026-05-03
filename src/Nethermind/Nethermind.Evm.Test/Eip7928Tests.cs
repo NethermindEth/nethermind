@@ -1052,47 +1052,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Tx_with_intrinsic_exceeding_block_regular_gas_rejected_in_parallel_mode()
+    public void Tx_exceeding_block_gas_limit_rejected_in_parallel_mode()
     {
-        // EIP-8037: pre-execution rejection fires only when the tx's intrinsic floor
-        // in some dim alone overflows the remaining block capacity in that dim — the
-        // 2D max(Σregular, Σstate) accounting otherwise allows a tx with gasLimit >
-        // block.gasLimit to fit if it actually executes within capacity. We trigger
-        // the intrinsic-overflow path with a tiny block where intrinsic_regular (21000
-        // for a basic transfer) alone exceeds block.gasLimit.
-        (_, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor(parallelOverride: true);
-
-        TestState.CreateAccount(TestItem.AddressA, 10.Ether);
-        TestState.Commit(SpecProvider.GenesisSpec);
-
-        long blockGasLimit = 20_000; // < intrinsic_regular (21000) for basic transfer
-        BlockHeader header = Build.A.BlockHeader
-            .WithGasLimit(blockGasLimit)
-            .WithNumber(1)
-            .TestObject;
-        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
-
-        Transaction tx = Build.A.Transaction
-            .WithTo(TestItem.AddressB)
-            .WithGasLimit(50_000)
-            .WithGasPrice(1)
-            .WithValue(0)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        TransactionResult result = processor.Execute(tx, NullTxTracer.Instance);
-
-        Assert.That(result, Is.EqualTo(TransactionResult.BlockGasLimitExceeded));
-    }
-
-    [Test]
-    public void Tx_with_gaslimit_above_block_remaining_but_intrinsic_fits_accepted_under_eip8037()
-    {
-        // Regression: pre-fix (worst-case OR), this tx was rejected because its full
-        // gasLimit exceeded block remaining in either dim. Per EIP-8037 the tx splits
-        // (r,s) ≤ tx.gasLimit across two dims with combined headroom; rejection is
-        // correct only when no split fits. Captured on devnet-6 block 125 where 4×16M
-        // txs in a 60M block were rejected by NM but accepted by geth+besu.
         (_, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor(parallelOverride: true);
 
         TestState.CreateAccount(TestItem.AddressA, 10.Ether);
@@ -1115,7 +1076,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         TransactionResult result = processor.Execute(tx, NullTxTracer.Instance);
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
+        Assert.That(result, Is.EqualTo(TransactionResult.BlockGasLimitExceeded));
     }
 
     [Test]
