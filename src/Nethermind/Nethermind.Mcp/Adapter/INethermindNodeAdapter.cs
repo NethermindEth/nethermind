@@ -8,4 +8,6 @@ namespace Nethermind.Mcp.Adapter;
 public interface INethermindNodeAdapter
 {
     NodeVersionDto GetNodeVersion();
+
+    SyncStatusDto GetSyncStatus();
 }

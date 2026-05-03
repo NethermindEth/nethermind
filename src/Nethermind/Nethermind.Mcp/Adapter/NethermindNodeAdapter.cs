@@ -18,4 +18,15 @@ public sealed class NethermindNodeAdapter(INethermindApi api) : INethermindNodeA
         DotNetRuntime: RuntimeInformation.FrameworkDescription,
         OperatingSystem: RuntimeInformation.OSDescription,
         EnabledRpcModules: Array.Empty<string>());
+
+    public SyncStatusDto GetSyncStatus()
+    {
+        long current = _api.BlockTree?.Head?.Number ?? 0;
+        long highest = _api.BlockTree?.BestSuggestedHeader?.Number ?? current;
+        long behind = Math.Max(0, highest - current);
+        int peerCount = _api.SyncPeerPool?.PeerCount ?? 0;
+        string mode = behind == 0 ? "Idle" : "Syncing";
+
+        return new SyncStatusDto(current, highest, mode, behind, peerCount);
+    }
 }
