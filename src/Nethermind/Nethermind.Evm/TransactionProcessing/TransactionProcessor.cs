@@ -493,20 +493,14 @@ namespace Nethermind.Evm.TransactionProcessing
                     long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGas);
                     long regularGasAvailable = header.GasLimit - _blockCumulativeRegularGas;
                     long stateGasAvailable = header.GasLimit - _blockCumulativeStateGas;
+                    long worstCaseRegularContribution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, tx.GasLimit - intrinsicStateGas);
+                    long worstCaseStateContribution = tx.GasLimit - intrinsicRegularGas;
 
-                    // EIP-8037: a tx contributes (r,s) with r ≥ intrinsic_regular,
-                    // s ≥ intrinsic_state, and r + s ≤ tx.gasLimit. The tx fits iff some
-                    // split satisfies both per-dim caps. No split exists iff one of:
-                    //   1. intrinsic_regular alone overflows the regular dim
-                    //   2. intrinsic_state alone overflows the state dim
-                    //   3. minRequired exceeds the combined remaining capacity
-                    // Mirrors BlockAccessListManager.ValidateTransactionGasAllowance.
-                    if (intrinsicRegularGas > regularGasAvailable
-                        || intrinsicStateGas > stateGasAvailable
-                        || minGasRequired > regularGasAvailable + stateGasAvailable)
+                    if (worstCaseRegularContribution > regularGasAvailable
+                        || worstCaseStateContribution > stateGasAvailable)
                     {
                         TraceLogInvalidTx(tx,
-                            $"BLOCK_GAS_LIMIT_EXCEEDED regular_intrinsic {intrinsicRegularGas}/{regularGasAvailable}, state_intrinsic {intrinsicStateGas}/{stateGasAvailable}, min_required {minGasRequired}");
+                            $"BLOCK_GAS_LIMIT_EXCEEDED regular {worstCaseRegularContribution}/{regularGasAvailable}, state {worstCaseStateContribution}/{stateGasAvailable}");
                         return TransactionResult.BlockGasLimitExceeded;
                     }
 
