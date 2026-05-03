@@ -248,10 +248,19 @@ public class BlockAccessListManager(
 
         long regularGasAvailable = block.Header.GasLimit - totalRegularGas;
         long stateGasAvailable = block.Header.GasLimit - totalStateGas;
-        long worstCaseRegularContribution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, tx.GasLimit - intrinsicStateGas);
-        long worstCaseStateContribution = tx.GasLimit - intrinsicRegularGas;
 
-        if (worstCaseRegularContribution > regularGasAvailable || worstCaseStateContribution > stateGasAvailable)
+        // EIP-8037: a tx contributes (r,s) where r ≥ intrinsic_regular and s ≥ intrinsic_state
+        // unavoidably, with r + s ≤ tx.gasLimit. The block fits iff some split satisfies
+        // r ≤ regularAvailable AND s ≤ stateAvailable. No split exists iff one of:
+        //   1. intrinsic_regular alone overflows the regular dim
+        //   2. intrinsic_state alone overflows the state dim
+        //   3. the minimum required execution gas exceeds the combined remaining capacity
+        // Worst-case-OR (the previous check) wrongly rejected blocks where each dim's
+        // worst-case alone would overflow but the actual two-dim split fits. Devnet-6
+        // surfaced this on a 60M block with 4×~16M txs whose actual max(Σr,Σs)=57.8M.
+        if (intrinsicRegularGas > regularGasAvailable
+            || intrinsicStateGas > stateGasAvailable
+            || minGasRequired > regularGasAvailable + stateGasAvailable)
         {
             throw new InvalidTransactionException(block.Header,
                 $"Transaction {tx.Hash} at index {index} failed with error {TransactionResult.BlockGasLimitExceeded.ErrorDescription}",
