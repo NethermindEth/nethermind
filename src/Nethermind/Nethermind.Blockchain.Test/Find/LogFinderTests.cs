@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -415,7 +415,7 @@ public class LogFinderTests
         logIndexStorage.MinBlockNumber.Returns(indexFrom);
         logIndexStorage.MaxBlockNumber.Returns(indexTo);
         logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
-            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+            .Returns(static _ => Array.Empty<int>().Cast<int>().GetEnumerator());
 
         Address address = TestItem.AddressA;
         BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
@@ -450,7 +450,7 @@ public class LogFinderTests
         receiptStorage.ClearCache();
 
         CreateLogFinder(_rawBlockTree, receiptStorage)
-            .Invoking(lf => lf.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray())
+            .Invoking(static lf => lf.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray())
             .Should().Throw<InvalidOperationException>()
             .WithMessage("*missing block data*");
     }

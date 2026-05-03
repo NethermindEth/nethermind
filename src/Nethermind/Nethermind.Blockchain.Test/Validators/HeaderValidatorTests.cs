@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -102,11 +102,11 @@ public class HeaderValidatorTests
 
     private static IEnumerable<TestCaseData> InvalidFieldCases()
     {
-        yield return new TestCaseData(new Action<Block, Block>((block, parent) => block.Header.GasUsed = parent.Header.GasLimit + 1))
+        yield return new TestCaseData(new Action<Block, Block>(static (block, parent) => block.Header.GasUsed = parent.Header.GasLimit + 1))
             .SetName("When_gas_used_above_gas_limit");
-        yield return new TestCaseData(new Action<Block, Block>((block, _) => block.Header.ParentHash = Keccak.Zero))
+        yield return new TestCaseData(new Action<Block, Block>(static (block, _) => block.Header.ParentHash = Keccak.Zero))
             .SetName("When_no_parent_invalid");
-        yield return new TestCaseData(new Action<Block, Block>((block, parent) => block.Header.Timestamp = parent.Header.Timestamp))
+        yield return new TestCaseData(new Action<Block, Block>(static (block, parent) => block.Header.Timestamp = parent.Header.Timestamp))
             .SetName("When_timestamp_same_as_parent");
     }
 
@@ -169,11 +169,11 @@ public class HeaderValidatorTests
 
     private static IEnumerable<TestCaseData> CorruptedFieldCases()
     {
-        yield return new TestCaseData(new Action<Block>(b => b.Header.ExtraData = new byte[33]))
+        yield return new TestCaseData(new Action<Block>(static b => b.Header.ExtraData = new byte[33]))
             .SetName("When_extra_data_too_long");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.Difficulty = 1))
+        yield return new TestCaseData(new Action<Block>(static b => b.Header.Difficulty = 1))
             .SetName("When_incorrect_difficulty_then_invalid");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.Number += 1))
+        yield return new TestCaseData(new Action<Block>(static b => b.Header.Number += 1))
             .SetName("When_incorrect_number_then_invalid");
     }
 
@@ -251,11 +251,11 @@ public class HeaderValidatorTests
 
     private static IEnumerable<TestCaseData> NegativeFieldCases()
     {
-        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = -1))
+        yield return new TestCaseData(new Action<Block>(static b => b.Header.Number = -1))
             .SetName("When_block_number_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = -1))
+        yield return new TestCaseData(new Action<Block>(static b => b.Header.GasUsed = -1))
             .SetName("When_gas_used_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = -1))
+        yield return new TestCaseData(new Action<Block>(static b => b.Header.GasLimit = -1))
             .SetName("When_gas_limit_is_negative");
     }
 
@@ -394,7 +394,7 @@ public class HeaderValidatorTests
             $"Expected baseFee=9, actual baseFee=10");
 
         // Verify the error message mentions baseFee
-        bool baseFeeErrorLogged = _testLogger.LogList.Any(log =>
+        bool baseFeeErrorLogged = _testLogger.LogList.Any(static log =>
             log.Contains("base fee", StringComparison.OrdinalIgnoreCase) ||
             log.Contains("baseFee", StringComparison.OrdinalIgnoreCase));
         Assert.That(baseFeeErrorLogged, Is.True,

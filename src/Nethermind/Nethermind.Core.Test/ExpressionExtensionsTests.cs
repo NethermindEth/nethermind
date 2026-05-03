@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -19,7 +19,7 @@ public class ExpressionExtensionsTests
     [Test]
     public void GetSetter_should_set_property_value()
     {
-        Expression<Func<Dummy, int>> expr = x => x.ValueProperty;
+        Expression<Func<Dummy, int>> expr = static x => x.ValueProperty;
         Action<Dummy, int> setter = expr.GetSetter();
         Dummy d = new();
 
@@ -31,7 +31,7 @@ public class ExpressionExtensionsTests
     [Test]
     public void GetSetter_should_set_field_value()
     {
-        Expression<Func<Dummy, int>> expr = x => x.ValueField;
+        Expression<Func<Dummy, int>> expr = static x => x.ValueField;
         Action<Dummy, int> setter = expr.GetSetter();
         Dummy d = new();
 

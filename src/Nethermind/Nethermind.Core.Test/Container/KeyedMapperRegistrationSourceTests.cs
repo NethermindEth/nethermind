@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -15,7 +15,7 @@ public class KeyedMapperRegistrationSourceTests
     {
         using IContainer cont = new ContainerBuilder()
             .AddKeyedSingleton<ClassA>("Key", new ClassA("Property1"))
-            .AddKeyedAdapter<ClassB, ClassA>((a) => new ClassB(a.Property))
+            .AddKeyedAdapter<ClassB, ClassA>(static (a) => new ClassB(a.Property))
             .Build();
 
         cont.ResolveKeyed<ClassB>("Key").Property.Should().Be("Property1");

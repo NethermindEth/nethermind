@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -22,9 +22,9 @@ public class LongDisposeTracker : IResolveMiddleware
     /// Need to be call earliest as it track the configuration calls..
     /// </summary>
     /// <param name="builder"></param>
-    public static void Configure(ContainerBuilder builder) => builder.ComponentRegistryBuilder.Registered += (sender, args) =>
+    public static void Configure(ContainerBuilder builder) => builder.ComponentRegistryBuilder.Registered += static (sender, args) =>
     {
-        args.ComponentRegistration.ConfigurePipeline((pipeline) =>
+        args.ComponentRegistration.ConfigurePipeline(static (pipeline) =>
         {
             pipeline.Use(Instance, MiddlewareInsertionMode.EndOfPhase);
         });

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -184,7 +184,7 @@ public class MergeOperatorTests
     }
 
     [OneTimeTearDown]
-    public static void OneTimeTearDown() => Handles.ForEach(h => h.Free());
+    public static void OneTimeTearDown() => Handles.ForEach(static h => h.Free());
 
     private static readonly LogIndexStorage.ICompressor Compressor = new LogIndexStorage.NoOpCompressor();
 
@@ -199,7 +199,7 @@ public class MergeOperatorTests
     private static void CreateEnumerator(byte[]? existingValue, byte[][] operands, out RocksDbMergeEnumerator enumerator)
     {
         nint[] operandsPtrs = new IntPtr[operands.Length];
-        long[] operandsLengths = operands.Select(x => (long)x.Length).ToArray();
+        long[] operandsLengths = operands.Select(static x => (long)x.Length).ToArray();
 
         for (int i = 0; i < operands.Length; i++)
         {

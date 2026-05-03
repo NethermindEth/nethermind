@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -36,7 +36,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         [ValueSource(typeof(UInt256ConverterTests), nameof(FormatsCaseSource))] string format)
     {
         // fix of epic design choice made in BigInteger.ToString method that appends hex of any positive number with zero
-        string asString = new Regex("0x0(.{64})|0x(.+)").Replace(string.Format(format, (BigInteger)item), (s) => $"0x{(s.Groups[1].Success ? s.Groups[1].Value : (s.Groups[2].Success ? s.Groups[2].Value : s.Groups[0].Value))}");
+        string asString = new Regex("0x0(.{64})|0x(.+)").Replace(string.Format(format, (BigInteger)item), static (s) => $"0x{(s.Groups[1].Success ? s.Groups[1].Value : (s.Groups[2].Success ? s.Groups[2].Value : s.Groups[0].Value))}");
 
         JsonSerializerOptions deserializeOptions = new() { Converters = { converter } };
 

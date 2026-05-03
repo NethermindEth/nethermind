@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Abi;
@@ -88,7 +88,7 @@ public class ExecutionProcessorTests
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
         _transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<CallOutputTracer>())
-            .Returns(ci =>
+            .Returns(static ci =>
             {
                 Transaction transaction = ci.Arg<Transaction>();
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
@@ -113,7 +113,7 @@ public class ExecutionProcessorTests
                 }
                 return new TransactionResult();
 
-                static int GetRequestsByteSize(IEnumerable<ExecutionRequest> requests) => requests.Sum(r => r.RequestData.Length);
+                static int GetRequestsByteSize(IEnumerable<ExecutionRequest> requests) => requests.Sum(static r => r.RequestData.Length);
             });
     }
 

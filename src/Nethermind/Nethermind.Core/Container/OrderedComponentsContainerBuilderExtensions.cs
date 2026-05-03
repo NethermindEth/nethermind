@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -30,7 +30,7 @@ public static class OrderedComponentsContainerBuilderExtensions
 
     public static ContainerBuilder AddLast<T, TImpl>(this ContainerBuilder builder) where TImpl : class, T =>
         builder
-            .AddLast<T>(ctx => ctx.Resolve<TImpl>())
+            .AddLast<T>(static ctx => ctx.Resolve<TImpl>())
             .Add<TImpl>();
 
     public static ContainerBuilder AddFirst<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) =>
@@ -44,7 +44,7 @@ public static class OrderedComponentsContainerBuilderExtensions
 
     public static ContainerBuilder AddFirst<T, TImpl>(this ContainerBuilder builder) where TImpl : class, T =>
         builder
-            .AddFirst<T>(ctx => ctx.Resolve<TImpl>())
+            .AddFirst<T>(static ctx => ctx.Resolve<TImpl>())
             .Add<TImpl>();
 
     /// <summary>
@@ -75,7 +75,7 @@ public static class OrderedComponentsContainerBuilderExtensions
     /// Useful when a plugin needs to disable all ordered policies (e.g., Hive).
     /// </summary>
     public static ContainerBuilder ClearOrderedComponents<T>(this ContainerBuilder builder) =>
-        builder.AddDecorator<OrderedComponents<T>>((_, orderedComponents) =>
+        builder.AddDecorator<OrderedComponents<T>>(static (_, orderedComponents) =>
         {
             orderedComponents.Clear();
             return orderedComponents;

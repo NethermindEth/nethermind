@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Transactions
         public CompositeTxSource(params ITxSource[] transactionSources)
         {
             _transactionSources = transactionSources?.ToList() ?? throw new ArgumentNullException(nameof(transactionSources));
-            SupportsBlobs = _transactionSources.Any(s => s.SupportsBlobs);
+            SupportsBlobs = _transactionSources.Any(static s => s.SupportsBlobs);
         }
 
         public void Then(ITxSource txSource) => _transactionSources.Add(txSource);

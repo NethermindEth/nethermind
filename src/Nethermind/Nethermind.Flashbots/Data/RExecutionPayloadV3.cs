@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
@@ -44,7 +44,7 @@ public class RExecutionPayloadV3
         base_fee_per_gas = executionPayloadV3.BaseFeePerGas;
         block_hash = executionPayloadV3.BlockHash;
         transactions = executionPayloadV3.Transactions;
-        withdrawals = executionPayloadV3.Withdrawals?.Select(w => new RWithdrawal(w)).ToArray();
+        withdrawals = executionPayloadV3.Withdrawals?.Select(static w => new RWithdrawal(w)).ToArray();
         blob_gas_used = executionPayloadV3.BlobGasUsed;
         excess_blob_gas = executionPayloadV3.ExcessBlobGas;
     }
@@ -64,7 +64,7 @@ public class RExecutionPayloadV3
         BaseFeePerGas = base_fee_per_gas,
         BlockHash = block_hash,
         Transactions = transactions,
-        Withdrawals = withdrawals?.Select(w => w.ToWithdrawal()).ToArray(),
+        Withdrawals = withdrawals?.Select(static w => w.ToWithdrawal()).ToArray(),
         BlobGasUsed = blob_gas_used,
         ExcessBlobGas = excess_blob_gas
     };

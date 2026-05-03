@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Transactions;
@@ -35,10 +35,10 @@ public class TxPoolSourceTests
 
         ITxPool txPool = Substitute.For<ITxPool>();
         Dictionary<AddressAsKey, Transaction[]> transactionsWithBlobs = blobCountPerTx
-            .Select((blobsCount, index) => (blobCount: blobsCount, index))
+            .Select(static (blobsCount, index) => (blobCount: blobsCount, index))
             .ToDictionary(
-                pair => new AddressAsKey(new Address(new byte[19].Concat(new[] { (byte)pair.index }).ToArray())),
-                pair => new[] { Build.A.Transaction.WithShardBlobTxTypeAndFields(pair.blobCount).TestObject });
+                static pair => new AddressAsKey(new Address(new byte[19].Concat(new[] { (byte)pair.index }).ToArray())),
+                static pair => new[] { Build.A.Transaction.WithShardBlobTxTypeAndFields(pair.blobCount).TestObject });
         txPool.GetPendingTransactions().Returns([]);
         txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);
 
@@ -48,7 +48,7 @@ public class TxPoolSourceTests
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit });
 
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader(), long.MaxValue);
-        int blobsCount = txs.Sum(tx => tx.GetBlobCount());
+        int blobsCount = txs.Sum(static tx => tx.GetBlobCount());
 
         Assert.That(blobsCount, Is.LessThanOrEqualTo(Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
     }

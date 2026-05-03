@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -109,8 +109,8 @@ public static class ConcurrentDictionaryExtensions
 
     public static void AddBy<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key, long amount) where TKey : notnull => dictionary.AddOrUpdate(
             key,
-            (_, amount) => amount,
-            (_, startValue, amount) => startValue + amount,
+            static (_, amount) => amount,
+            static (_, startValue, amount) => startValue + amount,
             amount
         );
 

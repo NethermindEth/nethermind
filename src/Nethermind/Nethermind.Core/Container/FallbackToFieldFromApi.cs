@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -33,7 +33,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
 
         IEnumerable<PropertyInfo> properties = tApi
             .GetProperties(flag)
-            .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() is null);
+            .Where(static p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() is null);
 
         Dictionary<Type, PropertyInfo> availableTypes = new();
 
@@ -80,11 +80,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
         IRegistrationBuilder<object, SimpleActivatorData, SingleRegistrationStyle> builder = RegistrationBuilder.ForDelegate(serviceType, (ctx, reg) =>
         {
             TApi baseT = ctx.Resolve<TApi>();
-            object? value = property.GetValue(baseT);
-            if (value is null)
-            {
-                throw new MissingFieldException($"Property {property.Name} in {baseT.GetType().Name} is null");
-            }
+            object? value = property.GetValue(baseT) ?? throw new MissingFieldException($"Property {property.Name} in {baseT.GetType().Name} is null");
             return value!;
         })
             .WithMetadata(FallbackMetadata, true)
