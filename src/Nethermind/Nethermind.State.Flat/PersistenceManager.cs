@@ -414,6 +414,8 @@ public class PersistenceManager(
                     Metrics.PersistedSnapshotCount = _persistedSnapshotRepository.SnapshotCount;
                     Metrics.PersistedSnapshotMemory = _persistedSnapshotRepository.BaseSnapshotMemory;
                     Metrics.CompactedPersistedSnapshotMemory = _persistedSnapshotRepository.CompactedSnapshotMemory;
+                    Metrics.ArenaFileCount = _persistedSnapshotRepository.ArenaFileCount;
+                    Metrics.ArenaMappedBytes = _persistedSnapshotRepository.ArenaMappedBytes;
                     if (_logger.IsDebug) _logger.Debug($"Pruned {pruned} persisted snapshots before block {persistedToPersist.To.BlockNumber}");
                 }
             }

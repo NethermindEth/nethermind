@@ -16,6 +16,8 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public int SnapshotCount => 0;
     public long BaseSnapshotMemory => 0;
     public long CompactedSnapshotMemory => 0;
+    public int ArenaFileCount => 0;
+    public long ArenaMappedBytes => 0;
     public void LoadFromCatalog() { }
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false) { }
     public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable, BloomFilter? bloom = null) { }

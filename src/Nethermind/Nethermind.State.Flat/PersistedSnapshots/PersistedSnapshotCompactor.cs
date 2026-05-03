@@ -150,6 +150,8 @@ public class PersistedSnapshotCompactor(
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
         Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
         Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
+        Metrics.ArenaFileCount = persistedSnapshotRepository.ArenaFileCount;
+        Metrics.ArenaMappedBytes = persistedSnapshotRepository.ArenaMappedBytes;
         return true;
     }
 }

@@ -38,6 +38,24 @@ public sealed class ArenaManager : IArenaManager
 
     public PageClockCache? PageCache => _pageCache;
 
+    public int ArenaFileCount
+    {
+        get { lock (_lock) return _arenas.Count; }
+    }
+
+    public long ArenaMappedBytes
+    {
+        get
+        {
+            lock (_lock)
+            {
+                long sum = 0;
+                foreach (ArenaFile arena in _arenas.Values) sum += arena.MappedSize;
+                return sum;
+            }
+        }
+    }
+
     public ArenaManager(string basePath, long maxArenaSize = 4L * 1024 * 1024 * 1024, long pageCacheBytes = DefaultPageCacheBytes)
     {
         _basePath = basePath;

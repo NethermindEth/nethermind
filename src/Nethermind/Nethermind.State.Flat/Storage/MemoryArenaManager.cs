@@ -69,6 +69,18 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public PageClockCache? PageCache => null;
 
+    public int ArenaFileCount => _arenas.Count;
+
+    public long ArenaMappedBytes
+    {
+        get
+        {
+            long sum = 0;
+            foreach (byte[] arena in _arenas.Values) sum += arena.Length;
+            return sum;
+        }
+    }
+
     public void MarkDead(in SnapshotLocation location)
     {
         _deadBytes.TryGetValue(location.ArenaId, out long dead);

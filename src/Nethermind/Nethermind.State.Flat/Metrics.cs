@@ -120,4 +120,12 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of persisted snapshot prunes")]
     public static long PersistedSnapshotPrunes { get; set; }
+
+    [GaugeMetric]
+    [Description("Number of arena files backing persisted snapshots")]
+    public static long ArenaFileCount { get; set; }
+
+    [GaugeMetric]
+    [Description("Total mmap size of arena files backing persisted snapshots in bytes")]
+    public static long ArenaMappedBytes { get; set; }
 }

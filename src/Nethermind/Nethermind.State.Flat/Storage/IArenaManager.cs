@@ -29,4 +29,14 @@ public interface IArenaManager : IDisposable
     /// to advise (e.g. the in-memory test arena).
     /// </summary>
     PageClockCache? PageCache { get; }
+
+    /// <summary>
+    /// Number of arena files currently held by this manager.
+    /// </summary>
+    int ArenaFileCount { get; }
+
+    /// <summary>
+    /// Sum of mmap sizes across all arena files in this manager (bytes).
+    /// </summary>
+    long ArenaMappedBytes { get; }
 }
