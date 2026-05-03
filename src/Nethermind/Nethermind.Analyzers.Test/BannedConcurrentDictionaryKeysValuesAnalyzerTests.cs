@@ -29,12 +29,13 @@ public class BannedConcurrentDictionaryKeysValuesAnalyzerTests
         await Verify(source, Diagnostic().WithLocation(0).WithArguments(member));
     }
 
-    [Test]
-    public async Task NonBlocking_ConcurrentDictionary_no_diagnostic()
+    [TestCase("Keys")]
+    [TestCase("Values")]
+    public async Task NonBlocking_ConcurrentDictionary_Keys_or_Values_reports_diagnostic(string member)
     {
         // Stub a NonBlocking.ConcurrentDictionary<TKey,TValue> with the same shape
-        // to verify the analyzer matches on the BCL symbol, not the simple name.
-        string source = """
+        // since the analyzer matches on full metadata name.
+        string source = $$"""
             namespace NonBlocking
             {
                 public class ConcurrentDictionary<TKey, TValue>
@@ -48,6 +49,32 @@ public class BannedConcurrentDictionaryKeysValuesAnalyzerTests
                 void M()
                 {
                     var dict = new NonBlocking.ConcurrentDictionary<int, int>();
+                    var x = {|#0:dict.{{member}}|};
+                }
+            }
+            """;
+
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments(member));
+    }
+
+    [Test]
+    public async Task Same_named_type_in_unrelated_namespace_no_diagnostic()
+    {
+        // Verify the analyzer matches on full metadata name, not simple name.
+        string source = """
+            namespace Other
+            {
+                public class ConcurrentDictionary<TKey, TValue>
+                {
+                    public System.Collections.Generic.ICollection<TKey> Keys => null!;
+                    public System.Collections.Generic.ICollection<TValue> Values => null!;
+                }
+            }
+            class Test
+            {
+                void M()
+                {
+                    var dict = new Other.ConcurrentDictionary<int, int>();
                     var k = dict.Keys;
                     var v = dict.Values;
                 }

@@ -284,7 +284,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void ClearDependencies()
         {
-            _dependencies.Values.DisposeItems();
+            foreach (KeyValuePair<long, HeadersSyncBatch> kvp in _dependencies)
+            {
+                kvp.Value.Dispose();
+            }
             _dependencies.Clear();
             MarkDirty();
         }
@@ -856,7 +859,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _sent.DisposeItems();
                 _pending.DisposeItems();
-                _dependencies.Values.DisposeItems();
+                foreach (KeyValuePair<long, HeadersSyncBatch> kvp in _dependencies)
+                {
+                    kvp.Value.Dispose();
+                }
                 base.Dispose();
                 _disposed = true;
             }

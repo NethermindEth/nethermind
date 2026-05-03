@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -54,9 +55,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
-        foreach (Snapshot snapshot in _snapshots.Values)
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
-            snapshot.Dispose();
+            kvp.Value.Dispose();
         }
 
         _snapshots.Clear();
@@ -114,9 +115,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        foreach (Snapshot snapshot in _snapshots.Values)
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
-            snapshot.Dispose();
+            kvp.Value.Dispose();
         }
         _snapshots.Clear();
     }
