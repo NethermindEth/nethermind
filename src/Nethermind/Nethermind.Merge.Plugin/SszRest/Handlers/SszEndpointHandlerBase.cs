@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
@@ -155,8 +156,13 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     internal static IReadOnlyList<T?> AsReadOnlyList<T>(IEnumerable<T?> source)
     {
         if (source is IReadOnlyList<T?> list) return list;
-        List<T?> result = [.. source];
-        return result;
+        if (source is ICollection<T?> collection)
+        {
+            T?[] array = new T?[collection.Count];
+            collection.CopyTo(array, 0);
+            return array;
+        }
+        return source.ToArray();
     }
 
     protected static int ErrorCodeToHttpStatus(int errorCode) => errorCode switch
