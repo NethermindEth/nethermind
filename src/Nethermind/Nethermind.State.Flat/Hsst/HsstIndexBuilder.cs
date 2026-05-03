@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.State.Flat.BSearchIndex;
@@ -60,8 +61,26 @@ public ref struct HsstIndexBuilder<TWriter>
 
         // Build leaf nodes
         int maxNodes = (_entries.Length + maxLeafEntries - 1) / maxLeafEntries;
-        Span<NodeInfo> currentLevel = stackalloc NodeInfo[maxNodes];
-        Span<NodeInfo> nextLevel = stackalloc NodeInfo[maxNodes];
+        const int StackThreshold = 1024;
+        NodeInfo[]? currentRented = null;
+        NodeInfo[]? nextRented = null;
+        scoped Span<NodeInfo> currentLevel;
+        scoped Span<NodeInfo> nextLevel;
+        if (maxNodes <= StackThreshold)
+        {
+            currentLevel = stackalloc NodeInfo[maxNodes];
+            nextLevel = stackalloc NodeInfo[maxNodes];
+        }
+        else
+        {
+            currentRented = ArrayPool<NodeInfo>.Shared.Rent(maxNodes);
+            nextRented = ArrayPool<NodeInfo>.Shared.Rent(maxNodes);
+            currentLevel = currentRented.AsSpan(0, maxNodes);
+            nextLevel = nextRented.AsSpan(0, maxNodes);
+        }
+
+        try
+        {
         int currentLevelCount = 0;
 
         int entryIdx = 0;
@@ -122,7 +141,12 @@ public ref struct HsstIndexBuilder<TWriter>
             nextLevel[..nextLevelCount].CopyTo(currentLevel);
             currentLevelCount = nextLevelCount;
         }
-
+        }
+        finally
+        {
+            if (currentRented is not null) ArrayPool<NodeInfo>.Shared.Return(currentRented);
+            if (nextRented is not null) ArrayPool<NodeInfo>.Shared.Return(nextRented);
+        }
     }
 
     private void WriteLeafIndexNode(
