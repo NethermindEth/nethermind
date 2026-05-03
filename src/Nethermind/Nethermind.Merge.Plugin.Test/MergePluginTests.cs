@@ -66,9 +66,8 @@ public class MergePluginTests
     }
 
     private IContainer BuildContainer(IConfigProvider? configProvider = null) =>
-        // HealthCheckPluginModule is added first to mirror PluginConfig.PluginOrder
-        // (HealthChecks loads before Merge in production). MergePlugin must register its
-        // fallback IEngineRequestsTracker without overriding the real ClHealthRequestsTracker.
+        // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
+        // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
         new ContainerBuilder()
             .AddModule(new HealthCheckPluginModule())
             .AddModule(new NethermindRunnerModule(
