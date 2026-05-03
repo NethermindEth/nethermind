@@ -20,13 +20,14 @@ namespace Nethermind.State.Flat.Hsst;
 ///   No data section. Leaf values are stored directly in the B-tree index.
 ///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
-///   [Value][ValueLength: LEB128][KeyLength: LEB128][FullKey]
-/// MetadataStart points at the ValueLength LEB128. The leaf B-tree node also stores a
-/// separator (a min-length prefix of the full key) for binary-search navigation, but the
+///   [Value][ValueLength: LEB128][KeyLength: u8][FullKey]
+/// MetadataStart points at the ValueLength LEB128. KeyLength is a single byte: keys are
+/// capped at 255 bytes by format contract. The leaf B-tree node also stores a separator
+/// (a min-length prefix of the full key) for binary-search navigation, but the
 /// data-region entry is self-describing — the full key lives in the entry tail and the
-/// reader does not need to consult the leaf to recover it. (LEB128 is forward-readable
-/// only: terminator is the first byte without the continuation bit; reading backward is
-/// not reliable, so the lengths sit after the value and the index aims at them.)
+/// reader does not need to consult the leaf to recover it. (ValueLength uses LEB128
+/// because values are unbounded; the LEB128 terminator chain is forward-readable only,
+/// so the lengths sit after the value and the index aims at them.)
 /// </summary>
 public ref struct HsstBuilder<TWriter>
     where TWriter : IByteBufferWriter
@@ -130,6 +131,7 @@ public ref struct HsstBuilder<TWriter>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key)
     {
         if (_inlineValues) throw new NotSupportedException("FinishValueWrite not supported in inline mode. Use Add() instead.");
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
 
         int actualLen = _writer.Written - _writtenBeforeValue;
         // metadataStart stored in index is relative to position 1 (after this builder's version byte)
@@ -145,16 +147,16 @@ public ref struct HsstBuilder<TWriter>
         int sepOffset = _separatorBuffer.Count;
         _separatorBuffer.AddRange(key[..sepLen]);
 
-        // Write [ValueLength: LEB128][KeyLength: LEB128][FullKey]. The full key lives in
+        // Write [ValueLength: LEB128][KeyLength: u8][FullKey]. The full key lives in
         // the data region so the entry is self-describing; the leaf separator above is
         // kept purely to drive in-leaf binary search.
-        Span<byte> leb = _writer.GetSpan(10);
+        Span<byte> leb = _writer.GetSpan(5);
         int lebLen = Leb128.Write(leb, 0, actualLen);
         _writer.Advance(lebLen);
 
-        leb = _writer.GetSpan(10);
-        lebLen = Leb128.Write(leb, 0, key.Length);
-        _writer.Advance(lebLen);
+        Span<byte> kl = _writer.GetSpan(1);
+        kl[0] = (byte)key.Length;
+        _writer.Advance(1);
 
         if (key.Length > 0)
         {
@@ -172,6 +174,7 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
         if (_inlineValues)
         {
             // Inline: separator = full key, buffer value separately

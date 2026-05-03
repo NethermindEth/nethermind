@@ -52,7 +52,7 @@ entries laid out value-first so that decoding is forward-readable from a
 known `MetadataStart` cursor:
 
 ```
-[Value: V bytes][ValueLength: LEB128][KeyLength: LEB128][FullKey: K bytes]
+[Value: V bytes][ValueLength: LEB128][KeyLength: u8][FullKey: K bytes]
                 ^
                 MetadataStart  (= the index pointer's target byte)
 ```
@@ -64,18 +64,19 @@ pointer, then:
 
 1. Decode `ValueLength` (LEB128) — the value bytes live at
    `[MetadataStart - ValueLength, MetadataStart)`.
-2. Decode `KeyLength` (LEB128).
-3. The full key sits at `[MetadataStart + lebBytes, MetadataStart + lebBytes + KeyLength)`.
+2. Read `KeyLength` (single `u8`, 0–255).
+3. The full key sits at `[MetadataStart + lebBytes + 1, MetadataStart + lebBytes + 1 + KeyLength)`.
 
-**Why `MetadataStart` aims at `ValueLength` and not at the value.** LEB128
-has a forward-only terminator (high-bit "continuation" chain): given a byte
-mid-stream you can't tell whether you're inside someone else's continuation
-run or sitting at the start of a fresh varint. So the format places the
-lengths *after* the value and aims the index pointer at the lengths' start;
-the value is back-derived from `MetadataStart - ValueLength`. Everything
-past the lengths is forward-decoded too. This is a load-bearing invariant —
-both the entry tail and the order in which the lengths appear must keep
-`MetadataStart` as the value↔lengths pivot.
+**Why `MetadataStart` aims at `ValueLength` and not at the value.** Values
+are unbounded (KiB–MiB, including nested HSSTs) so `ValueLength` is LEB128.
+LEB128 has a forward-only terminator (high-bit "continuation" chain): given
+a byte mid-stream you can't tell whether you're inside someone else's
+continuation run or sitting at the start of a fresh varint. So the format
+places the length *after* the value and aims the index pointer at it; the
+value is back-derived from `MetadataStart - ValueLength`. The fixed-width
+`KeyLength` then `FullKey` are forward-decoded after that. This is a
+load-bearing invariant — the entry tail must keep `MetadataStart` as the
+value↔length pivot.
 
 **Separator vs. full key.** The leaf B-tree node *also* stores a
 **separator** for each entry — a min-length prefix chosen against the
@@ -165,6 +166,8 @@ directly — there's no metaStart indirection.
 - Maximum entries per leaf node: **64** by default; configurable at write
   time. Beyond that, the writer splits the leaf and promotes a separator
   into an intermediate node.
+- Maximum key length per entry: **255 bytes**, encoded as a single `u8`.
+  Writers must reject longer keys.
 - `MetadataLength` is a single byte → metadata section ≤ 255 bytes.
 - All offsets *within* a node are encoded as 4-byte little-endian
   integers, so a single HSST is capped at ≈2 GiB. There is no in-format

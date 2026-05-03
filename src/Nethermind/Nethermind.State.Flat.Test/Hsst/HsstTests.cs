@@ -180,7 +180,7 @@ public class HsstTests
     {
         byte[] longValue = new byte[10000];
         Random.Shared.NextBytes(longValue);
-        byte[] longKey = new byte[500];
+        byte[] longKey = new byte[255];
         for (int i = 0; i < longKey.Length; i++) longKey[i] = (byte)'c';
 
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
@@ -622,5 +622,42 @@ public class HsstTests
         Assert.That(fromVal, Is.EqualTo("block0"u8.ToArray()));
         Assert.That(TryGet(outerSpan, [0x01], out _), Is.True, "col1");
         Assert.That(TryGet(outerSpan, [0x02], out _), Is.True, "col2");
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(127)]
+    [TestCase(128)]
+    [TestCase(254)]
+    [TestCase(255)]
+    public void Key_Length_Boundary_RoundTrips(int keyLength)
+    {
+        byte[] key = new byte[keyLength];
+        for (int i = 0; i < keyLength; i++) key[i] = (byte)(i & 0xFF);
+        byte[] value = "v"u8.ToArray();
+
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
+        {
+            builder.Add(key, value);
+        });
+
+        Assert.That(CountEntries(data), Is.EqualTo(1));
+        Assert.That(TryGet(data, key, out byte[] got), Is.True);
+        Assert.That(got, Is.EqualTo(value));
+    }
+
+    [TestCase(256)]
+    [TestCase(1024)]
+    public void Key_Longer_Than_255_Bytes_Throws(int keyLength)
+    {
+        byte[] key = new byte[keyLength];
+        byte[] value = "v"u8.ToArray();
+
+        Assert.That(() =>
+            HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
+            {
+                builder.Add(key, value);
+            }),
+            Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 }

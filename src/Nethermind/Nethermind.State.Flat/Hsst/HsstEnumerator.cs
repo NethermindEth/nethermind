@@ -231,15 +231,16 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + _leafNode.Metadata.BaseOffset;
         long absMetaStart = _hsstStart + 1 + metaStart;
 
-        // Read ValueLength + KeyLength LEB128s (max 5 bytes each). This is the leading sequential
-        // read for each entry during enumeration, so use the readahead variant — paged/mmap
-        // readers can prefetch the next window here.
-        Span<byte> lebBuf = stackalloc byte[10];
-        int available = (int)Math.Min(10, _hsstEnd - absMetaStart);
+        // Read ValueLength (LEB128, ≤5 bytes) + KeyLength (u8, 1 byte). This is the leading
+        // sequential read for each entry during enumeration, so use the readahead variant —
+        // paged/mmap readers can prefetch the next window here.
+        Span<byte> lebBuf = stackalloc byte[6];
+        int available = (int)Math.Min(6, _hsstEnd - absMetaStart);
         if (available <= 0 || !_reader.TryReadWithReadahead(absMetaStart, lebBuf[..available])) return;
         int pos = 0;
         int valueLength = Leb128.Read(lebBuf, ref pos);
-        int keyLength = Leb128.Read(lebBuf, ref pos);
+        if (pos >= available) return;
+        int keyLength = lebBuf[pos++];
         long keyAbsStart = absMetaStart + pos;
 
         _currentKeyBound = new Bound(keyAbsStart, keyLength);

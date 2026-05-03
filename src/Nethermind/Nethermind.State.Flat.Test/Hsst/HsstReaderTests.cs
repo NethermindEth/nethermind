@@ -311,7 +311,7 @@ public class HsstReaderTests
     {
         byte[] longValue = new byte[10000];
         Random.Shared.NextBytes(longValue);
-        byte[] longKey = new byte[500];
+        byte[] longKey = new byte[255];
         for (int i = 0; i < longKey.Length; i++) longKey[i] = (byte)'c';
 
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>

@@ -122,12 +122,12 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + node.Metadata.BaseOffset;
                     long absMetaStart = _bound.Offset + 1 + metaStart;
 
-                    // Read up to 10 bytes from absMetaStart: enough for ValueLength (≤5) +
-                    // KeyLength (≤5) LEB128s. KeyLength only consumed when exact-matching.
+                    // Read up to 6 bytes from absMetaStart: enough for ValueLength (≤5)
+                    // LEB128 + KeyLength (1 byte). KeyLength only consumed when exact-matching.
                     long available = _bound.Offset + _bound.Length - absMetaStart;
                     if (available <= 0) return false;
-                    Span<byte> lebBuf = stackalloc byte[10];
-                    int lebRead = (int)Math.Min(10, available);
+                    Span<byte> lebBuf = stackalloc byte[6];
+                    int lebRead = (int)Math.Min(6, available);
                     if (!_reader.TryRead(absMetaStart, lebBuf[..lebRead])) return false;
 
                     int pos = 0;
@@ -135,21 +135,15 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
 
                     if (exactMatch)
                     {
-                        int keyLength = Leb128.Read(lebBuf, ref pos);
+                        if (pos >= lebRead) return false;
+                        int keyLength = lebBuf[pos++];
                         if (keyLength != key.Length) return false;
 
-                        // Compare the stored full key against the input in bounded-stack
-                        // chunks so arbitrarily long keys don't blow the stack.
-                        Span<byte> chunk = stackalloc byte[256];
-                        int compared = 0;
-                        while (compared < keyLength)
-                        {
-                            int toRead = Math.Min(chunk.Length, keyLength - compared);
-                            Span<byte> chunkSlice = chunk[..toRead];
-                            if (!_reader.TryRead(absMetaStart + pos + compared, chunkSlice)) return false;
-                            if (!chunkSlice.SequenceEqual(key.Slice(compared, toRead))) return false;
-                            compared += toRead;
-                        }
+                        // Stored key fits in 255 bytes — single read + compare, no chunking.
+                        Span<byte> stored = stackalloc byte[255];
+                        Span<byte> storedSlice = stored[..keyLength];
+                        if (!_reader.TryRead(absMetaStart + pos, storedSlice)) return false;
+                        if (!storedSlice.SequenceEqual(key)) return false;
                     }
 
                     // value bytes are immediately before the metaStart
