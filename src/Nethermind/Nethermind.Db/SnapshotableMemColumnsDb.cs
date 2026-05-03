@@ -17,14 +17,7 @@ namespace Nethermind.Db
         private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = new();
         private readonly bool _neverPrune;
 
-        // Cross-column atomicity guard. Each per-column SnapshotableMemDb has its own version
-        // counter and lock, so per-column reads/writes are individually consistent. But a
-        // multi-column writeBatch dispose applies columns one-by-one, and CreateSnapshot
-        // captures column snapshots one-by-one. Without this lock a snapshot taken concurrently
-        // with an in-flight writeBatch dispose can capture some columns AFTER the new writes
-        // and others BEFORE, producing a cross-column-inconsistent reader view. RocksDB does
-        // not have this problem (its snapshots are atomic across CFs); this lock makes the
-        // in-memory test backend match.
+        // Cross-column atomicity guard so CreateSnapshot can't observe a half-applied multi-column writeBatch dispose. RocksDB has this for free; this matches it.
         private readonly Lock _atomicityLock = new();
 
         private SnapshotableMemColumnsDb(TKey[] keys, bool neverPrune)
