@@ -24,7 +24,4 @@ public interface IMcpConfig : IConfig
 
     [ConfigItem(Description = "Maximum concurrent MCP tool invocations.", DefaultValue = "4")]
     int MaxConcurrent { get; set; }
-
-    [ConfigItem(Description = "Whitelist of tool categories to expose. `*` means all enabled categories.", DefaultValue = "[*]")]
-    string[] EnabledTools { get; set; }
 }

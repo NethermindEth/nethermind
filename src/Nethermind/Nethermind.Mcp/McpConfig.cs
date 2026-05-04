@@ -11,5 +11,4 @@ public class McpConfig : IMcpConfig
     public int HttpPort { get; set; } = 8550;
     public string? ApiKey { get; set; } = null;
     public int MaxConcurrent { get; set; } = 4;
-    public string[] EnabledTools { get; set; } = ["*"];
 }

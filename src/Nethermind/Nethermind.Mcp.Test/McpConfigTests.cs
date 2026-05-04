@@ -18,6 +18,5 @@ public class McpConfigTests
         Assert.That(config.HttpPort, Is.EqualTo(8550));
         Assert.That(config.ApiKey, Is.Null);
         Assert.That(config.MaxConcurrent, Is.EqualTo(4));
-        Assert.That(config.EnabledTools, Is.EqualTo(new[] { "*" }));
     }
 }

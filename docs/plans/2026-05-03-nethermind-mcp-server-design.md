@@ -72,7 +72,6 @@ public interface IMcpConfig : IConfig
     int HttpPort { get; set; }            // default 8550
     string? ApiKey { get; set; }          // default null
     int MaxConcurrent { get; set; }       // default 4
-    string[] EnabledTools { get; set; }   // default ["*"]
 }
 ```
 
