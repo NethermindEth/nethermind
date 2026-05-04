@@ -96,19 +96,31 @@ internal static class PersistedSnapshotBloomBuilder
     }
 
     /// <summary>
-    /// Bloom key for a state-trie node, derived canonically from the path bytes and
-    /// length. Independent of the on-disk column encoding so that callers (writer,
-    /// merger, lookup) can all produce the same key from a <see cref="TreePath"/>.
+    /// Bloom key for a state-trie node, hashed from the same encoded byte-sequence
+    /// that the writer stores on disk (3-byte form for length 0–5, 8-byte for 6–15,
+    /// 33-byte fallback for 16+). Routing through the encoding makes the key
+    /// independent of whether the <see cref="TreePath"/> arrived canonical or with a
+    /// non-zero tail, and matches the path the scanner reconstructs on reload.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong StatePathKey(in TreePath path)
     {
-        ReadOnlySpan<byte> pathBytes = path.Path.Bytes;
-        ulong p0 = MemoryMarshal.Read<ulong>(pathBytes);
-        ulong p1 = MemoryMarshal.Read<ulong>(pathBytes[8..]);
-        ulong p2 = MemoryMarshal.Read<ulong>(pathBytes[16..]);
-        ulong p3 = MemoryMarshal.Read<ulong>(pathBytes[24..]);
-        return p0 ^ p1 ^ p2 ^ p3 ^ (ulong)path.Length;
+        Span<byte> encoded = stackalloc byte[33];
+        int length = path.Length;
+        if (length < 6)
+            path.EncodeWith3Byte(encoded[..3]);
+        else if (length < 16)
+            path.EncodeWith8Byte(encoded[..8]);
+        else
+        {
+            path.Path.Bytes.CopyTo(encoded);
+            encoded[32] = (byte)length;
+        }
+        ulong p0 = MemoryMarshal.Read<ulong>(encoded);
+        ulong p1 = MemoryMarshal.Read<ulong>(encoded[8..]);
+        ulong p2 = MemoryMarshal.Read<ulong>(encoded[16..]);
+        ulong p3 = MemoryMarshal.Read<ulong>(encoded[24..]);
+        return p0 ^ p1 ^ p2 ^ p3 ^ encoded[32];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
