@@ -69,7 +69,7 @@ public abstract class TransactionForRpc
         BlockTimestamp = extraData.BlockTimestamp;
     }
 
-    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
+    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
         => new Transaction { Type = ResolveType(spec) };
 
     private TxType ResolveType(IReleaseSpec? spec)
@@ -78,7 +78,6 @@ public abstract class TransactionForRpc
         return spec is not null && !spec.IsEip2930Enabled && IsTypeDefaulted ? TxType.Legacy : type;
     }
 
-    public abstract void EnsureDefaults(long? gasCap);
     public abstract bool ShouldSetBaseFee();
 
     internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
