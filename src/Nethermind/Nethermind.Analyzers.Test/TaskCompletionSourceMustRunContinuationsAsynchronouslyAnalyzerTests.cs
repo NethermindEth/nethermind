@@ -52,6 +52,24 @@ public class TaskCompletionSourceMustRunContinuationsAsynchronouslyAnalyzerTests
     }
 
     [Test]
+    public async Task Const_local_with_run_continuations_async_no_diagnostic()
+    {
+        string source = """
+            class Test
+            {
+                void M()
+                {
+                    const System.Threading.Tasks.TaskCreationOptions opts =
+                        System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously;
+                    var t = new System.Threading.Tasks.TaskCompletionSource(opts);
+                }
+            }
+            """;
+
+        await Verify(source);
+    }
+
+    [Test]
     public async Task NonConstant_options_expression_reports_diagnostic()
     {
         string source = """
@@ -96,7 +114,7 @@ public class TaskCompletionSourceMustRunContinuationsAsynchronouslyAnalyzerTests
         CSharpAnalyzerTest<TaskCompletionSourceMustRunContinuationsAsynchronouslyAnalyzer, DefaultVerifier> test = new()
         {
             TestCode = source,
-            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+            ReferenceAssemblies = ReferenceAssemblies.Net.Net100,
         };
         test.ExpectedDiagnostics.AddRange(expected);
         await test.RunAsync();
