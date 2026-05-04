@@ -29,10 +29,11 @@ public class EthCapabilitiesProvider(
         long oldestReceipts = (syncConfig?.PivotNumber ?? 0) == 0 ? 0 : syncConfig!.AncientReceiptsBarrierCalc;
 
         StateAvailability stateAvailability = worldStateManager.StateAvailability;
-        long? stateOldest = stateAvailability.Archive ? 0L
-            : stateAvailability.RetentionWindowBlocks is { } window && head is not null
-                ? Math.Max(0L, head.Number - window)
-                : null;
+        // Floor recorded by sync completion / full-pruning runs; null on archive-from-genesis.
+        long stateFloor = blockTree.OldestStateBlock ?? 0L;
+        long? stateOldest = stateAvailability.RetentionWindowBlocks is { } window && head is not null
+            ? Math.Max(stateFloor, Math.Max(0L, head.Number - window))
+            : stateFloor;
         DeleteStrategy? stateWindow = stateAvailability.RetentionWindowBlocks > 0
             ? new DeleteStrategy("window", stateAvailability.RetentionWindowBlocks.Value)
             : null;

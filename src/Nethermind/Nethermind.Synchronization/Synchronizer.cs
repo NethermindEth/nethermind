@@ -466,6 +466,16 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                     ctx.Resolve<VerifyStateOnStateSyncFinished>();
                 });
         }
+
+        if (syncConfig.FastSync)
+        {
+            serviceCollection
+                .AddSingleton<RecordOldestStateBlockOnStateSyncFinished>()
+                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
+                {
+                    ctx.Resolve<RecordOldestStateBlockOnStateSyncFinished>();
+                });
+        }
     }
 
     private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch> => serviceCollection

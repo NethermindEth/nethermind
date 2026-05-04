@@ -48,6 +48,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public Hash256? SafeHash => _overlayTree.SafeHash ?? _baseTree.SafeHash;
     public Block? Head => _overlayTree.Head ?? _baseTree.Head;
     public long? BestPersistedState { get => _overlayTree.BestPersistedState; set => _overlayTree.BestPersistedState = value; }
+    public long? OldestStateBlock { get => _overlayTree.OldestStateBlock; set => _overlayTree.OldestStateBlock = value; }
 
     public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
         _overlayTree.Insert(header, headerOptions);

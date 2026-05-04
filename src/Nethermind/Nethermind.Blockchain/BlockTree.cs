@@ -1736,6 +1736,20 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock { get; set; }
 
+        private long? _oldestStateBlock;
+        public long? OldestStateBlock
+        {
+            get => _oldestStateBlock;
+            set
+            {
+                _oldestStateBlock = value;
+                if (value.HasValue)
+                {
+                    _metadataDb.Set(MetadataDbKeys.OldestStateBlock, Rlp.Encode(value.Value).Bytes);
+                }
+            }
+        }
+
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             FinalizedHash = finalizedBlockHash;

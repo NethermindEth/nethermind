@@ -47,13 +47,8 @@ public class WorldStateManager : IWorldStateManager
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
 
-        StateAvailability = pruningConfig.Mode switch
-        {
-            PruningMode.None => new StateAvailability(Archive: true, RetentionWindowBlocks: null),
-            var m when m.IsMemory() => new StateAvailability(Archive: false, RetentionWindowBlocks: pruningConfig.PruningBoundary),
-            // Full-only pruning is periodic — no predictable lower bound.
-            _ => new StateAvailability(Archive: false, RetentionWindowBlocks: null),
-        };
+        StateAvailability = new StateAvailability(
+            RetentionWindowBlocks: pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null);
     }
 
     public StateAvailability StateAvailability { get; }

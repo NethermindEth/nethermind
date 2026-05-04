@@ -69,6 +69,12 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         set => throw new NotSupportedException();
     }
 
+    public long? OldestStateBlock
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
     public ulong NetworkId => throw new NotSupportedException();
     public ulong ChainId => throw new NotSupportedException();
     public BlockHeader? Genesis => throw new NotSupportedException();

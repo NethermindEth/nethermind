@@ -42,6 +42,7 @@ internal class TestBlockTree : IBlockTree
     public Hash256? FinalizedHash => null;
     public Hash256? SafeHash => null;
     public long? BestPersistedState { get; set; }
+    public long? OldestStateBlock { get; set; }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => null;
     public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options) => null;

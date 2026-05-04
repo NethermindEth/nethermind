@@ -47,8 +47,7 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public StateAvailability StateAvailability { get; } =
-        new(Archive: false, RetentionWindowBlocks: configuration.MaxReorgDepth);
+    public StateAvailability StateAvailability { get; } = new(RetentionWindowBlocks: configuration.MaxReorgDepth);
 
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(

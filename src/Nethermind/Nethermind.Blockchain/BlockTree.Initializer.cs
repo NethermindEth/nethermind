@@ -22,6 +22,7 @@ public partial class BlockTree
         LoadBestKnown();
         LoadBeaconBestKnown();
         LoadForkChoiceInfo();
+        LoadOldestStateBlock();
     }
 
     public static long? BinarySearchBlockNumber(long left, long right, Func<long, bool, bool> isBlockFound,
@@ -161,6 +162,9 @@ public partial class BlockTree
         FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpValueContext().DecodeKeccak();
         SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpValueContext().DecodeKeccak();
     }
+
+    private void LoadOldestStateBlock() =>
+        _oldestStateBlock = _metadataDb.Get(MetadataDbKeys.OldestStateBlock)?.AsRlpValueContext().DecodeLong();
 
     private void LoadLowestInsertedBeaconHeader()
     {

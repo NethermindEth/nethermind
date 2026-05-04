@@ -179,6 +179,11 @@ namespace Nethermind.Blockchain.FullPruning
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
             await CopyTrie(pruningContext, header, cancellationToken);
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _blockTree.OldestStateBlock = stateToCopy;
+            }
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;

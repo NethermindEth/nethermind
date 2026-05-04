@@ -24,12 +24,13 @@ public partial class EthRpcModuleTests
     private static readonly ResourceAvailability Available = new(Disabled: false, OldestBlock: 0L);
     private static readonly ResourceAvailability Disabled = new(Disabled: true, OldestBlock: null);
 
-    private static readonly StateAvailability ArchiveState = new(Archive: true, RetentionWindowBlocks: null);
-    private static readonly StateAvailability FullPrunedState = new(Archive: false, RetentionWindowBlocks: null);
+    private static readonly StateAvailability ArchiveState = new(RetentionWindowBlocks: null);
+    private static readonly StateAvailability FullPrunedState = new(RetentionWindowBlocks: null);
 
     private static EthCapabilities GetCaps(
         StateAvailability state,
         long headNumber = 1000,
+        long? oldestStateBlock = null,
         SyncConfig? syncConfig = null,
         IHistoryConfig? historyConfig = null,
         IHistoryPruner? historyPruner = null)
@@ -38,6 +39,7 @@ public partial class EthRpcModuleTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(head);
         blockTree.BestSuggestedHeader.Returns(head.Header);
+        blockTree.OldestStateBlock.Returns(oldestStateBlock);
 
         IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
         wsm.StateAvailability.Returns(state);
@@ -61,6 +63,7 @@ public partial class EthRpcModuleTests
         ResourceAvailability ExpectedBlocks)
     {
         public long HeadNumber { get; init; } = 1000;
+        public long? OldestStateBlock { get; init; }
         public SyncConfig? SyncConfig { get; init; }
         public IHistoryConfig? HistoryConfig { get; init; }
         public IHistoryPruner? HistoryPruner { get; init; }
@@ -71,7 +74,8 @@ public partial class EthRpcModuleTests
     {
         SyncConfig fullSync = new() { DownloadReceiptsInFastSync = true, PivotNumber = 0 };
 
-        // Regression: AncientReceiptsBarrierCalc returns Math.Max(1, …) — wrong for PivotNumber=0.
+        // Archive sync from genesis — no floor recorded → oldest defaults to 0.
+        // Also covers the genesis-receipts regression (AncientReceiptsBarrierCalc Math.Max(1, …) on PivotNumber=0).
         yield return new CapabilitiesScenario(
             Name: "archive_full_availability",
             State: ArchiveState,
@@ -79,15 +83,33 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = fullSync };
 
-        // Full-only trie pruning: state present but no predictable window. Proofs share the
-        // (unknown) retention since trie nodes still resolve.
-        ResourceAvailability stateUnknown = new(Disabled: false, OldestBlock: null);
+        // Fast/snap synced archive node — sync recorded the pivot as the floor.
+        const long fastSyncFloor = 18_000_000;
+        ResourceAvailability fastSyncedState = new(Disabled: false, OldestBlock: fastSyncFloor);
         yield return new CapabilitiesScenario(
-            Name: "full_pruning_omits_oldest_and_strategy",
+            Name: "archive_after_fast_sync_reports_pivot_floor",
+            State: ArchiveState,
+            ExpectedState: fastSyncedState, ExpectedStateproofs: fastSyncedState,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
+        { HeadNumber = 18_001_000, OldestStateBlock = fastSyncFloor, SyncConfig = fullSync };
+
+        // Full-only pruning before the first run — looks archive-equivalent (no floor recorded).
+        yield return new CapabilitiesScenario(
+            Name: "full_pruning_before_first_run_looks_archive",
             State: FullPrunedState,
-            ExpectedState: stateUnknown, ExpectedStateproofs: stateUnknown,
+            ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = fullSync };
+
+        // Full-only pruning after a successful run — floor advances to copied-state block.
+        const long fullPruneFloor = 500;
+        ResourceAvailability fullPruned = new(Disabled: false, OldestBlock: fullPruneFloor);
+        yield return new CapabilitiesScenario(
+            Name: "full_pruning_after_run_reports_copied_state_floor",
+            State: FullPrunedState,
+            ExpectedState: fullPruned, ExpectedStateproofs: fullPruned,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
+        { OldestStateBlock = fullPruneFloor, SyncConfig = fullSync };
 
         const long retention = 128;
         const long memoryHead = 1000;
@@ -96,11 +118,24 @@ public partial class EthRpcModuleTests
             OldestBlock: memoryHead - retention,
             DeleteStrategy: new DeleteStrategy("window", retention));
         yield return new CapabilitiesScenario(
-            Name: "memory_pruning_reports_window_and_oldest_block",
-            State: new StateAvailability(Archive: false, RetentionWindowBlocks: retention),
+            Name: "memory_pruning_window_dominates_old_floor",
+            State: new StateAvailability(RetentionWindowBlocks: retention),
             ExpectedState: memoryPruned, ExpectedStateproofs: memoryPruned,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { HeadNumber = memoryHead, SyncConfig = fullSync };
+        { HeadNumber = memoryHead, OldestStateBlock = 0, SyncConfig = fullSync };
+
+        // Memory pruning shortly after fast sync: pivot floor is tighter than the rolling window.
+        const long recentPivot = 950;
+        ResourceAvailability postSyncMemory = new(
+            Disabled: false,
+            OldestBlock: recentPivot,
+            DeleteStrategy: new DeleteStrategy("window", retention));
+        yield return new CapabilitiesScenario(
+            Name: "memory_pruning_floor_dominates_window",
+            State: new StateAvailability(RetentionWindowBlocks: retention),
+            ExpectedState: postSyncMemory, ExpectedStateproofs: postSyncMemory,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
+        { HeadNumber = memoryHead, OldestStateBlock = recentPivot, SyncConfig = fullSync };
 
         yield return new CapabilitiesScenario(
             Name: "no_receipts_disables_tx_logs_receipts",
@@ -145,7 +180,7 @@ public partial class EthRpcModuleTests
     [TestCaseSource(nameof(CapabilitiesScenarios))]
     public void eth_capabilities_scenario(CapabilitiesScenario s)
     {
-        EthCapabilities caps = GetCaps(s.State, s.HeadNumber, s.SyncConfig, s.HistoryConfig, s.HistoryPruner);
+        EthCapabilities caps = GetCaps(s.State, s.HeadNumber, s.OldestStateBlock, s.SyncConfig, s.HistoryConfig, s.HistoryPruner);
 
         Assert.That(caps.Head.Number, Is.EqualTo(s.HeadNumber));
         Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
@@ -211,7 +246,7 @@ public partial class EthRpcModuleTests
     public async Task eth_capabilities_json_matches_spec_schema()
     {
         EthCapabilities caps = GetCaps(
-            new StateAvailability(Archive: false, RetentionWindowBlocks: 64),
+            new StateAvailability(RetentionWindowBlocks: 64),
             headNumber: 1000,
             syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 });
 
