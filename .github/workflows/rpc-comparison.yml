@@ -542,9 +542,7 @@ jobs:
             echo "Processing performance check repositories:"
             for repo in $(ls -d *_perf_result); do
               echo "Flood report for $repo"
-              # Capture each report once into a sibling .report.txt file so the
-              # subsequent summary step can reuse it without re-invoking flood.
-              flood report "$repo" 2>&1 | tee "${repo}.report.txt"
+              flood report "$repo"
             done
           else
             if [ "$COMPARE_TO_OTHER_BRANCH" == "true" ]; then
@@ -561,43 +559,86 @@ jobs:
       - name: Write performance summary to run page
         if: inputs.is_performance_check == true
         shell: bash
-        # Inputs are passed via env to avoid `${{ ... }}` expansion into shell —
-        # branch names containing backticks or $() would otherwise execute.
+        # Inputs are passed via env to avoid `${{ ... }}` shell-expansion injection.
         env:
           BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
           # GitHub silently truncates $GITHUB_STEP_SUMMARY past 1 MiB.
-          # We cap our own writes well below that and link to the artifact for the rest.
           SUMMARY_BUDGET_BYTES: "900000"
+        # Reads each test's results.json directly. We don't shell out to `flood report` because
+        # it generates an HTML notebook (via nbconvert) and writes garbage + ANSI codes to stdout —
+        # plus it requires vegeta on PATH, which isn't carried over from the load-test step.
         run: |
           set -euo pipefail
 
-          shopt -s nullglob
-          report_files=(*_perf_result.report.txt)
-
           tmp_summary=$(mktemp)
-          {
-            printf '## RPC Performance Diff\n\n'
-            printf 'Current branch vs `%s`, identical hardware, mainnet snap-synced.\n\n' "$BRANCH_TO_COMPARE"
-            printf 'Per-method p50 / p95 / p99 at the configured RPS steps.\n\n'
+          python3 - "$tmp_summary" <<'PY'
+          import json, os, sys, glob
 
-            if [[ ${#report_files[@]} -eq 0 ]]; then
-              printf '_No `*_perf_result.report.txt` files found — flood report step may have produced no output. See uploaded artifact._\n'
-            else
-              for f in "${report_files[@]}"; do
-                name=$(basename "$f" _perf_result.report.txt)
-                printf '### %s\n\n```\n' "$name"
-                cat "$f"
-                printf '\n```\n\n'
-              done
-            fi
-          } > "$tmp_summary"
+          # Latencies in flood's results.json are in seconds.
+          def fmt_ms(v):
+              return '—' if v is None else f'{float(v) * 1000:.1f} ms'
 
-          # Truncation guard: keep the summary under the configured byte budget;
-          # if exceeded, replace tail with a pointer to the full artifact.
+          def fmt_pct(v):
+              return '—' if v is None else f'{float(v) * 100:.1f}%'
+
+          out = open(sys.argv[1], 'w')
+          branch_to_compare = os.environ.get('BRANCH_TO_COMPARE', '?')
+          out.write('## RPC Performance Diff\n\n')
+          out.write(f'Current branch vs `{branch_to_compare}`, identical hardware, mainnet snap-synced.\n\n')
+          out.write('Per-method latencies at the configured RPS steps (each rate is run multiple times for stability).\n\n')
+
+          dirs = sorted(glob.glob('*_perf_result'))
+          if not dirs:
+              out.write('_No `*_perf_result/` directories found. See uploaded artifact._\n')
+              out.close()
+              sys.exit(0)
+
+          for d in dirs:
+              name = os.path.basename(d)[:-len('_perf_result')]
+              out.write(f'### {name}\n\n')
+              path = os.path.join(d, 'results.json')
+              if not os.path.isfile(path):
+                  out.write('_no `results.json` — flood run produced no output for this test_\n\n')
+                  continue
+              try:
+                  data = json.loads(open(path, 'rb').read())
+              except Exception as e:
+                  out.write(f'_failed to parse `{path}`: {e}_\n\n')
+                  continue
+
+              # Schema produced by flood 0.3.x:
+              #   results: { <node_name>: { target_rate: [N steps], p50: [N], p95: [N], p99: [N], success: [N], ... } }
+              # Each node has parallel arrays — same length, indexed by RPS step.
+              per_node = data.get('results') or {}
+              if not per_node:
+                  out.write('_results section empty — see uploaded artifact_\n\n')
+                  continue
+
+              nodes = list(per_node.keys())
+              first = per_node[nodes[0]]
+              rates = first.get('target_rate') or []
+              if not rates:
+                  out.write('_no target_rate array — schema mismatch, see uploaded artifact_\n\n')
+                  continue
+
+              out.write('| Step | Target RPS | Node | p50 | p95 | p99 | success |\n')
+              out.write('|---:|---:|---|---:|---:|---:|---:|\n')
+              for i, rate in enumerate(rates):
+                  for node in nodes:
+                      ns = per_node[node]
+                      def at(key):
+                          arr = ns.get(key)
+                          return arr[i] if isinstance(arr, list) and i < len(arr) else None
+                      out.write(f'| {i + 1} | {rate} | {node} | {fmt_ms(at("p50"))} | {fmt_ms(at("p95"))} | {fmt_ms(at("p99"))} | {fmt_pct(at("success"))} |\n')
+              out.write('\n')
+
+          out.close()
+          PY
+
           actual_size=$(wc -c < "$tmp_summary")
           if (( actual_size > SUMMARY_BUDGET_BYTES )); then
             head -c "$SUMMARY_BUDGET_BYTES" "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
-            printf '\n\n_Summary truncated at %s bytes (limit %s). See the `flood-results` artifact for the full per-method reports._\n' \
+            printf '\n\n_Summary truncated at %s bytes (limit %s). See the `flood-results` artifact for full data._\n' \
               "$actual_size" "$SUMMARY_BUDGET_BYTES" >> "$GITHUB_STEP_SUMMARY"
           else
             cat "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
@@ -614,5 +655,4 @@ jobs:
             output_archive.txt
             *_perf_result
             *_perf_result.txt
-            *_perf_result.report.txt
             equality_result_*
