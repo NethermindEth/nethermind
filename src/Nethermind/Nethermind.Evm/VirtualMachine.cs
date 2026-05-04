@@ -566,9 +566,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         // For a top-level call, immediately return a final transaction substate.
+        // The state-gas reset (ResetForHalt) is performed by TransactionProcessor.Refund,
+        // after reverted execution state-gas has been returned to the transaction frame.
         if (_currentState.IsTopLevel)
         {
-            RefundHaltedTopLevelStateGas();
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
             shouldExit = true;
@@ -621,14 +622,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, stateGasFloor);
         }
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void RefundHaltedTopLevelStateGas() =>
-        // EIP-8037 top-level halt: frame resets to (gas_left=0, reservoir=R0). The
-        // reservoir snaps back to its tx-start value and spill is zeroed. StateGasUsed
-        // is preserved so block-level sum_state reflects the actual state-gas charged
-        // during execution; spentGas resolves cleanly to txGasLimit - R0.
-        TGasPolicy.ResetForHalt(ref _currentState.Gas, _currentState.InitialStateReservoir);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void CreditStateGasRefund(ref TGasPolicy gas, long amount)
@@ -727,9 +720,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         RevertParityTouchBugAccount();
 
         // If this is the top-level call, return a final transaction substate encapsulating the error.
+        // The state-gas reset is performed by TransactionProcessor.Refund (see top-level halt
+        // path above for rationale).
         if (_currentState.IsTopLevel)
         {
-            RefundHaltedTopLevelStateGas();
             shouldExit = true;
             return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
         }

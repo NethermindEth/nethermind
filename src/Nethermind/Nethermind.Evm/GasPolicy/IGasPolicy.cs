@@ -121,6 +121,25 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual long GetStateGasSpill(in TSelf gas) => 0;
 
     /// <summary>
+    /// Gets cumulative spill that was paid via gas_left in reverted child frames. This counter is
+    /// tx-wide and never undone, allowing the top-level halt formula to reattribute the burned
+    /// spill from the state dimension to the regular dimension. Pre-EIP-8037 policies return 0.
+    /// </summary>
+    /// <param name="gas">The gas state to query.</param>
+    /// <returns>Cumulative state gas paid via spill in inner frames that did not commit.</returns>
+    static virtual long GetStateGasSpillBurned(in TSelf gas) => 0;
+
+    /// <summary>
+    /// Gets state gas spill from reverted child frames that remains in the block regular
+    /// dimension after an in-frame state refund removed the refunded state cost.
+    /// Pre-EIP-8037 policies return 0.
+    /// </summary>
+    /// <param name="gas">The gas state to query.</param>
+    /// <returns>Reclassified state gas spill to add back to block regular gas.</returns>
+    static virtual long GetStateGasSpillReclassified(in TSelf gas) => 0;
+
+
+    /// <summary>
     /// Consume gas for an EVM operation.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
@@ -344,16 +363,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) { }
 
     /// <summary>
-    /// EIP-8037 top-level halt reset: reservoir snaps back to its tx-start value (R0)
-    /// — discarding any reservoir credits that propagated up from inner-call REVERTs
-    /// so spentGas reduces cleanly to txGasLimit - R0 — and StateGasSpill is zeroed.
-    /// StateGasUsed is preserved so block-level sum_state still reflects the actual
-    /// state-gas charged during execution, including the spilled portion.
-    /// Pre-EIP-8037 policies are noop.
+    /// EIP-8037 top-level halt reset: snap state-gas back to its tx-start shape
+    /// (reservoir=R0, used=intrinsicStateUsed, spill=0). The post-reset StateGasUsed
+    /// feeds SpentGas so the user does not keep paying for state-gas they didn't get
+    /// to commit. Pre-EIP-8037 policies are noop.
     /// </summary>
     /// <param name="gas">The gas state to reset.</param>
     /// <param name="initialStateReservoir">Reservoir at the top frame's creation (R0).</param>
-    static virtual void ResetForHalt(ref TSelf gas, long initialStateReservoir) { }
+    /// <param name="initialStateGasUsed">State-gas-used floor (intrinsic state cost).</param>
+    static virtual void ResetForHalt(ref TSelf gas, long initialStateReservoir, long initialStateGasUsed) { }
 
     /// <summary>
     /// Returns the regular gas portion of EIP-7702 code insert refunds (for end-of-tx refund cap).

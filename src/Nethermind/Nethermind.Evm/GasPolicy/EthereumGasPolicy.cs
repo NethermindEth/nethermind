@@ -23,6 +23,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas that spilled from gas_left (for block regular gas exclusion).</summary>
     public long StateGasSpill;
+    /// <summary>Tx-cumulative state gas spill from reverted child frames used by top-level halt accounting.</summary>
+    public long StateGasSpillBurned;
+    /// <summary>State gas spill that should remain in the block regular dimension.</summary>
+    public long StateGasSpillReclassified;
     /// <summary>Per-block EIP-8037 cost-per-state-byte.</summary>
     public long CostPerStateByte;
 
@@ -76,6 +80,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long GetStateGasSpillReclassified(in EthereumGasPolicy gas) => gas.StateGasSpillReclassified;
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref EthereumGasPolicy gas, long cost) => gas.Value -= cost;
@@ -123,33 +133,54 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateReservoir += childGas.StateReservoir;
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
+        gas.StateGasSpillBurned += childGas.StateGasSpillBurned;
+        gas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
         gas.CostPerStateByte = GetCostPerStateByte(in childGas);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     // On explicit REVERT, restore the child's remaining state reservoir plus its unreverted
     // state gas usage, then subtract inline refunds that inflated the reservoir inside the
-    // child. Descendant spill remains tracked in StateGasSpill for block-level deduction.
+    // child. The child's StateGasSpill (which already includes any spill propagated up from
+    // descendants) is recorded permanently in StateGasSpillBurned for top-level halt accounting.
+    // If the child applied an inline state refund (for example failed CREATE state cost), only
+    // the spill that remains after that refund stays in Geth's regular dimension.
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
     {
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childStateRefund;
         parentGas.StateGasSpill += childGas.StateGasSpill;
+        parentGas.StateGasSpillBurned += childGas.StateGasSpill;
+        parentGas.StateGasSpillReclassified +=
+            childGas.StateGasSpillReclassified + GetReclassifiedStateGasSpill(in childGas, childStateRefund);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    // Do NOT propagate childGas.StateGasSpill: an exceptional halt burns the child's
-    // regular gas — including the portion that was charged via spill. Propagating
-    // would let Calculate8037BlockRegularGas subtract that already-burned gas from
-    // the block's regular total, undercounting block.gasUsed by the spill amount.
-    public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir) =>
+    // Do NOT propagate childGas.StateGasSpill into parentGas.StateGasSpill: an exceptional halt
+    // burns the child's regular gas - including the portion that was charged via spill. Letting
+    // Calculate8037BlockRegularGas subtract that already-burned gas from the block's regular total
+    // would undercount block.gasUsed by the spill amount.
+    // Do NOT add childGas.StateGasSpill to parentGas.StateGasSpillBurned either: an inner halt's
+    // burned regular gas is already included in the initial regular budget that the top-level
+    // halt formula attributes to the regular dimension. Adding it again via spillBurned would
+    // double-count (regression seen at block 423). Only propagate child's cumulative spillBurned,
+    // which carries grand-descendant REVERT spill that hasn't yet been attributed.
+    public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
+    {
         parentGas.StateReservoir += GetRestoredChildStateReservoir(in childGas, initialStateReservoir);
+        parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
+        parentGas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
     {
         // Code deposit failure is an exceptional halt: the child's state is reverted.
-        // Refund already added child.StateReservoir, child.StateGasUsed, and child.StateGasSpill to parent.
-        // Halt semantics discard child's StateGasUsed and return it to the reservoir.
+        // Refund already added child.StateReservoir, child.StateGasUsed, child.StateGasSpill,
+        // and child.StateGasSpillBurned to parent. Halt semantics discard child's StateGasUsed
+        // and return it to the reservoir. Leave parent.StateGasSpill alone: its child-portion
+        // is already accounted for by the non-halt block-regular formula's `- StateGasSpill`
+        // adjustment, and rerouting into StateGasSpillBurned would double-attribute the same
+        // gas at the block-level halt formula.
         parentGas.StateReservoir += GetRestoredChildStateReservoir(in childGas, initialStateReservoir) - childGas.StateReservoir;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
     }
@@ -161,6 +192,18 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return initialStateReservoir;
 
         return childGas.StateReservoir + Math.Min(childGas.StateGasUsed, initialStateReservoir - childGas.StateReservoir);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long GetReclassifiedStateGasSpill(in EthereumGasPolicy childGas, long childStateRefund)
+    {
+        if (childStateRefund <= 0)
+        {
+            return 0;
+        }
+
+        long unreclassifiedSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillReclassified);
+        return Math.Max(0, unreclassifiedSpill - childStateRefund);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -300,15 +343,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ResetForHalt(ref EthereumGasPolicy gas, long initialStateReservoir)
+    public static void ResetForHalt(ref EthereumGasPolicy gas, long initialStateReservoir, long initialStateGasUsed)
     {
-        // Reservoir snaps back to its tx-start value (user can't reclaim the
-        // reservoir-portion via a halt) and spill is zeroed. Per EIP-8037,
-        // StateGasUsed is left intact so the block-level state dimension reflects
-        // the actual state-gas charged during execution; resetting it here would
-        // silently drop the spilled portion from sum_state and undercount
-        // block.gasUsed = max(sum_regular, sum_state).
+        // Snap state-gas back to its tx-start shape (reservoir=R0, used=intrinsic floor,
+        // spill=0). The post-reset StateGasUsed feeds SpentGas so the user does not keep
+        // paying for state-gas that did not commit.
+        // StateGasSpillBurned is intentionally preserved: it records spill from inner-frame
+        // reverts that was burned earlier in the tx and must remain available to the halt
+        // formula so the spill can be reattributed from state to regular dimension.
         gas.StateReservoir = initialStateReservoir;
+        gas.StateGasUsed = initialStateGasUsed;
         gas.StateGasSpill = 0;
     }
 

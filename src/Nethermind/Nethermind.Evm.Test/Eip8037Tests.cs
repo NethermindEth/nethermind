@@ -291,12 +291,35 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child, initialStateReservoir: 0);
 
-        // Spill must NOT propagate on exceptional halt: halt burns the child's regular gas
-        // (including the spilled portion). Calculate8037BlockRegularGas already accounts for
-        // that burn via the forwarded child gas — propagating spill here would cause the
-        // formula's `- stateGasSpill` term to subtract the same regular gas a second time,
-        // undercounting block.gasUsed by the spill amount.
+        // Spill must NOT propagate to parent.StateGasSpill or parent.StateGasSpillBurned on
+        // exceptional halt: halt burns the child's regular gas (incl. the spilled portion), which
+        // is already in the parent's initial regular budget that the top-level halt formula
+        // attributes to the regular dimension. Adding it via either StateGasSpill (subtraction in
+        // non-halt formula) or StateGasSpillBurned (reattribution in halt formula) would
+        // double-count (regression caught by bal-devnet-6 block 423).
         Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 0L)));
+        Assert.That(parent.StateGasSpillBurned, Is.EqualTo(0L),
+            "child halt does NOT propagate live spill into the cumulative burn counter");
+        Assert.That(parent.StateGasSpillReclassified, Is.EqualTo(0L),
+            "child halt does NOT reclassify live spill for a containing frame that later succeeds");
+    }
+
+    [Test]
+    public void Revert_with_state_refund_reclassifies_unrefunded_spill()
+    {
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy child = new()
+        {
+            Value = 100,
+            StateReservoir = 0,
+            StateGasUsed = 0,
+            StateGasSpill = GasCostOf.CreateState + 3 * GasCostOf.SSetState,
+        };
+
+        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, initialStateReservoir: 0, childStateRefund: GasCostOf.CreateState);
+
+        Assert.That(parent.StateGasSpillReclassified, Is.EqualTo(3 * GasCostOf.SSetState),
+            "bal-devnet-6 block 1788: the failed CREATE state refund stays excluded, but the three SSTORE spills remain block-regular gas");
     }
 
     [Test]
@@ -310,7 +333,200 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.Refund(ref parent, in child);
         EthereumGasPolicy.RevertRefundToHalt(ref parent, in child, initialStateReservoir: 0);
 
+        // Code-deposit-failure leaves parent.StateGasSpill carrying the child's spill so
+        // Calculate8037BlockRegularGas (non-halt path) reattributes it from regular to state.
+        // Rerouting into StateGasSpillBurned would double-attribute when the parent eventually
+        // succeeds at the top level (regression caught by bal-devnet-6 block 423).
         Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 200L)));
+        Assert.That(parent.StateGasSpillBurned, Is.EqualTo(0L),
+            "code-deposit halt does NOT reroute live spill into the cumulative burn counter");
+    }
+
+    [Test]
+    public void ResetForHalt_snaps_state_gas_to_tx_start_shape()
+    {
+        // Architectural invariant: ResetForHalt resets the policy struct to its tx-start
+        // shape — reservoir back to R0, StateGasUsed to the intrinsic floor, spill to 0.
+        // The post-reset values feed SpentGas (= txGasLimit - remaining - reservoir) so
+        // the user does not keep paying for state-gas they didn't get to commit.
+        EthereumGasPolicy gas = new() { Value = 100_000, StateReservoir = 1_000, StateGasUsed = 0 };
+
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 5_000), Is.True);
+        Assert.That((gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill), Is.EqualTo((0L, 5_000L, 4_000L)),
+            "consume 5_000 state-gas with 1_000 reservoir => reservoir=0, used=5_000, spill=4_000");
+
+        EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: 1_000, initialStateGasUsed: 0);
+
+        Assert.That(gas.StateReservoir, Is.EqualTo(1_000L), "reservoir snaps to R0");
+        Assert.That(gas.StateGasUsed, Is.EqualTo(0L), "state-gas-used snaps to intrinsic floor");
+        Assert.That(gas.StateGasSpill, Is.EqualTo(0L), "spill is zeroed");
+    }
+
+    [Test]
+    public void Top_level_halt_block_state_gas_snapshot_captures_spill_only_not_reservoir_portion()
+    {
+        // Per EIP-8037, block.gasUsed = max(sum_regular, sum_state). On a top-level halt:
+        //   - the reservoir-portion of charged state-gas is refunded (the user does not pay
+        //     for state-gas that did not commit and was within the reservoir budget),
+        //   - the spill-portion stays charged because it was paid for via the regular gas
+        //     budget (spill = state-gas that overflowed the reservoir into regular gas).
+        // Callers building the block-level contribution must snapshot StateGasSpill BEFORE
+        // ResetForHalt zeroes it, then add it on top of the post-reset StateGasUsed
+        // (= intrinsic floor). Snapshotting full StateGasUsed would over-count by the
+        // reservoir-portion that was correctly refunded.
+        EthereumGasPolicy gas = new() { Value = 100_000, StateReservoir = 1_000, StateGasUsed = 0 };
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 5_000), Is.True);
+        Assert.That((gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill), Is.EqualTo((0L, 5_000L, 4_000L)),
+            "after consuming 5_000 with 1_000 reservoir: reservoir=0, used=5_000 (= 1_000 reservoir-portion + 4_000 spill), spill=4_000");
+
+        // CORRECT pattern: snapshot SPILL only (not full StateGasUsed) BEFORE reset.
+        long preHaltSpill = gas.StateGasSpill;
+        Assert.That(preHaltSpill, Is.EqualTo(4_000L), "spill-only snapshot");
+
+        EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: 1_000, initialStateGasUsed: 0);
+
+        // Block-level contribution = post-reset StateGasUsed (intrinsic floor) + pre-halt spill.
+        // The reservoir-portion (1_000) is correctly excluded — that's the refunded portion.
+        long blockLevelContribution = gas.StateGasUsed + preHaltSpill;
+        Assert.That(blockLevelContribution, Is.EqualTo(4_000L),
+            "block-level sum_state contribution = floor (0) + spill (4_000); reservoir-portion (1_000) is refunded");
+    }
+
+    [Test]
+    public void Top_level_halt_block_state_gas_overcounts_if_full_state_gas_used_is_snapshotted()
+    {
+        // Regression-guard: snapshotting full StateGasUsed (instead of just spill) over-counts
+        // block-level sum_state by the reservoir-portion. This was the symptom seen at block 1780
+        // of bal-devnet-6 fixtures: 1 SSTORE charged from reservoir (no spill) caused +37,568
+        // overcount in block.gasUsed when the full StateGasUsed was used for the snapshot.
+        const long reservoirAtTxStart = 100_000;
+        const long stateGasCharged = 37_568;    // 1 SSetState, fully covered by reservoir, no spill
+
+        EthereumGasPolicy gas = new() { Value = 1_000_000, StateReservoir = reservoirAtTxStart, StateGasUsed = 0 };
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, stateGasCharged), Is.True);
+        Assert.That(gas.StateGasSpill, Is.EqualTo(0L), "reservoir covers full charge; no spill");
+        Assert.That(gas.StateGasUsed, Is.EqualTo(stateGasCharged), "full charge recorded in StateGasUsed");
+
+        long wrongSnapshot = gas.StateGasUsed;     // = 37_568 — what the buggy fix would use
+        long correctSnapshot = gas.StateGasSpill;  // = 0 — what the canonical contribution is
+
+        EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: reservoirAtTxStart, initialStateGasUsed: 0);
+
+        long blockLevelCorrect = gas.StateGasUsed + correctSnapshot;
+        long blockLevelWrong = gas.StateGasUsed + wrongSnapshot;
+        Assert.That(blockLevelWrong - blockLevelCorrect, Is.EqualTo(37_568L),
+            "snapshotting StateGasUsed (instead of StateGasSpill) overcounts block-level sum_state by exactly the reservoir-portion (= 1 SSetState in this case)");
+    }
+
+    [Test]
+    public void Top_level_halt_block_state_gas_per_tx_pattern_with_spill()
+    {
+        // Per-tx pattern: state-gas charged exceeds the reservoir, so part spills into
+        // regular gas (the user paid for it via regular budget). Block-level sum_state
+        // contribution per halt = floor + spill. Across N halts in a block, sum is
+        // N * (floor + spill). Reading the post-reset StateGasUsed alone (= floor) without
+        // adding spill would undercount by N * spill.
+        const long perTxGasLimit = 1_000_000;
+        const long intrinsicStateGas = 0;
+        const long reservoirAtTxStart = 100_000;
+        const long stateGasCharged = 104_174;   // reservoir(100k) consumed + 4_174 spill
+
+        EthereumGasPolicy gas = new() { Value = perTxGasLimit, StateReservoir = reservoirAtTxStart, StateGasUsed = intrinsicStateGas };
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, stateGasCharged), Is.True);
+        Assert.That(gas.StateGasSpill, Is.EqualTo(4_174L), "4_174 spill from reservoir overflow");
+
+        long preHaltSpill = gas.StateGasSpill;
+        EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: reservoirAtTxStart, initialStateGasUsed: intrinsicStateGas);
+
+        long blockLevelContribution = gas.StateGasUsed + preHaltSpill;
+        Assert.That(blockLevelContribution, Is.EqualTo(intrinsicStateGas + 4_174L),
+            "per-tx block-level contribution = intrinsic floor + spill; reservoir-portion is refunded");
+    }
+
+    [Test]
+    public void Inner_revert_burned_spill_propagates_to_state_gas_spill_burned()
+    {
+        // EIP-8037: when a child frame REVERTS after spilling state gas from gas_left, that
+        // spill is regular gas burned to pay for state work that is now reverted. The child's
+        // remaining regular gas is returned, but the spilled portion is gone. For block-level
+        // accounting, this burned spill should be reattributed from the state dimension to the
+        // regular dimension at the top-level halt formula.
+        EthereumGasPolicy parent = new() { Value = 100_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 50_000);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref child, 4_174L), Is.True,
+            "child consumes 4_174 state-gas with reservoir=0; entirely spills from gas_left");
+        Assert.That(child.StateGasSpill, Is.EqualTo(4_174L));
+
+        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, initialStateReservoir: 0, childStateRefund: 0);
+
+        Assert.That(parent.StateGasSpill, Is.EqualTo(4_174L), "live spill propagates to parent for non-halt accounting");
+        Assert.That(parent.StateGasSpillBurned, Is.EqualTo(4_174L),
+            "inner-revert burned-spill is also recorded in tx-cumulative counter for halt accounting");
+    }
+
+    [Test]
+    public void State_gas_spill_burned_propagates_through_success_chain()
+    {
+        // Cumulative invariant: when a grandchild reverts with spill but its child succeeds,
+        // the burned-spill counter must propagate up through the success chain so the top-level
+        // halt formula sees it.
+        EthereumGasPolicy parent = new() { Value = 500_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 400_000);
+
+        EthereumGasPolicy grandchild = EthereumGasPolicy.CreateChildFrameGas(ref child, 200_000);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref grandchild, 4_174L), Is.True);
+        EthereumGasPolicy.RestoreChildStateGas(ref child, in grandchild, initialStateReservoir: 0, childStateRefund: 0);
+        Assert.That(child.StateGasSpillBurned, Is.EqualTo(4_174L));
+
+        EthereumGasPolicy.Refund(ref parent, in child);
+
+        Assert.That(parent.StateGasSpillBurned, Is.EqualTo(4_174L),
+            "Refund propagates child.StateGasSpillBurned cumulatively through the success path");
+    }
+
+    [Test]
+    public void Reset_for_halt_preserves_state_gas_spill_burned()
+    {
+        // ResetForHalt zeros live state-gas tracking (StateGasUsed/Reservoir/Spill) but MUST NOT
+        // reset StateGasSpillBurned: that counter is tx-wide cumulative and is consumed by the
+        // top-level halt formula AFTER ResetForHalt to reattribute the burn.
+        EthereumGasPolicy gas = new()
+        {
+            Value = 0,
+            StateReservoir = 0,
+            StateGasUsed = 131_488,
+            StateGasSpill = 0,
+            StateGasSpillBurned = 4_174,
+        };
+
+        EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: 0, initialStateGasUsed: 131_488);
+
+        Assert.That(gas.StateGasSpillBurned, Is.EqualTo(4_174L),
+            "StateGasSpillBurned survives ResetForHalt so the halt formula can reattribute the burned spill");
+    }
+
+    [Test]
+    public void Top_level_halt_block_regular_dimension_includes_burned_spill()
+    {
+        // Regression for bal-devnet-6 block 1788 (and EIP-8037 in general): a top-level halt
+        // tx with N inner-frame reverts that each spilled S of state gas from gas_left should
+        // contribute (initialRegular + N*S) to block_regular and (intrinsicState - N*S) to
+        // block_state. The burned spill belongs in the regular dimension because it was paid
+        // from gas_left, not from the reservoir.
+        const long txGasLimit = 16_000_000;
+        const long intrinsicStateGas = 131_488;   // EIP-8037 CREATE state cost
+        const long innerRevertSpill = 4_174;
+
+        long initialReservoir = Math.Max(0, txGasLimit - intrinsicStateGas - 16_777_216);
+        long expectedBlockRegularBeforeFix = txGasLimit - intrinsicStateGas - initialReservoir;
+        long effectiveStateGas = Math.Max(0, intrinsicStateGas - innerRevertSpill);
+        long blockRegular = txGasLimit - effectiveStateGas - initialReservoir;
+        long blockState = effectiveStateGas;
+
+        Assert.That(blockRegular - expectedBlockRegularBeforeFix, Is.EqualTo(innerRevertSpill),
+            "applying the spillBurned reattribution adds the burned spill to block_regular");
+        Assert.That(blockState, Is.EqualTo(intrinsicStateGas - innerRevertSpill),
+            "block_state is reduced by the same amount so total = max(regular, state) is consistent");
     }
 
     [Test]
