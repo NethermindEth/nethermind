@@ -80,7 +80,7 @@ public class StateSyncRunner(
             // in StateNodes mode and close to head.
             await StateSyncPrecursorWait(token);
 
-            BlockHeader? roundPivot = treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            BlockHeader? roundPivot = treeSync.ResetStateRootToBestSuggested();
             if (roundPivot is null) continue;
 
             await stateSyncDispatcher.Run(token);

@@ -387,14 +387,11 @@ namespace Nethermind.Synchronization.FastSync
 
         public void FinalizeSync(BlockHeader pivotHeader) => _store.FinalizeSync(pivotHeader);
 
-        public void ResetStateRoot(SyncFeedState currentState) => ResetStateRoot(_blockNumber, _rootNode, currentState);
+        public void ResetStateRoot() => ResetStateRoot(_blockNumber, _rootNode);
 
-        public BlockHeader? ResetStateRootToBestSuggested(SyncFeedState currentState)
+        public BlockHeader? ResetStateRootToBestSuggested()
         {
-            if (currentState == SyncFeedState.Dormant)
-            {
-                _stateSyncPivot.UpdateHeaderForcefully();
-            }
+            _stateSyncPivot.UpdateHeaderForcefully();
 
             BlockHeader headerForState = _stateSyncPivot.GetPivotHeader();
 
@@ -405,18 +402,13 @@ namespace Nethermind.Synchronization.FastSync
             }
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
-            ResetStateRoot(headerForState.Number, headerForState.StateRoot!, currentState);
+            ResetStateRoot(headerForState.Number, headerForState.StateRoot!);
             return headerForState;
         }
 
-        private void ResetStateRoot(long blockNumber, Hash256 stateRoot, SyncFeedState currentState)
+        private void ResetStateRoot(long blockNumber, Hash256 stateRoot)
         {
             _lastResetRoot = DateTime.UtcNow;
-            if (currentState != SyncFeedState.Dormant)
-            {
-                throw new InvalidOperationException("Cannot reset state sync on an active feed");
-            }
-
             Interlocked.Exchange(ref _hintsToResetRoot, 0);
 
             if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
