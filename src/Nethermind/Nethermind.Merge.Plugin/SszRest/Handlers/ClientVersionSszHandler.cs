@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 
@@ -26,12 +25,7 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : Ssz
         ClientVersionV1 callerVersion = SszCodec.DecodeClientVersionRequest(body.Span);
 
         ResultWrapper<ClientVersionV1[]> result = _engineModule.engine_getClientVersionV1(callerVersion);
-        if (result.Result.ResultType == ResultType.Failure)
-        {
-            ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            return;
-        }
 
-        await WriteSszPooledAsync(ctx, SszCodec.EncodeClientVersionResponse(result.Data));
+        await WriteSszResultAsync(ctx, result, SszCodec.EncodeClientVersionResponse);
     }
 }
