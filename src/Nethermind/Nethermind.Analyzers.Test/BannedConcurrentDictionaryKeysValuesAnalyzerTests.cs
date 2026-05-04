@@ -58,77 +58,22 @@ public class BannedConcurrentDictionaryKeysValuesAnalyzerTests
     }
 
     [Test]
-    public async Task Same_named_type_in_unrelated_namespace_no_diagnostic()
+    public async Task Non_target_patterns_no_diagnostic()
     {
-        // Verify the analyzer matches on full metadata name, not simple name.
+        // Bundle every "not flagged" case: same-named type in a different namespace,
+        // plain Dictionary, user-defined Keys/Values properties, and other
+        // ConcurrentDictionary members (foreach, TryGetValue, Count, etc.).
         string source = """
+            using System.Collections.Generic;
+            using System.Collections.Concurrent;
             namespace Other
             {
                 public class ConcurrentDictionary<TKey, TValue>
                 {
-                    public System.Collections.Generic.ICollection<TKey> Keys => null!;
-                    public System.Collections.Generic.ICollection<TValue> Values => null!;
+                    public ICollection<TKey> Keys => null!;
+                    public ICollection<TValue> Values => null!;
                 }
             }
-            class Test
-            {
-                void M()
-                {
-                    var dict = new Other.ConcurrentDictionary<int, int>();
-                    var k = dict.Keys;
-                    var v = dict.Values;
-                }
-            }
-            """;
-
-        await Verify(source);
-    }
-
-    [Test]
-    public async Task Plain_Dictionary_no_diagnostic()
-    {
-        string source = """
-            using System.Collections.Generic;
-            class Test
-            {
-                void M()
-                {
-                    var dict = new Dictionary<int, int>();
-                    var k = dict.Keys;
-                    var v = dict.Values;
-                }
-            }
-            """;
-
-        await Verify(source);
-    }
-
-    [Test]
-    public async Task Other_ConcurrentDictionary_members_no_diagnostic()
-    {
-        string source = """
-            using System.Collections.Concurrent;
-            class Test
-            {
-                void M()
-                {
-                    var dict = new ConcurrentDictionary<int, int>();
-                    dict.TryGetValue(1, out _);
-                    dict.ContainsKey(1);
-                    foreach (var kv in dict) { _ = kv; }
-                    var c = dict.Count;
-                    var e = dict.IsEmpty;
-                }
-            }
-            """;
-
-        await Verify(source);
-    }
-
-    [Test]
-    public async Task Userdefined_type_with_Keys_property_no_diagnostic()
-    {
-        string source = """
             class MyBag
             {
                 public int[] Keys => System.Array.Empty<int>();
@@ -138,9 +83,20 @@ public class BannedConcurrentDictionaryKeysValuesAnalyzerTests
             {
                 void M()
                 {
+                    var plain = new Dictionary<int, int>();
+                    var k1 = plain.Keys; var v1 = plain.Values;
+
+                    var other = new Other.ConcurrentDictionary<int, int>();
+                    var k2 = other.Keys; var v2 = other.Values;
+
                     var bag = new MyBag();
-                    var k = bag.Keys;
-                    var v = bag.Values;
+                    var k3 = bag.Keys; var v3 = bag.Values;
+
+                    var cd = new ConcurrentDictionary<int, int>();
+                    cd.TryGetValue(1, out _);
+                    cd.ContainsKey(1);
+                    foreach (var kv in cd) { _ = kv; }
+                    var c = cd.Count; var e = cd.IsEmpty;
                 }
             }
             """;
