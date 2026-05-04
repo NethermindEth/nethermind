@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using Nethermind.Core.Caching;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.State.Flat.Storage;
@@ -20,113 +24,220 @@ public readonly record struct PageKey(int ArenaId, int PageIdx);
 /// per-slot accessed bits. On <see cref="Touch"/>, marks the slot accessed (fast path) or installs
 /// a new slot, evicting the LRU page via the clock algorithm. Eviction invokes a callback whose
 /// purpose is to <c>madvise(MADV_DONTNEED)</c> the evicted OS page so the kernel can drop it.
+/// Sharded by <see cref="PageKey"/> hash so each shard owns an independent clock arm + dictionary
+/// + lock; this trades the previous lock-free <c>ConcurrentDictionary</c> fast path for reduced
+/// contention via N independent <see cref="McsLock"/>s.
 /// </summary>
-public sealed class PageClockCache(int maxCapacity, Action<int, int>? onEvict = null)
-    : ClockCacheBase<PageKey>(maxCapacity)
+public sealed class PageClockCache
 {
-    private readonly ConcurrentDictionary<PageKey, int> _slotByPage = maxCapacity == 0
-        ? new ConcurrentDictionary<PageKey, int>()
-        : new ConcurrentDictionary<PageKey, int>(Environment.ProcessorCount, maxCapacity);
-    private readonly McsLock _lock = new();
-    private readonly Action<int, int>? _onEvict = onEvict;
+    private const int BitShiftPerInt64 = 6;
+
+    private readonly int _maxCapacity;
+    private readonly Shard[] _shards;
+    private readonly int _shardMask;
+    private readonly Action<int, int>? _onEvict;
     private long _touchCount;
+
+    public int MaxCapacity => _maxCapacity;
+
+    public int Count
+    {
+        get
+        {
+            int sum = 0;
+            foreach (Shard s in _shards) sum += Volatile.Read(ref s.Count);
+            return sum;
+        }
+    }
 
     /// <summary>Total number of <see cref="Touch"/> calls observed (including fast-path hits).</summary>
     internal long TouchCount => Volatile.Read(ref _touchCount);
 
-    public void Touch(int arenaId, int pageIdx)
+    public PageClockCache(int maxCapacity, Action<int, int>? onEvict = null)
+        : this(maxCapacity, DefaultShardCount(maxCapacity), onEvict)
     {
-        if (MaxCapacity == 0) return;
-        Interlocked.Increment(ref _touchCount);
+    }
 
-        PageKey key = new(arenaId, pageIdx);
-        if (_slotByPage.TryGetValue(key, out int slot))
+    internal PageClockCache(int maxCapacity, int shardCount, Action<int, int>? onEvict = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(shardCount);
+
+        _maxCapacity = maxCapacity;
+        _onEvict = onEvict;
+
+        if (maxCapacity == 0)
         {
-            MarkAccessed(slot);
+            _shards = [new Shard(0)];
+            _shardMask = 0;
             return;
         }
 
-        InsertSlow(key);
+        // Round shardCount up to power of two, clamp so each shard gets >= 1 slot.
+        int desired = (int)BitOperations.RoundUpToPowerOf2((uint)shardCount);
+        if (desired > maxCapacity)
+            desired = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, maxCapacity));
+        if (desired > maxCapacity) desired >>= 1;
+        if (desired < 1) desired = 1;
+
+        int perShard = (maxCapacity + desired - 1) / desired;
+        _shards = new Shard[desired];
+        for (int i = 0; i < desired; i++) _shards[i] = new Shard(perShard);
+        _shardMask = desired - 1;
     }
 
-    private void InsertSlow(PageKey key)
+    private static int DefaultShardCount(int maxCapacity)
     {
+        if (maxCapacity == 0) return 1;
+        uint target = (uint)Math.Min(64, Math.Max(1, Environment.ProcessorCount * 4));
+        return (int)BitOperations.RoundUpToPowerOf2(target);
+    }
+
+    public void Touch(int arenaId, int pageIdx)
+    {
+        if (_maxCapacity == 0) return;
+        Interlocked.Increment(ref _touchCount);
+
+        PageKey key = new(arenaId, pageIdx);
+        Shard shard = _shards[(uint)key.GetHashCode() & (uint)_shardMask];
+
         PageKey evicted = default;
         bool didEvict = false;
 
-        using (_lock.Acquire())
+        using (shard.Lock.Acquire())
         {
-            // Re-check under lock — another thread may have inserted concurrently.
-            if (_slotByPage.TryGetValue(key, out int existingSlot))
+            if (shard.SlotByPage.TryGetValue(key, out int slot))
             {
-                MarkAccessed(existingSlot);
+                shard.MarkAccessed(slot);
                 return;
             }
 
             int offset;
-            if (FreeOffsets.Count > 0)
+            if (shard.FreeOffsets.Count > 0)
             {
-                offset = FreeOffsets.Dequeue();
+                offset = shard.FreeOffsets.Dequeue();
             }
-            else if (_count < MaxCapacity)
+            else if (shard.Count < shard.Capacity)
             {
-                offset = _count;
+                offset = shard.Count;
             }
             else
             {
-                offset = Replace(out evicted);
+                offset = shard.Replace(out evicted);
                 didEvict = true;
-                // Replace removed the evicted entry from _slotByPage and decremented _count.
             }
 
-            KeyToOffset[offset] = key;
-            _slotByPage[key] = offset;
-            _count++;
+            shard.KeyToOffset[offset] = key;
+            shard.SlotByPage[key] = offset;
+            shard.Count++;
             // New slot starts with accessed=false — it gets a chance to survive the next clock
             // sweep. Clearing here is defensive in case the bit was left set by a prior evictee.
-            ClearAccessed(offset);
+            shard.ClearAccessed(offset);
         }
 
         if (didEvict)
             _onEvict?.Invoke(evicted.ArenaId, evicted.PageIdx);
     }
 
-    private int Replace(out PageKey evicted)
+    internal bool ContainsPage(int arenaId, int pageIdx)
     {
-        int position = Clock;
-        int max = _count;
-        Debug.Assert(max > 0);
-        while (true)
+        PageKey key = new(arenaId, pageIdx);
+        Shard shard = _shards[(uint)key.GetHashCode() & (uint)_shardMask];
+        using (shard.Lock.Acquire())
+            return shard.SlotByPage.ContainsKey(key);
+    }
+
+    public void Clear()
+    {
+        if (_maxCapacity == 0) return;
+        foreach (Shard s in _shards)
         {
-            if (position >= max) position = 0;
-
-            bool accessed = ClearAccessed(position);
-            if (!accessed)
-            {
-                evicted = KeyToOffset[position];
-                if (!_slotByPage.TryRemove(evicted, out _))
-                    throw new InvalidOperationException(
-                        $"{nameof(PageClockCache)} removing entry {evicted} at slot {position} that doesn't exist");
-
-                _count--;
-                Clock = position + 1;
-                return position;
-            }
-
-            position++;
+            using (s.Lock.Acquire()) s.Clear();
         }
     }
 
-    internal bool ContainsPage(int arenaId, int pageIdx) =>
-        _slotByPage.ContainsKey(new PageKey(arenaId, pageIdx));
-
-    public new void Clear()
+    private sealed class Shard
     {
-        if (MaxCapacity == 0) return;
-        using (_lock.Acquire())
+        public readonly int Capacity;
+        public readonly Dictionary<PageKey, int> SlotByPage;
+        public readonly PageKey[] KeyToOffset;
+        public readonly long[] HasBeenAccessedBitmap;
+        public readonly Queue<int> FreeOffsets = new();
+        public readonly McsLock Lock = new();
+        public int Clock;
+        public int Count;
+
+        public Shard(int capacity)
         {
-            base.Clear();
-            _slotByPage.Clear();
+            Capacity = capacity;
+            if (capacity == 0)
+            {
+                SlotByPage = new Dictionary<PageKey, int>();
+                KeyToOffset = [];
+                HasBeenAccessedBitmap = [];
+            }
+            else
+            {
+                SlotByPage = new Dictionary<PageKey, int>(capacity);
+                KeyToOffset = new PageKey[capacity];
+                HasBeenAccessedBitmap = new long[((capacity - 1) >>> BitShiftPerInt64) + 1];
+            }
+        }
+
+        public void Clear()
+        {
+            Count = 0;
+            Clock = 0;
+            FreeOffsets.Clear();
+            SlotByPage.Clear();
+            KeyToOffset.AsSpan().Clear();
+            HasBeenAccessedBitmap.AsSpan().Clear();
+        }
+
+        public int Replace(out PageKey evicted)
+        {
+            int position = Clock;
+            int max = Count;
+            Debug.Assert(max > 0);
+            while (true)
+            {
+                if (position >= max) position = 0;
+
+                bool accessed = ClearAccessed(position);
+                if (!accessed)
+                {
+                    evicted = KeyToOffset[position];
+                    if (!SlotByPage.Remove(evicted))
+                        throw new InvalidOperationException(
+                            $"{nameof(PageClockCache)} removing entry {evicted} at slot {position} that doesn't exist");
+
+                    Count--;
+                    Clock = position + 1;
+                    return position;
+                }
+
+                position++;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool ClearAccessed(int position)
+        {
+            uint offset = (uint)position >> BitShiftPerInt64;
+            long flags = 1L << position;
+            ref long word = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
+            bool accessed = (word & flags) != 0;
+            word &= ~flags;
+            return accessed;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void MarkAccessed(int position)
+        {
+            uint offset = (uint)position >> BitShiftPerInt64;
+            long flags = 1L << position;
+            ref long word = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
+            word |= flags;
         }
     }
 }

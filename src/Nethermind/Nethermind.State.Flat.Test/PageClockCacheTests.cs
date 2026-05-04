@@ -30,7 +30,7 @@ public class PageClockCacheTests
     public void Touch_BeyondCapacity_EvictsLruPage()
     {
         List<(int arena, int page)> evictions = [];
-        PageClockCache cache = new(maxCapacity: 3, (a, p) => evictions.Add((a, p)));
+        PageClockCache cache = new(maxCapacity: 3, shardCount: 1, (a, p) => evictions.Add((a, p)));
 
         cache.Touch(0, 0);
         cache.Touch(0, 1);
@@ -47,7 +47,7 @@ public class PageClockCacheTests
     public void Touch_AccessedPage_SurvivesEvictionScan()
     {
         List<(int arena, int page)> evictions = [];
-        PageClockCache cache = new(maxCapacity: 2, (a, p) => evictions.Add((a, p)));
+        PageClockCache cache = new(maxCapacity: 2, shardCount: 1, (a, p) => evictions.Add((a, p)));
 
         cache.Touch(0, 100); // slot 0
         cache.Touch(0, 200); // slot 1
