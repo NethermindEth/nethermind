@@ -98,7 +98,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
     private bool _isUsingSharedBlockCache;
-    private ulong _ownBlockCacheSize;
     private long _addedMemoryPressure;
 
     public DbOnTheRocks(
@@ -124,7 +123,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
 
-        _addedMemoryPressure = (long)_writeBufferSize + (long)_ownBlockCacheSize;
         if (_addedMemoryPressure > 0) GC.AddMemoryPressure(_addedMemoryPressure);
     }
 
@@ -507,10 +505,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
 
         BlockBasedTableOptions? tableOptions = new();
+        // Per-call cache pressure to add to the GC. Cache memory owned by a HyperClockCacheWrapper
+        // (whether passed via dbConfig.BlockCache or as the shared cache) is already reported by
+        // that wrapper, so don't double-count here.
+        ulong perCallCachePressure = 0;
         if (dbConfig.BlockCache is not null)
         {
             tableOptions.SetBlockCache(dbConfig.BlockCache.Value);
-            _ownBlockCacheSize = blockCacheSize > 0 ? blockCacheSize : 32_000_000;
         }
         else if (sharedCache is not null && blockCacheSize == 0)
         {
@@ -519,7 +520,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         else
         {
-            _ownBlockCacheSize = blockCacheSize > 0 ? blockCacheSize : 32_000_000;
+            // RocksDB allocates a 32MB block cache by default if `block_based_table_factory.block_cache`
+            // is not specified in the options string.
+            perCallCachePressure = blockCacheSize > 0 ? blockCacheSize : 32_000_000;
         }
 
         // Note: the ordering is important.
@@ -563,6 +566,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             if (_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000} MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000} MB + {blockCacheSize / 1000 / 1000} MB)");
             if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000} MB");
         }
+
+        // Accumulate one full write buffer plus this column's own block cache (if any).
+        // BuildOptions is called once per column family for ColumnsDb, so accumulate to capture all columns.
+        _addedMemoryPressure += (long)_writeBufferSize + (long)perCallCachePressure;
 
         #endregion
 
