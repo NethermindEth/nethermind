@@ -20,9 +20,10 @@ namespace Nethermind.Taiko.Precompiles;
 ///
 /// Output: 32-byte storage value.
 /// </summary>
-public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
+public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IL1OriginAware
 {
     private const string L1StorageAccessFailed = "l1 storage access failed";
+    private const string BlockOutOfRange = "l1 block out of 256-block lookback range";
 
     public static L1SloadPrecompile Instance { get; } = new();
 
@@ -43,7 +44,15 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength ? 0L : L1PrecompileConstants.L1SloadPerLoadGasCost;
 
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    /// <summary>
+    /// Non-origin-aware fallback. Used by callers outside the Taiko VM (caching layer, tooling)
+    /// that don't have an L1 origin to pass. Equivalent to calling the origin-aware overload with
+    /// <c>l1Origin=null</c> (permissive).
+    /// </summary>
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        Run(inputData, releaseSpec, l1Origin: null);
+
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, UInt256? l1Origin)
     {
         L1PrecompileMetrics.L1SloadPrecompile++;
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: precompile called, input_len={inputData.Length}");
@@ -64,13 +73,12 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
         UInt256 storageKey = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)], isBigEndian: true);
         UInt256 blockNumber = new(inputData.Span[(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)..], isBigEndian: true);
 
-        // Defensive depth: precompile fast-fails here; JsonRpcL1StorageProvider validates independently
-        // for callers that reach the provider outside the precompile (admin tools, unit-test harnesses).
-        (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
-        if (!isValid)
+        // Range validation: only when an L1 origin is available. null = preconf block / eth_call /
+        // tooling path with no origin → permissive (the proving layer enforces correctness instead).
+        if (l1Origin is { } origin && !IsBlockInRange(blockNumber, origin))
         {
-            if (Logger.IsWarn) Logger.Warn($"L1SLOAD: {reason}");
-            return L1StorageAccessFailed;
+            if (Logger.IsWarn) Logger.Warn($"L1SLOAD: block {blockNumber} outside [{origin}-{L1PrecompileConstants.MaxBlockLookback}, {origin}]");
+            return BlockOutOfRange;
         }
 
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: request contract={contractAddress}, key={storageKey}, block={blockNumber}");
@@ -90,11 +98,14 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
         return output;
     }
 
+    private static bool IsBlockInRange(UInt256 blockNumber, UInt256 l1Origin) =>
+        blockNumber <= l1Origin && l1Origin - blockNumber <= (UInt256)L1PrecompileConstants.MaxBlockLookback;
+
     private UInt256? GetL1StorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)
     {
         try
         {
-            UInt256? result = L1StorageProvider?.GetStorageValue(contractAddress, blockNumber, storageKey);
+            UInt256? result = L1StorageProvider!.GetStorageValue(contractAddress, blockNumber, storageKey);
             if (Logger.IsTrace) Logger.Trace($"L1SLOAD: provider returned {(result is null ? "null" : result.Value.ToString())}");
             return result;
         }

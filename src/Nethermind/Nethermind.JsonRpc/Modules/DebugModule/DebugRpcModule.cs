@@ -707,17 +707,8 @@ public class DebugRpcModule(
 
         tx.SenderAddress ??= Address.Zero;
 
-        // Match the eth_call / debug_traceCall execution environment: clone the header so
-        // mutation doesn't leak, then zero the block's already-consumed gas. Without this,
-        // a view call with `tx.GasLimit` close to `header.GasLimit` — which is exactly the
-        // default applied above when the caller omits `gas` — trips the processor's
-        // `block.GasUsed + tx.GasLimit <= block.GasLimit` budget check, aborts before the
-        // WitnessGeneratingWorldState sees any account/storage/code access, and returns a
-        // silent single-node witness (state root only; no codes, no keys, no storage
-        // trie nodes) that then fails stateless re-execution downstream. The caller never
-        // passed an out-of-bounds gas value — gas was defaulted to the full block limit
-        // precisely because they didn't specify one, so rejecting their call on that basis
-        // is a handler-internal accounting issue the call site shouldn't have to know about.
+        // Clone header (avoid mutating caller's) and zero GasUsed so the budget check
+        // (block.GasUsed + tx.GasLimit <= block.GasLimit) doesn't reject default-gas calls.
         BlockHeader callHeader = header.Clone();
         callHeader.GasUsed = 0;
 

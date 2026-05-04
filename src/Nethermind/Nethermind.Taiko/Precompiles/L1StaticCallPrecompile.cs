@@ -27,12 +27,13 @@ namespace Nethermind.Taiko.Precompiles;
 ///   The L1 call is executed during Run() via debug_traceCall, with gas limit =
 ///   min(remainingGas, GasCap).
 /// </summary>
-public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrecompileGasAware
+public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrecompileGasAndOriginAware
 {
     public static readonly L1StaticCallPrecompile Instance = new();
     static L1StaticCallPrecompile IPrecompile<L1StaticCallPrecompile>.Instance => Instance;
 
     private const string L1StaticCallFailed = "l1 static call failed";
+    private const string BlockOutOfRange = "l1 block out of 256-block lookback range";
 
     private L1StaticCallPrecompile()
     {
@@ -52,7 +53,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
 
     /// <summary>
     /// Returns the static overhead cost: per-call overhead + per-byte calldata cost.
-    /// The dynamic L1 gas cost is handled by <see cref="Run(ReadOnlyMemory{byte}, IReleaseSpec, long)"/>.
+    /// The dynamic L1 gas cost is handled by <see cref="Run(ReadOnlyMemory{byte}, IReleaseSpec, long, UInt256?)"/>.
     /// </summary>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
@@ -65,10 +66,10 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
     }
 
     /// <summary>
-    /// Gas-aware execution: executes the L1 call, returns both the result and actual L1 gas consumed.
-    /// The VM deducts <c>gasConsumed</c> from the caller's remaining gas after this returns.
+    /// Gas-aware + origin-aware execution. The Taiko VM dispatches here when the precompile is
+    /// reached during normal block processing.
     /// </summary>
-    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, long remainingGas)
+    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, long remainingGas, UInt256? l1Origin)
     {
         L1PrecompileMetrics.L1StaticCallPrecompile++;
         if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: precompile called, input_len={inputData.Length}, remainingGas={remainingGas}");
@@ -89,13 +90,12 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
         UInt256 blockNumber = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.BlockNumberBytes)], isBigEndian: true);
         byte[] calldata = inputData.Span[(Address.Size + L1PrecompileConstants.BlockNumberBytes)..].ToArray();
 
-        // Defensive depth: precompile fast-fails here; JsonRpcL1CallProvider validates independently
-        // for callers that reach the provider outside the precompile (admin tools, unit-test harnesses).
-        (bool isValid, string? reason) = L1PrecompileExecutionContext.ValidateBlockRange(blockNumber);
-        if (!isValid)
+        // Range validation: only when an L1 origin is available. null = preconf block / eth_call /
+        // tooling path with no origin → permissive (the proving layer enforces correctness instead).
+        if (l1Origin is { } origin && !IsBlockInRange(blockNumber, origin))
         {
-            if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: {reason}");
-            return Result<(byte[] returnValue, long gasConsumed)>.Fail(L1StaticCallFailed);
+            if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: block {blockNumber} outside [{origin}-{L1PrecompileConstants.MaxBlockLookback}, {origin}]");
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(BlockOutOfRange);
         }
 
         long gasLimit = Math.Min(Math.Max(0, remainingGas), GasCap);
@@ -133,15 +133,23 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
         return (result.ReturnData, result.GasUsed);
     }
 
-    /// <summary>
-    /// Fallback for <see cref="IPrecompile.Run"/>. Delegates to gas-aware overload with <see cref="GasCap"/>.
-    /// </summary>
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    private static bool IsBlockInRange(UInt256 blockNumber, UInt256 l1Origin) =>
+        blockNumber <= l1Origin && l1Origin - blockNumber <= (UInt256)L1PrecompileConstants.MaxBlockLookback;
+
+    /// <summary>Gas-aware fallback (no origin) — defers to the full overload with <c>l1Origin=null</c>.</summary>
+    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, long remainingGas) =>
+        Run(inputData, releaseSpec, remainingGas, l1Origin: null);
+
+    /// <summary>Origin-aware fallback (no gas info) — uses <see cref="GasCap"/> as the gas limit.</summary>
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, UInt256? l1Origin)
     {
-        Result<(byte[] returnValue, long gasConsumed)> result = Run(inputData, releaseSpec, GasCap);
+        Result<(byte[] returnValue, long gasConsumed)> result = Run(inputData, releaseSpec, GasCap, l1Origin);
         if (!result)
             return Result<byte[]>.Fail(result.Error!);
-
         return result.Data.returnValue;
     }
+
+    /// <summary>Plain <see cref="IPrecompile.Run"/> fallback — no gas, no origin.</summary>
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        Run(inputData, releaseSpec, l1Origin: null);
 }
