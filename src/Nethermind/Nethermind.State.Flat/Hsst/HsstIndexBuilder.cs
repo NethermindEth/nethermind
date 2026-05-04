@@ -264,11 +264,16 @@ public ref struct HsstIndexBuilder<TWriter>
             sepOffsets[i] = entries[i].SepOffset;
             sepLengths[i] = entries[i].SepLen;
         }
+        // Inline leaves cannot use the CommonKeyPrefix optimization: HsstEnumerator's
+        // Current.KeyBound contract requires the key to be a contiguous slice of the
+        // reader span, but a stripped key would split into prefix-at-node-header plus
+        // suffix-at-entry. HsstMergeEnumerator's inline branch likewise copies only the
+        // separator. Keep the prefix-opt for non-inline leaves (whose enumerators read
+        // the full key from the data region) and intermediate nodes (whose values are
+        // child offsets, never read via KeyBound).
         BSearchIndexLayoutPlanner.Plan(_separatorBuffer, sepOffsets, sepLengths,
-            out int prefixLen, out int keyType, out int keySlotSize);
-        ReadOnlySpan<byte> commonPrefix = prefixLen > 0
-            ? _separatorBuffer.Slice(entries[0].SepOffset, prefixLen)
-            : default;
+            out int prefixLen, out int keyType, out int keySlotSize, disablePrefix: true);
+        ReadOnlySpan<byte> commonPrefix = default;
 
         // Compute buffer sizes (post-strip key suffixes + values).
         int keyBufSize = 0;

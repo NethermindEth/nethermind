@@ -41,7 +41,8 @@ internal static class BSearchIndexLayoutPlanner
         ReadOnlySpan<int> lengths,
         out int commonKeyPrefixLen,
         out int keyType,
-        out int keySlotSize)
+        out int keySlotSize,
+        bool disablePrefix = false)
     {
         int count = lengths.Length;
         if (count == 0)
@@ -84,6 +85,8 @@ internal static class BSearchIndexLayoutPlanner
         // Strip-gate: positive savings, no key collapses to empty.
         if (lcp == 0 || lcp >= minLen || lcp * (count - 1) - 1 <= 0)
             lcp = 0;
+
+        if (disablePrefix) lcp = 0;
 
         // KeyType selection on effective (post-strip) lengths.
         int effFirstLen = firstLen - lcp;
