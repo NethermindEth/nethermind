@@ -138,9 +138,10 @@ public class L1SloadPrecompileTests
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
         byte[] input = CreateValidInput(Address.FromNumber(1), storageKey: (UInt256)1, blockNumber: (UInt256)blockNumber);
 
-        (_, bool success) = _precompile.Run(input, _spec, (UInt256)l1Origin);
+        PrecompileExtras extras = new(l1Origin: (UInt256)l1Origin);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
-        Assert.That(success, Is.EqualTo(expectedSuccess));
+        Assert.That(result.IsSuccess, Is.EqualTo(expectedSuccess));
     }
 
     [Test]
@@ -149,9 +150,9 @@ public class L1SloadPrecompileTests
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
         byte[] input = CreateValidInput(Address.FromNumber(1), storageKey: (UInt256)1, blockNumber: (UInt256)12_345);
 
-        (_, bool success) = _precompile.Run(input, _spec, l1Origin: null);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in PrecompileExtras.None);
 
-        Assert.That(success, Is.True, "Permissive when no origin is available (eth_call / debug_traceCall / preconf)");
+        Assert.That(result.IsSuccess, Is.True, "Permissive when no origin is available (eth_call / debug_traceCall / preconf)");
     }
 
     /// <summary>

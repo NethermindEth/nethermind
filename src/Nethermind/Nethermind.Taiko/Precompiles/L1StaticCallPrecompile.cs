@@ -23,11 +23,11 @@ namespace Nethermind.Taiko.Precompiles;
 /// Gas model:
 ///   BaseGasCost  = 2000 (fixed)
 ///   DataGasCost  = 10000 (per-call overhead) + 16/byte (calldata)
-///   Dynamic cost = actual L1 gas consumed (reported via IPrecompileGasAware.Run)
+///   Dynamic cost = actual L1 gas consumed (reported via IContextAwarePrecompile.Run)
 ///   The L1 call is executed during Run() via debug_traceCall, with gas limit =
 ///   min(remainingGas, GasCap).
 /// </summary>
-public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrecompileGasAndOriginAware
+public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IContextAwarePrecompile
 {
     public static readonly L1StaticCallPrecompile Instance = new();
     static L1StaticCallPrecompile IPrecompile<L1StaticCallPrecompile>.Instance => Instance;
@@ -43,7 +43,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
     public static string Name => "L1STATICCALL";
 
     // L1STATICCALL calls L1 via RPC — results depend on L1 state and must not be cached.
-    // Caching also wraps the precompile in CachedPrecompile which strips IPrecompileGasAware.
+    // Caching also wraps the precompile in CachedPrecompile which strips IContextAwarePrecompile.
     public bool SupportsCaching => false;
     public static IL1CallProvider? L1CallProvider { get; set; }
     public static ILogger Logger { get; set; }
@@ -53,7 +53,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
 
     /// <summary>
     /// Returns the static overhead cost: per-call overhead + per-byte calldata cost.
-    /// The dynamic L1 gas cost is handled by <see cref="Run(ReadOnlyMemory{byte}, IReleaseSpec, long, UInt256?)"/>.
+    /// The dynamic L1 gas cost is handled by <see cref="Run(ReadOnlyMemory{byte}, IReleaseSpec, in PrecompileExtras)"/>.
     /// </summary>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
@@ -66,13 +66,14 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
     }
 
     /// <summary>
-    /// Gas-aware + origin-aware execution. The Taiko VM dispatches here when the precompile is
-    /// reached during normal block processing.
+    /// Context-aware execution. The Taiko VM dispatches here during normal block processing,
+    /// supplying remaining gas (used to clamp the L1 call gas limit) and the cached L1 origin
+    /// (used for the 256-block lookback range check).
     /// </summary>
-    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, long remainingGas, UInt256? l1Origin)
+    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, in PrecompileExtras extras)
     {
         L1PrecompileMetrics.L1StaticCallPrecompile++;
-        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: precompile called, input_len={inputData.Length}, remainingGas={remainingGas}");
+        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: precompile called, input_len={inputData.Length}, remainingGas={extras.RemainingGas}");
 
         if (inputData.Length < L1PrecompileConstants.L1StaticCallMinInputLength)
         {
@@ -92,13 +93,13 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
 
         // Range validation: only when an L1 origin is available. null = preconf block / eth_call /
         // tooling path with no origin → permissive (the proving layer enforces correctness instead).
-        if (l1Origin is { } origin && !IsBlockInRange(blockNumber, origin))
+        if (extras.L1Origin is { } origin && !IsBlockInRange(blockNumber, origin))
         {
             if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: block {blockNumber} outside [{origin}-{L1PrecompileConstants.MaxBlockLookback}, {origin}]");
             return Result<(byte[] returnValue, long gasConsumed)>.Fail(BlockOutOfRange);
         }
 
-        long gasLimit = Math.Min(Math.Max(0, remainingGas), GasCap);
+        long gasLimit = Math.Min(Math.Max(0, extras.RemainingGas), GasCap);
         if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: request contract={contractAddress}, block={blockNumber}, calldata_len={calldata.Length}, gasLimit={gasLimit}");
 
         L1CallResult result;
@@ -136,20 +137,17 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
     private static bool IsBlockInRange(UInt256 blockNumber, UInt256 l1Origin) =>
         blockNumber <= l1Origin && l1Origin - blockNumber <= (UInt256)L1PrecompileConstants.MaxBlockLookback;
 
-    /// <summary>Gas-aware fallback (no origin) — defers to the full overload with <c>l1Origin=null</c>.</summary>
-    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, long remainingGas) =>
-        Run(inputData, releaseSpec, remainingGas, l1Origin: null);
-
-    /// <summary>Origin-aware fallback (no gas info) — uses <see cref="GasCap"/> as the gas limit.</summary>
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, UInt256? l1Origin)
+    /// <summary>
+    /// Non-context-aware fallback. Used by callers outside the Taiko VM (caching layer, tooling)
+    /// that don't have execution-context extras to pass. Uses <see cref="GasCap"/> as the L1 gas
+    /// limit and treats the lookback check as permissive (no origin available).
+    /// </summary>
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Result<(byte[] returnValue, long gasConsumed)> result = Run(inputData, releaseSpec, GasCap, l1Origin);
-        if (!result)
-            return Result<byte[]>.Fail(result.Error!);
-        return result.Data.returnValue;
+        PrecompileExtras extras = new(remainingGas: GasCap);
+        Result<(byte[] returnValue, long gasConsumed)> result = Run(inputData, releaseSpec, in extras);
+        // Implicit string→Result<byte[]> conversion fills Data with Array.Empty<byte>() on failure,
+        // which the IPrecompile contract expects (callers deconstruct result and assert .IsEmpty).
+        return result ? Result<byte[]>.Success(result.Data.returnValue) : result.Error!;
     }
-
-    /// <summary>Plain <see cref="IPrecompile.Run"/> fallback — no gas, no origin.</summary>
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        Run(inputData, releaseSpec, l1Origin: null);
 }

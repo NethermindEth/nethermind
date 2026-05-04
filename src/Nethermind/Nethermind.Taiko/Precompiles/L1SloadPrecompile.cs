@@ -20,7 +20,7 @@ namespace Nethermind.Taiko.Precompiles;
 ///
 /// Output: 32-byte storage value.
 /// </summary>
-public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IL1OriginAware
+public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePrecompile
 {
     private const string L1StorageAccessFailed = "l1 storage access failed";
     private const string BlockOutOfRange = "l1 block out of 256-block lookback range";
@@ -45,14 +45,19 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IL1OriginAware
         inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength ? 0L : L1PrecompileConstants.L1SloadPerLoadGasCost;
 
     /// <summary>
-    /// Non-origin-aware fallback. Used by callers outside the Taiko VM (caching layer, tooling)
-    /// that don't have an L1 origin to pass. Equivalent to calling the origin-aware overload with
-    /// <c>l1Origin=null</c> (permissive).
+    /// Non-context-aware fallback. Used by callers outside the Taiko VM (caching layer, tooling)
+    /// that don't have an L1 origin to pass. Equivalent to calling the context-aware overload with
+    /// <see cref="PrecompileExtras.None"/> (permissive).
     /// </summary>
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        Run(inputData, releaseSpec, l1Origin: null);
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    {
+        Result<(byte[] returnValue, long gasConsumed)> result = Run(inputData, releaseSpec, in PrecompileExtras.None);
+        // Implicit string→Result<byte[]> conversion fills Data with Array.Empty<byte>() on failure,
+        // which the IPrecompile contract expects (callers deconstruct result and assert .IsEmpty).
+        return result ? Result<byte[]>.Success(result.Data.returnValue) : result.Error!;
+    }
 
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, UInt256? l1Origin)
+    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, in PrecompileExtras extras)
     {
         L1PrecompileMetrics.L1SloadPrecompile++;
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: precompile called, input_len={inputData.Length}");
@@ -60,13 +65,13 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IL1OriginAware
         if (inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength)
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: rejected invalid input length {inputData.Length}, expected {L1PrecompileConstants.L1SloadExpectedInputLength}");
-            return Errors.InvalidInputLength;
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(Errors.InvalidInputLength);
         }
 
         if (L1StorageProvider is null)
         {
             if (Logger.IsWarn) Logger.Warn("L1SLOAD: no L1StorageProvider configured");
-            return L1StorageAccessFailed;
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(L1StorageAccessFailed);
         }
 
         Address contractAddress = new(inputData.Span[..Address.Size]);
@@ -75,10 +80,10 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IL1OriginAware
 
         // Range validation: only when an L1 origin is available. null = preconf block / eth_call /
         // tooling path with no origin → permissive (the proving layer enforces correctness instead).
-        if (l1Origin is { } origin && !IsBlockInRange(blockNumber, origin))
+        if (extras.L1Origin is { } origin && !IsBlockInRange(blockNumber, origin))
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: block {blockNumber} outside [{origin}-{L1PrecompileConstants.MaxBlockLookback}, {origin}]");
-            return BlockOutOfRange;
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(BlockOutOfRange);
         }
 
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: request contract={contractAddress}, key={storageKey}, block={blockNumber}");
@@ -87,7 +92,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IL1OriginAware
         if (storageValue is null)
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: storage access returned null for contract={contractAddress}, key={storageKey}, block={blockNumber}");
-            return L1StorageAccessFailed;
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(L1StorageAccessFailed);
         }
 
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: success contract={contractAddress}, key={storageKey}, block={blockNumber}, value={storageValue.Value}");
@@ -95,7 +100,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IL1OriginAware
         byte[] output = new byte[32];
         storageValue.Value.ToBigEndian().CopyTo(output.AsSpan());
 
-        return output;
+        return (output, 0L);
     }
 
     private static bool IsBlockInRange(UInt256 blockNumber, UInt256 l1Origin) =>

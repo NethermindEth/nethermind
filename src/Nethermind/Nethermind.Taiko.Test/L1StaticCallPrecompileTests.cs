@@ -74,7 +74,8 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = mock;
 
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
-        _precompile.Run(input, _spec, 50_000L);
+        PrecompileExtras extras = new(remainingGas: 50_000L);
+        _precompile.Run(input, _spec, in extras);
 
         Assert.That(mock.LastGasLimit, Is.EqualTo(50_000));
     }
@@ -86,7 +87,8 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = mock;
 
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
-        _precompile.Run(input, _spec, 100_000_000L);
+        PrecompileExtras extras = new(remainingGas: 100_000_000L);
+        _precompile.Run(input, _spec, in extras);
 
         Assert.That(mock.LastGasLimit, Is.EqualTo(L1PrecompileConstants.L1CallMaxGasCap));
     }
@@ -98,19 +100,20 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = mock;
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
 
-        _precompile.Run(input, _spec, 0L);
+        _precompile.Run(input, _spec, in PrecompileExtras.None);
 
         Assert.That(mock.LastGasLimit, Is.EqualTo(0));
     }
 
-    // --- Run (gas-aware) ---
+    // --- Run (context-aware) ---
 
     [Test]
     public void Run_With_Short_Input_Should_Fail()
     {
         byte[] input = new byte[Address.Size]; // 20 bytes, below 52
 
-        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
         Assert.That(result.IsSuccess, Is.False);
     }
@@ -124,7 +127,8 @@ public class L1StaticCallPrecompileTests
         byte[] calldata = [0xDE, 0xAD];
         byte[] input = CreateValidInput(Address.FromNumber(42), (UInt256)1000, calldata);
 
-        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
         Assert.That(result.IsSuccess, Is.True);
         Assert.That(result.Data.returnValue, Is.EqualTo(expectedReturn));
@@ -137,7 +141,8 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = null;
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
 
-        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
         Assert.That(result.IsSuccess, Is.False);
         Assert.That(result.Data.gasConsumed, Is.EqualTo(0));
@@ -150,7 +155,8 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.FailingWithGas(l1GasUsed);
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
 
-        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
         Assert.That(result.IsSuccess, Is.False);
         Assert.That(result.Data.gasConsumed, Is.EqualTo(l1GasUsed));
@@ -163,7 +169,8 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = mock;
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
 
-        _precompile.Run(input, _spec, TestRemainingGas);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas);
+        _precompile.Run(input, _spec, in extras);
 
         Assert.That(mock.CallCount, Is.EqualTo(1));
     }
@@ -178,7 +185,8 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning(returnData, MockGasUsed);
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
 
-        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
         Assert.That(result.IsSuccess, Is.EqualTo(expectedSuccess));
         Assert.That(result.Data.gasConsumed, Is.EqualTo(MockGasUsed));
@@ -203,7 +211,8 @@ public class L1StaticCallPrecompileTests
         Assert.That(gasCost, Is.EqualTo(expectedStaticGas));
 
         // Run returns result + actual L1 gas consumed
-        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
         Assert.That(result.IsSuccess, Is.True);
         Assert.That(result.Data.returnValue, Is.EqualTo(expectedReturn));
         Assert.That(result.Data.gasConsumed, Is.EqualTo(mockGas));
@@ -212,7 +221,7 @@ public class L1StaticCallPrecompileTests
     // --- IPrecompile.Run fallback ---
 
     [Test]
-    public void Run_IPrecompile_Fallback_Should_Delegate_To_GasAware()
+    public void Run_IPrecompile_Fallback_Should_Delegate_To_ContextAware()
     {
         byte[] expectedReturn = [0x01, 0x02];
         L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning(expectedReturn, MockGasUsed);
@@ -243,7 +252,7 @@ public class L1StaticCallPrecompileTests
             "L1StaticCallPrecompile address should not be identified as precompile when L1StaticCall is disabled");
     }
 
-    // --- Block-range validation (l1Origin passed as argument) ---
+    // --- Block-range validation (l1Origin passed via PrecompileExtras) ---
 
     [TestCase(1000ul, 700ul, false, Description = "Block 700 is 300 away from l1Origin 1000 — exceeds 256 lookback")]
     [TestCase(1000ul, 744ul, true, Description = "Block 744 is exactly 256 from l1Origin 1000 — should be accepted")]
@@ -255,7 +264,8 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning([0x01], MockGasUsed);
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)blockNumber);
 
-        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas, (UInt256)l1Origin);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas, l1Origin: (UInt256)l1Origin);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
         Assert.That(result.IsSuccess, Is.EqualTo(expectedSuccess));
     }
@@ -266,7 +276,8 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning([0x01], MockGasUsed);
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)12_345);
 
-        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas, l1Origin: null);
+        PrecompileExtras extras = new(remainingGas: TestRemainingGas, l1Origin: null);
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
         Assert.That(result.IsSuccess, Is.True, "Permissive when no origin is available (eth_call / debug_traceCall / preconf)");
     }
