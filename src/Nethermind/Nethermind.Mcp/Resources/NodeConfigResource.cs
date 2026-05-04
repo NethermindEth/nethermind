@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -17,8 +19,24 @@ namespace Nethermind.Mcp.Resources;
 [McpServerResourceType]
 public sealed class NodeConfigResource(IConfigProvider configProvider, ConfigRedactor redactor)
 {
+    /// <summary>
+    /// Resource entry point exposed to the MCP SDK. The SDK reflects on this method's
+    /// return type to pick a content shape; arbitrary records aren't supported, so we
+    /// emit a <see cref="TextResourceContents"/> with the JSON-serialized DTO. Tests that
+    /// want the typed DTO should call <see cref="BuildModel"/> directly.
+    /// </summary>
     [McpServerResource(UriTemplate = "nethermind://node/config"), Description("Sanitized node configuration with sensitive values redacted.")]
-    public NodeConfigDto Read()
+    public TextResourceContents Read() => new()
+    {
+        Uri = "nethermind://node/config",
+        MimeType = "application/json",
+        Text = JsonSerializer.Serialize(BuildModel(), JsonOptions),
+    };
+
+    /// <summary>
+    /// Builds the structured DTO consumed by unit tests.
+    /// </summary>
+    public NodeConfigDto BuildModel()
     {
         Dictionary<string, IReadOnlyDictionary<string, object?>> sections = new();
         foreach ((Type configType, object instance) in EnumerateConfigs(configProvider))
@@ -79,4 +97,6 @@ public sealed class NodeConfigResource(IConfigProvider configProvider, ConfigRed
         }
         return dict;
     }
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 }

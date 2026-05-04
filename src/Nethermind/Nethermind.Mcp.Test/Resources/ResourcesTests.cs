@@ -44,7 +44,7 @@ public class ResourcesTests
         adapter.GetNodeVersion().Returns(version);
 
         NodeStatusResource resource = new(adapter);
-        NodeStatusResourceDto result = resource.Read();
+        NodeStatusResourceDto result = resource.BuildModel();
 
         Assert.That(result.Sync, Is.SameAs(sync));
         Assert.That(result.Health, Is.SameAs(health));
@@ -73,7 +73,7 @@ public class ResourcesTests
         provider.Initialize();
 
         NodeConfigResource resource = new(provider, new ConfigRedactor());
-        NodeConfigDto dto = resource.Read();
+        NodeConfigDto dto = resource.BuildModel();
 
         Assert.That(dto.Sections, Is.Not.Empty);
 
@@ -95,7 +95,7 @@ public class ResourcesTests
         provider.Initialize();
 
         NodeConfigResource resource = new(provider, new ConfigRedactor());
-        NodeConfigDto dto = resource.Read();
+        NodeConfigDto dto = resource.BuildModel();
 
         Assert.That(dto.Sections.Keys.Any(k => k.EndsWith("Config", StringComparison.Ordinal)), Is.False,
             "Section names should have the trailing 'Config' stripped.");
