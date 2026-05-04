@@ -61,8 +61,8 @@ public class DebugModuleTests
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         _debugBridge
-            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
-            .Returns(static c => StreamBundles(c.ArgAt<CancellationToken>(2)));
+            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<long?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(static c => StreamBundles(c.ArgAt<CancellationToken>(3)));
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         TransactionBundle bundle = new() { Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }] };
