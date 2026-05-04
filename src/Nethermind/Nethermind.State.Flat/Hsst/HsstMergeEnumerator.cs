@@ -21,36 +21,34 @@ namespace Nethermind.State.Flat.Hsst;
 public sealed class HsstMergeEnumerator : IDisposable
 {
     // Per-leaf-entry: separator offset+length in data, and metadata/value offset+length.
-    // Pooled (ArrayPoolList) so the per-merge enumerator allocations return to ArrayPool on Dispose.
-    private readonly ArrayPoolList<(int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)> _entries;
+    // Backed by NativeMemoryList so the per-merge enumerator allocations sit off the managed heap.
+    private readonly NativeMemoryList<(int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)> _entries;
     private readonly bool _isInline;
     private int _index = -1;
 
-    // Single reusable key buffer (pooled via ArrayPoolList, disposed in Dispose()).
-    private readonly ArrayPoolList<byte> _keyBufferList;
-    private readonly byte[] _keyBuffer;
+    // Single reusable key buffer (NativeMemoryList, disposed in Dispose()).
+    private readonly NativeMemoryList<byte> _keyBufferList;
     private int _keyLength;
     private bool _disposed;
 
     public HsstMergeEnumerator(scoped ReadOnlySpan<byte> hsstData, bool isInline, int maxKeyLength = 64)
     {
-        _keyBufferList = new ArrayPoolList<byte>(maxKeyLength, maxKeyLength);
-        _keyBuffer = _keyBufferList.UnsafeGetInternalArray();
+        _keyBufferList = new NativeMemoryList<byte>(maxKeyLength, maxKeyLength);
         _isInline = isInline;
 
         if (hsstData.Length < 2)
         {
-            _entries = new ArrayPoolList<(int, int, int, int)>(0);
+            _entries = new NativeMemoryList<(int, int, int, int)>(0);
             return;
         }
 
         HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, hsstData.Length);
-        _entries = new ArrayPoolList<(int, int, int, int)>(16);
+        _entries = new NativeMemoryList<(int, int, int, int)>(16);
         CollectLeafOffsets(hsstData, rootIndex, _entries, _isInline);
     }
 
     private static void CollectLeafOffsets(ReadOnlySpan<byte> data, HsstIndex index,
-        ArrayPoolList<(int, int, int, int)> entries, bool isInline)
+        NativeMemoryList<(int, int, int, int)> entries, bool isInline)
     {
         if (!index.IsIntermediate)
         {
@@ -114,20 +112,20 @@ public sealed class HsstMergeEnumerator : IDisposable
         if (_isInline)
         {
             // Inline mode: separator IS the full key; copy from the leaf section.
-            data.Slice(sepOff, sepLen).CopyTo(_keyBuffer.AsSpan());
+            data.Slice(sepOff, sepLen).CopyTo(_keyBufferList.AsSpan());
             _keyLength = sepLen;
         }
         else
         {
             // Non-inline: data-region entry carries the full key — copy it directly.
             ReadEntry(data, 1 + metaOrValOff, out ReadOnlySpan<byte> fullKey, out _);
-            fullKey.CopyTo(_keyBuffer.AsSpan());
+            fullKey.CopyTo(_keyBufferList.AsSpan());
             _keyLength = fullKey.Length;
         }
         return true;
     }
 
-    public ReadOnlySpan<byte> CurrentKey => _keyBuffer.AsSpan(0, _keyLength);
+    public ReadOnlySpan<byte> CurrentKey => _keyBufferList.AsSpan().Slice(0, _keyLength);
 
     public ReadOnlySpan<byte> GetCurrentValue(ReadOnlySpan<byte> data)
     {

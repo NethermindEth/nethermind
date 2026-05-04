@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.BSearchIndex;
 
 namespace Nethermind.State.Flat.Hsst;
@@ -62,8 +62,8 @@ public ref struct HsstIndexBuilder<TWriter>
         // Build leaf nodes
         int maxNodes = (_entries.Length + maxLeafEntries - 1) / maxLeafEntries;
         const int StackThreshold = 1024;
-        NodeInfo[]? currentRented = null;
-        NodeInfo[]? nextRented = null;
+        NativeMemoryListRef<NodeInfo> currentNative = default;
+        NativeMemoryListRef<NodeInfo> nextNative = default;
         scoped Span<NodeInfo> currentLevel;
         scoped Span<NodeInfo> nextLevel;
         if (maxNodes <= StackThreshold)
@@ -73,79 +73,79 @@ public ref struct HsstIndexBuilder<TWriter>
         }
         else
         {
-            currentRented = ArrayPool<NodeInfo>.Shared.Rent(maxNodes);
-            nextRented = ArrayPool<NodeInfo>.Shared.Rent(maxNodes);
-            currentLevel = currentRented.AsSpan(0, maxNodes);
-            nextLevel = nextRented.AsSpan(0, maxNodes);
+            currentNative = new NativeMemoryListRef<NodeInfo>(maxNodes, maxNodes);
+            nextNative = new NativeMemoryListRef<NodeInfo>(maxNodes, maxNodes);
+            currentLevel = currentNative.AsSpan();
+            nextLevel = nextNative.AsSpan();
         }
 
         try
         {
-        int currentLevelCount = 0;
+            int currentLevelCount = 0;
 
-        int entryIdx = 0;
+            int entryIdx = 0;
 
-        while (entryIdx < _entries.Length)
-        {
-            int count = Math.Min(maxLeafEntries, _entries.Length - entryIdx);
-            ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> leafEntries = _entries.Slice(entryIdx, count);
-
-            int nodeStart = _writer.Written;
-            int relativeStart = nodeStart - startWritten;
-            WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart, entryIdx);
-            int nodeLen = _writer.Written - nodeStart;
-
-            HsstBuilder<TWriter>.HsstEntry first = leafEntries[0];
-            HsstBuilder<TWriter>.HsstEntry last = leafEntries[count - 1];
-
-            // childOffset = absolute last byte position of this node
-            int childOffset = (absoluteIndexStart + relativeStart + nodeLen) - 1;
-
-            currentLevel[currentLevelCount++] = new NodeInfo(
-                childOffset,
-                first,
-                last);
-
-            entryIdx += count;
-        }
-
-        // Build internal levels until single root
-        while (currentLevelCount > 1)
-        {
-            int nextLevelCount = 0;
-            int childIdx = 0;
-
-            while (childIdx < currentLevelCount)
+            while (entryIdx < _entries.Length)
             {
-                int childCount = Math.Min(maxLeafEntries, currentLevelCount - childIdx);
-                ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
+                int count = Math.Min(maxLeafEntries, _entries.Length - entryIdx);
+                ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> leafEntries = _entries.Slice(entryIdx, count);
 
                 int nodeStart = _writer.Written;
                 int relativeStart = nodeStart - startWritten;
-                WriteInternalIndexNode(children, _separatorBuffer);
+                WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart, entryIdx);
                 int nodeLen = _writer.Written - nodeStart;
 
-                NodeInfo first = children[0];
-                NodeInfo last = children[childCount - 1];
+                HsstBuilder<TWriter>.HsstEntry first = leafEntries[0];
+                HsstBuilder<TWriter>.HsstEntry last = leafEntries[count - 1];
 
+                // childOffset = absolute last byte position of this node
                 int childOffset = (absoluteIndexStart + relativeStart + nodeLen) - 1;
 
-                nextLevel[nextLevelCount++] = new NodeInfo(
+                currentLevel[currentLevelCount++] = new NodeInfo(
                     childOffset,
-                    first.FirstEntry,
-                    last.LastEntry);
+                    first,
+                    last);
 
-                childIdx += childCount;
+                entryIdx += count;
             }
 
-            nextLevel[..nextLevelCount].CopyTo(currentLevel);
-            currentLevelCount = nextLevelCount;
-        }
+            // Build internal levels until single root
+            while (currentLevelCount > 1)
+            {
+                int nextLevelCount = 0;
+                int childIdx = 0;
+
+                while (childIdx < currentLevelCount)
+                {
+                    int childCount = Math.Min(maxLeafEntries, currentLevelCount - childIdx);
+                    ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
+
+                    int nodeStart = _writer.Written;
+                    int relativeStart = nodeStart - startWritten;
+                    WriteInternalIndexNode(children, _separatorBuffer);
+                    int nodeLen = _writer.Written - nodeStart;
+
+                    NodeInfo first = children[0];
+                    NodeInfo last = children[childCount - 1];
+
+                    int childOffset = (absoluteIndexStart + relativeStart + nodeLen) - 1;
+
+                    nextLevel[nextLevelCount++] = new NodeInfo(
+                        childOffset,
+                        first.FirstEntry,
+                        last.LastEntry);
+
+                    childIdx += childCount;
+                }
+
+                nextLevel[..nextLevelCount].CopyTo(currentLevel);
+                currentLevelCount = nextLevelCount;
+            }
         }
         finally
         {
-            if (currentRented is not null) ArrayPool<NodeInfo>.Shared.Return(currentRented);
-            if (nextRented is not null) ArrayPool<NodeInfo>.Shared.Return(nextRented);
+            currentNative.Dispose();
+            nextNative.Dispose();
         }
     }
 

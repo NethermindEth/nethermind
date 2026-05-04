@@ -45,14 +45,14 @@ public ref struct HsstBuilder<TWriter>
     private readonly int _minSeparatorLength;
     private readonly bool _inlineValues;
 
-    // Working buffers allocated from ArrayPool
-    private ArrayPoolListRef<byte> _separatorBuffer;
-    private ArrayPoolListRef<HsstEntry> _entriesBuffer;
-    private ArrayPoolListRef<byte> _prevKeyBuffer;
+    // Working buffers allocated from NativeMemory
+    private NativeMemoryListRef<byte> _separatorBuffer;
+    private NativeMemoryListRef<HsstEntry> _entriesBuffer;
+    private NativeMemoryListRef<byte> _prevKeyBuffer;
 
     // Inline value buffers (only allocated when _inlineValues is true)
-    private ArrayPoolListRef<byte> _inlineValueBuffer;
-    private ArrayPoolListRef<int> _inlineValueLengths;
+    private NativeMemoryListRef<byte> _inlineValueBuffer;
+    private NativeMemoryListRef<int> _inlineValueLengths;
 
     public readonly struct HsstEntry(int sepOffset, int sepLen, int metadataStart)
     {
@@ -68,7 +68,7 @@ public ref struct HsstBuilder<TWriter>
     /// <summary>
     /// Create builder writing via the given writer.
     /// Writes version byte (0x01 normal, 0x81 inline).
-    /// Allocates working buffers from ArrayPool — call Dispose() to return them.
+    /// Allocates working buffers from NativeMemory — call Dispose() to free them.
     /// <paramref name="expectedKeyCount"/> sizes the entry/separator working buffers up front;
     /// pass an estimate when known to avoid resize allocations. The buffers still grow on demand.
     /// </summary>
@@ -79,17 +79,16 @@ public ref struct HsstBuilder<TWriter>
         _minSeparatorLength = minSeparatorLength;
         _inlineValues = inlineValues;
 
-        // Heuristic: ~32 bytes per separator/value. ArrayPool buckets are power-of-2,
-        // so this just selects a starting bucket — the buffers grow as needed.
+        // Heuristic: ~32 bytes per separator/value. The buffers grow as needed.
         int byteCap = Math.Max(64, expectedKeyCount * 32);
-        _separatorBuffer = new ArrayPoolListRef<byte>(byteCap);
-        _entriesBuffer = new ArrayPoolListRef<HsstEntry>(expectedKeyCount);
-        _prevKeyBuffer = new ArrayPoolListRef<byte>(256);
+        _separatorBuffer = new NativeMemoryListRef<byte>(byteCap);
+        _entriesBuffer = new NativeMemoryListRef<HsstEntry>(expectedKeyCount);
+        _prevKeyBuffer = new NativeMemoryListRef<byte>(256);
 
         if (inlineValues)
         {
-            _inlineValueBuffer = new ArrayPoolListRef<byte>(byteCap);
-            _inlineValueLengths = new ArrayPoolListRef<int>(expectedKeyCount);
+            _inlineValueBuffer = new NativeMemoryListRef<byte>(byteCap);
+            _inlineValueLengths = new NativeMemoryListRef<int>(expectedKeyCount);
         }
 
         // Write version byte
@@ -99,7 +98,7 @@ public ref struct HsstBuilder<TWriter>
     }
 
     /// <summary>
-    /// Return pooled buffers to ArrayPool.
+    /// Free working NativeMemory buffers.
     /// </summary>
     public void Dispose()
     {
