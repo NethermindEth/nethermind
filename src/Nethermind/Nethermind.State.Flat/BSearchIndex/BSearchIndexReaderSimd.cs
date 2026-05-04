@@ -22,8 +22,9 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// </summary>
 internal static class BSearchIndexReaderSimd
 {
-    // Above this fan-out scalar binary search wins despite per-iteration setup cost.
-    private const int LinearScanMaxCount = 16;
+    // HSST nodes hold up to MaxLeafEntries = 64 entries; cover the full range so the
+    // SIMD path also fires on packed leaves (not only partial / upper-level nodes).
+    private const int LinearScanMaxCount = 64;
 
     private static readonly Vector128<byte> ByteSwap32Mask = Vector128.Create(
         (byte)3, 2, 1, 0,
