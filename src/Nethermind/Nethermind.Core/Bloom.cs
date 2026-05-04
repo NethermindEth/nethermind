@@ -48,10 +48,7 @@ public class Bloom : IEquatable<Bloom>
         Add(logEntries, blockBloom);
     }
 
-    public Bloom(ReadOnlySpan<byte> bytes)
-    {
-        bytes.CopyTo(Bytes);
-    }
+    public Bloom(ReadOnlySpan<byte> bytes) => bytes.CopyTo(Bytes);
 
     [JsonIgnore]
     public Span<byte> Bytes => _bloomData.AsSpan();
@@ -84,10 +81,7 @@ public class Bloom : IEquatable<Bloom>
 
     public override string ToString() => ReadOnlyBytes.ToHexString();
 
-    public static bool operator !=(Bloom? a, Bloom? b)
-    {
-        return !(a == b);
-    }
+    public static bool operator !=(Bloom? a, Bloom? b) => !(a == b);
 
     public static bool operator ==(Bloom? a, Bloom? b)
     {
@@ -277,10 +271,7 @@ public ref struct BloomStructRef
     public const int BitLength = 2048;
     public const int ByteLength = BitLength / 8;
 
-    public BloomStructRef(ReadOnlySpan<byte> bytes)
-    {
-        Bytes = bytes;
-    }
+    public BloomStructRef(ReadOnlySpan<byte> bytes) => Bytes = bytes;
 
     public ReadOnlySpan<byte> Bytes { get; }
 

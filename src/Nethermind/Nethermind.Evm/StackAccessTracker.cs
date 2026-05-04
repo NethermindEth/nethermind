@@ -25,7 +25,6 @@ public struct StackAccessTracker() : IDisposable
     private int _storageKeysSnapshots;
     private int _destroyListSnapshots;
     private int _logsSnapshots;
-    private int _largeContractList;
 
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
@@ -36,9 +35,6 @@ public struct StackAccessTracker() : IDisposable
 
     public readonly bool WarmUp(in StorageCell storageCell)
         => _trackingState.AccessedStorageCells.Add(storageCell);
-
-    public readonly bool WarmUpLargeContract(Address address)
-        => _trackingState.LargeContractList.Add(address);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -55,15 +51,9 @@ public struct StackAccessTracker() : IDisposable
         }
     }
 
-    public readonly void ToBeDestroyed(Address address)
-    {
-        _trackingState.DestroyList.Add(address);
-    }
+    public readonly void ToBeDestroyed(Address address) => _trackingState.DestroyList.Add(address);
 
-    public readonly void WasCreated(Address address)
-    {
-        _trackingState.CreateList.Add(address);
-    }
+    public readonly void WasCreated(Address address) => _trackingState.CreateList.Add(address);
 
     public void TakeSnapshot()
     {
@@ -71,7 +61,6 @@ public struct StackAccessTracker() : IDisposable
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
         _logsSnapshots = _trackingState.Logs.TakeSnapshot();
-        _largeContractList = _trackingState.LargeContractList.TakeSnapshot();
     }
 
     public readonly void Restore()
@@ -80,7 +69,6 @@ public struct StackAccessTracker() : IDisposable
         _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
-        _trackingState.LargeContractList.Restore(_largeContractList);
     }
 
     public void Dispose()
@@ -106,7 +94,6 @@ public struct StackAccessTracker() : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = new();
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
-        public JournalSet<AddressAsKey> LargeContractList { get; } = new(AddressAsKey.EqualityComparer);
 
         private void Clear()
         {
@@ -115,7 +102,6 @@ public struct StackAccessTracker() : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
-            LargeContractList.Clear();
         }
     }
 }

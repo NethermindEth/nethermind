@@ -13,21 +13,13 @@ namespace Nethermind.Network.Discovery;
 /// Manages connections (Netty <see cref="IChannel"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-public class DiscoveryConnectionsPool : IConnectionsPool
+public class DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig) : IConnectionsPool
 {
-    private readonly ILogger _logger;
-    private readonly INetworkConfig _networkConfig;
-    private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly IPAddress _ip;
+    private readonly ILogger _logger = logger;
+    private readonly INetworkConfig _networkConfig = networkConfig;
+    private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
+    private readonly IPAddress _ip = IPAddress.Parse(networkConfig.LocalIp!);
     private readonly Dictionary<int, Task<IChannel>> _byPort = new();
-
-    public DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig)
-    {
-        _logger = logger;
-        _networkConfig = networkConfig;
-        _discoveryConfig = discoveryConfig;
-        _ip = IPAddress.Parse(networkConfig.LocalIp!);
-    }
 
     public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
     {
@@ -54,7 +46,7 @@ public class DiscoveryConnectionsPool : IConnectionsPool
 
     public async Task StopAsync()
     {
-        foreach ((var port, Task<IChannel> channel) in _byPort)
+        foreach ((int port, Task<IChannel> channel) in _byPort)
             await StopAsync(port, channel);
     }
 

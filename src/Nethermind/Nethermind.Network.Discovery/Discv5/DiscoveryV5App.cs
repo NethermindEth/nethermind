@@ -60,7 +60,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         [KeyFilter(DbNames.DiscoveryNodes)] IDb legacyDiscoveryDb,
         ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<DiscoveryV5App>();
         _discoveryDb = discoveryDb;
         _legacyDiscoveryDb = legacyDiscoveryDb;
         _logManager = logManager;
@@ -283,7 +283,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
     public void InitializeChannel(IChannel channel)
     {
-        var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
+        NettyDiscoveryV5Handler handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
         handler.InitializeChannel(channel);
         channel.Pipeline.AddLast(handler);
     }

@@ -11,13 +11,13 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
-using Nethermind.Era1;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
@@ -54,8 +54,10 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
+            .AddModule(new DatabaseMigrationsModule())
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
-            .AddModule(new EraModule())
+            .AddModule(new Era1.EraModule())
+            .AddModule(new EraE.EraEModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
@@ -77,9 +79,15 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
 
-            .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
-            .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
+            .AddSingleton<ITimestamper>(_ => Timestamper.Default)
+            .AddSingleton<ITimerFactory>(_ => TimerFactory.Default)
             .AddSingleton<IFileSystem>(_ => new RealFileSystem())
+            .AddKeyedSingleton<IDriveInfo[]>(nameof(IInitConfig.BaseDbPath), (ctx) =>
+            {
+                IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
+                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                return fileSystem.GetDriveInfos(initConfig.BaseDbPath);
+            })
             ;
 
         if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())
@@ -100,8 +108,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             builder
                 .AddSingleton(configProvider)
-                .AddSingleton<ChainSpec>(chainSpec)
-                .AddSingleton<ILogManager>(logManager)
+                .AddSingleton(chainSpec)
+                .AddSingleton(logManager)
                 .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
                 ;
         }

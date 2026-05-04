@@ -40,7 +40,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
-        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), CreateTracerFactory());
+        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, CreateTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
         Assert.That(data, Has.Count.EqualTo(7));
@@ -73,7 +73,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
-        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), CreateTracerFactory());
+        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, CreateTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
@@ -108,10 +108,10 @@ public abstract class TracedSimulateTestsBase<TTrace>
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
-        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), CreateTracerFactory());
+        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, CreateTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error!, Does.Contain("insufficient sender balance"));
+        Assert.That(result.Result!.Error!, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
     }
 }

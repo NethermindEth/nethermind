@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -43,7 +42,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000L);
 
-        var adjuster = new FlatRocksDbConfigAdjuster(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
 
         IRocksDbConfig result = adjuster.GetForDatabase("State0", null);
 
@@ -56,7 +55,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000L);
 
-        var adjuster = new FlatRocksDbConfigAdjuster(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
 
         IRocksDbConfig result = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Metadata));
 
@@ -71,7 +70,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.FlatInTrie);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000L);
 
-        var adjuster = new FlatRocksDbConfigAdjuster(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
 
         IRocksDbConfig result = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Metadata));
 
@@ -86,7 +85,7 @@ public class FlatRocksDbConfigAdjusterTests
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
         _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000L);
 
-        var adjuster = new FlatRocksDbConfigAdjuster(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
 
         adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
 

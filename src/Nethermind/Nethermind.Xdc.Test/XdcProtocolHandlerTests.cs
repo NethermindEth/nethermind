@@ -4,12 +4,13 @@
 using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -20,6 +21,8 @@ using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 
 namespace Nethermind.Xdc.Test.P2P;
 
@@ -41,10 +44,17 @@ public class XdcProtocolHandlerTests
         INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
         nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
+        Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
+        blockTree.Head.Returns(headBlock);
+        blockTree.FindBestSuggestedHeader().Returns(headHeader);
+
         XdcProtocolHandler handler = new(
             timeoutManager,
             votesManager,
             syncInfoManager,
+            blockTree,
             session,
             serializer,
             nodeStatsManager,
@@ -76,6 +86,13 @@ public class XdcProtocolHandlerTests
     private static Timeout CreateTimeout(ulong round = 1)
         => new(round, new Signature(new byte[64], 0), 0);
 
+    private static void HandleIncomingStatus(XdcProtocolHandler handler, IMessageSerializationService serializer)
+    {
+        ZeroPacket packet = CreatePacket(Eth62MessageCode.Status);
+        serializer.Deserialize<StatusMessage>(packet.Content).Returns(new StatusMessage());
+        handler.HandleMessage(packet);
+    }
+
     private static SyncInfo CreateSyncInfo(ulong qcRound = 1)
     {
         BlockRoundInfo blockInfo = new(TestItem.KeccakA, qcRound, 100);
@@ -96,6 +113,7 @@ public class XdcProtocolHandlerTests
             ZeroPacket packet = CreatePacket(XdcMessageCode.VoteMsg);
             serializer.Deserialize<VoteMsg>(packet.Content).Returns(new VoteMsg { Vote = vote });
 
+            HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
             votesManager.Received(1).OnReceiveVote(vote);
@@ -113,6 +131,7 @@ public class XdcProtocolHandlerTests
             ZeroPacket packet = CreatePacket(XdcMessageCode.TimeoutMsg);
             serializer.Deserialize<TimeoutMsg>(packet.Content).Returns(new TimeoutMsg { Timeout = timeout });
 
+            HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
             timeoutManager.Received(1).OnReceiveTimeout(Arg.Any<Timeout>());
@@ -131,6 +150,7 @@ public class XdcProtocolHandlerTests
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
             syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
 
+            HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
             syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
@@ -150,6 +170,7 @@ public class XdcProtocolHandlerTests
             syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>())
                 .Returns(x => { x[1] = "rounds too low"; return false; });
 
+            HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
             syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());

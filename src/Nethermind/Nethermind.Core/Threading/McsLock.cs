@@ -23,10 +23,7 @@ public class McsLock
     /// </summary>
     private volatile ThreadNode? _tail;
 
-    public McsLock()
-    {
-        _node = new(() => new ThreadNode(this));
-    }
+    public McsLock() => _node = new(() => new ThreadNode(this));
 
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
@@ -101,10 +98,7 @@ public class McsLock
     {
         readonly ThreadNode _node;
 
-        internal Disposable(ThreadNode node)
-        {
-            _node = node;
-        }
+        internal Disposable(ThreadNode node) => _node = node;
 
         /// <summary>
         /// Releases the lock. If there are waiting threads in the queue, it passes the lock to the next

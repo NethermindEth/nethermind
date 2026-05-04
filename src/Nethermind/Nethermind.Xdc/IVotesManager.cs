@@ -4,8 +4,8 @@
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Types;
-using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
@@ -15,9 +15,9 @@ public interface IVotesManager
     Task CastVote(BlockRoundInfo blockInfo);
     Task HandleVote(Vote vote);
     Task OnReceiveVote(Vote vote);
-    bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate certificate);
-    bool VerifyVotingRules(XdcBlockHeader header);
-    bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc);
+    bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate certificate, [NotNullWhen(false)] out string? error);
+    bool VerifyVotingRules(XdcBlockHeader header, [NotNullWhen(false)] out string? error);
+    bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc, [NotNullWhen(false)] out string? error);
 
     IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<Vote>> GetReceivedVotes();
 }

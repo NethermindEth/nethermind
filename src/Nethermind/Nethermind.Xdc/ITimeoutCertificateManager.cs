@@ -16,7 +16,7 @@ public interface ITimeoutCertificateManager
     Task HandleTimeoutVote(Timeout timeout);
     void OnCountdownTimer();
     void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate);
-    bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage);
+    bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string? errorMessage);
     long GetTimeoutsCount(Timeout timeout);
     IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<Timeout>> GetReceivedTimeouts();
 }

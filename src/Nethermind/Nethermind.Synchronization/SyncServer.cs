@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SyncServer>() ?? throw new ArgumentNullException(nameof(logManager));
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
@@ -369,15 +369,9 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public TxReceipt[] GetReceipts(Hash256? blockHash)
-        {
-            return blockHash is not null ? _receiptFinder.Get(blockHash) : [];
-        }
+        public TxReceipt[] GetReceipts(Hash256? blockHash) => blockHash is not null ? _receiptFinder.Get(blockHash) : [];
 
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
-        {
-            return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
-        }
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
@@ -507,7 +501,7 @@ namespace Nethermind.Synchronization
             }
 
             using ArrayPoolList<PeerInfo> allPeers = _pool.AllPeers.ToPooledList(_pool.PeerCount);
-            var counter = 0;
+            int counter = 0;
 
             ParallelUnbalancedWork.For(0, allPeers.Count,
                 (i) =>
@@ -559,7 +553,7 @@ namespace Nethermind.Synchronization
 
         public void StopNotifyingPeersAboutNewBlocks()
         {
-            if (_gossipStopped == false)
+            if (!_gossipStopped)
             {
                 _blockTree.NewHeadBlock -= OnNewHeadBlock;
                 _pool.NotifyPeerBlock -= OnNotifyPeerBlock;

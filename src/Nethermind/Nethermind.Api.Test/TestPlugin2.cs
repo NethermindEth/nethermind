@@ -11,20 +11,11 @@ namespace Nethermind.Api.Test
         public string Name { get; }
         public string Description { get; }
         public string Author { get; }
-        public Task Init(INethermindApi nethermindApi)
-        {
-            throw new System.NotImplementedException();
-        }
+        public Task Init(INethermindApi nethermindApi) => throw new System.NotImplementedException();
 
-        public Task InitNetworkProtocol()
-        {
-            throw new System.NotImplementedException();
-        }
+        public Task InitNetworkProtocol() => throw new System.NotImplementedException();
 
-        public Task InitRpcModules()
-        {
-            throw new System.NotImplementedException();
-        }
+        public Task InitRpcModules() => throw new System.NotImplementedException();
 
         public bool Enabled => true;
     }

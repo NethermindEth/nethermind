@@ -4,7 +4,6 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Evm;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -91,8 +90,7 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         }
     }
 
-    public override NativeCallTracerCallFrame Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
+    public override NativeCallTracerCallFrame Read(
+        ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         throw new NotSupportedException();
-    }
 }

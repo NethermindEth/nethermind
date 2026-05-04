@@ -17,8 +17,8 @@ public class CodeChangeDecoder : IndexedChangeDecoder<CodeChange>
         => new(ctx.DecodeUShort(), ctx.DecodeByteArray(_codeLimit));
 
     protected override void EncodeValue(RlpStream stream, CodeChange item)
-        => stream.Encode(item.NewCode);
+        => stream.Encode(item.Code);
 
     protected override int GetValueLength(CodeChange item)
-        => Rlp.LengthOf(item.NewCode);
+        => Rlp.LengthOf(item.Code);
 }

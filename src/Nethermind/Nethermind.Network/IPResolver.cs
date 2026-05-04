@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -12,20 +13,13 @@ using Nethermind.Network.IP;
 
 namespace Nethermind.Network;
 
-public class IPResolver : IIPResolver
+public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : IIPResolver
 {
-    private readonly ILogger _logger;
-    private readonly INetworkConfig _networkConfig;
-    private readonly ILogManager _logManager;
+    private readonly ILogger _logger = logManager?.GetClassLogger<IPResolver>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+    private readonly ILogManager _logManager = logManager;
 
-    public IPResolver(INetworkConfig networkConfig, ILogManager logManager)
-    {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-        _logManager = logManager;
-    }
-
-    public async Task Initialize()
+    public async Task Initialize(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -44,7 +38,7 @@ public class IPResolver : IIPResolver
             if (i > 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"External IP resolution failed (attempt {i}/{maxAttempts}). Retrying in {delaySeconds}s...");
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
             }
 
             try
@@ -110,7 +104,7 @@ public class IPResolver : IIPResolver
 
         try
         {
-            foreach (var s in GetIPSources())
+            foreach (IIPSource s in GetIPSources())
             {
                 (bool success, IPAddress ip) = await s.TryGetIP();
                 if (success)

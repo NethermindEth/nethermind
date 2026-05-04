@@ -209,7 +209,7 @@ public class LogFilterTests
 
     private Core.Bloom GetBloom(params LogEntry[] logEntries)
     {
-        Core.Bloom bloom = new Core.Bloom();
+        Core.Bloom bloom = new();
         bloom.Add(logEntries);
         return bloom;
     }

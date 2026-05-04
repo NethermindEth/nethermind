@@ -13,8 +13,8 @@ public class BuiltInStepsModule : Module
     [
         typeof(ApplyMemoryHint),
         typeof(DatabaseMigrations),
+        typeof(EraEStep),
         typeof(EraStep),
-        typeof(InitDatabase),
         typeof(InitializeBlockchain),
         typeof(EvmWarmer),
         typeof(InitializeBlockProducer),
@@ -38,7 +38,7 @@ public class BuiltInStepsModule : Module
 
     protected override void Load(ContainerBuilder builder)
     {
-        foreach (var builtInStep in BuiltInSteps)
+        foreach (StepInfo builtInStep in BuiltInSteps)
         {
             builder.AddStep(builtInStep);
         }

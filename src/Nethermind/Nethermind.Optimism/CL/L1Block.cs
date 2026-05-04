@@ -49,25 +49,19 @@ public sealed record L1BlockRef
         Timestamp = 0
     };
 
-    public static L1BlockRef From(L1BlockInfo blockInfo)
+    public static L1BlockRef From(L1BlockInfo blockInfo) => new()
     {
-        return new L1BlockRef
-        {
-            Hash = blockInfo.BlockHash,
-            Number = blockInfo.Number,
-            ParentHash = blockInfo.BlockHash,
-            Timestamp = blockInfo.Timestamp
-        };
-    }
+        Hash = blockInfo.BlockHash,
+        Number = blockInfo.Number,
+        ParentHash = blockInfo.BlockHash,
+        Timestamp = blockInfo.Timestamp
+    };
 
-    public static L1BlockRef From(L1Block? block)
+    public static L1BlockRef From(L1Block? block) => block is null ? Zero : new L1BlockRef
     {
-        return block is null ? Zero : new L1BlockRef
-        {
-            Hash = block.Value.Hash,
-            Number = block.Value.Number,
-            ParentHash = block.Value.ParentHash,
-            Timestamp = (ulong)block.Value.Timestamp // TODO: Potential unsafe cast
-        };
-    }
+        Hash = block.Value.Hash,
+        Number = block.Value.Number,
+        ParentHash = block.Value.ParentHash,
+        Timestamp = (ulong)block.Value.Timestamp // TODO: Potential unsafe cast
+    };
 }

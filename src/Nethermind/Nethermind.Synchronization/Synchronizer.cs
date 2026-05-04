@@ -6,10 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Network.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -223,17 +221,14 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private static NodeStatsEventType Convert(SyncEvent syncEvent)
+        private static NodeStatsEventType Convert(SyncEvent syncEvent) => syncEvent switch
         {
-            return syncEvent switch
-            {
-                Synchronization.SyncEvent.Started => NodeStatsEventType.SyncStarted,
-                Synchronization.SyncEvent.Failed => NodeStatsEventType.SyncFailed,
-                Synchronization.SyncEvent.Cancelled => NodeStatsEventType.SyncCancelled,
-                Synchronization.SyncEvent.Completed => NodeStatsEventType.SyncCompleted,
-                _ => throw new ArgumentOutOfRangeException(nameof(syncEvent))
-            };
-        }
+            Synchronization.SyncEvent.Started => NodeStatsEventType.SyncStarted,
+            Synchronization.SyncEvent.Failed => NodeStatsEventType.SyncFailed,
+            Synchronization.SyncEvent.Cancelled => NodeStatsEventType.SyncCancelled,
+            Synchronization.SyncEvent.Completed => NodeStatsEventType.SyncCompleted,
+            _ => throw new ArgumentOutOfRangeException(nameof(syncEvent))
+        };
 
         private void DownloaderOnSyncEvent(object? sender, SyncEventArgs e)
         {
@@ -245,21 +240,25 @@ namespace Nethermind.Synchronization
         {
             _syncCancellation?.Cancel();
 
-            Task timeout = Task.Delay(FeedsTerminationTimeout);
-            Task completedFirst = await Task.WhenAny(
-                timeout,
-                Task.WhenAll(
-                    fullSyncComponent.Feed.FeedTask,
-                    fastSyncComponent.Feed.FeedTask,
-                    stateSyncComponent.Feed.FeedTask,
-                    snapSyncComponent.Feed.FeedTask,
-                    fastHeaderComponent.Feed.FeedTask,
-                    oldBodiesComponent.Feed.FeedTask,
-                    oldReceiptsComponent.Feed.FeedTask));
+            using CancellationTokenSource timeoutCts = new();
+            Task timeout = Task.Delay(FeedsTerminationTimeout, timeoutCts.Token);
+            Task feedsTask = Task.WhenAll(
+                fullSyncComponent.Feed.FeedTask,
+                fastSyncComponent.Feed.FeedTask,
+                stateSyncComponent.Feed.FeedTask,
+                snapSyncComponent.Feed.FeedTask,
+                fastHeaderComponent.Feed.FeedTask,
+                oldBodiesComponent.Feed.FeedTask,
+                oldReceiptsComponent.Feed.FeedTask);
+            Task completedFirst = await Task.WhenAny(timeout, feedsTask);
 
             if (completedFirst == timeout)
             {
                 if (_logger.IsWarn) _logger.Warn("Sync feeds dispose timeout");
+            }
+            else
+            {
+                timeoutCts.Cancel();
             }
 
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
@@ -348,9 +347,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync)
 
-            .AddSingleton<SyncPeerPool, IBlockTree, INodeStatsManager, IBetterPeerStrategy, INetworkConfig, ILogManager>(
-                    (blockTree, stats, betterPeerStrategy, networkConfig, logManager) =>
-                        new SyncPeerPool(blockTree, stats, betterPeerStrategy, networkConfig, logManager))
+            .AddSingleton<SyncPeerPool>()
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
 
@@ -383,10 +380,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
     }
 
-    private void ConfigureFullSync(ContainerBuilder scopeConfig)
-    {
-        scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FullSyncFeed>();
-    }
+    private void ConfigureFullSync(ContainerBuilder scopeConfig) => scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FullSyncFeed>();
 
     private void ConfigureFastSync(ContainerBuilder scopeConfig)
     {
@@ -474,14 +468,11 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         }
     }
 
-    private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch>
-    {
-        serviceCollection
+    private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch> => serviceCollection
             .AddSingleton<ISyncFeed<TBatch>, TFeed>()
             .AddSingleton<SyncFeedComponent<TBatch>>()
             .AddSingleton<ISyncDownloader<TBatch>, TDownloader>()
             .AddSingleton<IPeerAllocationStrategyFactory<TBatch>, TAllocationStrategy>()
             .AddSingleton<SyncDispatcher<TBatch>>();
-    }
 
 }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
@@ -47,13 +48,10 @@ public readonly struct TinyTreePath : IEquatable<TinyTreePath>
     // Need more variance than straightforward long.GetHashCode() as it determines lock contention in ConcurrentDictionary
     public override int GetHashCode() => (int)BitOperations.Crc32C((uint)_data, ((ulong)_data & 0xffff_ffff_0000_0000) | ~(uint)_data);
 
-    public static bool operator ==(in TinyTreePath left, in TinyTreePath right)
-    {
-        return left.Equals(in right);
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal int GetChainedHashCode(uint seed) => (int)BitOperations.Crc32C(seed, (ulong)_data);
 
-    public static bool operator !=(in TinyTreePath left, in TinyTreePath right)
-    {
-        return !(left == right);
-    }
+    public static bool operator ==(in TinyTreePath left, in TinyTreePath right) => left.Equals(in right);
+
+    public static bool operator !=(in TinyTreePath left, in TinyTreePath right) => !(left == right);
 }

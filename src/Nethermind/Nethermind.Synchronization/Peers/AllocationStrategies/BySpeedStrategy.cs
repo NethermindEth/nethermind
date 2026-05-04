@@ -9,41 +9,31 @@ using Nethermind.Stats;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public class BySpeedStrategy : IPeerAllocationStrategy
+    public class BySpeedStrategy(
+        TransferSpeedType speedType,
+        bool priority,
+        decimal minDiffPercentageForSpeedSwitch = 0.0m,
+        int minDiffForSpeedSwitch = 0,
+        double recalculateSpeedProbability = 0.025,
+        long desiredPeersWithKnownSpeed = 5
+        ) : IPeerAllocationStrategy
     {
-        public static BySpeedStrategy FastestHeader = new BySpeedStrategy(TransferSpeedType.Headers, true);
+        public static BySpeedStrategy FastestHeader = new(TransferSpeedType.Headers, true);
 
-        private readonly TransferSpeedType _speedType;
-        private readonly bool _priority;
-        private readonly decimal _minDiffPercentageForSpeedSwitch;
-        private readonly int _minDiffForSpeedSwitch;
+        private readonly TransferSpeedType _speedType = speedType;
+        private readonly bool _priority = priority;
+        private readonly decimal _minDiffPercentageForSpeedSwitch = minDiffPercentageForSpeedSwitch;
+        private readonly int _minDiffForSpeedSwitch = minDiffForSpeedSwitch;
         private readonly Random _random = new();
 
         // Randomly pick a different peer that is not of the best speed. Encourage updating speed.
         // Does not seems to matter much. But its here if you want to tweak it.
-        private readonly double _recalculateSpeedProbability;
+        private readonly double _recalculateSpeedProbability = recalculateSpeedProbability;
 
         // If the number of peer with known speed is less than this, then always try new peer.
         // The idea is that, if we have at least this amount of peers with known speed, at least one of them should
         // be fast, but we don't want to spend more time trying out other peers.
-        private readonly long _desiredPeersWithKnownSpeed;
-
-        public BySpeedStrategy(
-            TransferSpeedType speedType,
-            bool priority,
-            decimal minDiffPercentageForSpeedSwitch = 0.0m,
-            int minDiffForSpeedSwitch = 0,
-            double recalculateSpeedProbability = 0.025,
-            long desiredPeersWithKnownSpeed = 5
-        )
-        {
-            _speedType = speedType;
-            _priority = priority;
-            _minDiffPercentageForSpeedSwitch = minDiffPercentageForSpeedSwitch;
-            _minDiffForSpeedSwitch = minDiffForSpeedSwitch;
-            _recalculateSpeedProbability = recalculateSpeedProbability;
-            _desiredPeersWithKnownSpeed = desiredPeersWithKnownSpeed;
-        }
+        private readonly long _desiredPeersWithKnownSpeed = desiredPeersWithKnownSpeed;
 
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {

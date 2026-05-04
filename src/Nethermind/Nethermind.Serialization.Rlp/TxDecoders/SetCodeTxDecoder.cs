@@ -24,9 +24,6 @@ public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
         stream.EncodeArray(transaction.AuthorizationList, rlpBehaviors);
     }
 
-    protected override int GetPayloadLength(Transaction transaction)
-    {
-        return base.GetPayloadLength(transaction)
+    protected override int GetPayloadLength(Transaction transaction) => base.GetPayloadLength(transaction)
                + (transaction.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(_authTupleDecoder.GetContentLength(transaction.AuthorizationList, RlpBehaviors.None)));
-    }
 }

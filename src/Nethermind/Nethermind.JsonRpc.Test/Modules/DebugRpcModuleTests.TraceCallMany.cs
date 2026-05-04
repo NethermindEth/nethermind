@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -14,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State;
@@ -62,7 +60,7 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction());
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
         result.Data.First().First().Should().NotBeNull();
     }
@@ -72,7 +70,7 @@ public partial class DebugRpcModuleTests
     {
         using Context ctx = await CreateContext();
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))], BlockParameter.Latest);
 
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
     }
@@ -83,7 +81,7 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(), CreateTransaction(to: TestItem.AddressD));
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([2]);
     }
@@ -94,7 +92,7 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(value: 200.Ether));
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
 
         GethLikeTxTrace trace = result.Data.First().First();
@@ -107,7 +105,7 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(gas: long.MaxValue));
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
         result.Data.Should().HaveCount(1);
     }
@@ -120,7 +118,7 @@ public partial class DebugRpcModuleTests
 
         GethTraceOptions options = new() { DisableStorage = true, DisableStack = true };
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest, options);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest, options);
 
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
     }
@@ -135,7 +133,7 @@ public partial class DebugRpcModuleTests
             [TestItem.AddressD] = new() { Balance = 100.Ether }
         };
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
         result.Data.First().First().Should().NotBeNull();
     }
@@ -152,7 +150,7 @@ public partial class DebugRpcModuleTests
             [TestItem.AddressD] = new() { Balance = 100.Ether }
         };
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
         result.Data.First().First().Should().NotBeNull();
@@ -165,7 +163,7 @@ public partial class DebugRpcModuleTests
         TransactionBundle bundle = CreateBundle(CreateTransaction(gas: 25_000_000));
         bundle.BlockOverride = new BlockOverride { GasLimit = 50_000_000 };
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
         result.Data.First().First().Failed.Should().BeFalse();
     }
 
@@ -176,8 +174,28 @@ public partial class DebugRpcModuleTests
         TransactionBundle simple = CreateBundle(CreateTransaction(gas: 4_000_000));
         TransactionBundle withOverride = CreateBundle(CreateTransaction(gas: 25_000_000));
         withOverride.BlockOverride = new BlockOverride { GasLimit = 30_000_000 };
-        var result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
 
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+    }
+
+    [TestCase(3, TestName = "Debug_traceCallMany_with_minimum_block_number_gap_returns_one_entry_per_bundle")]
+    [TestCase(5, TestName = "Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle")]
+    public async Task Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle(int secondBundleOffset)
+    {
+        using Context ctx = await CreateContext();
+        long headNumber = ctx.Blockchain.BlockTree.Head!.Number;
+
+        TransactionBundle first = CreateBundle(CreateTransaction());
+        first.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + 1) };
+
+        TransactionBundle second = CreateBundle(CreateTransaction(to: TestItem.AddressD));
+        second.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + secondBundleOffset) };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
+
+        result.Data.Should().HaveCount(2);
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
     }
 
@@ -207,11 +225,45 @@ public partial class DebugRpcModuleTests
 
         TransactionBundle bundle = CreateBundle(CreateTransaction(to: contractAddress, value: 0, gas: 100_000));
 
-        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
         GethLikeTxTrace trace = result.Data.First().First();
         long gasAvailable = (long)trace.ReturnValue.ToUInt256();
         gasAvailable.Should().BeLessThan(gasCap);
         gasAvailable.Should().BeGreaterThan(0);
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await CreateContext();
+
+        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        long gasCap = blockGasLimit * 10;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns gas available at start of execution as a uint256
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+
+        // No Gas set — should default to gasCap via EnsureDefaults, not blockGasLimit
+        LegacyTransactionForRpc tx = new() { To = contractAddress };
+
+        TransactionBundle bundle = new()
+        {
+            Transactions = [tx],
+            StateOverrides = new Dictionary<Address, AccountOverride>
+            {
+                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
+            }
+        };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        GethLikeTxTrace trace = result.Data.First().First();
+        UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
+        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
+            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
     }
 }

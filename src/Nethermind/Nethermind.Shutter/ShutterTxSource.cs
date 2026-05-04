@@ -23,7 +23,7 @@ public class ShutterTxSource(
     : ITxSource, IShutterTxSignal
 {
     private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterTxSource>();
     private ulong _keyWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
     private readonly Lock _syncObject = new();
@@ -45,7 +45,7 @@ public class ShutterTxSource(
         }
         catch (SlotTime.SlotCalculationException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not calculate Shutter building slot: {e}");
+            _logger.DebugWarn($"Could not calculate Shutter building slot: {e}");
             return [];
         }
 
@@ -101,10 +101,7 @@ public class ShutterTxSource(
         }
     }
 
-    public bool HaveTransactionsArrived(ulong slot)
-    {
-        return _txCache.Contains(slot);
-    }
+    public bool HaveTransactionsArrived(ulong slot) => _txCache.Contains(slot);
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeys keys)
     {

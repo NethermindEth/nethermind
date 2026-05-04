@@ -25,7 +25,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
     private ConcurrentDictionary<string, MethodStats> _previousStats = new();
     private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
     private DateTime _lastReport = timestamper.UtcNow;
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager?.GetClassLogger<JsonRpcLocalStats>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly StringBuilder _reportStringBuilder = new();
 
     public MethodStats GetMethodStats(string methodName) => _allTimeStats.GetValueOrDefault(methodName, new MethodStats());
@@ -176,10 +176,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         }
     }
 
-    private void Swap()
-    {
-        (_currentStats, _previousStats) = (_previousStats, _currentStats);
-    }
+    private void Swap() => (_currentStats, _previousStats) = (_previousStats, _currentStats);
 
     [Pure]
     private static string PrepareReportLine(in string key, MethodStats methodStats) =>

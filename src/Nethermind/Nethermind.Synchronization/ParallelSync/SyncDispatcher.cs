@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly string _feedName;
         private ISyncPeerPool SyncPeerPool { get; }
 
-        private readonly CountdownEvent _activeTasks = new CountdownEvent(1);
+        private readonly CountdownEvent _activeTasks = new(1);
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
         private readonly TimeSpan _emptyRequestDelay;
@@ -141,12 +141,17 @@ namespace Nethermind.Synchronization.ParallelSync
                                 break;
                             }
 
+                            // The lambda must be async so the finally runs after DoDispatch's Task fully completes;
+                            // a non-async `() => DoDispatch(...)` would call SignalActiveTask the moment DoDispatch
+                            // yields (e.g. on the IsMultiFeed semaphore await), dropping the _activeTasks count
+                            // while the dispatch was still in flight. That race is what the flaky
+                            // When_ConcurrentHandleResponseIsRunning_Then_BlockDispose test was catching.
                             Task task = Task.Run(
-                                () =>
+                                async () =>
                                 {
                                     try
                                     {
-                                        return DoDispatch(cancellationToken, allocatedPeer, request, allocation);
+                                        await DoDispatch(cancellationToken, allocatedPeer, request, allocation);
                                     }
                                     finally
                                     {
@@ -312,7 +317,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         newDormantStateTask = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
                     }
 
-                    var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
+                    TaskCompletionSource<object> previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
                     previous?.TrySetResult(null);
                 }
             }
@@ -331,6 +336,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
+            Feed.StateChanged -= SyncFeedOnStateChanged;
             await _cancellationTokenSource.CancelAsync();
             SignalActiveTask();
             if (!_activeTasks.Wait(_activeTaskDisposeTimeout))

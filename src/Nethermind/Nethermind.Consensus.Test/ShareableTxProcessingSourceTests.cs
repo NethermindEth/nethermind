@@ -26,6 +26,7 @@ public class ShareableTxProcessingSourceTests
     [TearDown]
     public void TearDown()
     {
+        _shareableSource?.Dispose();
         _container?.Dispose();
     }
 

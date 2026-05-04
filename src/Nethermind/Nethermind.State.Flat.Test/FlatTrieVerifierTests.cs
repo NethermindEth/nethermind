@@ -2,20 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -33,7 +29,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     private RawScopedTrieStore _trieStore = null!;
     private StateTree _stateTree = null!;
     private ILogManager _logManager = null!;
-    private TestMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
     private IPersistence _persistence = null!;
 
     [SetUp]
@@ -44,7 +40,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _stateTree = new StateTree(_trieStore, LimboLogs.Instance);
         _logManager = LimboLogs.Instance;
 
-        _columnsDb = new TestMemColumnsDb<FlatDbColumns>();
+        _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _persistence = layout == FlatLayout.PreimageFlat
             ? new PreimageRocksdbPersistence(_columnsDb)
             : new RocksDbPersistence(_columnsDb);
@@ -82,7 +78,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
     private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
     {
-        TestMemDb storageDb = (TestMemDb)_columnsDb.GetColumnDb(FlatDbColumns.Storage);
+        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
 
         ValueHash256 addrHash;
         ValueHash256 slotHash;
@@ -111,12 +107,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
     private void CorruptAccountInFlat(Address address, Account corruptedAccount)
     {
-        TestMemDb accountDb = (TestMemDb)_columnsDb.GetColumnDb(FlatDbColumns.Account);
+        IDb accountDb = _columnsDb.GetColumnDb(FlatDbColumns.Account);
         ValueHash256 addrKey = layout == FlatLayout.PreimageFlat
             ? CreatePreimageAddressKey(address)
             : ValueKeccak.Compute(address.Bytes);
 
-        using var stream = AccountDecoder.Slim.EncodeToNewNettyStream(corruptedAccount);
+        using NettyRlpStream stream = AccountDecoder.Slim.EncodeToNewNettyStream(corruptedAccount);
         accountDb.Set(addrKey.BytesAsSpan[..20], stream.AsSpan().ToArray());
     }
 
@@ -131,7 +127,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     {
         Hash256 addressHash = Keccak.Compute(address.Bytes);
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(addressHash);
-        StorageTree storageTree = new StorageTree(storageTrieStore, _logManager);
+        StorageTree storageTree = new(storageTrieStore, _logManager);
 
         foreach ((UInt256 slot, byte[] value) in slots)
         {
@@ -147,7 +143,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         Hash256 stateRoot = Keccak.EmptyTreeHash;
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(0));
@@ -160,17 +156,17 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     public void Verify_SingleAccount_Matches()
     {
         Address address = TestItem.AddressA;
-        Account account = new Account(1, 100);
+        Account account = new(1, 100);
 
         _stateTree.Set(address, account);
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        StateId toState = new StateId(1, stateRoot);
+        StateId toState = new(1, stateRoot);
         WriteAccountToFlat(address, account, toState);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
@@ -186,9 +182,9 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         Address addressB = TestItem.AddressB;
         Address addressC = TestItem.AddressC;
 
-        Account accountA = new Account(1, 100);
-        Account accountB = new Account(2, 200);
-        Account accountC = new Account(3, 300);
+        Account accountA = new(1, 100);
+        Account accountB = new(2, 200);
+        Account accountC = new(3, 300);
 
         _stateTree.Set(addressA, accountA);
         _stateTree.Set(addressB, accountB);
@@ -196,11 +192,11 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        StateId toState = new StateId(1, stateRoot);
+        StateId toState = new(1, stateRoot);
         WriteAccountsToFlat([(addressA, accountA), (addressB, accountB), (addressC, accountC)], toState);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
@@ -214,19 +210,19 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     public void Verify_MismatchedAccount_DetectsMismatch(ulong trieNonce, ulong trieBalance, ulong flatNonce, ulong flatBalance)
     {
         Address address = TestItem.AddressA;
-        Account trieAccount = new Account(trieNonce, trieBalance);
-        Account flatAccount = new Account(flatNonce, flatBalance);
+        Account trieAccount = new(trieNonce, trieBalance);
+        Account flatAccount = new(flatNonce, flatBalance);
 
         _stateTree.Set(address, trieAccount);
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        StateId toState = new StateId(1, stateRoot);
+        StateId toState = new(1, stateRoot);
         WriteAccountToFlat(address, trieAccount, toState);
         CorruptAccountInFlat(address, flatAccount);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
@@ -237,7 +233,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     public void Verify_AccountInTrieNotInFlat_DetectsMissingInFlat()
     {
         Address address = TestItem.AddressA;
-        Account account = new Account(1, 100);
+        Account account = new(1, 100);
 
         // Add to trie but not to flat
         _stateTree.Set(address, account);
@@ -245,7 +241,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         Hash256 stateRoot = _stateTree.RootHash;
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
@@ -257,17 +253,17 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     public void Verify_AccountInFlatNotInTrie_DetectsMissingInTrie()
     {
         Address address = TestItem.AddressA;
-        Account account = new Account(1, 100);
+        Account account = new(1, 100);
 
         // Empty trie
         Hash256 stateRoot = Keccak.EmptyTreeHash;
 
         // Add to flat only
-        StateId toState = new StateId(1, stateRoot);
+        StateId toState = new(1, stateRoot);
         WriteAccountToFlat(address, account, toState);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
@@ -283,9 +279,9 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         Address addressB = TestItem.AddressB;
         Address addressExtra = TestItem.AddressC;
 
-        Account accountA = new Account(1, 100);
-        Account accountB = new Account(2, 200);
-        Account accountExtra = new Account(3, 300);
+        Account accountA = new(1, 100);
+        Account accountB = new(2, 200);
+        Account accountExtra = new(3, 300);
 
         _stateTree.Set(addressA, accountA);
         _stateTree.Set(addressB, accountB);
@@ -293,11 +289,11 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        StateId toState = new StateId(1, stateRoot);
+        StateId toState = new(1, stateRoot);
         WriteAccountsToFlat([(addressA, accountA), (addressB, accountB), (addressExtra, accountExtra)], toState);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
@@ -310,19 +306,19 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     {
         Address address = TestItem.AddressA;
         StorageTree storageTree = CreateStorageTree(address, [((UInt256)1, [0x11]), ((UInt256)2, [0x22])]);
-        Account account = new Account(1, 100, storageTree.RootHash, Keccak.Compute([1]));
+        Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
 
         _stateTree.Set(address, account);
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        StateId toState = new StateId(1, stateRoot);
+        StateId toState = new(1, stateRoot);
         WriteAccountToFlat(address, account, toState);
         WriteStorageDirectToDb(address, 1, [0x11]);
         WriteStorageDirectToDb(address, 2, [0x22]);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
@@ -336,18 +332,18 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     {
         Address address = TestItem.AddressA;
         StorageTree storageTree = CreateStorageTree(address, [((UInt256)1, [0x11])]);
-        Account account = new Account(1, 100, storageTree.RootHash, Keccak.Compute([1]));
+        Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
 
         _stateTree.Set(address, account);
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        StateId toState = new StateId(1, stateRoot);
+        StateId toState = new(1, stateRoot);
         WriteAccountToFlat(address, account, toState);
         WriteStorageDirectToDb(address, 1, [0xFF]); // Wrong value
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
@@ -356,20 +352,47 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     }
 
     [Test]
+    public void Verify_EmptyStorageRoot_DetectsOrphanedFlatStorage()
+    {
+        Address address = TestItem.AddressA;
+        // Account with EmptyTreeHash storage root (e.g. after self-destruct)
+        Account account = new(1, 0, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+
+        _stateTree.Set(address, account);
+        _stateTree.Commit();
+        Hash256 stateRoot = _stateTree.RootHash;
+
+        StateId toState = new(1, stateRoot);
+        WriteAccountToFlat(address, account, toState);
+
+        // Inject stale storage entries that should not exist
+        WriteStorageDirectToDb(address, 0, [0x01, 0x15, 0xe8]);
+        WriteStorageDirectToDb(address, 1, [0xab, 0xcd]);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new(_logManager);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+
+        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
+        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(2), "Should detect 2 orphaned flat storage entries");
+    }
+
+    [Test]
     public void Verify_MixedScenario_DetectsAllIssues()
     {
         // Account A: in both, matches
         Address addressA = TestItem.AddressA;
-        Account accountA = new Account(1, 100);
+        Account accountA = new(1, 100);
 
         // Account B: in trie only (missing in flat)
         Address addressB = TestItem.AddressB;
-        Account accountB = new Account(2, 200);
+        Account accountB = new(2, 200);
 
         // Account C: mismatched
         Address addressC = TestItem.AddressC;
-        Account trieAccountC = new Account(3, 300);
-        Account flatAccountC = new Account(3, 999);
+        Account trieAccountC = new(3, 300);
+        Account flatAccountC = new(3, 999);
 
         _stateTree.Set(addressA, accountA);
         _stateTree.Set(addressB, accountB);
@@ -377,13 +400,13 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        StateId toState = new StateId(1, stateRoot);
+        StateId toState = new(1, stateRoot);
         WriteAccountsToFlat([(addressA, accountA), (addressC, trieAccountC)], toState);
         // Note: addressB not added to flat
         CorruptAccountInFlat(addressC, flatAccountC);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new FlatTrieVerifier(_logManager);
+        FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));

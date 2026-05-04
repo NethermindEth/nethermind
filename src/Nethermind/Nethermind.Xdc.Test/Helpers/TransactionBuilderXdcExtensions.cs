@@ -36,7 +36,7 @@ public static class TransactionBuilderXdcExtensions
         SignSelector.CopyTo(data);
 
         // 4..35: uint256 blockNumber (big-endian, right-aligned in 32 bytes)
-        var be = BitConverter.GetBytes((ulong)blockNumber);
+        byte[] be = BitConverter.GetBytes((ulong)blockNumber);
         if (BitConverter.IsLittleEndian) Array.Reverse(be);
         // last 8 bytes of that 32 are the ulong
         for (int i = 0; i < 8; i++) data[4 + 24 + i] = be[i];

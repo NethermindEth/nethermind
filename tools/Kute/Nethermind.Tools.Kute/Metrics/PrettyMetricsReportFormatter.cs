@@ -16,7 +16,7 @@ public sealed class PrettyMetricsReportFormatter : IMetricsReportFormatter
         await writer.WriteLineAsync($"Ignored: {report.Ignored}", token);
         await writer.WriteLineAsync($"Responses: {report.Responses}\n", token);
         await writer.WriteLineAsync("Singles:", token);
-        foreach ((var methodName, var metrics) in report.SinglesMetrics)
+        foreach ((string? methodName, var metrics) in report.SinglesMetrics)
         {
             await writer.WriteLineAsync($"  {methodName}:", token);
             await writer.WriteLineAsync($"    Count: {report.Singles[methodName].Count}", token);

@@ -11,7 +11,6 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
-using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using BenchmarkDotNet.Columns;
 using Nethermind.Precompiles.Benchmark;
 
@@ -39,10 +38,8 @@ namespace Nethermind.Benchmark.Runner
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
-        public PrecompileBenchmarkConfig(Job job) : base(job)
-        {
+        public PrecompileBenchmarkConfig(Job job) : base(job) =>
             AddColumnProvider(new GasColumnProvider());
-        }
     }
 
     public static class Program

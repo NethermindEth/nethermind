@@ -86,9 +86,6 @@ namespace Nethermind.Specs.Test
         }
 
         [Test]
-        public void Dao_block_number_is_correct()
-        {
-            _specProvider.DaoBlockNumber.Should().Be(1920000L);
-        }
+        public void Dao_block_number_is_correct() => _specProvider.DaoBlockNumber.Should().Be(1920000L);
     }
 }

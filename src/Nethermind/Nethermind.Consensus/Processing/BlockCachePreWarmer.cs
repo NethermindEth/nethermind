@@ -18,24 +18,22 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockCachePreWarmer(
-    PrewarmerEnvFactory envFactory,
-    int concurrency,
-    NodeStorageCache nodeStorageCache,
-    PreBlockCaches preBlockCaches,
-    ILogManager logManager
-) : IBlockCachePreWarmer
+public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
-    private readonly int _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
-    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
-    private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private readonly int _concurrencyLevel;
+    private readonly bool _parallelExecutionBatchRead;
+    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
+    private readonly ILogger _logger;
+    private readonly PreBlockCaches _preBlockCaches;
+    private readonly NodeStorageCache _nodeStorageCache;
+    private readonly bool _parallelExecutionEnabled;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -44,21 +42,38 @@ public sealed class BlockCachePreWarmer(
         PreBlockCaches preBlockCaches,
         ILogManager logManager
     ) : this(
-        envFactory,
+        new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
+        Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
+        blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager)
+        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+
+    internal BlockCachePreWarmer(
+        IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
+        int maxPoolSize,
+        int concurrency,
+        bool parallelExecutionBatchRead,
+        NodeStorageCache nodeStorageCache,
+        PreBlockCaches preBlockCaches,
+        ILogManager logManager)
     {
+        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
+        _parallelExecutionBatchRead = parallelExecutionBatchRead;
+        _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
+        _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+        _preBlockCaches = preBlockCaches;
+        _nodeStorageCache = nodeStorageCache;
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (preBlockCaches is not null)
+        if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
-            CacheType result = preBlockCaches.ClearCaches();
-            nodeStorageCache.ClearCaches();
-            nodeStorageCache.Enabled = true;
+            CacheType result = _preBlockCaches.ClearCaches();
+            _nodeStorageCache.ClearCaches();
+            _nodeStorageCache.Enabled = true;
             if (result != default)
             {
                 if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
@@ -69,8 +84,12 @@ public sealed class BlockCachePreWarmer(
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
+                // BAL makes speculative tx execution redundant — when BAL-based read warming
+                // is in use, drive warmup directly off the suggested block's access list.
+                BlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
+
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
+                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
                 return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
@@ -80,14 +99,32 @@ public sealed class BlockCachePreWarmer(
         return Task.CompletedTask;
     }
 
+    // Pre-warming runs in two distinct modes:
+    //  - Speculative tx execution (default): runs txs against a snapshot to seed caches.
+    //    Skipped when parallel execution will actually run, because parallel execution keeps
+    //    its results rather than throwing them away after warmup. Parallel execution requires
+    //    BAL, so when BAL isn't active for this spec we still need speculative prewarming.
+    //  - BAL-based read warming: when parallel execution is on AND batch read is enabled,
+    //    we still warm — but only by reading state/storage referenced by the block's
+    //    access list (no tx execution).
+    private bool ShouldPreWarm(IReleaseSpec spec)
+        => !_parallelExecutionEnabled
+        || !spec.BlockLevelAccessListsEnabled
+        || IsBalReadWarmingEnabled(spec);
+
+    public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
+        => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
+
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
-        CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
-        cachesCleared |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+        CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
+        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
+
+    public void Dispose() => (_envPool as IDisposable)?.Dispose();
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
@@ -97,19 +134,23 @@ public sealed class BlockCachePreWarmer(
 
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
-            WarmupTransactions(blockState, parallelOptions);
-            WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
+            if (!addressWarmer.HasBal)
+            {
+                WarmupTransactions(blockState, parallelOptions);
+                WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
+            }
 
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Error pre-warming {suggestedBlock.Number}. {ex}");
+            _logger.DebugWarn($"Error pre-warming {suggestedBlock.Number}. {ex}");
         }
         finally
         {
-            // Don't compete the task until address warmer is also done.
+            // Don't complete the task until address warmer is also done.
             addressWarmer.Wait();
+            addressWarmer.Dispose();
         }
     }
 
@@ -148,7 +189,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error pre-warming withdrawal", ex);
+            _logger.DebugError("Error pre-warming withdrawal", ex);
         }
     }
 
@@ -168,7 +209,7 @@ public sealed class BlockCachePreWarmer(
             try
             {
                 // Convert to array for parallel iteration
-                ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
+                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
 
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
@@ -216,7 +257,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming transactions", ex);
+            _logger.DebugError("Error pre-warming transactions", ex);
         }
     }
 
@@ -271,19 +312,24 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (blockState.PreWarmer._logger.IsDebug) blockState.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx.Hash}", ex);
+            blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
-        : IThreadPoolWorkItem
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, BlockAccessList? bal = null)
+        : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
+        private readonly BlockAccessList? Bal = bal;
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
+        public bool HasBal => Bal is not null;
+
         public void Wait() => _doneEvent.Wait();
+
+        public void Dispose() => _doneEvent.Dispose();
 
         private static ArrayPoolList<AccessList>? GetAccessLists(Block block, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
         {
@@ -308,7 +354,7 @@ public sealed class BlockCachePreWarmer(
             }
             catch (Exception ex)
             {
-                if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming addresses", ex);
+                PreWarmer._logger.DebugError("Error pre-warming addresses", ex);
             }
             finally
             {
@@ -346,65 +392,138 @@ public sealed class BlockCachePreWarmer(
                     }
                 }
 
-                AddressWarmingState baseState = new(envPool, block, parent);
-
-                ParallelUnbalancedWork.For(
-                    0,
-                    block.Transactions.Length,
-                    parallelOptions,
-                    baseState.InitThreadState,
-                static (i, state) =>
+                if (Bal is not null && Bal.AccountChanges.Count > 0)
                 {
-                    Transaction tx = state.Block.Transactions[i];
-                    Address? sender = tx.SenderAddress;
+                    WarmupFromBal(parallelOptions, envPool);
+                }
+                else
+                {
+                    WarmingState<Block> baseState = new(envPool, block, parent);
 
-                    try
+                    ParallelUnbalancedWork.For(
+                        0,
+                        block.Transactions.Length,
+                        parallelOptions,
+                        baseState.InitThreadState,
+                    static (i, state) =>
                     {
-                        if (sender is not null)
-                        {
-                            state.Scope!.WorldState.WarmUp(sender);
-                        }
+                        Transaction tx = state.Payload.Transactions[i];
+                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
 
-                        Address to = tx.To;
-                        if (to is not null)
-                        {
-                            state.Scope!.WorldState.WarmUp(to);
-                        }
-                    }
-                    catch (MissingTrieNodeException)
-                    {
-                    }
-
-                    return state;
-                },
-                AddressWarmingState.FinallyAction);
+                        return state;
+                    },
+                    WarmingState<Block>.FinallyAction);
+                }
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
             }
         }
+
+        private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
+        {
+            using ArrayPoolList<AccountChanges> accounts = Bal!.AccountChanges.ToPooledList(Bal!.AccountChanges.Count);
+
+            WarmingState<ArrayPoolList<AccountChanges>> baseState = new(envPool, accounts, parent);
+
+            ParallelUnbalancedWork.For(
+                0,
+                accounts.Count,
+                parallelOptions,
+                baseState.InitThreadState,
+                static (i, state) =>
+                {
+                    AccountChanges ac = state.Payload[i];
+                    IWorldState worldState = state.Scope!.WorldState;
+
+                    WarmupBalAccount(ac, worldState);
+
+                    return state;
+                },
+                WarmingState<ArrayPoolList<AccountChanges>>.FinallyAction);
+        }
+
+        private static void WarmupBalAccount(AccountChanges ac, IWorldState worldState)
+        {
+            try
+            {
+                Address address = ac.Address;
+                worldState.WarmUp(address);
+
+                // Merge two sorted sequences (ChangedSlots, StorageReads) into one
+                // ascending pass for better trie path locality
+                IList<UInt256> changed = ac.ChangedSlots;
+                int slotIndex = 0;
+                using SortedSet<UInt256>.Enumerator readEnumerator = ac.StorageReads.GetEnumerator();
+                bool hasRead = readEnumerator.MoveNext();
+
+                while (slotIndex < changed.Count || hasRead)
+                {
+                    UInt256 slot;
+                    if (!hasRead)
+                    {
+                        slot = changed[slotIndex++];
+                    }
+                    else
+                    {
+                        slot = readEnumerator.Current;
+                        if (slotIndex < changed.Count && changed[slotIndex].CompareTo(in slot) <= 0)
+                        {
+                            slot = changed[slotIndex++];
+                        }
+                        else
+                        {
+                            hasRead = readEnumerator.MoveNext();
+                        }
+                    }
+                    worldState.Get(new StorageCell(address, slot));
+                }
+            }
+            catch (MissingTrieNodeException)
+            {
+            }
+        }
+
+        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
+        {
+            try
+            {
+                if (sender is not null)
+                {
+                    worldState.WarmUp(sender);
+                }
+
+                if (to is not null)
+                {
+                    worldState.WarmUp(to);
+                }
+            }
+            catch (MissingTrieNodeException)
+            {
+            }
+        }
     }
 
-    private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent) : IDisposable
+    private readonly struct WarmingState<TPayload>(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent) : IDisposable
     {
-        public static Action<AddressWarmingState> FinallyAction { get; } = DisposeThreadState;
+        public static Action<WarmingState<TPayload>> FinallyAction { get; } = DisposeThreadState;
 
         private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
         private readonly IReadOnlyTxProcessorSource? Env;
-        public readonly Block Block = block;
+        public readonly TPayload Payload = payload;
         public readonly IReadOnlyTxProcessingScope? Scope;
 
-        private AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, parent)
+        private WarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, parent)
         {
             Env = env;
             Scope = scope;
         }
 
-        public AddressWarmingState InitThreadState()
+        public WarmingState<TPayload> InitThreadState()
         {
             IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Block, parent, env, scope: env.Build(parent));
+            return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
         }
 
         public void Dispose()
@@ -416,12 +535,21 @@ public sealed class BlockCachePreWarmer(
             }
         }
 
-        private static void DisposeThreadState(AddressWarmingState state) => state.Dispose();
+        private static void DisposeThreadState(WarmingState<TPayload> state) => state.Dispose();
     }
 
-    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    /// <summary>
+    /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.
+    /// </summary>
+    internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches _preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public IReadOnlyTxProcessorSource Create() => envFactory.Create(preBlockCaches);
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create(_preBlockCaches);
+
+        /// <remarks>
+        /// Always returns true — the env is valid for reuse. The pool that owns this policy
+        /// must call <see cref="IDisposable.Dispose"/> on any item it cannot retain; failing
+        /// to do so leaks resources held by the env for the lifetime of the process.
+        /// </remarks>
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 

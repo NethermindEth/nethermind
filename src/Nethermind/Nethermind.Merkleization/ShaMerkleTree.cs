@@ -38,8 +38,5 @@ public class ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore) : Merkle
 
     protected override Bytes32[] ZeroHashesInternal => _zeroHashes;
 
-    protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
-    {
-        HashStatic(a, b, target);
-    }
+    protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target) => HashStatic(a, b, target);
 }

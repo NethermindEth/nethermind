@@ -8,8 +8,5 @@ namespace Nethermind.Shutter;
 
 public class ShutterAdditionalBlockProductionTxSource(IBlockProducerTxSourceFactory baseFactory, ShutterApi shutterApi) : IBlockProducerTxSourceFactory
 {
-    public ITxSource Create()
-    {
-        return shutterApi.TxSource.Then(baseFactory.Create());
-    }
+    public ITxSource Create() => shutterApi.TxSource.Then(baseFactory.Create());
 }

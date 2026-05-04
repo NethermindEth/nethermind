@@ -230,11 +230,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
-            NativePrestateTracerAccount poststateAccount = new NativePrestateTracerAccount(
+            NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
                 _worldState.GetCode(addr));
-            NativePrestateTracerAccount? diffAccount = new NativePrestateTracerAccount();
+            NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
             if (!poststateAccount.Balance.Equals(prestateAccount.Balance))

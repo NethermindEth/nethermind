@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -16,7 +16,11 @@ using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
@@ -56,15 +60,14 @@ internal class VotesManager(
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
-        XdcBlockHeader header = _blockTree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
-        if (header is null)
+        if (_blockTree.FindHeader(blockInfo.Hash) is not XdcBlockHeader header)
             throw new ArgumentException($"Cannot find block header for block {blockInfo.Hash}");
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        var vote = new Vote(blockInfo, (ulong)gapNumber, isMyVote: true);
+        Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
         Sign(vote);
 
@@ -85,11 +88,14 @@ internal class VotesManager(
         // Collect votes
         _votePool.Add(vote);
         IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote);
-        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
+        IReadOnlyCollection<Vote> roundVotesFromOtherKeys = _votePool.GetItemsFromRoundExcludingKey(vote);
+        // Forensics is expected to run asynchronously and must not block vote processing.
+        // The two calls are complementary: one checks signer conflicts across pool keys in the same round,
+        // the other validates against committed-QC ancestry.
+        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotesFromOtherKeys);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
-        XdcBlockHeader proposedHeader = _blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
-        if (proposedHeader is null)
+        if (_blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) is not XdcBlockHeader proposedHeader)
         {
             //This is a vote for a block we have not seen yet, just return for now
             return Task.CompletedTask;
@@ -123,7 +129,7 @@ internal class VotesManager(
 
             // At this point, the QC should be processed for this *round*.
             // Ensure this runs only once per round:
-            var round = vote.ProposedBlockInfo.Round;
+            ulong round = vote.ProposedBlockInfo.Round;
             if (!_qcBuildStartedByRound.TryAdd(round, 0))
                 return Task.CompletedTask;
             OnVotePoolThresholdReached(validSignatures, vote);
@@ -135,46 +141,59 @@ internal class VotesManager(
     {
         _votePool.EndRound(round);
 
-        foreach (var key in _qcBuildStartedByRound.Keys)
+        foreach (ulong key in _qcBuildStartedByRound.Keys)
             if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
     }
 
-    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc) => VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc);
-    public bool VerifyVotingRules(XdcBlockHeader header) => VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert);
-    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc)
+    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>
+        VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc, out error);
+
+    public bool VerifyVotingRules(XdcBlockHeader header, [NotNullWhen(false)] out string? error) =>
+        VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert, out error);
+
+    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc, out string? error)
     {
         if ((long)_ctx.CurrentRound <= _highestVotedRound)
         {
+            error = $"Already voted at round {_highestVotedRound}, current round {_ctx.CurrentRound}";
             return false;
         }
 
         if (roundNumber != _ctx.CurrentRound)
         {
+            error = $"Vote round {roundNumber} does not match current round {_ctx.CurrentRound}";
             return false;
         }
 
         if (_ctx.LockQC is null)
         {
+            error = null;
             return true;
         }
 
         if (qc.ProposedBlockInfo.Round > _ctx.LockQC.ProposedBlockInfo.Round)
         {
+            error = null;
             return true;
         }
 
-        if (!IsExtendingFromAncestor(blockHash, blockNumber, _ctx.LockQC.ProposedBlockInfo))
+        BlockRoundInfo locked = _ctx.LockQC.ProposedBlockInfo;
+        if (!IsExtendingFromAncestor(blockHash, blockNumber, locked))
         {
+            error =
+                $"Block {blockHash} (number {blockNumber}, round {roundNumber}) does not extend from locked QC block " +
+                $"{locked.Hash}(number {locked.BlockNumber}, round {locked.Round})";
             return false;
         }
 
+        error = null;
         return true;
     }
 
     public Task OnReceiveVote(Vote vote)
     {
-        var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
-        var currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+        long voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
+        long currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
         if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
@@ -223,8 +242,7 @@ internal class VotesManager(
 
         for (int i = 0; i < blockNumDiff; i++)
         {
-            XdcBlockHeader parentHeader = _blockTree.FindHeader(nextBlockHash) as XdcBlockHeader;
-            if (parentHeader is null)
+            if (_blockTree.FindHeader(nextBlockHash) is not XdcBlockHeader parentHeader)
                 return false;
 
             nextBlockHash = parentHeader.ParentHash;
@@ -233,16 +251,13 @@ internal class VotesManager(
         return nextBlockHash == ancestorBlockInfo.Hash;
     }
 
-    private Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
+    private static Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        var masternodeSet = new HashSet<Address>(masternodes);
-        var signatures = new List<Signature>();
-        foreach (var vote in votes)
+        HashSet<Address> masternodeSet = new(masternodes);
+        List<Signature> signatures = new();
+        foreach (Vote vote in votes)
         {
-            if (vote.Signer is null)
-            {
-                vote.Signer = _ethereumEcdsa.RecoverVoteSigner(vote);
-            }
+            vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
 
             if (masternodeSet.Contains(vote.Signer))
             {
@@ -250,6 +265,53 @@ internal class VotesManager(
             }
         }
         return signatures.ToArray();
+    }
+
+    /// <summary>
+    /// Verifies each signature against <paramref name="allowedSigners"/>, deduplicates by
+    /// recovered address, and returns the number of distinct valid signers.
+    /// </summary>
+    /// <returns>
+    /// Signatures count if all are valid, or <c>null</c>
+    /// if there's any validation <paramref name="error"/>.
+    /// </returns>
+    public static int? CountValidSignatures(
+        IReadOnlyCollection<Address> allowedSigners,
+        IReadOnlyCollection<Signature> signatures,
+        ValueHash256 messageHash,
+        out string? error)
+    {
+        //TODO: try to minimize number of allocations, at least for common cases
+        Dictionary<Address, int> signedBy = new(allowedSigners.Count);
+        foreach (Address signer in allowedSigners)
+            signedBy.TryAdd(signer, 0);
+
+        int count = 0;
+        string? localError = null; // concurrent "overwrite" is ok, no need to synchronize
+        Parallel.ForEach(signatures, (s, state) =>
+        {
+            Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
+            ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
+
+            if (Unsafe.IsNullRef(ref signCount))
+            {
+                localError = "Certificate contains an invalid signature";
+                state.Stop();
+                return;
+            }
+
+            if (Interlocked.Increment(ref signCount) != 1)
+            {
+                localError = $"Certificate contains a duplicate signature from {signer}";
+                state.Stop();
+                return;
+            }
+
+            Interlocked.Increment(ref count);
+        });
+
+        error = localError;
+        return error is null ? count : null;
     }
 
     private void Sign(Vote vote)
@@ -260,13 +322,7 @@ internal class VotesManager(
         vote.Signer = _signer.Address;
     }
 
-    public long GetVotesCount(Vote vote)
-    {
-        return _votePool.GetCount(vote);
-    }
+    public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
 
-    public IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<Vote>> GetReceivedVotes()
-    {
-        return _votePool.Items;
-    }
+    public IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<Vote>> GetReceivedVotes() => _votePool.Items;
 }
