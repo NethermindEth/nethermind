@@ -13,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Stats.Model;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using System.Text.Json;
 using Nethermind.State;
