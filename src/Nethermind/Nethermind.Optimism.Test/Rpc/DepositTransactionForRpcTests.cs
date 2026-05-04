@@ -104,4 +104,38 @@ public class DepositTransactionForRpcTests
         Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();
         toTransaction.Should().NotThrow();
     }
+
+    private static DepositTransactionForRpc DepositTxWithGas(long? gas) => new()
+    {
+        SourceHash = Hash256.Zero,
+        From = Address.Zero,
+        Value = 0,
+        Input = [],
+        Gas = gas,
+    };
+
+    [TestCase(5_000L, null, 5_000L)]
+    [TestCase(5_000L, 0L, 5_000L)]
+    [TestCase(5_000L, 1_000L, 1_000L)]
+    [TestCase(5_000L, 10_000L, 5_000L)]
+    [TestCase(null, 1_000L, 1_000L)]
+    public void ToTransaction_caps_and_defaults_gas(long? gas, long? gasCap, long expectedGasLimit)
+    {
+        DepositTransactionForRpc rpcTx = DepositTxWithGas(gas);
+
+        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: gasCap);
+
+        tx.GasLimit.Should().Be(expectedGasLimit);
+    }
+
+    [TestCase(null, null)]
+    [TestCase(null, 0L)]
+    public void ToTransaction_throws_when_gas_missing_and_no_cap(long? gas, long? gasCap)
+    {
+        DepositTransactionForRpc rpcTx = DepositTxWithGas(gas);
+
+        Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction(gasCap: gasCap);
+
+        toTransaction.Should().Throw<ArgumentNullException>().WithParameterName(nameof(DepositTransactionForRpc.Gas));
+    }
 }
