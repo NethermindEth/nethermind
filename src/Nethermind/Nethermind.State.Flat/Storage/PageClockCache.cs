@@ -8,7 +8,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.State.Flat.Storage;
 
@@ -20,13 +19,22 @@ namespace Nethermind.State.Flat.Storage;
 public readonly record struct PageKey(int ArenaId, int PageIdx);
 
 /// <summary>
+/// Receives eviction notifications from <see cref="PageClockCache"/>. Implementations typically
+/// issue <c>madvise(MADV_DONTNEED)</c> on the evicted page so the kernel can drop it.
+/// </summary>
+public interface IPageEvictionHandler
+{
+    void OnPageEvicted(int arenaId, int pageIdx);
+}
+
+/// <summary>
 /// Page-tracking clock cache for arena-backed mmap regions. Stores no payload — only membership +
 /// per-slot accessed bits. On <see cref="Touch"/>, marks the slot accessed (fast path) or installs
 /// a new slot, evicting the LRU page via the clock algorithm. Eviction invokes a callback whose
 /// purpose is to <c>madvise(MADV_DONTNEED)</c> the evicted OS page so the kernel can drop it.
 /// Sharded by <see cref="PageKey"/> hash so each shard owns an independent clock arm + dictionary
 /// + lock; this trades the previous lock-free <c>ConcurrentDictionary</c> fast path for reduced
-/// contention via N independent <see cref="McsLock"/>s.
+/// contention via N independent locks.
 /// </summary>
 public sealed class PageClockCache
 {
@@ -35,7 +43,6 @@ public sealed class PageClockCache
     private readonly int _maxCapacity;
     private readonly Shard[] _shards;
     private readonly int _shardMask;
-    private readonly Action<int, int>? _onEvict;
     private long _touchCount;
 
     public int MaxCapacity => _maxCapacity;
@@ -53,22 +60,22 @@ public sealed class PageClockCache
     /// <summary>Total number of <see cref="Touch"/> calls observed (including fast-path hits).</summary>
     internal long TouchCount => Volatile.Read(ref _touchCount);
 
-    public PageClockCache(int maxCapacity, Action<int, int>? onEvict = null)
-        : this(maxCapacity, DefaultShardCount(maxCapacity), onEvict)
+    public PageClockCache(int maxCapacity, IPageEvictionHandler evictionHandler)
+        : this(maxCapacity, DefaultShardCount(maxCapacity), evictionHandler)
     {
     }
 
-    internal PageClockCache(int maxCapacity, int shardCount, Action<int, int>? onEvict = null)
+    internal PageClockCache(int maxCapacity, int shardCount, IPageEvictionHandler evictionHandler)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(shardCount);
+        ArgumentNullException.ThrowIfNull(evictionHandler);
 
         _maxCapacity = maxCapacity;
-        _onEvict = onEvict;
 
         if (maxCapacity == 0)
         {
-            _shards = [new Shard(0)];
+            _shards = [new Shard(0, evictionHandler)];
             _shardMask = 0;
             return;
         }
@@ -82,7 +89,7 @@ public sealed class PageClockCache
 
         int perShard = (maxCapacity + desired - 1) / desired;
         _shards = new Shard[desired];
-        for (int i = 0; i < desired; i++) _shards[i] = new Shard(perShard);
+        for (int i = 0; i < desired; i++) _shards[i] = new Shard(perShard, evictionHandler);
         _shardMask = desired - 1;
     }
 
@@ -100,50 +107,14 @@ public sealed class PageClockCache
 
         PageKey key = new(arenaId, pageIdx);
         Shard shard = _shards[(uint)key.GetHashCode() & (uint)_shardMask];
-
-        PageKey evicted = default;
-        bool didEvict = false;
-
-        using (shard.Lock.Acquire())
-        {
-            if (shard.SlotByPage.TryGetValue(key, out int slot))
-            {
-                shard.MarkAccessed(slot);
-                return;
-            }
-
-            int offset;
-            if (shard.FreeOffsets.Count > 0)
-            {
-                offset = shard.FreeOffsets.Dequeue();
-            }
-            else if (shard.Count < shard.Capacity)
-            {
-                offset = shard.Count;
-            }
-            else
-            {
-                offset = shard.Replace(out evicted);
-                didEvict = true;
-            }
-
-            shard.KeyToOffset[offset] = key;
-            shard.SlotByPage[key] = offset;
-            shard.Count++;
-            // New slot starts with accessed=false — it gets a chance to survive the next clock
-            // sweep. Clearing here is defensive in case the bit was left set by a prior evictee.
-            shard.ClearAccessed(offset);
-        }
-
-        if (didEvict)
-            _onEvict?.Invoke(evicted.ArenaId, evicted.PageIdx);
+        shard.Touch(key);
     }
 
     internal bool ContainsPage(int arenaId, int pageIdx)
     {
         PageKey key = new(arenaId, pageIdx);
         Shard shard = _shards[(uint)key.GetHashCode() & (uint)_shardMask];
-        using (shard.Lock.Acquire())
+        lock (shard.Lock)
             return shard.SlotByPage.ContainsKey(key);
     }
 
@@ -152,7 +123,7 @@ public sealed class PageClockCache
         if (_maxCapacity == 0) return;
         foreach (Shard s in _shards)
         {
-            using (s.Lock.Acquire()) s.Clear();
+            lock (s.Lock) s.Clear();
         }
     }
 
@@ -162,14 +133,15 @@ public sealed class PageClockCache
         public readonly Dictionary<PageKey, int> SlotByPage;
         public readonly PageKey[] KeyToOffset;
         public readonly long[] HasBeenAccessedBitmap;
-        public readonly Queue<int> FreeOffsets = new();
-        public readonly McsLock Lock = new();
+        public readonly Lock Lock = new();
+        private readonly IPageEvictionHandler _evictionHandler;
         public int Clock;
         public int Count;
 
-        public Shard(int capacity)
+        public Shard(int capacity, IPageEvictionHandler evictionHandler)
         {
             Capacity = capacity;
+            _evictionHandler = evictionHandler;
             if (capacity == 0)
             {
                 SlotByPage = new Dictionary<PageKey, int>();
@@ -188,13 +160,48 @@ public sealed class PageClockCache
         {
             Count = 0;
             Clock = 0;
-            FreeOffsets.Clear();
             SlotByPage.Clear();
             KeyToOffset.AsSpan().Clear();
             HasBeenAccessedBitmap.AsSpan().Clear();
         }
 
-        public int Replace(out PageKey evicted)
+        public void Touch(PageKey key)
+        {
+            PageKey evicted = default;
+            bool didEvict = false;
+
+            lock (Lock)
+            {
+                if (SlotByPage.TryGetValue(key, out int slot))
+                {
+                    MarkAccessed(slot);
+                    return;
+                }
+
+                int offset;
+                if (Count < Capacity)
+                {
+                    offset = Count;
+                }
+                else
+                {
+                    offset = Replace(out evicted);
+                    didEvict = true;
+                }
+
+                KeyToOffset[offset] = key;
+                SlotByPage[key] = offset;
+                Count++;
+                // New slot starts with accessed=false — it gets a chance to survive the next clock
+                // sweep. Clearing here is defensive in case the bit was left set by a prior evictee.
+                ClearAccessed(offset);
+            }
+
+            if (didEvict)
+                _evictionHandler.OnPageEvicted(evicted.ArenaId, evicted.PageIdx);
+        }
+
+        private int Replace(out PageKey evicted)
         {
             int position = Clock;
             int max = Count;

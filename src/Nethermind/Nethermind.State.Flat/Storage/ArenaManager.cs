@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat.Storage;
 /// reading, and dead space tracking. Writes go through <see cref="ArenaWriter"/>
 /// backed by FileStream; reads use mmap.
 /// </summary>
-public sealed class ArenaManager : IArenaManager
+public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
 {
     private const string ArenaFilePrefix = "arena_";
     private const string DedicatedArenaFilePrefix = "dedicated_";
@@ -66,7 +66,7 @@ public sealed class ArenaManager : IArenaManager
             ? (int)Math.Min(int.MaxValue, pageCacheBytes / Environment.SystemPageSize)
             : 0;
         _pageCache = pageCacheCapacity > 0
-            ? new PageClockCache(pageCacheCapacity, AdviseDontNeedPage)
+            ? new PageClockCache(pageCacheCapacity, this)
             : null;
     }
 
@@ -247,6 +247,8 @@ public sealed class ArenaManager : IArenaManager
         if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena))
             arena.Touch(reservation.Offset + subOffset, size);
     }
+
+    void IPageEvictionHandler.OnPageEvicted(int arenaId, int pageIdx) => AdviseDontNeedPage(arenaId, pageIdx);
 
     public void AdviseDontNeedPage(int arenaId, int pageIdx)
     {
