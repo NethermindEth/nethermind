@@ -28,6 +28,7 @@ public class WorldStateManager : IWorldStateManager
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
+        IPruningConfig pruningConfig,
         ILastNStateRootTracker lastNStateRootTracker = null
     )
     {
@@ -45,7 +46,18 @@ public class WorldStateManager : IWorldStateManager
         SnapServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
+
+        StateAvailability = pruningConfig.Mode switch
+        {
+            PruningMode.None => new StateAvailability(Archive: true, RetentionWindowBlocks: null, StateProofsSupported: true),
+            // Memory and Hybrid keep a rolling window of PruningBoundary recent states.
+            var m when m.IsMemory() => new StateAvailability(Archive: false, RetentionWindowBlocks: pruningConfig.PruningBoundary, StateProofsSupported: false),
+            // Full-only pruning is periodic and non-linear — no predictable lower bound to report.
+            _ => new StateAvailability(Archive: false, RetentionWindowBlocks: null, StateProofsSupported: false),
+        };
     }
+
+    public StateAvailability StateAvailability { get; }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
 

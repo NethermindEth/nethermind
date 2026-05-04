@@ -3,14 +3,15 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
-using Nethermind.Facade.Eth;
+using Nethermind.Core.Test.Builders;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using NJsonSchema;
 using NJsonSchema.Validation;
 using NSubstitute;
@@ -23,39 +24,47 @@ public partial class EthRpcModuleTests
     private static readonly ResourceAvailability Available = new(Disabled: false, OldestBlock: 0L);
     private static readonly ResourceAvailability Disabled = new(Disabled: true, OldestBlock: null);
 
-    private static async Task<EthCapabilities> GetCaps(
-        SyncConfig syncConfig,
-        PruningConfig pruningConfig,
+    private static readonly StateAvailability ArchiveState = new(Archive: true, RetentionWindowBlocks: null, StateProofsSupported: true);
+    private static readonly StateAvailability FullPrunedState = new(Archive: false, RetentionWindowBlocks: null, StateProofsSupported: false);
+
+    private static EthCapabilities GetCaps(
+        StateAvailability state,
+        long headNumber = 1000,
+        SyncConfig? syncConfig = null,
         IHistoryConfig? historyConfig = null,
         IHistoryPruner? historyPruner = null)
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithEthRpcModule(c => CreateEthRpcModuleWithConfig(c, syncConfig, pruningConfig, historyConfig, historyPruner))
-            .Build();
-        return chain.EthRpcModule.eth_capabilities().Data;
-    }
+        Block head = Build.A.Block.WithNumber(headNumber).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(head);
+        blockTree.BestSuggestedHeader.Returns(head.Header);
 
-    public sealed record CapabilitiesScenario(
-        string Name,
-        SyncConfig SyncConfig,
-        PruningConfig PruningConfig,
-        ResourceAvailability State,
-        ResourceAvailability Stateproofs,
-        ResourceAvailability Tx,
-        ResourceAvailability Logs,
-        ResourceAvailability Receipts,
-        ResourceAvailability Blocks)
-    {
-        public IHistoryConfig? HistoryConfig { get; init; }
-        public IHistoryPruner? HistoryPruner { get; init; }
-        public override string ToString() => Name;
+        IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
+        wsm.StateAvailability.Returns(state);
+
+        return new EthCapabilitiesProvider(blockTree, wsm, syncConfig, historyConfig, historyPruner).GetCapabilities();
     }
 
     private static IHistoryPruner MockHistoryPruner(long oldestBlockNumber)
     {
         IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
-        pruner.OldestBlockHeader.Returns(Core.Test.Builders.Build.A.BlockHeader.WithNumber(oldestBlockNumber).TestObject);
+        pruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(oldestBlockNumber).TestObject);
         return pruner;
+    }
+
+    public sealed record CapabilitiesScenario(
+        string Name,
+        StateAvailability State,
+        ResourceAvailability ExpectedState,
+        ResourceAvailability ExpectedStateproofs,
+        ResourceAvailability ExpectedReceipts,
+        ResourceAvailability ExpectedBlocks)
+    {
+        public long HeadNumber { get; init; } = 1000;
+        public SyncConfig? SyncConfig { get; init; }
+        public IHistoryConfig? HistoryConfig { get; init; }
+        public IHistoryPruner? HistoryPruner { get; init; }
+        public override string ToString() => Name;
     }
 
     private static IEnumerable<CapabilitiesScenario> CapabilitiesScenarios()
@@ -64,30 +73,50 @@ public partial class EthRpcModuleTests
         // Math.Max(1, …) which is wrong for PivotNumber=0; receipts must be available from 0).
         yield return new CapabilitiesScenario(
             Name: "archive_full_availability",
-            SyncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            PruningConfig: new PruningConfig { Mode = PruningMode.None },
-            State: Available, Stateproofs: Available,
-            Tx: Available, Logs: Available, Receipts: Available,
-            Blocks: Available);
+            State: ArchiveState,
+            ExpectedState: Available, ExpectedStateproofs: Available,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
+        {
+            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+        };
 
         // Full pruning is periodic and non-linear — no predictable window to report.
         yield return new CapabilitiesScenario(
             Name: "full_pruning_omits_oldest_and_strategy",
-            SyncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            PruningConfig: new PruningConfig { Mode = PruningMode.Full },
-            State: new ResourceAvailability(Disabled: false, OldestBlock: null),
-            Stateproofs: Disabled,
-            Tx: Available, Logs: Available, Receipts: Available,
-            Blocks: Available);
+            State: FullPrunedState,
+            ExpectedState: new ResourceAvailability(Disabled: false, OldestBlock: null),
+            ExpectedStateproofs: Disabled,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
+        {
+            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+        };
+
+        // Memory pruning maintains a rolling window of N recent states.
+        const long retention = 128;
+        const long memoryHead = 1000;
+        yield return new CapabilitiesScenario(
+            Name: "memory_pruning_reports_window_and_oldest_block",
+            State: new StateAvailability(Archive: false, RetentionWindowBlocks: retention, StateProofsSupported: false),
+            ExpectedState: new ResourceAvailability(
+                Disabled: false,
+                OldestBlock: memoryHead - retention,
+                DeleteStrategy: new DeleteStrategy("window", retention)),
+            ExpectedStateproofs: Disabled,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
+        {
+            HeadNumber = memoryHead,
+            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+        };
 
         // No receipts download → tx/logs/receipts unavailable.
         yield return new CapabilitiesScenario(
             Name: "no_receipts_disables_tx_logs_receipts",
-            SyncConfig: new SyncConfig { DownloadReceiptsInFastSync = false },
-            PruningConfig: new PruningConfig { Mode = PruningMode.None },
-            State: Available, Stateproofs: Available,
-            Tx: Disabled, Logs: Disabled, Receipts: Disabled,
-            Blocks: Available);
+            State: ArchiveState,
+            ExpectedState: Available, ExpectedStateproofs: Available,
+            ExpectedReceipts: Disabled, ExpectedBlocks: Available)
+        {
+            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = false },
+        };
 
         // Rolling history pruning (EIP-4444): blocks/tx/logs/receipts share a known retention
         // window expressed in RetentionEpochs * 32 blocks; floor advances to historyPruner cutoff.
@@ -99,12 +128,11 @@ public partial class EthRpcModuleTests
             DeleteStrategy: new DeleteStrategy("window", retentionEpochs * 32));
         yield return new CapabilitiesScenario(
             Name: "rolling_history_pruning_window_and_floor",
-            SyncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            PruningConfig: new PruningConfig { Mode = PruningMode.None },
-            State: Available, Stateproofs: Available,
-            Tx: rollingPruned, Logs: rollingPruned, Receipts: rollingPruned,
-            Blocks: rollingPruned)
+            State: ArchiveState,
+            ExpectedState: Available, ExpectedStateproofs: Available,
+            ExpectedReceipts: rollingPruned, ExpectedBlocks: rollingPruned)
         {
+            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
             HistoryConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = retentionEpochs },
             HistoryPruner = MockHistoryPruner(rollingFloor),
         };
@@ -114,46 +142,29 @@ public partial class EthRpcModuleTests
         ResourceAvailability ancientPruned = new(Disabled: false, OldestBlock: ancientFloor);
         yield return new CapabilitiesScenario(
             Name: "ancient_barriers_history_pruning_advances_floor",
-            SyncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            PruningConfig: new PruningConfig { Mode = PruningMode.None },
-            State: Available, Stateproofs: Available,
-            Tx: ancientPruned, Logs: ancientPruned, Receipts: ancientPruned,
-            Blocks: ancientPruned)
+            State: ArchiveState,
+            ExpectedState: Available, ExpectedStateproofs: Available,
+            ExpectedReceipts: ancientPruned, ExpectedBlocks: ancientPruned)
         {
+            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
             HistoryConfig = new HistoryConfig { Pruning = PruningModes.UseAncientBarriers },
             HistoryPruner = MockHistoryPruner(ancientFloor),
         };
     }
 
     [TestCaseSource(nameof(CapabilitiesScenarios))]
-    public async Task eth_capabilities_scenario(CapabilitiesScenario s)
+    public void eth_capabilities_scenario(CapabilitiesScenario s)
     {
-        EthCapabilities caps = await GetCaps(s.SyncConfig, s.PruningConfig, s.HistoryConfig, s.HistoryPruner);
+        EthCapabilities caps = GetCaps(s.State, s.HeadNumber, s.SyncConfig, s.HistoryConfig, s.HistoryPruner);
 
-        Assert.That(caps.Head.Number, Is.GreaterThanOrEqualTo(0));
+        Assert.That(caps.Head.Number, Is.EqualTo(s.HeadNumber));
         Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
-
-        Assert.That(caps.State, Is.EqualTo(s.State), nameof(caps.State));
-        Assert.That(caps.Stateproofs, Is.EqualTo(s.Stateproofs), nameof(caps.Stateproofs));
-        Assert.That(caps.Tx, Is.EqualTo(s.Tx), nameof(caps.Tx));
-        Assert.That(caps.Logs, Is.EqualTo(s.Logs), nameof(caps.Logs));
-        Assert.That(caps.Receipts, Is.EqualTo(s.Receipts), nameof(caps.Receipts));
-        Assert.That(caps.Blocks, Is.EqualTo(s.Blocks), nameof(caps.Blocks));
-    }
-
-    [Test]
-    public async Task eth_capabilities_memory_pruned_reports_window_and_disables_stateproofs()
-    {
-        // Memory pruning maintains a rolling window of PruningBoundary recent states.
-        // OldestBlock for State depends on chain head, so it is not asserted here.
-        const int retention = 128;
-        EthCapabilities caps = await GetCaps(
-            new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = retention });
-
-        Assert.That(caps.Stateproofs, Is.EqualTo(Disabled));
-        Assert.That(caps.State.Disabled, Is.False);
-        Assert.That(caps.State.DeleteStrategy, Is.EqualTo(new DeleteStrategy("window", retention)));
+        Assert.That(caps.State, Is.EqualTo(s.ExpectedState), nameof(caps.State));
+        Assert.That(caps.Stateproofs, Is.EqualTo(s.ExpectedStateproofs), nameof(caps.Stateproofs));
+        Assert.That(caps.Tx, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Tx));
+        Assert.That(caps.Logs, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Logs));
+        Assert.That(caps.Receipts, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Receipts));
+        Assert.That(caps.Blocks, Is.EqualTo(s.ExpectedBlocks), nameof(caps.Blocks));
     }
 
     /// <summary>
@@ -209,9 +220,10 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task eth_capabilities_json_matches_spec_schema()
     {
-        EthCapabilities caps = await GetCaps(
-            new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-            new PruningConfig { Mode = PruningMode.Memory, PruningBoundary = 64 });
+        EthCapabilities caps = GetCaps(
+            new StateAvailability(Archive: false, RetentionWindowBlocks: 64, StateProofsSupported: false),
+            headNumber: 1000,
+            syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 });
 
         string json = new EthereumJsonSerializer().Serialize(caps);
         JsonSchema schema = await JsonSchema.FromJsonAsync(EthCapabilitiesSchema);
@@ -219,19 +231,4 @@ public partial class EthRpcModuleTests
 
         Assert.That(errors, Is.Empty, () => string.Join("\n", errors));
     }
-
-    private static IEthRpcModule CreateEthRpcModuleWithConfig(
-        TestRpcBlockchain c,
-        ISyncConfig syncConfig,
-        IPruningConfig pruningConfig,
-        IHistoryConfig? historyConfig = null,
-        IHistoryPruner? historyPruner = null) =>
-        new EthRpcModule(
-            c.RpcConfig, c.Bridge, c.BlockFinder, c.ReceiptFinder, c.StateReader,
-            c.TxPool, c.TxSender, c.TestWallet, c.LogManager, c.SpecProvider,
-            c.GasPriceOracle, Substitute.For<IEthSyncingInfo>(),
-            c.FeeHistoryOracle ?? new JsonRpc.Modules.Eth.FeeHistory.FeeHistoryOracle(c.BlockTree, c.ReceiptStorage, c.SpecProvider),
-            c.ProtocolsManager, c.ForkInfo, c.LogIndexConfig,
-            12ul,
-            new EthCapabilitiesProvider(c.BlockTree, syncConfig, pruningConfig, historyConfig, historyPruner));
 }

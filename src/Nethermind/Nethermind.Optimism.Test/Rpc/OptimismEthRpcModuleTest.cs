@@ -594,6 +594,6 @@ internal static class TestRpcBlockchainExt
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
             sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), opSpecHelper,
-            new EthCapabilitiesProvider(blockchain.BlockTree)
+            new EthCapabilitiesProvider(blockchain.BlockTree, blockchain.WorldStateManager)
         ));
 }

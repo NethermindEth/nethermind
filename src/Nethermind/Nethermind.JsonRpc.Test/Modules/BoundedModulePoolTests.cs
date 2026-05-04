@@ -59,7 +59,7 @@ public class BoundedModulePoolTests
             new BlocksConfig(),
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogIndexConfig>(),
-            new EthCapabilitiesProvider(blockTree)),
+            new EthCapabilitiesProvider(blockTree, Substitute.For<IWorldStateManager>())),
              1, 1000);
 
         return Task.CompletedTask;

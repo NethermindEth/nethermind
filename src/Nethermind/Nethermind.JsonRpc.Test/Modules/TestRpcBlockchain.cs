@@ -184,7 +184,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ForkInfo,
             @this.LogIndexConfig,
             @this.BlocksConfig.SecondsPerSlot,
-            new EthCapabilitiesProvider(@this.BlockTree));
+            new EthCapabilitiesProvider(@this.BlockTree, @this.WorldStateManager));
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {

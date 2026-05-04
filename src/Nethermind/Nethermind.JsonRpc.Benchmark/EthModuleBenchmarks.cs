@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 _container.Resolve<IForkInfo>(),
                 new LogIndexConfig(),
                 new BlocksConfig().SecondsPerSlot,
-                new EthCapabilitiesProvider(blockTree));
+                new EthCapabilitiesProvider(blockTree, _container.Resolve<IWorldStateManager>()));
         }
 
         [GlobalCleanup]

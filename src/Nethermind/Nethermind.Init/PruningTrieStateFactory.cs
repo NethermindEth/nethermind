@@ -27,6 +27,7 @@ namespace Nethermind.Init;
 
 public class PruningTrieStateFactory(
     ISyncConfig syncConfig,
+    IPruningConfig pruningConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
@@ -71,6 +72,7 @@ public class PruningTrieStateFactory(
             trieStore,
             dbProvider,
             logManager,
+            pruningConfig,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         // NOTE: Don't forget this! Very important!

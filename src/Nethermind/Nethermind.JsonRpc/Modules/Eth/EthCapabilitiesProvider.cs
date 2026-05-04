@@ -6,15 +6,15 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.History;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class EthCapabilitiesProvider(
     IBlockTree blockTree,
+    IWorldStateManager worldStateManager,
     ISyncConfig? syncConfig = null,
-    IPruningConfig? pruningConfig = null,
     IHistoryConfig? historyConfig = null,
     IHistoryPruner? historyPruner = null) : IEthCapabilitiesProvider
 {
@@ -29,14 +29,13 @@ public class EthCapabilitiesProvider(
         // (PivotNumber = 0). When there was no fast sync, receipts are available from genesis.
         long oldestReceipts = (syncConfig?.PivotNumber ?? 0) == 0 ? 0 : syncConfig!.AncientReceiptsBarrierCalc;
 
-        PruningMode statePruningMode = pruningConfig?.Mode ?? PruningMode.None;
-        bool isArchive = statePruningMode == PruningMode.None;
-        // Memory (and Hybrid) pruning maintains a rolling window of PruningBoundary recent states.
-        // Full-only pruning is periodic and non-linear — we cannot claim a predictable oldest block.
-        long? stateRetention = statePruningMode.IsMemory() ? pruningConfig!.PruningBoundary : null;
-        long? stateOldest = isArchive ? 0L
-            : stateRetention is not null && head is not null ? Math.Max(0L, head.Number - stateRetention.Value)
-            : null;
+        // State availability comes from IWorldStateManager so trie-pruning and flat-DB
+        // implementations report their own retention semantics.
+        StateAvailability stateAvailability = worldStateManager.StateAvailability;
+        long? stateOldest = stateAvailability.Archive ? 0L
+            : stateAvailability.RetentionWindowBlocks is { } window && head is not null
+                ? Math.Max(0L, head.Number - window)
+                : null;
 
         // History pruning (EIP-4444) deletes old blocks/receipts. The post-pruning floor is
         // historyPruner.OldestBlockHeader.Number; Rolling mode produces a known retention window.
@@ -53,12 +52,14 @@ public class EthCapabilitiesProvider(
             State: Resource(
                 enabled: true,
                 oldestBlock: stateOldest,
-                deleteStrategy: stateRetention > 0 ? new DeleteStrategy("window", stateRetention.Value) : null),
+                deleteStrategy: stateAvailability.RetentionWindowBlocks > 0
+                    ? new DeleteStrategy("window", stateAvailability.RetentionWindowBlocks.Value)
+                    : null),
             // Receipts/Tx/Logs share storage and pruning policy in Nethermind — one descriptor covers
             // all three. EthCapabilities.Tx and .Logs are computed properties that alias .Receipts.
             Receipts: Resource(receiptsSynced, Math.Max(oldestReceipts, historyFloor), historyWindow),
             Blocks: Resource(headersAvailable, Math.Max(lowestBlock, historyFloor), historyWindow),
-            Stateproofs: Resource(isArchive, 0L));
+            Stateproofs: Resource(stateAvailability.StateProofsSupported, 0L));
     }
 
     /// <summary>

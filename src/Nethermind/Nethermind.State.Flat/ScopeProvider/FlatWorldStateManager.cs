@@ -47,6 +47,12 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
+    // Flat keeps recent snapshots within MaxReorgDepth for reorg handling — that bounds the
+    // historical state window. State proofs require trie-node-by-hash lookup, which flat does
+    // not expose (HashServer is null).
+    public StateAvailability StateAvailability { get; } =
+        new(Archive: false, RetentionWindowBlocks: configuration.MaxReorgDepth, StateProofsSupported: false);
+
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(
             codeDb,

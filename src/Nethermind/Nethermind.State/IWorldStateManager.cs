@@ -18,6 +18,12 @@ public interface IWorldStateManager
     IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
+    /// Describes the historical state availability of this manager (archive vs. rolling window,
+    /// whether state proofs can be served). Reported through <c>eth_capabilities</c>.
+    /// </summary>
+    StateAvailability StateAvailability { get; }
+
+    /// <summary>
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
     /// <returns></returns>

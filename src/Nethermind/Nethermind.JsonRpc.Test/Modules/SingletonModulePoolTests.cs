@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new BlocksConfig(),
                 Substitute.For<IForkInfo>(),
                 Substitute.For<ILogIndexConfig>(),
-                new EthCapabilitiesProvider(blockTree));
+                new EthCapabilitiesProvider(blockTree, Substitute.For<IWorldStateManager>()));
             return Task.CompletedTask;
         }
 
