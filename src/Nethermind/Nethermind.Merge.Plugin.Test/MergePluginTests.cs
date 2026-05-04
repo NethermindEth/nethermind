@@ -67,6 +67,7 @@ public class MergePluginTests
     private IContainer BuildContainer(IConfigProvider? configProvider = null)
     {
         return new ContainerBuilder()
+            .AddModule(new HealthCheckPluginModule())
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
@@ -75,7 +76,6 @@ public class MergePluginTests
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
             .AddSingleton<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
-            .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
             .AddSingleton<IBlockProcessingQueue>(Substitute.For<IBlockProcessingQueue>())
             .OnBuild((ctx) =>
             {
@@ -86,6 +86,14 @@ public class MergePluginTests
             })
             .Build();
     }
+
+    [Test]
+        public void EngineRequestsTracker_resolves_to_ClHealthRequestsTracker_when_HealthChecks_loaded_first()
+        {
+            using IContainer container = BuildContainer();
+
+            container.Resolve<IEngineRequestsTracker>().Should().BeOfType<ClHealthRequestsTracker>();
+        }
 
     [Test]
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
