@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await ctx.SuggestBlocksWithUpdatedRootHash(remote.StateTree.RootHash);
 
-            ctx.Feed.FallAsleep();
+            ctx.ResetFeed();
             ctx.Pool.WakeUpAll();
 
             await ActivateAndWait(ctx);
@@ -95,7 +95,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await ctx.SuggestBlocksWithUpdatedRootHash(remote.StateTree.RootHash);
 
-            ctx.Feed.FallAsleep();
+            ctx.ResetFeed();
             ctx.Pool.WakeUpAll();
             foreach (SyncPeerMock mock in ctx.SyncPeerMocks)
             {
@@ -143,6 +143,32 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
+        public async Task Calls_verify_trie_on_state_sync_finished()
+        {
+            RemoteDbContext remote = new(_logManager);
+            remote.StateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
+            remote.StateTree.Commit();
+
+            IVerifyTrieStarter verifyTrieStarter = Substitute.For<IVerifyTrieStarter>();
+
+            await using IContainer container = PrepareDownloader(remote, configureBuilder: builder =>
+            {
+                builder
+                    .AddDecorator<ISyncConfig>((_, cfg) =>
+                    {
+                        cfg.VerifyTrieOnStateSyncFinished = true;
+                        return cfg;
+                    })
+                    .AddSingleton<IVerifyTrieStarter>(verifyTrieStarter);
+            });
+
+            SafeContext ctx = container.Resolve<SafeContext>();
+            await ActivateAndWait(ctx);
+
+            verifyTrieStarter.Received(1).TryStartVerifyTrie(Arg.Any<BlockHeader>());
+        }
+
+        [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
         public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
@@ -163,7 +189,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 mock.SetFilter(null);
             }
 
-            ctx.Feed.FallAsleep();
+            ctx.ResetFeed();
             await ActivateAndWait(ctx);
 
             local.CompareTrees(remote, _logger, "END");
@@ -205,7 +231,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "END");
 
-            ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
+            ctx.TreeFeed.IsRootComplete.Should().BeTrue();
         }
 
         [Test]
@@ -241,7 +267,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Commit();
 
             ctx.Pool.WakeUpAll();
-            ctx.Feed.FallAsleep();
+            ctx.ResetFeed();
 
             await ctx.SuggestBlocksWithUpdatedRootHash(remote.StateTree.RootHash);
 
@@ -378,9 +404,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             await using IContainer container = BuildTestContainerBuilder(remote)
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
+            ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
 
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes);
-            using StateSyncBatch? request = await ctx.Feed.PrepareRequest();
+            using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
             request.Should().NotBeNull();
 
             ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>()))
@@ -397,9 +423,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             await using IContainer container = BuildTestContainerBuilder(remote)
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
+            ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
 
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes);
-            using StateSyncBatch? request = await ctx.Feed.PrepareRequest();
+            using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
             request.Should().NotBeNull();
 
             ctx.Feed.HandleResponse(request, peer: null)
@@ -523,15 +549,15 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await using IContainer container = PrepareDownloader(remote);
             SafeContext ctx = container.Resolve<SafeContext>();
-
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes);
+            ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            ISyncDownloader<StateSyncBatch> downloader = container.Resolve<ISyncDownloader<StateSyncBatch>>();
 
             async Task<int> RunOneRequest()
             {
-                using StateSyncBatch request = (await ctx.Feed.PrepareRequest(cancellation))!;
+                using StateSyncBatch? request = await ctx.Feed.PrepareRequest(cancellation);
                 if (request is null) return 0;
                 PeerInfo peer = new(ctx.SyncPeerMocks[0]);
-                await ctx.Downloader.Dispatch(peer, request!, cancellation);
+                await downloader.Dispatch(peer, request!, cancellation);
                 int requestCount = request.RequestedNodes?.Count ?? 0;
                 ctx.Feed.HandleResponse(request, peer);
                 return requestCount;
@@ -561,8 +587,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await ctx.SuggestBlocksWithUpdatedRootHash(remote.StateTree.RootHash);
 
-            ctx.Feed.FallAsleep();
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes);
+            ctx.ResetFeed();
 
             int remainingRequest = 0;
             for (int i = 0; i < 1000; i++)

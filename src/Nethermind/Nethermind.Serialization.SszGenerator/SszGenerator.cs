@@ -339,9 +339,8 @@ internal static class SszCodecHelpers
         return lowerCased == "data" || lowerCased == "container" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
     }
 
-    private static string ValidationStatement(SszType decl, SszProperty property, string expression)
-    {
-        return property.Kind switch
+    private static string ValidationStatement(SszType decl, SszProperty property, string expression) =>
+        property.Kind switch
         {
             Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
             Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
@@ -351,7 +350,6 @@ internal static class SszCodecHelpers
             Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
             _ => string.Empty,
         };
-    }
 
     private static string EncodeValueExpression(SszProperty property, string expression) =>
         property.Kind is Kind.BitList or Kind.ProgressiveBitList ? $"{expression} ?? new BitArray(0)" : expression;
@@ -405,9 +403,8 @@ internal static class SszCodecHelpers
         return string.IsNullOrEmpty(validation) ? $"{decode} {assignment}" : $"{decode} {assignment} {validation}";
     }
 
-    private static string MerkleizeRootStatement(SszProperty property, string expression, string rootName)
-    {
-        return property.Kind switch
+    private static string MerkleizeRootStatement(SszProperty property, string expression, string rootName) =>
+        property.Kind switch
         {
             Kind.Basic => $"Merkle.Merkleize(out {rootName}, {expression});",
             Kind.BitVector => $"Merkle.Merkleize(out {rootName}, {expression}!);",
@@ -421,18 +418,14 @@ internal static class SszCodecHelpers
             Kind.ProgressiveList => $"{property.Type.Name}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
             _ => $"{property.Type.Name}.Merkleize({expression}, out {rootName});",
         };
-    }
 
-    private static string MerkleizeFeedStatement(SszProperty property, string expression)
-    {
-        return property.Kind switch
+    private static string MerkleizeFeedStatement(SszProperty property, string expression) =>
+        property.Kind switch
         {
-            Kind.Basic => $"merkleizer.Feed({expression});",
-            Kind.BitVector => $"merkleizer.Feed({expression});",
+            Kind.Basic or Kind.BitVector => $"merkleizer.Feed({expression});",
             Kind.BitList => $"merkleizer.Feed({expression} ?? new BitArray(0), {property.Limit});",
             _ => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
         };
-    }
 
     private static string DynamicLength(SszType container, SszProperty m)
     {

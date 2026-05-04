@@ -103,8 +103,8 @@ namespace Nethermind.Xdc
             for (long i = number - 1; i >= 0; i--)
             {
                 Hash256 parentHash = h.ParentHash;
-                h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
-                if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
+                h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader
+                    ?? throw new InvalidOperationException($"Header with hash {parentHash} not found");
                 if (_epochSwitchManager.IsEpochSwitchAtBlock(h) && h.Number != spec.SwitchBlock + 1)
                 {
                     epochCount++;
