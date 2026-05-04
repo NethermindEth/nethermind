@@ -58,7 +58,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             ctx.DecodeUInt256(),
             ctx.DecodeByteArrays(),
             ctx.DecodeULong(),
-            ctx.DecodeInt(),
+            ctx.DecodePositiveInt(),
             ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
     }
 }

@@ -119,13 +119,8 @@ namespace Nethermind.Serialization.Rlp
 
         private static byte[] DecodeCompactData(scoped ref Rlp.ValueDecoderContext decoderContext)
         {
-            int zeroPrefix = decoderContext.DecodeInt();
+            int zeroPrefix = decoderContext.DecodePositiveInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
-
-            if (zeroPrefix < 0)
-            {
-                throw new RlpLimitException($"Expanded {nameof(LogEntry)} data with zero prefix {zeroPrefix} and content length {rlpData.Length} exceeds limit {RlpLimit.Limit}.");
-            }
 
             Rlp.GuardLimit(zeroPrefix, RlpLimit.Limit - rlpData.Length, RlpLimit);
 
