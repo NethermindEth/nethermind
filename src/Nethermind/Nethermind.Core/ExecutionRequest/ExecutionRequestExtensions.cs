@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Core.ExecutionRequest;
 
@@ -96,7 +95,7 @@ public static class ExecutionRequestExtensions
         {
             byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
 
-            Accelerators.Sha256(data, output);
+            Nethermind.Zkvm.Abstractions.Accelerators.Sha256(data, output);
 
             return output;
         }
