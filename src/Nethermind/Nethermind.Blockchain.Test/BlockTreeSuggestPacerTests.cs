@@ -35,7 +35,7 @@ public class BlockTreeSuggestPacerTests
     }
 
     [Test]
-    public async Task WillOnlyUnblockOnceHeadReachHighEnough()
+    public void WillOnlyUnblockOnceHeadReachHighEnough()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
@@ -51,6 +51,8 @@ public class BlockTreeSuggestPacerTests
         waitTask.IsCompleted.Should().BeFalse();
 
         blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(6).TestObject));
-        await waitTask.WaitAsync(TimeSpan.FromSeconds(5));
+        // Allow the async continuation (RunContinuationsAsynchronously on the TCS) to be scheduled,
+        // but assert it completes promptly — the test still fails if the unblock didn't happen.
+        waitTask.Wait(TimeSpan.FromMilliseconds(500)).Should().BeTrue();
     }
 }
