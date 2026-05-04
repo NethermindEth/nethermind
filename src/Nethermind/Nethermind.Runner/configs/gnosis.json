@@ -14,8 +14,8 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 45850000,
-    "PivotHash": "0x94f8ca1ef0df66171e4ac86993e081cbed30532c6117f67da979ba0f94b95712",
+    "PivotNumber": 45960000,
+    "PivotHash": "0x31f3989c99baab53a081264b191eb598d7d7220331a65214fabb19bd6a1f4164",
     "PivotTotalDifficulty": "8626000110427538733349499292577475819600160930",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000,

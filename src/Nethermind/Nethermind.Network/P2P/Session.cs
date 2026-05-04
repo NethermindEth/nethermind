@@ -782,7 +782,7 @@ namespace Nethermind.Network.P2P
 
             public bool HasHandlers
             {
-                get { lock (_lock) { return _count != 0; }; }
+                get { lock (_lock) { return _count != 0; } }
             }
 
             public void Add(EventHandler<DisconnectEventArgs> handler)
