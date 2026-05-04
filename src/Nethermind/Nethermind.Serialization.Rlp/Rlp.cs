@@ -1047,45 +1047,6 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
-            public uint DecodeUInt()
-            {
-                int prefix = ReadByte();
-
-                switch (prefix)
-                {
-                    case 0:
-                        return RlpHelpers.ThrowNonCanonicalInteger(Position);
-                    case < 128:
-                        return (uint)prefix;
-                    case 128:
-                        return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 4)
-                {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
-                }
-
-                uint result = 0;
-                for (int i = 4; i > 0; i--)
-                {
-                    result <<= 8;
-                    if (i <= length)
-                    {
-                        result |= Data[Position + length - i];
-                        if (result == 0)
-                        {
-                            RlpHelpers.ThrowNonCanonicalInteger(Position);
-                        }
-                    }
-                }
-
-                Position += length;
-
-                return result;
-            }
-
             public byte[] DecodeByteArray(RlpLimit? limit = null) => ByteSpanToArray(DecodeByteArraySpan(limit));
 
             public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null)
