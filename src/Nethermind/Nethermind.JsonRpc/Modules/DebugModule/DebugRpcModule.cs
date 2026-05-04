@@ -504,11 +504,15 @@ public class DebugRpcModule(
         // debug_traceCallMany defaults missing gas to gasCap (not block gas limit). The simulate engine
         // decides "explicit vs default" from the request's Gas field, so we set it here to opt out of the
         // engine's BlockGasLeft fallback. eth_simulateV1 deliberately does not do this.
-        foreach (TransactionBundle bundle in bundles)
+        // When gasCap is unset/0 ("no cap"), we leave Gas null so the engine's normal fallback applies.
+        if (jsonRpcConfig.GasCap is not null and not 0)
         {
-            foreach (TransactionForRpc call in bundle.Transactions)
+            foreach (TransactionBundle bundle in bundles)
             {
-                call.Gas ??= jsonRpcConfig.GasCap;
+                foreach (TransactionForRpc call in bundle.Transactions)
+                {
+                    call.Gas ??= jsonRpcConfig.GasCap;
+                }
             }
         }
 

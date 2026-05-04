@@ -79,10 +79,12 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         tx.IsOPSystemTransaction = IsSystemTx ?? false;
         tx.Data = Input ?? throw new ArgumentNullException(nameof(Input));
 
-        long? effectiveGas = Gas ?? gasCap;
-        tx.GasLimit = effectiveGas ?? throw new ArgumentNullException(nameof(Gas));
-        if (gasCap is not null and not 0)
-            tx.GasLimit = long.Min(tx.GasLimit, gasCap.Value);
+        // Deposit txs require an explicit Gas; the original EnsureDefaults granted a graceful fallback to
+        // gasCap when the request omitted it, which we preserve. gasCap is null/0 mean "no cap" (matching
+        // LegacyTransactionForRpc), so neither substitutes for a missing Gas — that case still throws.
+        long effectiveCap = gasCap is null or 0 ? long.MaxValue : gasCap.Value;
+        long? gasOrDefault = Gas ?? (effectiveCap == long.MaxValue ? null : effectiveCap);
+        tx.GasLimit = long.Min(gasOrDefault ?? throw new ArgumentNullException(nameof(Gas)), effectiveCap);
 
         return tx;
     }
