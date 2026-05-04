@@ -30,7 +30,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(null!, Build.A.XdcBlockHeader().TestObject, out _), Throws.ArgumentNullException);
     }
@@ -43,7 +44,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(Build.A.QuorumCertificate().TestObject, null!, out _), Throws.ArgumentNullException);
     }
@@ -105,7 +107,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
     }
@@ -123,7 +126,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 1, 0)).TestObject;
 
         Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<IncomingMessageBlockNotFoundException>());
@@ -145,7 +149,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 1)).TestObject;
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
@@ -169,7 +174,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
 
         Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<BlockchainException>());
@@ -192,7 +198,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         if (lockQcIsNull)
             context.LockQC = null;
@@ -220,7 +227,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 1)).TestObject;
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
@@ -264,7 +272,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 3, 6)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
 
@@ -307,10 +316,12 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 4, 6)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
 
         Assert.That(context.HighestCommitBlock, Is.EqualTo(startFinalizedBlock));
     }
+
 }
