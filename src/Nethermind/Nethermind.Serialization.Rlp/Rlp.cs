@@ -1379,14 +1379,9 @@ namespace Nethermind.Serialization.Rlp
 
             public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
             {
-                if (decoder is null)
-                {
-                    decoder = GetValueDecoder<T>();
-                    if (decoder is null)
-                    {
-                        throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
-                    }
-                }
+                decoder ??= GetValueDecoder<T>()
+                    ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
+
                 int positionCheck = ReadSequenceLength() + Position;
                 int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
                 GuardLimit(count, limit);

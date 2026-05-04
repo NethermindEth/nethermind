@@ -195,7 +195,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             base.InitializeFeed();
-            HeadersSyncProgressLoggerReport.Reset(_pivotNumber - (LowestInsertedBlockHeader?.Number ?? 0) + 1, TotalBlocks);
+            // null lowest header means nothing inserted yet — without this guard the bar would briefly read 100%.
+            long currentValue = LowestInsertedBlockHeader is null ? 0 : _pivotNumber - LowestInsertedBlockHeader.Number + 1;
+            HeadersSyncProgressLoggerReport.Reset(currentValue, TotalBlocks);
         }
 
         protected virtual void ResetPivot()

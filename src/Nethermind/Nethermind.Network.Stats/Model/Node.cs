@@ -185,10 +185,7 @@ namespace Nethermind.Stats.Model
             return a.Id.Equals(b.Id);
         }
 
-        public static bool operator !=(Node a, Node b)
-        {
-            return !(a == b);
-        }
+        public static bool operator !=(Node a, Node b) => !(a == b);
 
         // Dynamically generates regex pattern from NodeClientType enum values (excluding Unknown).
         // Pattern structure: (ClientName|OtherClient|...)
