@@ -500,6 +500,12 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     {
         lock (_catalogLock)
         {
+            // Dispose arena managers first so their _disposed flag is set before any
+            // snapshot dispose runs MarkDead — otherwise a clean shutdown would treat
+            // every still-leased snapshot as fully dead and delete the on-disk arena
+            // files, wiping the catalog's data before the next session can reload it.
+            _baseArenaManager.Dispose();
+            _compactedArenaManager.Dispose();
             foreach (PersistedSnapshot snapshot in _baseSnapshots.Values)
                 snapshot.Dispose();
             foreach (PersistedSnapshot snapshot in _compactedSnapshots.Values)
@@ -509,7 +515,6 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
             _persistableCompactedSnapshots.Clear();
-            _baseArenaManager.Dispose();
         }
     }
 }

@@ -35,6 +35,7 @@ public sealed class ArenaManager : IArenaManager
     private readonly Lock _lock = new();
     private readonly PageClockCache? _pageCache;
     private int _nextArenaId;
+    private bool _disposed;
 
     public PageClockCache? PageCache => _pageCache;
 
@@ -209,6 +210,9 @@ public sealed class ArenaManager : IArenaManager
     {
         lock (_lock)
         {
+            // After Dispose, on-disk files must be preserved for the next session — skip
+            // dead-byte accounting and file deletion entirely.
+            if (_disposed) return;
             _deadBytes.TryGetValue(location.ArenaId, out long dead);
             long totalDead = dead + location.Size;
             _deadBytes[location.ArenaId] = totalDead;
@@ -310,6 +314,7 @@ public sealed class ArenaManager : IArenaManager
     {
         lock (_lock)
         {
+            _disposed = true;
             foreach (ArenaFile arena in _arenas.Values)
                 arena.Dispose();
             _arenas.Clear();
