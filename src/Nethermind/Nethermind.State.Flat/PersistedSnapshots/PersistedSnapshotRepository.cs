@@ -173,6 +173,11 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         // Drop the freshly-written pages from the kernel page cache — the write path warmed
         // them, but they aren't part of the read working set yet.
         reservation.AdviseDontNeed();
+
+        // Release the writer's "creation" lease — the snapshot took its own lease via
+        // AcquireLease in the ctor, so this brings refcount back to 1 (snapshot-owned).
+        // Without this, the lease would never reach 0 and CleanUp/MarkDead would never run.
+        reservation.Dispose();
     }
 
     /// <summary>
@@ -198,6 +203,9 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             else
                 _compactedSnapshots[to] = snapshot;
         }
+
+        // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.
+        reservation.Dispose();
     }
 
     /// <summary>
