@@ -86,7 +86,13 @@ public class StateSyncRunner(
             await StateSyncPrecursorWait(token);
 
             BlockHeader? roundPivot = treeSync.ResetStateRootToBestSuggested();
-            if (roundPivot is null) continue;
+            if (roundPivot is null)
+            {
+                // Pivot not known yet — wait and retry. StateSyncPrecursorWait can return
+                // immediately, so without this we'd spin tightly.
+                await Task.Delay(1000, token);
+                continue;
+            }
 
             await stateSyncDispatcher.Run(token);
 

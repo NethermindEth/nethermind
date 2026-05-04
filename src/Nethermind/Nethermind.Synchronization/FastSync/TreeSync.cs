@@ -348,7 +348,8 @@ namespace Nethermind.Synchronization.FastSync
                 return true;
             }
 
-            if (_stateSyncPivot.GetPivotHeader().StateRoot != _rootNode)
+            BlockHeader? pivotHeader = _stateSyncPivot.GetPivotHeader();
+            if (pivotHeader is null || pivotHeader.StateRoot != _rootNode)
             {
                 if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - updating state root");
                 return true;
