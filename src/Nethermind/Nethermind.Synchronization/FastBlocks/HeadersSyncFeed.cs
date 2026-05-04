@@ -256,7 +256,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldBuildANewBatch()
         {
-            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationNumber;
+            // `<=` rather than `==` because `HeadersDestinationNumber` (e.g. `BeaconPivot.PivotDestinationNumber`,
+            // which tracks `Head.Number - Reorganization.MaxDepth + 1`) can advance above `_lowestRequestedHeaderNumber`
+            // mid-sync. Without this, `BuildNewBatch` would produce a negative `RequestSize` and crash.
+            bool destinationHeaderRequested = _lowestRequestedHeaderNumber <= HeadersDestinationNumber;
 
             bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
