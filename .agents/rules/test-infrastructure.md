@@ -66,6 +66,21 @@ IContainer container = new ContainerBuilder()
 
 The rule: **if production modules already wire a component, use them — don't construct it yourself**.
 
+## Pure projector exception
+
+When the unit under test is a *pure projector* — its only behavior is reading properties from injected services and assembling a DTO, with no branching on service state, no I/O, no caching, and no orchestration — `Substitute.For<>()` on the collaborators is acceptable. The integration test that wires the projector into the rest of the system is the safety net.
+
+A class qualifies when it satisfies all of:
+
+- Methods read collaborator properties or call collaborator getter-only methods.
+- Output is a DTO whose fields are direct or arithmetic transformations of the inputs.
+- No persistence, no event publication, no logging-as-side-effect.
+- No branching on collaborator return values beyond null/empty handling.
+
+When in doubt, prefer the rule and use `TestBlockchain`. Pure projectors are uncommon — most services do enough work that real collaborators catch real bugs.
+
+Example: `Nethermind.Mcp.Adapter.NethermindNodeAdapter` projects `IBlockTree.Head.Number`, `ISyncPeerPool.PeerCount`, etc. into MCP DTOs; substituting collaborators keeps adapter tests focused on the projection contract while `IntegrationTests` cover real-services wire-up.
+
 ## Test guidelines
 
 - Add tests to existing test files rather than creating new ones
