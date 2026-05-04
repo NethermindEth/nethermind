@@ -320,12 +320,7 @@ internal class HeaderVerificationTests
     private Block GetLastBlock(bool isEpochSwitch)
     {
         XdcBlockHeader header = GetLastHeader(isEpochSwitch);
-        Block? block = xdcTestBlockchain.BlockTree.FindBlock(header.Hash!);
-        if (block is null)
-        {
-            throw new InvalidOperationException("Block not found in the chain.");
-        }
-
-        return block;
+        return xdcTestBlockchain.BlockTree.FindBlock(header.Hash!)
+            ?? throw new InvalidOperationException("Block not found in the chain.");
     }
 }
