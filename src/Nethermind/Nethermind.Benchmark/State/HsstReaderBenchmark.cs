@@ -27,8 +27,11 @@ public class HsstReaderBenchmark
     private byte[][] _hitKeys = null!;
     private byte[][] _missKeys = null!;
 
-    [Params(10_000, 50_000, 500_000)]
+    [Params(100_000)]
     public int EntryCount { get; set; }
+
+    [Params(64, 128, 256, 512, 1024)]
+    public int MaxLeafEntries { get; set; }
 
     private const int KeyLen = 32;
     private const int LookupBatch = 1024;
@@ -58,7 +61,7 @@ public class HsstReaderBenchmark
                     value[7 - b] = (byte)((ulong)i >> (b * 8));
                 builder.Add(keys[i], value);
             }
-            builder.Build();
+            builder.Build(MaxLeafEntries);
             _hsst = pooled.WrittenSpan.ToArray();
         }
         finally
