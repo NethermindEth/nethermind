@@ -56,14 +56,20 @@ namespace Nethermind.Core.Test
         [Test]
         public void Decode_integer(
             [ValueSource(nameof(IntegerDecoders))] DecoderCase decoder,
-            [ValueSource(nameof(IntegerTestCases))] (byte[] rlp, string expectedHex) test)
+            [ValueSource(nameof(IntegerTestCases))] (byte[] rlp, string expectedHex) test,
+            [Values(0, 1, 0xFF)] int position // test different offsets in Rlp
+        )
         {
+            byte[] rlp = position == 0 ? test.rlp : [..Enumerable.Range(0, position).Select(static i => (byte) i), ..test.rlp];
+            Rlp.ValueDecoderContext context = rlp.AsRlpValueContext();
+            context.Position = position;
+
             int expectedSize = test.expectedHex.Length / 2 + test.expectedHex.Length % 2;
             if (decoder.Size is { } size && size < expectedSize)
                 Assert.Ignore("Size over limit");
 
             Assert.That(
-                decoder.Invoke(test.rlp.AsRlpValueContext()).ToString("X").TrimStart('0'),
+                decoder.Invoke(context).ToString("X").TrimStart('0'),
                 Is.EqualTo(test.expectedHex.TrimStart('0'))
             );
         }
