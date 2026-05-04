@@ -585,19 +585,18 @@ jobs:
               try: return f'{float(v) * 100:.1f}%'
               except (TypeError, ValueError): return str(v)
 
-          out = open(sys.argv[1], 'w')
-          branch_to_compare = os.environ.get('BRANCH_TO_COMPARE', '?')
-          out.write('## RPC Performance Diff\n\n')
-          out.write(f'Current branch vs `{branch_to_compare}`, identical hardware, mainnet snap-synced.\n\n')
-          out.write('Per-method latencies at the configured RPS steps (each rate is run multiple times for stability).\n\n')
+          with open(sys.argv[1], 'w') as out:
+            branch_to_compare = os.environ.get('BRANCH_TO_COMPARE', '?')
+            out.write('## RPC Performance Diff\n\n')
+            out.write(f'Current branch vs `{branch_to_compare}`, identical hardware, mainnet snap-synced.\n\n')
+            out.write('Per-method latencies at the configured RPS steps (each rate is run multiple times for stability).\n\n')
 
-          dirs = sorted(glob.glob('*_perf_result'))
-          if not dirs:
-              out.write('_No `*_perf_result/` directories found. See uploaded artifact._\n')
-              out.close()
-              sys.exit(0)
+            dirs = sorted(glob.glob('*_perf_result'))
+            if not dirs:
+                out.write('_No `*_perf_result/` directories found. See uploaded artifact._\n')
+                sys.exit(0)
 
-          for d in dirs:
+            for d in dirs:
               name = os.path.basename(d)[:-len('_perf_result')]
               out.write(f'### {name}\n\n')
               path = os.path.join(d, 'results.json')
@@ -605,7 +604,8 @@ jobs:
                   out.write('_no `results.json` — flood run produced no output for this test_\n\n')
                   continue
               try:
-                  data = json.loads(open(path, 'rb').read())
+                  with open(path, 'rb') as f:
+                      data = json.loads(f.read())
               except Exception as e:
                   out.write(f'_failed to parse `{path}`: {e}_\n\n')
                   continue
@@ -627,6 +627,9 @@ jobs:
                   out.write('_no per-node entries — schema mismatch, see uploaded artifact_\n\n')
                   continue
 
+              # flood drives both endpoints in lockstep with the same --rates flag, so every
+              # node has identical target_rate. We use the first node's array as the row count;
+              # the at() helper guards against length mismatches if that ever changes.
               rates = per_node[nodes[0]].get('target_rate')
               if not isinstance(rates, list) or not rates:
                   out.write('_no target_rate array — schema mismatch, see uploaded artifact_\n\n')
