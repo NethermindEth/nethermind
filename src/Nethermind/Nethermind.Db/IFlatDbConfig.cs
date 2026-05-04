@@ -69,4 +69,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter (address/slot/self-destruct). Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "10.0")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
+
+    [ConfigItem(Description = "Bits per key for the per-snapshot trie-node bloom filter (state and storage trie nodes). Sized independently of the address/slot bloom because trie nodes vastly outnumber accounts. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "10.0")]
+    double PersistedSnapshotTrieBloomBitsPerKey { get; set; }
 }

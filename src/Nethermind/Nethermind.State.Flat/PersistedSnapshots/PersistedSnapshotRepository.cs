@@ -24,6 +24,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
+    private readonly double _trieBloomBitsPerKey = config.PersistedSnapshotTrieBloomBitsPerKey;
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _persistableCompactedSnapshots = new();
@@ -108,7 +109,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         }
 
         PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, entry.Type, reservation, referencedSnapshots);
-        AttachBloom(snapshot);
+        AttachKeyBloom(snapshot);
+        AttachTrieBloom(snapshot);
 
         bool isPersistableSize = IsPersistableSize(entry);
         if (entry.Type == PersistedSnapshotType.Full && !isPersistableSize)
@@ -139,12 +141,19 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             bloom = new BloomFilter(Math.Max(capacity, 1), _bloomBitsPerKey);
         }
 
+        BloomFilter? trieBloom = null;
+        if (_trieBloomBitsPerKey > 0)
+        {
+            long trieCapacity = (long)snapshot.StateNodesCount + snapshot.StorageNodesCount;
+            trieBloom = new BloomFilter(Math.Max(trieCapacity, 1), _trieBloomBitsPerKey);
+        }
+
         SnapshotLocation location;
         ArenaReservation reservation;
         string writeTag = isPersistable ? ArenaReservationTags.FullPersistable : ArenaReservationTags.FullBase;
         using (ArenaWriter arenaWriter = arena.CreateWriter(PersistedSnapshotBuilder.EstimateSize(snapshot), writeTag))
         {
-            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter(), bloom);
+            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter(), bloom, trieBloom);
             if (isPersistable)
                 _persistedSnapshotSize.WithLabels("is_persistable").Observe(arenaWriter.GetWriter().Written);
             else
@@ -162,6 +171,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, reservation);
             if (bloom is not null)
                 persisted.AttachKeyBloom(bloom);
+            if (trieBloom is not null)
+                persisted.AttachTrieBloom(trieBloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
             if (isPersistable)
@@ -197,7 +208,10 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             if (bloom is not null)
                 snapshot.AttachKeyBloom(bloom);
             else
-                AttachBloom(snapshot);
+                AttachKeyBloom(snapshot);
+            // Trie bloom is never passed in by the compactor (the merger doesn't populate it);
+            // always rebuild from the just-written disk image via the scanner.
+            AttachTrieBloom(snapshot);
             if (isPersistable)
                 _persistableCompactedSnapshots[to] = snapshot;
             else
@@ -428,10 +442,16 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         return result.Count > 0 ? [.. result] : null;
     }
 
-    private void AttachBloom(PersistedSnapshot snapshot)
+    private void AttachKeyBloom(PersistedSnapshot snapshot)
     {
         if (_bloomBitsPerKey > 0)
             snapshot.AttachKeyBloom(PersistedSnapshotBloomBuilder.Build(snapshot, _bloomBitsPerKey));
+    }
+
+    private void AttachTrieBloom(PersistedSnapshot snapshot)
+    {
+        if (_trieBloomBitsPerKey > 0)
+            snapshot.AttachTrieBloom(PersistedSnapshotBloomBuilder.BuildTrieBloom(snapshot, _trieBloomBitsPerKey));
     }
 
     private bool IsPersistableSize(SnapshotCatalog.CatalogEntry entry) =>

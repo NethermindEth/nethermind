@@ -49,6 +49,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private readonly ArenaReservation _reservation;
     private readonly Dictionary<int, PersistedSnapshot>? _referencedSnapshots;
     private BloomFilter? _keyBloom;
+    private BloomFilter? _trieBloom;
 
     internal ICollection<PersistedSnapshot>? ReferencedSnapshots => _referencedSnapshots?.Values;
     internal Dictionary<int, PersistedSnapshot>? ReferencedSnapshotsLookup => _referencedSnapshots;
@@ -198,6 +199,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public bool TryLoadStateNodeRlp(scoped in TreePath path, out byte[]? nodeRlp)
     {
+        if (_trieBloom is not null && !_trieBloom.MightContain(PersistedSnapshotBloomBuilder.StatePathKey(in path)))
+        {
+            nodeRlp = null;
+            return false;
+        }
         ArenaByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryLoadStateNodeRlp<ArenaByteReader, NoOpPin>(in reader, in path, out Bound bound))
         {
@@ -210,6 +216,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, out byte[]? nodeRlp)
     {
+        if (_trieBloom is not null && !_trieBloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(address, in path)))
+        {
+            nodeRlp = null;
+            return false;
+        }
         ArenaByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryLoadStorageNodeRlp<ArenaByteReader, NoOpPin>(in reader, address, in path, out Bound bound))
         {
@@ -256,8 +267,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     internal long KeyBloomCount => _keyBloom?.Count ?? 0;
+    internal long TrieBloomCount => _trieBloom?.Count ?? 0;
 
     internal void AttachKeyBloom(BloomFilter bloom) => _keyBloom = bloom;
+    internal void AttachTrieBloom(BloomFilter bloom) => _trieBloom = bloom;
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();
 
@@ -266,6 +279,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     protected override void CleanUp()
     {
         _keyBloom?.Dispose();
+        _trieBloom?.Dispose();
         _reservation.Dispose();
         if (_referencedSnapshots is not null)
         {
