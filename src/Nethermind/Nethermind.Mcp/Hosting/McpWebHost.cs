@@ -40,7 +40,7 @@ namespace Nethermind.Mcp.Hosting;
 /// <see cref="IServiceCollection"/> so the SDK can resolve them. Each instance is
 /// singleton in both containers and is shared, so this does not duplicate state.
 /// </remarks>
-public sealed class McpWebHost : IAsyncDisposable
+public class McpWebHost : IAsyncDisposable
 {
     private readonly IMcpConfig _config;
     private readonly Logging.ILogger _logger;
@@ -61,16 +61,27 @@ public sealed class McpWebHost : IAsyncDisposable
     }
 
     /// <summary>
+    /// Parameterless constructor for test substitutes only — <see cref="NSubstitute"/> requires
+    /// a callable constructor when mocking a non-sealed concrete class. Production code must
+    /// use the three-argument constructor.
+    /// </summary>
+    protected McpWebHost()
+    {
+        _config = null!;
+        _mcpServices = null!;
+    }
+
+    /// <summary>
     /// Gets the URI Kestrel actually bound to. Null until <see cref="StartAsync"/> succeeds.
     /// </summary>
-    public Uri? BoundUri { get; private set; }
+    public virtual Uri? BoundUri { get; private set; }
 
     /// <summary>
     /// Builds and starts the Kestrel host. Returns <c>true</c> on success, <c>false</c> if
     /// startup throws (e.g. port already in use). Failures are logged at <c>Error</c> and
     /// never propagate.
     /// </summary>
-    public async Task<bool> StartAsync(CancellationToken ct)
+    public virtual async Task<bool> StartAsync(CancellationToken ct)
     {
         if (_started)
         {
@@ -117,7 +128,7 @@ public sealed class McpWebHost : IAsyncDisposable
     /// <summary>
     /// Stops the Kestrel host if running. Safe to call multiple times.
     /// </summary>
-    public async Task StopAsync(CancellationToken ct)
+    public virtual async Task StopAsync(CancellationToken ct)
     {
         if (!_started || _app is null)
         {
@@ -138,7 +149,7 @@ public sealed class McpWebHost : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public virtual async ValueTask DisposeAsync()
     {
         if (_app is null)
         {
