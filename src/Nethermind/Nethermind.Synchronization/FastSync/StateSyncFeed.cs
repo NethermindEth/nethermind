@@ -20,22 +20,20 @@ namespace Nethermind.Synchronization.FastSync
             {
                 try
                 {
-                    if (treeSync.IsSyncRoundFinished()) return null;
+                    if (treeSync.IsSyncRoundFinished())
+                        return null;
 
                     StateSyncBatch? batch = await treeSync.PrepareRequest();
-                    if (batch is not null) return batch;
-                }
-                catch (OperationCanceledException)
-                {
-                    return null;
+                    if (batch is not null)
+                        return batch;
                 }
                 catch (Exception e)
                 {
                     _logger.Error("Error when preparing a state sync batch", e);
                 }
 
-                try { await Task.Delay(50, token); }
-                catch (OperationCanceledException) { return null; }
+                // Pending queue empty or transient error — wait and retry
+                await Task.Delay(50, token);
             }
 
             return null;
