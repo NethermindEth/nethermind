@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Stateless.Execution;
 using Nethermind.Zkvm.Abstractions;

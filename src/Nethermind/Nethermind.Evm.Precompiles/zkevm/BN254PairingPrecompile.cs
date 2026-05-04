@@ -31,7 +31,7 @@ public partial class BN254PairingPrecompile
                 out bool verified
             ) == Accelerators.Status.OK;
 
-            if (verified)
+            if (success && verified)
                 output[31] = 1;
         }
 
