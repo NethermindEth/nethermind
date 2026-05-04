@@ -43,8 +43,11 @@ public sealed class SszMiddleware
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;
+    private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _postLookup;
+    private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _getLookup;
 
-    private readonly (string Method, string Resource, List<ISszEndpointHandler> Handlers)[] _allRoutes;
+    private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _postPrefixRoutes;
+    private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _getPrefixRoutes;
 
     public SszMiddleware(
         RequestDelegate next,
@@ -59,12 +62,15 @@ public sealed class SszMiddleware
         _auth = auth;
         _logger = logManager.GetClassLogger<SszMiddleware>();
         _processExitToken = processExitSource.Token;
-        (_postRoutes, _getRoutes, _allRoutes) = BuildRoutes(handlers);
+        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(handlers);
+        _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
+        _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
                     FrozenDictionary<string, List<ISszEndpointHandler>> get,
-                    (string, string, List<ISszEndpointHandler>)[] all)
+                    (string, List<ISszEndpointHandler>)[] postPrefix,
+                    (string, List<ISszEndpointHandler>)[] getPrefix)
         BuildRoutes(IEnumerable<ISszEndpointHandler> handlers)
     {
         Dictionary<string, List<ISszEndpointHandler>> postDict = [];
@@ -80,13 +86,14 @@ public sealed class SszMiddleware
             list.Add(h);
         }
 
-        FrozenDictionary<string, List<ISszEndpointHandler>> post = postDict.ToFrozenDictionary();
-        FrozenDictionary<string, List<ISszEndpointHandler>> get = getDict.ToFrozenDictionary();
+        FrozenDictionary<string, List<ISszEndpointHandler>> post = postDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+        FrozenDictionary<string, List<ISszEndpointHandler>> get = getDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-        List<(string, string, List<ISszEndpointHandler>)> all = [];
-        foreach ((string r, List<ISszEndpointHandler> list) in post) all.Add(("post", r, list));
-        foreach ((string r, List<ISszEndpointHandler> list) in get) all.Add(("get", r, list));
-        return (post, get, all.ToArray());
+        List<(string, List<ISszEndpointHandler>)> postPrefix = [];
+        List<(string, List<ISszEndpointHandler>)> getPrefix = [];
+        foreach ((string r, List<ISszEndpointHandler> list) in post) postPrefix.Add((r, list));
+        foreach ((string r, List<ISszEndpointHandler> list) in get) getPrefix.Add((r, list));
+        return (post, get, postPrefix.ToArray(), getPrefix.ToArray());
     }
 
     public async Task InvokeAsync(HttpContext ctx)
@@ -216,7 +223,7 @@ public sealed class SszMiddleware
         if (exactDict is not null)
         {
             FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
-                lookup = exactDict.GetAlternateLookup<ReadOnlySpan<char>>();
+                lookup = isPost ? _postLookup : _getLookup;
 
             if (lookup.TryGetValue(pathSegment, out List<ISszEndpointHandler>? exactList))
             {
@@ -230,14 +237,14 @@ public sealed class SszMiddleware
             }
         }
 
-        ReadOnlySpan<char> methodSpan = method.AsSpan();
         ISszEndpointHandler? prefixFallback = null;
         ReadOnlySpan<char> prefixFallbackExtra = default;
 
-        foreach ((string routeMethod, string routeResource, List<ISszEndpointHandler> candidates) in _allRoutes)
-        {
-            if (!methodSpan.Equals(routeMethod.AsSpan(), StringComparison.OrdinalIgnoreCase)) continue;
+        (string Resource, List<ISszEndpointHandler> Handlers)[] prefixRoutes =
+            isPost ? _postPrefixRoutes : isGet ? _getPrefixRoutes : [];
 
+        foreach ((string routeResource, List<ISszEndpointHandler> candidates) in prefixRoutes)
+        {
             ReadOnlySpan<char> resourceSpan = routeResource.AsSpan();
 
             if (MemoryExtensions.Equals(pathSegment, resourceSpan, StringComparison.OrdinalIgnoreCase))

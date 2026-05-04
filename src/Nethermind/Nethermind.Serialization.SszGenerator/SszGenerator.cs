@@ -383,13 +383,13 @@ internal static class SszCodecHelpers
                 encode(items[i], span);
                 MerkleizeFixedSizeBytes(span, out subRoots[i]);
             }
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count));
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buf);
+            ArrayPool<UInt256>.Shared.Return(subRoots);
         }
-        Merkle.Merkleize(out root, subRoots.AsSpan(0, count));
-        ArrayPool<UInt256>.Shared.Return(subRoots);
     }
 
     internal static void MerkleizeRefTypeList<T>(ReadOnlySpan<T> items, ulong limit, int itemSize, EncodeItem<T> encode, out UInt256 root)
@@ -406,13 +406,13 @@ internal static class SszCodecHelpers
                 encode(items[i], span);
                 MerkleizeFixedSizeBytes(span, out subRoots[i]);
             }
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count), limit);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buf);
+            ArrayPool<UInt256>.Shared.Return(subRoots);
         }
-        Merkle.Merkleize(out root, subRoots.AsSpan(0, count), limit);
-        ArrayPool<UInt256>.Shared.Return(subRoots);
         Merkle.MixIn(ref root, count);
     }
 
@@ -430,13 +430,13 @@ internal static class SszCodecHelpers
                 encode(items[i], span);
                 MerkleizeFixedSizeBytes(span, out subRoots[i]);
             }
+            Merkle.MerkleizeProgressive(out root, subRoots.AsSpan(0, count));
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buf);
+            ArrayPool<UInt256>.Shared.Return(subRoots);
         }
-        Merkle.MerkleizeProgressive(out root, subRoots.AsSpan(0, count));
-        ArrayPool<UInt256>.Shared.Return(subRoots);
         Merkle.MixIn(ref root, count);
     }
 }
