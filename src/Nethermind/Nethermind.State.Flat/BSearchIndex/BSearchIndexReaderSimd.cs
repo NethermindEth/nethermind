@@ -96,22 +96,41 @@ internal static class BSearchIndexReaderSimd
         int keySize,
         out int result)
     {
+        // SIMD disabled: at 100k cache-resident scale (BDN bench, AMD EPYC 9575F)
+        // the dispatch + setup overhead pessimizes seeks by 4–16% vs scalar binary
+        // search. The vector code below is preserved for future re-enable once
+        // tuned (or under a workload where it actually pays).
         result = 0;
-        if (count < 2 || count > LinearScanMaxCount) return false;
-        if (key.Length != keySize) return false;
-        if (!Vector128.IsHardwareAccelerated) return false;
+        _ = key; _ = keys; _ = count; _ = keySize;
+        return false;
+    }
 
-        switch (keySize)
-        {
-            case 4:
-                result = FloorScan32(key, keys, count);
-                return true;
-            case 8:
-                result = FloorScan64(key, keys, count);
-                return true;
-            default:
-                return false;
-        }
+    /// <summary>
+    /// SIMD floor scan for <c>UniformWithLen</c> nodes with slotSize=4 (3-byte payload +
+    /// 1-byte length). The writer guarantees unused payload bytes are zero
+    /// (<see cref="BSearchIndexWriter{TWriter}.FinalizeUniformWithLenKeys"/> clears the
+    /// slot before filling), so each slot's uint32 BE value preserves lex+length ordering:
+    /// (a) within equal lengths, the payload prefix dominates the compare; (b) for keys
+    /// sharing a prefix but differing in length, the shorter key has zero-padded bytes
+    /// followed by a smaller length byte, which gives the correct "shorter is less"
+    /// ordering. The search key is encoded into the same 4-byte slot format and we reuse
+    /// the existing <see cref="FloorScan32"/> dispatcher.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryFindFloorIndexUniformWithLenSimd(
+        ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> keys,
+        int count,
+        int slotSize,
+        out int result)
+    {
+        // SIMD disabled: at 100k cache-resident scale (BDN bench, AMD EPYC 9575F)
+        // the dispatch + setup overhead pessimizes seeks by 4–16% vs scalar binary
+        // search. The vector code below is preserved for future re-enable once
+        // tuned (or under a workload where it actually pays).
+        result = 0;
+        _ = key; _ = keys; _ = count; _ = slotSize;
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

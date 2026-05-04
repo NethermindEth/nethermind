@@ -265,6 +265,10 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FindFloorIndexUniformWithLen(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int slotSize)
     {
+        // SIMD fast path for the common slotSize=4 case (3-byte payload + 1-byte length).
+        if (BSearchIndexReaderSimd.TryFindFloorIndexUniformWithLenSimd(key, keys, count, slotSize, out int simdResult))
+            return simdResult;
+
         int result = -1;
         int lo = 0, hi = count - 1;
         while (lo <= hi)
