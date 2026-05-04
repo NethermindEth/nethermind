@@ -576,10 +576,14 @@ jobs:
 
           # Latencies in flood's results.json are in seconds.
           def fmt_ms(v):
-              return '—' if v is None else f'{float(v) * 1000:.1f} ms'
+              if v is None: return '—'
+              try: return f'{float(v) * 1000:.1f} ms'
+              except (TypeError, ValueError): return str(v)
 
           def fmt_pct(v):
-              return '—' if v is None else f'{float(v) * 100:.1f}%'
+              if v is None: return '—'
+              try: return f'{float(v) * 100:.1f}%'
+              except (TypeError, ValueError): return str(v)
 
           out = open(sys.argv[1], 'w')
           branch_to_compare = os.environ.get('BRANCH_TO_COMPARE', '?')
@@ -609,28 +613,38 @@ jobs:
               # Schema produced by flood 0.3.x:
               #   results: { <node_name>: { target_rate: [N steps], p50: [N], p95: [N], p99: [N], success: [N], ... } }
               # Each node has parallel arrays — same length, indexed by RPS step.
-              per_node = data.get('results') or {}
-              if not per_node:
-                  out.write('_results section empty — see uploaded artifact_\n\n')
+              if not isinstance(data, dict):
+                  out.write('_top-level JSON is not an object — schema mismatch, see uploaded artifact_\n\n')
                   continue
 
-              nodes = list(per_node.keys())
-              first = per_node[nodes[0]]
-              rates = first.get('target_rate') or []
-              if not rates:
+              per_node = data.get('results')
+              if not isinstance(per_node, dict) or not per_node:
+                  out.write('_results section missing or empty — see uploaded artifact_\n\n')
+                  continue
+
+              nodes = [n for n, v in per_node.items() if isinstance(v, dict)]
+              if not nodes:
+                  out.write('_no per-node entries — schema mismatch, see uploaded artifact_\n\n')
+                  continue
+
+              rates = per_node[nodes[0]].get('target_rate')
+              if not isinstance(rates, list) or not rates:
                   out.write('_no target_rate array — schema mismatch, see uploaded artifact_\n\n')
                   continue
 
-              out.write('| Step | Target RPS | Node | p50 | p95 | p99 | success |\n')
-              out.write('|---:|---:|---|---:|---:|---:|---:|\n')
-              for i, rate in enumerate(rates):
-                  for node in nodes:
-                      ns = per_node[node]
-                      def at(key):
-                          arr = ns.get(key)
-                          return arr[i] if isinstance(arr, list) and i < len(arr) else None
-                      out.write(f'| {i + 1} | {rate} | {node} | {fmt_ms(at("p50"))} | {fmt_ms(at("p95"))} | {fmt_ms(at("p99"))} | {fmt_pct(at("success"))} |\n')
-              out.write('\n')
+              try:
+                  out.write('| Step | Target RPS | Node | p50 | p95 | p99 | success |\n')
+                  out.write('|---:|---:|---|---:|---:|---:|---:|\n')
+                  for i, rate in enumerate(rates):
+                      for node in nodes:
+                          ns = per_node[node]
+                          def at(key):
+                              arr = ns.get(key)
+                              return arr[i] if isinstance(arr, list) and i < len(arr) else None
+                          out.write(f'| {i + 1} | {rate} | {node} | {fmt_ms(at("p50"))} | {fmt_ms(at("p95"))} | {fmt_ms(at("p99"))} | {fmt_pct(at("success"))} |\n')
+                  out.write('\n')
+              except Exception as e:
+                  out.write(f'\n_failed while rendering `{name}`: {type(e).__name__}: {e}_\n\n')
 
           out.close()
           PY
