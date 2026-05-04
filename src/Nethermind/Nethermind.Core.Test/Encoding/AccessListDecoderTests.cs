@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Eip2930;
@@ -122,5 +123,28 @@ namespace Nethermind.Core.Test.Encoding
 
         [Test]
         public void Get_length_returns_1_for_null() => _decoder.GetLength(null, RlpBehaviors.None).Should().Be(1);
+
+        [Test]
+        public void Rejects_entry_missing_storage_keys_array()
+        {
+            const string error = "storage keys";
+            byte[] invalid = Convert.FromHexString("d6d5940000000000000000000000000000000000000000");
+
+            void DecodeStream()
+            {
+                Rlp.ValueDecoderContext ctx = new RlpStream(invalid).Data.AsSpan().AsRlpValueContext();
+                _decoder.Decode(ref ctx);
+            }
+
+            Assert.That((Action) DecodeStream, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+
+            void DecodeContext()
+            {
+                Rlp.ValueDecoderContext ctx = invalid.AsSpan().AsRlpValueContext();
+                _decoder.Decode(ref ctx);
+            }
+
+            Assert.That((Action) DecodeContext, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+        }
     }
 }
