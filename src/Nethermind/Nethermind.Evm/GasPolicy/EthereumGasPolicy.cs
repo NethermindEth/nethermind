@@ -27,6 +27,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasSpillBurned;
     /// <summary>State gas spill that should remain in the block regular dimension.</summary>
     public long StateGasSpillReclassified;
+    /// <summary>State gas spill consumed by state refunds and excluded from block regular gas.</summary>
+    public long StateGasSpillRefunded;
     /// <summary>Per-block EIP-8037 cost-per-state-byte.</summary>
     public long CostPerStateByte;
 
@@ -135,6 +137,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateGasSpill += childGas.StateGasSpill;
         gas.StateGasSpillBurned += childGas.StateGasSpillBurned;
         gas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
+        gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
         gas.CostPerStateByte = GetCostPerStateByte(in childGas);
     }
 
@@ -143,15 +146,23 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     // state gas usage, then subtract inline refunds that inflated the reservoir inside the
     // child. The child's StateGasSpill (which already includes any spill propagated up from
     // descendants) is recorded permanently in StateGasSpillBurned for top-level halt accounting.
-    // If the child applied an inline state refund (for example failed CREATE state cost), only
-    // the spill that remains after that refund stays in Geth's regular dimension.
+    // State-gas refunds mark their spilled portion in StateGasSpillRefunded. If this REVERT
+    // carries such a refund, any remaining unrefunded spill is what Geth keeps in the regular
+    // dimension.
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
     {
+        long unrefundedSpill = GetUnrefundedStateGasSpill(in childGas, childStateRefund);
+        long reclassifiedSpill = childGas.StateGasSpillReclassified;
+        if (childStateRefund > 0)
+        {
+            reclassifiedSpill += GetUnclassifiedStateGasSpill(in childGas, unrefundedSpill);
+        }
+
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childStateRefund;
         parentGas.StateGasSpill += childGas.StateGasSpill;
-        parentGas.StateGasSpillBurned += childGas.StateGasSpill;
-        parentGas.StateGasSpillReclassified +=
-            childGas.StateGasSpillReclassified + GetReclassifiedStateGasSpill(in childGas, childStateRefund);
+        parentGas.StateGasSpillBurned += unrefundedSpill;
+        parentGas.StateGasSpillReclassified += reclassifiedSpill;
+        parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -168,7 +179,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         parentGas.StateReservoir += GetRestoredChildStateReservoir(in childGas, initialStateReservoir);
         parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
-        parentGas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -195,16 +205,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static long GetReclassifiedStateGasSpill(in EthereumGasPolicy childGas, long childStateRefund)
+    private static long GetUnrefundedStateGasSpill(in EthereumGasPolicy childGas, long stateRefund = 0)
     {
-        if (childStateRefund <= 0)
-        {
-            return 0;
-        }
-
-        long unreclassifiedSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillReclassified);
-        return Math.Max(0, unreclassifiedSpill - childStateRefund);
+        long refundedSpill = Math.Max(
+            childGas.StateGasSpillRefunded,
+            Math.Min(stateRefund, childGas.StateGasSpill));
+        return Math.Max(0, childGas.StateGasSpill - refundedSpill);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long GetUnclassifiedStateGasSpill(in EthereumGasPolicy childGas, long unrefundedSpill) =>
+        Math.Max(0, unrefundedSpill - childGas.StateGasSpillReclassified);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SetOutOfGas(ref EthereumGasPolicy gas) => gas.Value = 0;
@@ -331,6 +342,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         long refundableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, refundableStateGas);
+        long unrefundedSpill = GetUnrefundedStateGasSpill(in gas);
+        gas.StateGasSpillRefunded += Math.Min(appliedRefund, unrefundedSpill);
         gas.StateReservoir += appliedRefund;
         gas.StateGasUsed -= appliedRefund;
     }

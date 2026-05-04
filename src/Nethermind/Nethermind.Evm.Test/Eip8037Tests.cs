@@ -320,6 +320,27 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         Assert.That(parent.StateGasSpillReclassified, Is.EqualTo(3 * GasCostOf.SSetState),
             "bal-devnet-6 block 1788: the failed CREATE state refund stays excluded, but the three SSTORE spills remain block-regular gas");
+        Assert.That(parent.StateGasSpillBurned, Is.EqualTo(3 * GasCostOf.SSetState));
+    }
+
+    [Test]
+    public void Revert_with_refunded_create_spill_does_not_reclassify_it()
+    {
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy child = new()
+        {
+            Value = 100,
+            StateReservoir = 0,
+            StateGasUsed = 0,
+            StateGasSpill = GasCostOf.CreateState,
+        };
+
+        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, initialStateReservoir: 0, childStateRefund: GasCostOf.CreateState);
+
+        Assert.That(parent.StateGasSpillReclassified, Is.EqualTo(0L),
+            "refunded CREATE state spill stays excluded from block regular gas");
+        Assert.That(parent.StateGasSpillBurned, Is.EqualTo(0L),
+            "refunded CREATE state spill must not be added by the top-level halt formula");
     }
 
     [Test]
@@ -574,6 +595,10 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill),
             Is.EqualTo((0L, 0L, GasCostOf.CreateState + GasCostOf.SSetState)));
+        Assert.That(parent.StateGasSpillReclassified, Is.EqualTo(0L),
+            "ancestor refunds consumed both spills, so neither is reclassified to block regular gas");
+        Assert.That(parent.StateGasSpillBurned, Is.EqualTo(0L),
+            "refunded descendant spill must not be added by the top-level halt formula");
     }
 
     [TestCase(ExpectedResult = 5_000L)]
