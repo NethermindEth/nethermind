@@ -116,12 +116,12 @@ public class WithdrawalDecoderTests
 
     private static byte[] CombineRlpList(params byte[][] encodedItems)
     {
-        var sequenceLength = encodedItems.Sum(static item => item.Length);
-        var result = new byte[Rlp.LengthOfLength(sequenceLength) + sequenceLength];
+        int sequenceLength = encodedItems.Sum(static item => item.Length);
+        byte[] result = new byte[Rlp.LengthOfLength(sequenceLength) + sequenceLength];
 
-        var position = 0;
+        int position = 0;
         position += Rlp.StartSequence(result, position, sequenceLength);
-        foreach (var item in encodedItems)
+        foreach (byte[] item in encodedItems)
         {
             item.CopyTo(result.AsSpan(position));
             position += item.Length;
