@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Json
         private static bool _strictHexFormat;
         private static int _optionsVersion;
 
-        private readonly int? _maxDepth;
+        private readonly int _maxDepth;
         private readonly JsonConverter[] _instanceConverters;
         private readonly object _instanceOptionsLock = new();
 
@@ -178,8 +178,8 @@ namespace Nethermind.Serialization.Json
 
         private JsonWriterOptions CreateWriterOptions(bool indented)
         {
-            JsonWriterOptions writerOptions = new() { SkipValidation = true, Indented = indented };
-            writerOptions.MaxDepth = _maxDepth ?? writerOptions.MaxDepth;
+            JsonWriterOptions writerOptions = new()
+                { SkipValidation = true, Indented = indented, MaxDepth = _maxDepth };
             return writerOptions;
         }
 
@@ -238,8 +238,8 @@ namespace Nethermind.Serialization.Json
 
         private void RefreshInstanceOptions()
         {
-            _jsonOptions = CreateOptions(indented: false, instanceConverters: _instanceConverters, maxDepth: _maxDepth ?? DefaultMaxDepth);
-            _jsonOptionsIndented = CreateOptions(indented: true, instanceConverters: _instanceConverters, maxDepth: _maxDepth ?? DefaultMaxDepth);
+            _jsonOptions = CreateOptions(indented: false, instanceConverters: _instanceConverters, maxDepth: _maxDepth);
+            _jsonOptionsIndented = CreateOptions(indented: true, instanceConverters: _instanceConverters, maxDepth: _maxDepth);
             _instanceOptionsVersion = Volatile.Read(ref _optionsVersion);
         }
 
