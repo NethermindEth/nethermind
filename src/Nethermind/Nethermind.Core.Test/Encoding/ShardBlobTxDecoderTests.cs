@@ -132,7 +132,7 @@ public partial class ShardBlobTxDecoderTests
             _txDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
-        Assert.That((Action) DecodeByValueDecoderContext, Throws.InstanceOf<RlpException>());
+        Assert.That(DecodeByValueDecoderContext, Throws.InstanceOf<RlpException>());
     }
 
     [Test]

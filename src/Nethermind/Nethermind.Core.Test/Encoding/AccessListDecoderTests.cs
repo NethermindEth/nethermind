@@ -136,7 +136,7 @@ namespace Nethermind.Core.Test.Encoding
                 _decoder.Decode(ref ctx);
             }
 
-            Assert.That((Action) DecodeStream, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+            Assert.That(DecodeStream, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
 
             void DecodeContext()
             {
@@ -144,7 +144,7 @@ namespace Nethermind.Core.Test.Encoding
                 _decoder.Decode(ref ctx);
             }
 
-            Assert.That((Action) DecodeContext, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+            Assert.That(DecodeContext, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
         }
     }
 }
