@@ -15,26 +15,30 @@ public partial class BN254PairingPrecompile
         if (!ValidateInputLength(inputData, releaseSpec))
             return Errors.InvalidInputLength;
 
-        byte[] output = new byte[32];
-        bool success;
-
         if (inputData.Length == 0)
         {
+            byte[] output = new byte[32];
             output[31] = 1;
-            success = true;
+
+            return output;
         }
-        else
+
+        Accelerators.Status status = Accelerators.BN254Pairing(
+            inputData.Span,
+            (nuint)inputData.Length / BN254.PairSize,
+            out bool verified
+        );
+
+        if (status == Accelerators.Status.OK)
         {
-            success = Accelerators.BN254Pairing(
-                inputData.Span,
-                (nuint)inputData.Length / BN254.PairSize,
-                out bool verified
-            ) == Accelerators.Status.OK;
+            byte[] output = new byte[32];
 
-            if (success && verified)
+            if (verified)
                 output[31] = 1;
+
+            return output;
         }
 
-        return success ? output : Errors.Failed;
+        return Errors.Failed;
     }
 }
