@@ -221,8 +221,8 @@ public abstract class StateSyncFeedTestsBase(
 
         public void ResetFeed()
         {
-            treeSync.Value.ResetStateRoot(SyncFeedState.Dormant);
-            treeSync.Value.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            treeSync.Value.ResetStateRoot();
+            treeSync.Value.ResetStateRootToBestSuggested();
         }
 
         public Task RunFeed(CancellationToken cancellationToken) => stateSyncRunner.Value.RunStateSyncRounds(cancellationToken);
