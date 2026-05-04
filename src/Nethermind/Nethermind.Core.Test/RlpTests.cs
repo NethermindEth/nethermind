@@ -60,7 +60,7 @@ namespace Nethermind.Core.Test
             [Values(0, 1, 0xFF)] int position // test different offsets in Rlp
         )
         {
-            byte[] rlp = position == 0 ? test.rlp : [..Enumerable.Range(0, position).Select(static i => (byte) i), ..test.rlp];
+            byte[] rlp = position == 0 ? test.rlp : [.. Enumerable.Range(0, position).Select(static i => (byte)i), .. test.rlp];
             Rlp.ValueDecoderContext context = rlp.AsRlpValueContext();
             context.Position = position;
 
