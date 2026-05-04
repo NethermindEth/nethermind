@@ -426,7 +426,7 @@ public class Startup : IStartup
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
     {
-        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
+        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true, MaxDepth = EthereumJsonSerializer.DefaultMaxDepth });
 
         jsonWriter.WriteStartObject();
         jsonWriter.WriteString("jsonrpc"u8, "2.0"u8);

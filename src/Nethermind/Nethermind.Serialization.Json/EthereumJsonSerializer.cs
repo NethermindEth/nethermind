@@ -18,7 +18,11 @@ namespace Nethermind.Serialization.Json
 {
     public sealed class EthereumJsonSerializer : IJsonSerializer
     {
-        public const int DefaultMaxDepth = 128;
+        // Must accommodate the deepest possible callTracer output: each NativeCallTracerCallFrame
+        // contributes ~2 JSON levels (object + "calls" array), the EVM allows up to MaxCallDepth=1024
+        // (Yellow Paper / Nethermind.Evm.VirtualMachine.MaxCallDepth), plus a few levels of JSON-RPC
+        // envelope. 4096 leaves comfortable headroom.
+        public const int DefaultMaxDepth = 4096;
         private static readonly object _globalOptionsLock = new();
 
         private static readonly List<JsonConverter> _additionalConverters = new();
