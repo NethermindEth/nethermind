@@ -36,7 +36,7 @@ public ref struct HsstBuilder<TWriter>
     /// Default maximum entries per leaf B-tree node. Above this, the builder splits and
     /// promotes a separator into an intermediate node.
     /// </summary>
-    public const int MaxLeafEntries = 64;
+    public const int MaxLeafEntries = 256;
 
     private ref TWriter _writer;
     private int _writtenBeforeValue;
