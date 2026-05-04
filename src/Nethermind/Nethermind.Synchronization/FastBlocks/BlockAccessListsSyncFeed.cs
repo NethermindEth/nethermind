@@ -235,17 +235,9 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 bool isValid = !hasBreachedProtocol && IsValidAccessList(blockInfo, accessListRlp, out errorMessage);
                 if (isValid)
                 {
-                    try
-                    {
-                        _blockAccessListStore.Insert(blockInfo.BlockHash, accessListRlp);
-                        _syncStatusList.MarkInserted(blockInfo.BlockNumber);
-                        validResponsesCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Error inserting access list for block {blockInfo.BlockNumber}: {ex.Message}");
-                        _syncStatusList.MarkPending(blockInfo);
-                    }
+                    _blockAccessListStore.Insert(blockInfo.BlockHash, accessListRlp);
+                    _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                    validResponsesCount++;
                 }
                 else
                 {

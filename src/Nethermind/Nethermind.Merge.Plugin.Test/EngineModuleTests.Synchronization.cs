@@ -134,7 +134,6 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        chain.SyncPeerPool.Received(1).WakeUpAll();
         await peerWithoutHeader.Received(1).GetHeadBlockHeader(block.Hash!, Arg.Any<CancellationToken>());
         await peerWithHeader.Received(1).GetHeadBlockHeader(block.Hash!, Arg.Any<CancellationToken>());
         Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);

@@ -110,69 +110,28 @@ public class Eth71ProtocolHandlerTests
         Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
-    [Test]
-    public void Should_handle_GetBlockAccessLists_and_return_available_BALs()
+    [TestCaseSource(nameof(BlockAccessListsResponseCases))]
+    public void Should_handle_GetBlockAccessLists_and_return_expected_BALs(
+        long requestId,
+        Hash256[] hashes,
+        byte[]?[] expectedBlockAccessLists)
     {
-        byte[] bal1 = [0xc1, 0x80]; // some RLP bytes
-        byte[] bal2 = [0xc2, 0x01, 0x02];
-
-        _syncManager.GetBlockAccessListRlp(Keccak.Zero).Returns(bal1);
-        _syncManager.GetBlockAccessListRlp(TestItem.KeccakA).Returns(bal2);
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(expectedBlockAccessLists[i]);
+        }
 
         HandleIncomingStatusMessage();
 
-        using GetBlockAccessListsMessage request = new(1111,
-            new Hash256[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList(2));
+        using GetBlockAccessListsMessage request = new(requestId, hashes.ToPooledList(hashes.Length));
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
         _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
-            m.RequestId == 1111 &&
-            m.BlockAccessLists.Count == 2 &&
-            SameBytes(m.BlockAccessLists[0], bal1) &&
-            SameBytes(m.BlockAccessLists[1], bal2)));
+            MatchesBlockAccessListsMessage(m, requestId, expectedBlockAccessLists)));
     }
 
-    [Test]
-    public void Should_return_empty_BAL_for_unavailable_blocks()
-    {
-        _syncManager.GetBlockAccessListRlp(Arg.Any<Hash256>()).Returns((byte[]?)null);
-
-        HandleIncomingStatusMessage();
-
-        using GetBlockAccessListsMessage request = new(2222,
-            new Hash256[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList(2));
-        HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
-
-        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
-            m.RequestId == 2222 &&
-            m.BlockAccessLists.Count == 2 &&
-            IsMissing(m.BlockAccessLists[0]) &&
-            IsMissing(m.BlockAccessLists[1])));
-    }
-
-    [Test]
-    public void Should_return_mixed_available_and_empty_BALs()
-    {
-        byte[] bal1 = [0xc3, 0x01, 0x02, 0x03];
-        _syncManager.GetBlockAccessListRlp(Keccak.Zero).Returns(bal1);
-        _syncManager.GetBlockAccessListRlp(TestItem.KeccakA).Returns((byte[]?)null);
-        _syncManager.GetBlockAccessListRlp(TestItem.KeccakB).Returns((byte[]?)null);
-
-        HandleIncomingStatusMessage();
-
-        using GetBlockAccessListsMessage request = new(3333,
-            new Hash256[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList(3));
-        HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
-
-        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
-            m.BlockAccessLists.Count == 3 &&
-            SameBytes(m.BlockAccessLists[0], bal1) &&
-            IsMissing(m.BlockAccessLists[1]) &&
-            IsMissing(m.BlockAccessLists[2])));
-    }
-
-    [Test]
-    public async Task Can_request_and_handle_block_access_lists()
+    [TestCaseSource(nameof(BlockAccessListsRequestCases))]
+    public async Task Can_request_and_handle_block_access_lists(bool viaSyncPeerInterface)
     {
         byte[] bal1 = [0xc1, 0x80];
         byte[] bal2 = [0xc2, 0x01, 0x02];
@@ -187,46 +146,18 @@ public class Eth71ProtocolHandlerTests
         });
 
         HandleIncomingStatusMessage();
-        Task<IOwnedReadOnlyList<byte[]?>> task = _handler.GetBlockAccessLists(
-            new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+        Task<IOwnedReadOnlyList<byte[]?>> task = viaSyncPeerInterface
+            ? ((ISyncPeer)_handler).GetBlockAccessLists(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None)
+            : _handler.GetBlockAccessLists(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         _session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
         HandleZeroMessage(response!, Eth71MessageCode.BlockAccessLists);
 
-        IOwnedReadOnlyList<byte[]?> result = await task;
+        using IOwnedReadOnlyList<byte[]?> result = await task;
         Assert.That(result, Has.Count.EqualTo(2));
         Assert.That(result[0], Is.EqualTo(bal1));
         Assert.That(result[1], Is.EqualTo(bal2));
         Assert.Throws<ObjectDisposedException>(() => _ = sentRequest!.Hashes[0]);
-        response?.Dispose();
-    }
-
-    [Test]
-    public async Task Can_request_and_handle_block_access_lists_via_sync_peer_interface()
-    {
-        byte[] bal1 = [0xc1, 0x80];
-        byte[] bal2 = [0xc2, 0x01, 0x02];
-
-        BlockAccessListsMessage? response = null;
-
-        _session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage>())).Do(call =>
-        {
-            GetBlockAccessListsMessage sent = (GetBlockAccessListsMessage)call[0];
-            response = new BlockAccessListsMessage(sent.RequestId, new ArrayPoolList<byte[]?>(2) { bal1, bal2 });
-        });
-
-        HandleIncomingStatusMessage();
-        ISyncPeer syncPeer = _handler;
-        Task<IOwnedReadOnlyList<byte[]?>> task = syncPeer.GetBlockAccessLists(
-            new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
-
-        _session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
-        HandleZeroMessage(response!, Eth71MessageCode.BlockAccessLists);
-
-        IOwnedReadOnlyList<byte[]?> result = await task;
-        Assert.That(result, Has.Count.EqualTo(2));
-        Assert.That(result[0], Is.EqualTo(bal1));
-        Assert.That(result[1], Is.EqualTo(bal2));
         response?.Dispose();
     }
 
@@ -285,8 +216,54 @@ public class Eth71ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
     }
 
-    private static bool SameBytes(byte[]? actual, byte[] expected) =>
-        actual is not null && actual.AsSpan().SequenceEqual(expected);
+    private static TestCaseData[] BlockAccessListsResponseCases =>
+    [
+        new TestCaseData(
+                1111L,
+                new[] { Keccak.Zero, TestItem.KeccakA },
+                new byte[]?[] { [0xc1, 0x80], [0xc2, 0x01, 0x02] })
+            .SetName("Should_handle_GetBlockAccessLists_and_return_available_BALs"),
+        new TestCaseData(
+                2222L,
+                new[] { Keccak.Zero, TestItem.KeccakA },
+                new byte[]?[] { null, null })
+            .SetName("Should_return_empty_BAL_for_unavailable_blocks"),
+        new TestCaseData(
+                3333L,
+                new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB },
+                new byte[]?[] { [0xc3, 0x01, 0x02, 0x03], null, null })
+            .SetName("Should_return_mixed_available_and_empty_BALs")
+    ];
 
-    private static bool IsMissing(byte[]? actual) => actual is null;
+    private static TestCaseData[] BlockAccessListsRequestCases =>
+    [
+        new TestCaseData(false)
+            .SetName("Can_request_and_handle_block_access_lists"),
+        new TestCaseData(true)
+            .SetName("Can_request_and_handle_block_access_lists_via_sync_peer_interface")
+    ];
+
+    private static bool MatchesBlockAccessListsMessage(
+        BlockAccessListsMessage message,
+        long requestId,
+        byte[]?[] expectedBlockAccessLists)
+    {
+        if (message.RequestId != requestId || message.BlockAccessLists.Count != expectedBlockAccessLists.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < expectedBlockAccessLists.Length; i++)
+        {
+            if (!SameBytesOrMissing(message.BlockAccessLists[i], expectedBlockAccessLists[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool SameBytesOrMissing(byte[]? actual, byte[]? expected) =>
+        expected is null ? actual is null : actual is not null && actual.AsSpan().SequenceEqual(expected);
 }
