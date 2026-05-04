@@ -713,10 +713,6 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
-                {
-                    _store.FinalizeSync(pivotHeader);
-                }
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
@@ -768,7 +764,7 @@ namespace Nethermind.Synchronization.FastSync
             return dependentItem.Counter == 0;
         }
 
-        private void VerifyPostSyncCleanUp()
+        internal void VerifyPostSyncCleanUp()
         {
             lock (_dependencies)
             {
@@ -786,6 +782,23 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             CleanupMemory();
+
+            if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
+            {
+                if (pivotHeader.StateRoot == _rootNode)
+                {
+                    _store.FinalizeSync(pivotHeader);
+                }
+                else
+                {
+                    // State root mismatch at finalize time: the active pivot points at a
+                    // different state root than the one whose trie was just synced.
+                    // Skipping finalize prevents the persistence layer's CurrentState from
+                    // being promoted to a state root for which no trie data exists.
+                    // The next sync round will retry on the new pivot. See issue #11457.
+                    if (_logger.IsWarn) _logger.Warn($"Skipping state sync finalize: saved root {_rootNode} does not match current pivot root {pivotHeader.StateRoot}. The next sync round will retry.");
+                }
+            }
         }
 
         private void CleanupMemory()

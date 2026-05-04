@@ -8,15 +8,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -598,6 +600,83 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
 
             remainingRequest.Should().Be(100); // Without the cache this would be 111
+        }
+    }
+
+    // Parameter-free unit tests for TreeSync's post-sync cleanup path. Kept as a
+    // static inner fixture so they don't run once per StateSyncFeedTests fixture
+    // parameterization (peerCount × maxNodeLatency); the behaviour under test is
+    // invariant to those parameters.
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    internal static class TreeSyncCleanUpTests
+    {
+        [Test]
+        public static void VerifyPostSyncCleanUp_WhenPivotStateRootMatchesRootNode_FinalizesSync()
+        {
+            // 1. Active pivot points at state root A.
+            // 2. ResetStateRootToBestSuggested sets _rootNode = A.
+            // 3. Cleanup runs while pivot is still at A.
+            // 4. FinalizeSync must be invoked with pivot A.
+            BlockHeader pivotA = BuildPivot(100, TestItem.KeccakA);
+            IStateSyncPivot stateSyncPivot = Substitute.For<IStateSyncPivot>();
+            stateSyncPivot.GetPivotHeader().Returns(pivotA);
+            ITreeSyncStore store = Substitute.For<ITreeSyncStore>();
+            TreeSync treeSync = BuildTreeSync(store, stateSyncPivot);
+
+            treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            store.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>()); // precondition: FinalizeSync must not be called before cleanup runs
+
+            treeSync.VerifyPostSyncCleanUp();
+
+            store.Received(1).FinalizeSync(pivotA);
+        }
+
+        [Test]
+        public static void VerifyPostSyncCleanUp_WhenPivotRotatedAfterReset_SkipsFinalizeSync()
+        {
+            // Issue #11457 regression guard. Previously TreeSync.SaveNode invoked
+            // FinalizeSync with whatever GetPivotHeader returned at the moment of
+            // the IsRoot save; if the pivot had rotated, FinalizeSync was called
+            // with a pivot whose state root had no trie data, persisting a corrupted
+            // CurrentState pointer in the FlatDB and stalling sync after restart.
+            //
+            // 1. Active pivot points at state root A; ResetStateRoot sets _rootNode = A.
+            // 2. Pivot rotates to a different state root B (state root for which no
+            //    trie data exists).
+            // 3. Cleanup runs and observes pivotHeader.StateRoot != _rootNode.
+            // 4. FinalizeSync must be skipped to prevent the corruption.
+            BlockHeader pivotA = BuildPivot(100, TestItem.KeccakA);
+            BlockHeader pivotB = BuildPivot(101, TestItem.KeccakB);
+            IStateSyncPivot stateSyncPivot = Substitute.For<IStateSyncPivot>();
+            stateSyncPivot.GetPivotHeader().Returns(pivotA);
+            ITreeSyncStore store = Substitute.For<ITreeSyncStore>();
+            TreeSync treeSync = BuildTreeSync(store, stateSyncPivot);
+
+            treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            stateSyncPivot.GetPivotHeader().Returns(pivotB);
+            store.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>()); // precondition: FinalizeSync must not be called before cleanup runs
+
+            treeSync.VerifyPostSyncCleanUp();
+
+            store.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
+        }
+
+        private static BlockHeader BuildPivot(long blockNumber, Hash256 stateRoot) =>
+            Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(stateRoot).TestObject;
+
+        private static TreeSync BuildTreeSync(ITreeSyncStore store, IStateSyncPivot stateSyncPivot)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.NetworkId.Returns(1ul);
+
+            return new TreeSync(
+                new TestMemDb(),
+                store,
+                blockTree,
+                stateSyncPivot,
+                new SyncConfig(),
+                LimboLogs.Instance);
         }
     }
 }
