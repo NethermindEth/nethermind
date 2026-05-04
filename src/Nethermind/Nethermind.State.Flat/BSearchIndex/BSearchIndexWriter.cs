@@ -55,40 +55,46 @@ internal struct BSearchIndexMetadata
 internal ref struct BSearchIndexWriter<TWriter>
     where TWriter : IByteBufferWriter
 {
-    /// <summary>
-    /// Cap on the in-metadata common-key-prefix length. Metadata is bounded by
-    /// MetadataLength (u8); 128 leaves comfortable headroom for the other fields.
-    /// </summary>
-    private const int MaxCommonKeyPrefixLen = 128;
-
     private ref TWriter _writer;
     private readonly int _startWritten;
-    private BSearchIndexMetadata _metadata;
+    private readonly BSearchIndexMetadata _metadata;
     private readonly Span<byte> _keyBuf;
     private readonly Span<byte> _valueBuf;
+    private readonly ReadOnlySpan<byte> _commonKeyPrefix;
     private int _count;
     private int _keyPos;    // grows forward from 0 in _keyBuf
     private int _valuePos;  // grows forward from 0 in _valueBuf
 
-    public BSearchIndexWriter(ref TWriter writer, BSearchIndexMetadata metadata, Span<byte> keyBuffer)
+    public BSearchIndexWriter(
+        ref TWriter writer,
+        BSearchIndexMetadata metadata,
+        Span<byte> keyBuffer,
+        ReadOnlySpan<byte> commonKeyPrefix = default)
     {
         _writer = ref writer;
         _startWritten = _writer.Written;
         _metadata = metadata;
         _keyBuf = keyBuffer;
         _valueBuf = default;
+        _commonKeyPrefix = commonKeyPrefix;
         _count = 0;
         _keyPos = 0;
         _valuePos = 0;
     }
 
-    public BSearchIndexWriter(ref TWriter writer, BSearchIndexMetadata metadata, Span<byte> keyBuffer, Span<byte> valueBuffer)
+    public BSearchIndexWriter(
+        ref TWriter writer,
+        BSearchIndexMetadata metadata,
+        Span<byte> keyBuffer,
+        Span<byte> valueBuffer,
+        ReadOnlySpan<byte> commonKeyPrefix = default)
     {
         _writer = ref writer;
         _startWritten = _writer.Written;
         _metadata = metadata;
         _keyBuf = keyBuffer;
         _valueBuf = valueBuffer;
+        _commonKeyPrefix = commonKeyPrefix;
         _count = 0;
         _keyPos = 0;
         _valuePos = 0;
@@ -126,6 +132,12 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     /// <summary>
     /// Write the final binary layout. The ref writer is already advanced.
+    ///
+    /// <see cref="BSearchIndexMetadata.KeyType"/>, <see cref="BSearchIndexMetadata.KeySlotSize"/>,
+    /// and the common-key-prefix passed at construction are taken as-is — the writer does
+    /// not auto-detect or adjust. Callers (e.g. <c>HsstIndexBuilder</c>) decide both jointly
+    /// via <see cref="BSearchIndexLayoutPlanner.Plan"/> and pre-strip prefix bytes from
+    /// each <see cref="AddKey"/> call so that <see cref="_keyBuf"/> already holds suffixes.
     /// </summary>
     public void FinalizeNode()
     {
@@ -134,11 +146,6 @@ internal ref struct BSearchIndexWriter<TWriter>
             WriteEmptyNode();
             return;
         }
-
-        // Detect a longest common byte prefix shared by every buffered key.
-        // Stored once in metadata; per-entry storage drops to suffixes only.
-        Span<byte> prefixBuf = stackalloc byte[MaxCommonKeyPrefixLen];
-        int prefixLen = ApplyCommonKeyPrefix(prefixBuf);
 
         // Write buffered values if applicable
         int valueSize;
@@ -164,73 +171,7 @@ internal ref struct BSearchIndexWriter<TWriter>
             _ => FinalizeVariableKeys(),
         };
 
-        WriteMetadata(keySize, valueSize, prefixBuf[..prefixLen]);
-    }
-
-    /// <summary>
-    /// Detect the longest common byte prefix across all buffered keys. When the prefix
-    /// pays for itself (savings = prefixLen × (count − 1) − 1 > 0), strip it from every
-    /// entry in <see cref="_keyBuf"/> in-place, copy the prefix bytes into
-    /// <paramref name="prefixOut"/>, adjust uniform slot sizes, and return the prefix
-    /// length. Returns 0 when the optimization isn't worth applying.
-    /// </summary>
-    private int ApplyCommonKeyPrefix(scoped Span<byte> prefixOut)
-    {
-        if (_count < 2) return 0;
-
-        // Pass 1: compute LCP and shortest-key length.
-        int firstLen = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf);
-        int firstStart = 2;
-        int lcp = firstLen;
-        int shortestLen = firstLen;
-        int srcPos = 2 + firstLen;
-
-        for (int i = 1; i < _count && lcp > 0; i++)
-        {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[srcPos..]);
-            srcPos += 2;
-            if (len < shortestLen) shortestLen = len;
-            int boundary = Math.Min(len, lcp);
-            int common = _keyBuf.Slice(firstStart, boundary)
-                .CommonPrefixLength(_keyBuf.Slice(srcPos, boundary));
-            if (common < lcp) lcp = common;
-            srcPos += len;
-        }
-
-        if (lcp > MaxCommonKeyPrefixLen) lcp = MaxCommonKeyPrefixLen;
-
-        // Gating: skip when no positive savings, or when stripping would empty out
-        // the shortest key (degenerate; would also collapse Uniform slots to 0).
-        if (lcp == 0) return 0;
-        if (lcp >= shortestLen) return 0;
-        if (lcp * (_count - 1) - 1 <= 0) return 0;
-
-        // Stash prefix bytes from the first key BEFORE we rewrite _keyBuf in place.
-        _keyBuf.Slice(firstStart, lcp).CopyTo(prefixOut);
-
-        // Pass 2: in-place forward rewrite. Each entry shrinks by `lcp` bytes; dst ≤ src
-        // throughout, so a forward CopyTo is safe.
-        int dstPos = 0;
-        int rsrc = 0;
-        for (int i = 0; i < _count; i++)
-        {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[rsrc..]);
-            rsrc += 2;
-            int newLen = len - lcp;
-            BinaryPrimitives.WriteUInt16LittleEndian(_keyBuf[dstPos..], (ushort)newLen);
-            dstPos += 2;
-            if (newLen > 0)
-                _keyBuf.Slice(rsrc + lcp, newLen).CopyTo(_keyBuf[dstPos..]);
-            dstPos += newLen;
-            rsrc += len;
-        }
-        _keyPos = dstPos;
-
-        // Adjust uniform slot sizes (Variable's section size is recomputed by its finalizer).
-        if (_metadata.KeyType == 1 || _metadata.KeyType == 2)
-            _metadata.KeySlotSize -= lcp;
-
-        return lcp;
+        WriteMetadata(keySize, valueSize, _commonKeyPrefix);
     }
 
     private void WriteEmptyNode()

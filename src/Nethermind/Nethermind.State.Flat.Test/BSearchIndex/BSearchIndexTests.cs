@@ -433,46 +433,54 @@ public class BSearchIndexTests
     public void CommonKeyPrefix_RoundTrip_AndBoundaryLookups(int keyType)
     {
         // 8 keys all sharing 4-byte prefix "DEADBEEF", then 1 differing byte.
-        // Key length 5; for Variable it stays Variable, Uniform/UWL slot sizes
-        // are derived from suffix-after-stripping (1 byte).
+        // Caller (mimicking HsstIndexBuilder) decides the prefix and the layout
+        // jointly, then passes both to the writer as construction options.
         string[] separatorHexes =
         [
             "DEADBEEF11", "DEADBEEF22", "DEADBEEF33", "DEADBEEF44",
             "DEADBEEF55", "DEADBEEF66", "DEADBEEF77", "DEADBEEF88",
         ];
         int[] values = [10, 20, 30, 40, 50, 60, 70, 80];
-        int slotSize = keyType switch { 1 => 5, 2 => 5 + 1, _ => 0 };
 
-        byte[] keyBuf = new byte[separatorHexes.Length * (2 + 5)];
+        // Hard-code the prefix here — this test pins the keyType to verify all three
+        // round-trip correctly under the option-driven writer. Suffix length is 1.
+        const int prefixLen = 4;
+        byte[] commonPrefix = Convert.FromHexString("DEADBEEF");
+        int slotSize = keyType switch { 1 => 1, 2 => 1 + 1, _ => 0 };
+
+        byte[] keyBuf = new byte[separatorHexes.Length * (2 + 1)];
         byte[] output = new byte[1024];
         SpanBufferWriter w = new(output);
         BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
         {
             KeyType = keyType,
             KeySlotSize = slotSize,
-        }, keyBuf);
+        }, keyBuf, commonPrefix);
         Span<byte> valBuf = stackalloc byte[4];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             BinaryPrimitives.WriteInt32LittleEndian(valBuf, values[i]);
-            writer.AddKey(Convert.FromHexString(separatorHexes[i]), valBuf);
+            byte[] sep = Convert.FromHexString(separatorHexes[i]);
+            writer.AddKey(sep.AsSpan(prefixLen), valBuf);
         }
         writer.FinalizeNode();
         int written = w.Written;
 
-        // Build a control node with prefix optimization defeated (vary byte 0).
+        // Control node: same data without the prefix optimization (full-length keys,
+        // no commonKeyPrefix passed). Demonstrates the size win.
+        int controlSlotSize = keyType switch { 1 => 5, 2 => 5 + 1, _ => 0 };
         byte[] controlKeyBuf = new byte[separatorHexes.Length * (2 + 5)];
         byte[] controlOutput = new byte[1024];
         SpanBufferWriter cw = new(controlOutput);
         BSearchIndexWriter<SpanBufferWriter> controlWriter = new(ref cw, new BSearchIndexMetadata
         {
             KeyType = keyType,
-            KeySlotSize = slotSize,
+            KeySlotSize = controlSlotSize,
         }, controlKeyBuf);
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] k = Convert.FromHexString(separatorHexes[i]);
-            k[0] = (byte)i; // diverge at byte 0 → LCP = 0
+            k[0] = (byte)i; // diverge at byte 0 → no shared prefix
             BinaryPrimitives.WriteInt32LittleEndian(valBuf, values[i]);
             controlWriter.AddKey(k, valBuf);
         }
@@ -524,20 +532,38 @@ public class BSearchIndexTests
 
     /// <summary>
     /// Two-entry node where the savings would be exactly zero (1 byte prefix,
-    /// 2 entries → savings = 1 × 1 − 1 = 0). The optimization must NOT apply.
+    /// 2 entries → savings = 1 × 1 − 1 = 0). The layout planner must gate the
+    /// strip out and report <c>commonKeyPrefixLen = 0</c>.
     /// </summary>
     [Test]
     public void CommonKeyPrefix_SkippedWhenSavingsNotPositive()
     {
+        byte[] sepBuffer = [0xAA, 0x01, 0xAA, 0x02];
+        ReadOnlySpan<int> offsets = [0, 2];
+        ReadOnlySpan<int> lengths = [2, 2];
+
+        BSearchIndexLayoutPlanner.Plan(sepBuffer, offsets, lengths,
+            out int prefixLen, out int keyType, out int keySlotSize);
+
+        Assert.That(prefixLen, Is.EqualTo(0), "1-byte LCP × 1 saving entry − 1 metadata byte = 0; must not strip");
+        // Same length, length > 0 → Uniform-2.
+        Assert.That(keyType, Is.EqualTo(1));
+        Assert.That(keySlotSize, Is.EqualTo(2));
+
+        // Round-trip through the writer with the planner's decision.
         byte[] keyBuf = new byte[2 * (2 + 2)];
         byte[] output = new byte[64];
         SpanBufferWriter w = new(output);
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata { KeyType = 0 }, keyBuf);
+        BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
+        {
+            KeyType = keyType,
+            KeySlotSize = keySlotSize,
+        }, keyBuf);
         Span<byte> valBuf = stackalloc byte[4];
         BinaryPrimitives.WriteInt32LittleEndian(valBuf, 1);
-        writer.AddKey(Convert.FromHexString("AA01"), valBuf);
+        writer.AddKey(sepBuffer.AsSpan(0, 2), valBuf);
         BinaryPrimitives.WriteInt32LittleEndian(valBuf, 2);
-        writer.AddKey(Convert.FromHexString("AA02"), valBuf);
+        writer.AddKey(sepBuffer.AsSpan(2, 2), valBuf);
         writer.FinalizeNode();
 
         BSearchIndexReader reader = BSearchIndexReader.ReadFromEnd(output, w.Written);

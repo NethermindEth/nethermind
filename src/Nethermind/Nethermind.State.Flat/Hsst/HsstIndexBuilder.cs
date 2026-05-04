@@ -175,54 +175,40 @@ public ref struct HsstIndexBuilder<TWriter>
                 baseOffset = minVal;
         }
 
-        // Auto-select KeyType: all same non-zero length -> Uniform, else Variable
-        // When max separator length <= 3, prefer UniformWithLen over Variable since
-        // Variable has at least 3 bytes overhead per entry (2-byte offset + LEB128 length).
-        int keyType = 0;
-        int keySlotSize = 0;
-        if (entries.Length > 0)
+        // Decide CommonKeyPrefix and KeyType jointly against post-strip lengths.
+        Span<int> sepOffsets = stackalloc int[entries.Length];
+        Span<int> sepLengths = stackalloc int[entries.Length];
+        for (int i = 0; i < entries.Length; i++)
         {
-            bool allSameLen = true;
-            int firstLen = entries[0].SepLen;
-            int maxLen = firstLen;
-            for (int i = 1; i < entries.Length; i++)
-            {
-                if (entries[i].SepLen != firstLen) allSameLen = false;
-                if (entries[i].SepLen > maxLen) maxLen = entries[i].SepLen;
-            }
-            if (allSameLen && firstLen > 0)
-            {
-                keyType = 1; // Uniform
-                keySlotSize = firstLen;
-            }
-            else if (maxLen <= 3)
-            {
-                keyType = 2; // UniformWithLen
-                keySlotSize = maxLen + 1;
-            }
+            sepOffsets[i] = entries[i].SepOffset;
+            sepLengths[i] = entries[i].SepLen;
         }
+        BSearchIndexLayoutPlanner.Plan(_separatorBuffer, sepOffsets, sepLengths,
+            out int prefixLen, out int keyType, out int keySlotSize);
+        ReadOnlySpan<byte> commonPrefix = prefixLen > 0
+            ? _separatorBuffer.Slice(entries[0].SepOffset, prefixLen)
+            : default;
 
-        // Key buffer: 2 bytes (u16 length) + key bytes per entry
+        // Key buffer: 2 bytes (u16 length) + post-strip suffix bytes per entry.
         int keyBufSize = 0;
         for (int i = 0; i < entries.Length; i++)
-            keyBufSize += 2 + entries[i].SepLen;
+            keyBufSize += 2 + (entries[i].SepLen - prefixLen);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
-        // Write node via BSearchIndexWriter
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = false,
             KeyType = keyType,
             BaseOffset = baseOffset,
-            KeySlotSize = keySlotSize
-        }, keyBuf);
+            KeySlotSize = keySlotSize,
+        }, keyBuf, commonPrefix);
 
         Span<byte> valueBuf = stackalloc byte[4];
         for (int i = 0; i < entries.Length; i++)
         {
-            ReadOnlySpan<byte> key = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
+            ReadOnlySpan<byte> sep = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
             BinaryPrimitives.WriteInt32LittleEndian(valueBuf, entries[i].MetadataStart - baseOffset);
-            indexWriter.AddKey(key, valueBuf);
+            indexWriter.AddKey(sep[prefixLen..], valueBuf);
         }
         indexWriter.FinalizeNode();
     }
@@ -270,41 +256,32 @@ public ref struct HsstIndexBuilder<TWriter>
             valueSlotSize = 0;
         }
 
-        // Auto-select KeyType
-        int keyType = 0;
-        int keySlotSize = 0;
-        bool allSameKeyLen = true;
-        int firstKeyLen = entries[0].SepLen;
-        int maxKeyLen = firstKeyLen;
-        for (int i = 1; i < entries.Length; i++)
+        // Decide CommonKeyPrefix and KeyType jointly against post-strip lengths.
+        Span<int> sepOffsets = stackalloc int[entries.Length];
+        Span<int> sepLengths = stackalloc int[entries.Length];
+        for (int i = 0; i < entries.Length; i++)
         {
-            if (entries[i].SepLen != firstKeyLen) allSameKeyLen = false;
-            if (entries[i].SepLen > maxKeyLen) maxKeyLen = entries[i].SepLen;
+            sepOffsets[i] = entries[i].SepOffset;
+            sepLengths[i] = entries[i].SepLen;
         }
-        if (allSameKeyLen && firstKeyLen > 0)
-        {
-            keyType = 1; // Uniform
-            keySlotSize = firstKeyLen;
-        }
-        else if (maxKeyLen <= 3)
-        {
-            keyType = 2; // UniformWithLen
-            keySlotSize = maxKeyLen + 1;
-        }
+        BSearchIndexLayoutPlanner.Plan(_separatorBuffer, sepOffsets, sepLengths,
+            out int prefixLen, out int keyType, out int keySlotSize);
+        ReadOnlySpan<byte> commonPrefix = prefixLen > 0
+            ? _separatorBuffer.Slice(entries[0].SepOffset, prefixLen)
+            : default;
 
-        // Compute buffer sizes
+        // Compute buffer sizes (post-strip key suffixes + values).
         int keyBufSize = 0;
         int valueBufSize = 0;
         for (int i = 0; i < entries.Length; i++)
         {
-            keyBufSize += 2 + entries[i].SepLen;
+            keyBufSize += 2 + (entries[i].SepLen - prefixLen);
             valueBufSize += 2 + _inlineValueLengths[globalStartIndex + i];
         }
 
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
         Span<byte> valueBuf = stackalloc byte[valueBufSize];
 
-        // Write node via BSearchIndexWriter with value buffering
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = false,
@@ -313,11 +290,12 @@ public ref struct HsstIndexBuilder<TWriter>
             BaseOffset = 0,
             ValueType = valueType,
             ValueSlotSize = valueSlotSize,
-        }, keyBuf, valueBuf);
+        }, keyBuf, valueBuf, commonPrefix);
 
         for (int i = 0; i < entries.Length; i++)
         {
-            ReadOnlySpan<byte> key = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
+            ReadOnlySpan<byte> sep = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
+            ReadOnlySpan<byte> key = sep[prefixLen..];
             int valueOffset = entries[i].MetadataStart;
             int valueLen = _inlineValueLengths[globalStartIndex + i];
             ReadOnlySpan<byte> value = _inlineValueBuffer.Slice(valueOffset, valueLen);
@@ -354,41 +332,12 @@ public ref struct HsstIndexBuilder<TWriter>
             tempOffset += sepLengths[i];
         }
 
-        // Auto-select KeyType
-        // When max separator length <= 3, prefer UniformWithLen over Variable since
-        // Variable has at least 3 bytes overhead per entry (2-byte offset + LEB128 length).
-        int keyType;
-        int keySlotSize;
-        int maxSepLen = 0;
-        for (int i = 0; i < childCount; i++)
-            if (sepLengths[i] > maxSepLen) maxSepLen = sepLengths[i];
-
-        bool hasEmptyFirst = sepLengths[0] == 0;
-        if (!hasEmptyFirst)
-        {
-            bool allSameLen = true;
-            int firstLen = sepLengths[0];
-            for (int i = 1; i < childCount; i++)
-            {
-                if (sepLengths[i] != firstLen) { allSameLen = false; break; }
-            }
-            if (allSameLen && firstLen > 0) { keyType = 1; keySlotSize = firstLen; }
-            else if (maxSepLen <= 3) { keyType = 2; keySlotSize = maxSepLen + 1; }
-            else { keyType = 0; keySlotSize = 0; }
-        }
-        else if (childCount > 1)
-        {
-            bool allSameLenExceptFirst = true;
-            int secondLen = sepLengths[1];
-            for (int i = 2; i < childCount; i++)
-            {
-                if (sepLengths[i] != secondLen) { allSameLenExceptFirst = false; break; }
-            }
-            if (allSameLenExceptFirst && secondLen > 0) { keyType = 2; keySlotSize = secondLen + 1; }
-            else if (maxSepLen <= 3) { keyType = 2; keySlotSize = maxSepLen + 1; }
-            else { keyType = 0; keySlotSize = 0; }
-        }
-        else { keyType = 0; keySlotSize = 0; }
+        // Decide CommonKeyPrefix and KeyType jointly against post-strip lengths.
+        BSearchIndexLayoutPlanner.Plan(tempSepBuffer, sepOffsets, sepLengths,
+            out int prefixLen, out int keyType, out int keySlotSize);
+        ReadOnlySpan<byte> commonPrefix = prefixLen > 0
+            ? tempSepBuffer.Slice(sepOffsets[0], prefixLen)
+            : default;
 
         // Compute BaseOffset from child offsets
         int minVal = children[0].ChildOffset;
@@ -400,25 +349,24 @@ public ref struct HsstIndexBuilder<TWriter>
         }
         int baseOffset = (minVal > 0 && minVal < maxVal) ? minVal : 0;
 
-        // Key buffer: 2 bytes (u16 length) + separator bytes per child
-        int keyBufSize = 2 * childCount + tempOffset;
+        // Key buffer: 2 bytes (u16 length) + post-strip suffix bytes per child.
+        int keyBufSize = 2 * childCount + tempOffset - prefixLen * childCount;
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
-        // Write node via BSearchIndexWriter
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = true,
             KeyType = keyType,
             BaseOffset = baseOffset,
-            KeySlotSize = keySlotSize
-        }, keyBuf);
+            KeySlotSize = keySlotSize,
+        }, keyBuf, commonPrefix);
 
         Span<byte> valueBuf = stackalloc byte[4];
         for (int i = 0; i < childCount; i++)
         {
-            ReadOnlySpan<byte> key = tempSepBuffer.Slice(sepOffsets[i], sepLengths[i]);
+            ReadOnlySpan<byte> sep = tempSepBuffer.Slice(sepOffsets[i], sepLengths[i]);
             BinaryPrimitives.WriteInt32LittleEndian(valueBuf, children[i].ChildOffset - baseOffset);
-            indexWriter.AddKey(key, valueBuf);
+            indexWriter.AddKey(sep[prefixLen..], valueBuf);
         }
         indexWriter.FinalizeNode();
     }
