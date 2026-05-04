@@ -47,7 +47,9 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public StateAvailability StateAvailability { get; } = new(RetentionWindowBlocks: configuration.MaxReorgDepth);
+    // No memory-pruning rolling window. State retention is driven by snapshot persistence and
+    // is reported through the IBlockTree.OldestStateBlock floor instead.
+    public long? GetOldestStateBlock(long headBlock) => null;
 
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(

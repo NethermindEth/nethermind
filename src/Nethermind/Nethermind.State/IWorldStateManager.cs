@@ -17,8 +17,13 @@ public interface IWorldStateManager
     ISnapServer SnapServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
 
-    /// <summary>Historical state availability — reported through <c>eth_capabilities</c>.</summary>
-    StateAvailability StateAvailability { get; }
+    /// <summary>
+    /// Oldest block for which state is available given the chain head, considering only this
+    /// manager's rolling-window retention (e.g. trie memory pruning). Returns null when the
+    /// implementation has no rolling window (archive, full pruning, flat storage — the
+    /// absolute floor is reported separately via <c>IBlockTree.OldestStateBlock</c>).
+    /// </summary>
+    long? GetOldestStateBlock(long headBlock);
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.

@@ -47,11 +47,13 @@ public class WorldStateManager : IWorldStateManager
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
 
-        StateAvailability = new StateAvailability(
-            RetentionWindowBlocks: pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null);
+        _retentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null;
     }
 
-    public StateAvailability StateAvailability { get; }
+    private readonly long? _retentionWindowBlocks;
+
+    public long? GetOldestStateBlock(long headBlock) =>
+        _retentionWindowBlocks is { } window ? Math.Max(0L, headBlock - window) : null;
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
 

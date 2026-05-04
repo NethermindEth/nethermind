@@ -28,15 +28,13 @@ public class EthCapabilitiesProvider(
         // AncientReceiptsBarrierCalc returns Math.Max(1, …) which would be wrong for PivotNumber=0.
         long oldestReceipts = (syncConfig?.PivotNumber ?? 0) == 0 ? 0 : syncConfig!.AncientReceiptsBarrierCalc;
 
-        StateAvailability stateAvailability = worldStateManager.StateAvailability;
-        // Floor recorded by sync completion / full-pruning runs; null on archive-from-genesis.
+        // Floor recorded by sync completion / full-pruning runs; defaults to genesis.
         long stateFloor = blockTree.OldestStateBlock ?? 0L;
-        long? stateOldest = stateAvailability.RetentionWindowBlocks is { } window && head is not null
-            ? Math.Max(stateFloor, Math.Max(0L, head.Number - window))
-            : stateFloor;
-        DeleteStrategy? stateWindow = stateAvailability.RetentionWindowBlocks > 0
-            ? new DeleteStrategy("window", stateAvailability.RetentionWindowBlocks.Value)
-            : null;
+        long? windowOldest = head is not null ? worldStateManager.GetOldestStateBlock(head.Number) : null;
+        long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
+        // Report a window descriptor only when retention is rolling (windowOldest non-null and head is set).
+        long? retentionDepth = head is not null && windowOldest is { } w ? head.Number - w : null;
+        DeleteStrategy? stateWindow = retentionDepth > 0 ? new DeleteStrategy("window", retentionDepth.Value) : null;
 
         long historyFloor = historyPruner?.OldestBlockHeader?.Number ?? 0;
         DeleteStrategy? historyWindow = historyConfig?.Pruning == PruningModes.Rolling
