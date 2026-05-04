@@ -1034,6 +1034,7 @@ namespace Nethermind.Serialization.Rlp
 
             public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null)
             {
+                int position = Position;
                 int prefix = ReadByte();
                 ReadOnlySpan<byte> span = RlpStream.SingleBytes;
                 if ((uint)prefix < (uint)span.Length)
@@ -1054,7 +1055,7 @@ namespace Nethermind.Serialization.Rlp
 
                     if (length == 1 && buffer[0] < 128)
                     {
-                        RlpHelpers.ThrowNonCanonicalInteger(buffer[0]);
+                        RlpHelpers.ThrowNonCanonicalInteger(position);
                     }
 
                     return buffer;
@@ -1100,12 +1101,13 @@ namespace Nethermind.Serialization.Rlp
                     ThrowNotMemoryBacked();
                 }
 
+                int position = Position;
                 int prefix = ReadByte();
 
                 switch (prefix)
                 {
                     case < EmptyByteArrayByte:
-                        return Memory.Value.Slice(Position - 1, 1);
+                        return Memory.Value.Slice(position, 1);
                     case EmptyByteArrayByte:
                         return Array.Empty<byte>();
                     case <= 183:
@@ -1116,7 +1118,7 @@ namespace Nethermind.Serialization.Rlp
 
                             if (length == 1 && asSpan[0] < 128)
                             {
-                                RlpHelpers.ThrowNonCanonicalInteger(asSpan[0]);
+                                RlpHelpers.ThrowNonCanonicalInteger(position);
                             }
 
                             return buffer;
