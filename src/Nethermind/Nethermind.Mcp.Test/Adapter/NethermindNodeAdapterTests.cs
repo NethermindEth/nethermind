@@ -3,6 +3,8 @@
 
 using System.Linq;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Mcp.Adapter;
@@ -165,5 +167,34 @@ public class NethermindNodeAdapterTests
 
         Assert.That(health.UptimeSeconds, Is.GreaterThanOrEqualTo(0));
         Assert.That(health.ProcessMemoryMb, Is.GreaterThanOrEqualTo(0));
+    }
+
+    [Test]
+    public void GetBlock_by_latest_returns_head_summary()
+    {
+        INethermindApi api = Substitute.For<INethermindApi>();
+        Block headBlock = Build.A.Block.WithNumber(42).TestObject;
+        api.BlockTree!.Head.Returns(headBlock);
+
+        INethermindNodeAdapter adapter = new NethermindNodeAdapter(api);
+
+        BlockSummaryDto summary = adapter.GetBlock(BlockParameter.Latest);
+
+        Assert.That(summary, Is.Not.Null);
+        Assert.That(summary.Number, Is.EqualTo(42));
+        Assert.That(summary.Hash, Is.EqualTo(headBlock.Hash.ToString()));
+    }
+
+    [Test]
+    public void GetBlock_by_unknown_number_returns_null()
+    {
+        INethermindApi api = Substitute.For<INethermindApi>();
+        api.BlockTree!.FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns((Block)null);
+
+        INethermindNodeAdapter adapter = new NethermindNodeAdapter(api);
+
+        BlockSummaryDto summary = adapter.GetBlock(new BlockParameter(999_999_999L));
+
+        Assert.That(summary, Is.Null);
     }
 }

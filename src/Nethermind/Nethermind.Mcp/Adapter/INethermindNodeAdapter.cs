@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain.Find;
 using Nethermind.Mcp.Dto;
 
 namespace Nethermind.Mcp.Adapter;
@@ -12,4 +13,6 @@ public interface INethermindNodeAdapter
     SyncStatusDto GetSyncStatus();
 
     NodeHealthDto GetNodeHealth();
+
+    BlockSummaryDto? GetBlock(BlockParameter blockParameter);
 }

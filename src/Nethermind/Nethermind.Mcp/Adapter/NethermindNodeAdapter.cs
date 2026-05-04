@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Mcp.Dto;
 
@@ -75,5 +77,54 @@ public sealed class NethermindNodeAdapter(INethermindApi api) : INethermindNodeA
         if (statuses.Any(static s => s == "Unhealthy")) return "Unhealthy";
         if (statuses.Any(static s => s == "Degraded")) return "Degraded";
         return "Healthy";
+    }
+
+    public BlockSummaryDto? GetBlock(BlockParameter blockParameter)
+    {
+        ArgumentNullException.ThrowIfNull(blockParameter);
+
+        Block? block = blockParameter.Type switch
+        {
+            BlockParameterType.Latest => _api.BlockTree?.Head,
+            BlockParameterType.Earliest => _api.BlockTree is { } bt ? bt.FindBlock(bt.GenesisHash, BlockTreeLookupOptions.RequireCanonical) : null,
+            BlockParameterType.Pending => _api.BlockTree is { PendingHash: { } pending } btP ? btP.FindBlock(pending, BlockTreeLookupOptions.None) : _api.BlockTree?.Head,
+            BlockParameterType.Finalized => _api.BlockTree is { FinalizedHash: { } finalized } btF ? btF.FindBlock(finalized, BlockTreeLookupOptions.None) : null,
+            BlockParameterType.Safe => _api.BlockTree is { SafeHash: { } safe } btS ? btS.FindBlock(safe, BlockTreeLookupOptions.None) : null,
+            BlockParameterType.BlockNumber when blockParameter.BlockNumber is { } number =>
+                _api.BlockTree?.FindBlock(number, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
+            BlockParameterType.BlockHash when blockParameter.BlockHash is { } hash =>
+                _api.BlockTree?.FindBlock(hash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
+            _ => null,
+        };
+
+        return Map(block);
+    }
+
+    private static BlockSummaryDto? Map(Block? block)
+    {
+        if (block is null) return null;
+
+        BlockTransactionSummary[] txs = block.Transactions
+            .Select(static tx => new BlockTransactionSummary(
+                Hash: tx.Hash?.ToString() ?? string.Empty,
+                From: tx.SenderAddress?.ToString() ?? string.Empty,
+                To: tx.To?.ToString(),
+                Value: tx.Value.ToString(),
+                GasUsed: null))
+            .ToArray();
+
+        return new BlockSummaryDto(
+            Number: block.Number,
+            Hash: block.Hash?.ToString() ?? string.Empty,
+            ParentHash: block.ParentHash?.ToString() ?? string.Empty,
+            Timestamp: (long)block.Timestamp,
+            GasUsed: block.GasUsed,
+            GasLimit: block.GasLimit,
+            BaseFeePerGas: block.BaseFeePerGas.ToString(),
+            TransactionCount: txs.Length,
+            FeeRecipient: block.Beneficiary?.ToString() ?? string.Empty,
+            StateRoot: block.StateRoot?.ToString() ?? string.Empty,
+            Size: 0,
+            Transactions: txs);
     }
 }
