@@ -157,6 +157,132 @@ public class ProgressTrackerTests
 
         memDb.WasFlushed.Should().BeTrue();
         memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
+        memDb[ProgressTracker.SNAP_RANGES_PROGRESS_KEY].Should().BeNull();
+    }
+
+    [Test]
+    public void Will_not_checkpoint_without_snap_ranges_progress()
+    {
+        TestMemDb memDb = new();
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
+
+        using (ProgressTracker progressTracker = CreateProgressTracker(memDb, syncConfig))
+        {
+        }
+
+        memDb[ProgressTracker.SNAP_RANGES_PROGRESS_KEY].Should().BeNull();
+    }
+
+    [Test]
+    public void Will_not_overwrite_checkpoint_on_second_dispose()
+    {
+        TestMemDb memDb = new();
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
+        ProgressTracker progressTracker = CreateProgressTracker(memDb, syncConfig);
+
+        progressTracker.EnqueueNextSlot(new StorageRange
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { TestItem.Tree.AccountsWithPaths[0] },
+            StartingHash = TestItem.ValueKeccaks[1],
+            LimitHash = TestItem.ValueKeccaks[2]
+        });
+
+        progressTracker.Dispose();
+        byte[] firstCheckpoint = memDb[ProgressTracker.SNAP_RANGES_PROGRESS_KEY]![..];
+
+        progressTracker.Dispose();
+
+        memDb[ProgressTracker.SNAP_RANGES_PROGRESS_KEY].Should().BeEquivalentTo(firstCheckpoint);
+    }
+
+    [Test]
+    public void Will_restore_checkpointed_account_range_progress()
+    {
+        TestMemDb memDb = new();
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
+        ValueHash256 nextPath = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+
+        using (ProgressTracker progressTracker = CreateProgressTracker(memDb, syncConfig))
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? request).Should().BeFalse();
+            request!.AccountRangeRequest.Should().NotBeNull();
+
+            progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, nextPath, true);
+            progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
+            request.Dispose();
+        }
+
+        memDb[ProgressTracker.SNAP_RANGES_PROGRESS_KEY].Should().NotBeNull();
+
+        using ProgressTracker restored = CreateProgressTracker(memDb, syncConfig);
+        restored.IsFinished(out SnapSyncBatch? restoredRequest).Should().BeFalse();
+        restoredRequest!.AccountRangeRequest.Should().NotBeNull();
+        restoredRequest.AccountRangeRequest!.StartingHash.Should().Be(nextPath);
+        restoredRequest.Dispose();
+    }
+
+    [Test]
+    public void Will_restore_checkpointed_pending_snap_queues()
+    {
+        TestMemDb memDb = new();
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
+        PathWithAccount account = TestItem.Tree.AccountsWithPaths[0];
+        ValueHash256 startingHash = TestItem.ValueKeccaks[1];
+        ValueHash256 limitHash = TestItem.ValueKeccaks[2];
+        ValueHash256 codeHash = TestItem.ValueKeccaks[3];
+
+        using (ProgressTracker progressTracker = CreateProgressTracker(memDb, syncConfig))
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? request).Should().BeFalse();
+            request!.AccountRangeRequest.Should().NotBeNull();
+
+            progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
+            progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
+            request.Dispose();
+
+            progressTracker.EnqueueAccountRefresh(account, startingHash, limitHash);
+            progressTracker.EnqueueNextSlot(new StorageRange
+            {
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                StartingHash = startingHash,
+                LimitHash = limitHash
+            });
+            progressTracker.EnqueueAccountStorage(account);
+            progressTracker.EnqueueCodeHashes([codeHash]);
+        }
+
+        using ProgressTracker restored = CreateProgressTracker(memDb, syncConfig);
+
+        restored.IsFinished(out SnapSyncBatch? refreshBatch).Should().BeFalse();
+        refreshBatch!.AccountsToRefreshRequest.Should().NotBeNull();
+        refreshBatch.AccountsToRefreshRequest!.Paths.Count.Should().Be(1);
+        refreshBatch.AccountsToRefreshRequest.Paths[0].PathAndAccount.Path.Should().Be(account.Path);
+        refreshBatch.AccountsToRefreshRequest.Paths[0].StorageStartingHash.Should().Be(startingHash);
+        refreshBatch.AccountsToRefreshRequest.Paths[0].StorageHashLimit.Should().Be(limitHash);
+        restored.ReportAccountRefreshFinished();
+        refreshBatch.Dispose();
+
+        restored.IsFinished(out SnapSyncBatch? nextSlotBatch).Should().BeFalse();
+        nextSlotBatch!.StorageRangeRequest.Should().NotBeNull();
+        nextSlotBatch.StorageRangeRequest!.Accounts.Count.Should().Be(1);
+        nextSlotBatch.StorageRangeRequest.StartingHash.Should().Be(startingHash);
+        nextSlotBatch.StorageRangeRequest.LimitHash.Should().Be(limitHash);
+        restored.ReportFullStorageRequestFinished(nextSlotBatch.StorageRangeRequest.Accounts.Count);
+        nextSlotBatch.Dispose();
+
+        restored.IsFinished(out SnapSyncBatch? storageBatch).Should().BeFalse();
+        storageBatch!.StorageRangeRequest.Should().NotBeNull();
+        storageBatch.StorageRangeRequest!.Accounts.Count.Should().Be(1);
+        storageBatch.StorageRangeRequest.Accounts[0].Path.Should().Be(account.Path);
+        restored.ReportFullStorageRequestFinished(storageBatch.StorageRangeRequest.Accounts.Count);
+        storageBatch.Dispose();
+
+        restored.IsFinished(out SnapSyncBatch? codesBatch).Should().BeFalse();
+        codesBatch!.CodesRequest.Should().NotBeNull();
+        codesBatch.CodesRequest!.Count.Should().Be(1);
+        codesBatch.CodesRequest[0].Should().Be(codeHash);
+        restored.ReportCodeRequestFinished(System.Array.Empty<ValueHash256>());
+        codesBatch.Dispose();
     }
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
@@ -231,5 +357,11 @@ public class ProgressTrackerTests
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+    }
+
+    private ProgressTracker CreateProgressTracker(IDb db, SyncConfig syncConfig)
+    {
+        BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
+        return new(db, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }
