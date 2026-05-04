@@ -201,19 +201,21 @@ public readonly ref struct BSearchIndexReader
         if (!TryStripCommonPrefix(key, out ReadOnlySpan<byte> q, out int shortcut))
             return shortcut;
 
-        int result = -1;
-        int lo = 0, hi = _metadata.KeyCount - 1;
-        while (lo <= hi)
+        int count = _metadata.KeyCount;
+        if (count == 0) return -1;
+
+        // Specialise on KeyType once at entry so the per-iteration switch in GetKey
+        // is hoisted out of the binary-search loop. The JIT can then constant-fold
+        // the slice arithmetic when keySize is known and inline the comparison.
+        // q is the search key with CommonKeyPrefix stripped; _keys holds the matching
+        // stripped separators, so the lexicographic compare is consistent.
+        return _metadata.KeyType switch
         {
-            int mid = (lo + hi) / 2;
-            int cmp = q.SequenceCompareTo(GetKey(mid));
-            if (cmp >= 0) { result = mid; lo = mid + 1; }
-            else
-            {
-                hi = mid - 1;
-            }
-        }
-        return result;
+            1 => FindFloorIndexUniform(q, _keys, count, _metadata.KeySize),
+            2 => FindFloorIndexUniformWithLen(q, _keys, count, _metadata.KeySize),
+            0 => FindFloorIndexVariable(q, _keys, count),
+            _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
+        };
     }
 
     /// <summary>
@@ -224,31 +226,9 @@ public readonly ref struct BSearchIndexReader
     /// </summary>
     public bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue)
     {
-        if (_metadata.KeyCount == 0)
-        {
-            floorKey = default;
-            floorValue = default;
-            return false;
-        }
-
-        int result;
-        if (TryStripCommonPrefix(key, out ReadOnlySpan<byte> q, out int shortcut))
-        {
-            result = -1;
-            int lo = 0, hi = _metadata.KeyCount - 1;
-            while (lo <= hi)
-            {
-                int mid = (lo + hi) / 2;
-                int cmp = q.SequenceCompareTo(GetKey(mid));
-                if (cmp >= 0) { result = mid; lo = mid + 1; }
-                else { hi = mid - 1; }
-            }
-        }
-        else
-        {
-            result = shortcut;
-        }
-
+        // FindFloorIndex handles both the empty-node early-return and the
+        // CommonKeyPrefix strip + KeyType dispatch.
+        int result = FindFloorIndex(key);
         if (result < 0)
         {
             floorKey = default;
@@ -259,6 +239,61 @@ public readonly ref struct BSearchIndexReader
         floorKey = GetKey(result);
         floorValue = GetValue(result);
         return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindFloorIndexUniform(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int keySize)
+    {
+        // Small Uniform fan-out: SIMD-batched scan beats binary search by avoiding
+        // log-N branch mispredicts and bounds-check setup per iteration.
+        if (BSearchIndexReaderSimd.TryFindFloorIndexUniformSimd(key, keys, count, keySize, out int simdResult))
+            return simdResult;
+
+        int result = -1;
+        int lo = 0, hi = count - 1;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) >>> 1;
+            ReadOnlySpan<byte> midKey = keys.Slice(mid * keySize, keySize);
+            int cmp = key.SequenceCompareTo(midKey);
+            if (cmp >= 0) { result = mid; lo = mid + 1; }
+            else { hi = mid - 1; }
+        }
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindFloorIndexUniformWithLen(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int slotSize)
+    {
+        int result = -1;
+        int lo = 0, hi = count - 1;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) >>> 1;
+            int slotStart = mid * slotSize;
+            int actualLen = keys[slotStart + slotSize - 1];
+            ReadOnlySpan<byte> midKey = keys.Slice(slotStart, actualLen);
+            int cmp = key.SequenceCompareTo(midKey);
+            if (cmp >= 0) { result = mid; lo = mid + 1; }
+            else { hi = mid - 1; }
+        }
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindFloorIndexVariable(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    {
+        int result = -1;
+        int lo = 0, hi = count - 1;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) >>> 1;
+            ReadOnlySpan<byte> midKey = GetVariableEntry(keys, mid, count);
+            int cmp = key.SequenceCompareTo(midKey);
+            if (cmp >= 0) { result = mid; lo = mid + 1; }
+            else { hi = mid - 1; }
+        }
+        return result;
     }
 
     /// <summary>
