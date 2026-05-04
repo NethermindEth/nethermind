@@ -27,7 +27,7 @@ public sealed class ApiKeyAuthMiddleware(RequestDelegate next, IMcpConfig config
     public async Task InvokeAsync(HttpContext context)
     {
         string? expected = config.ApiKey;
-        if (expected is null)
+        if (string.IsNullOrEmpty(expected))
         {
             await next(context);
             return;

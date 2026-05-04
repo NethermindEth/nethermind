@@ -30,10 +30,11 @@ public class ApiKeyAuthMiddlewareTests
         return ctx;
     }
 
-    [Test]
-    public async Task When_apiKey_is_null_request_passes_through()
+    [TestCase(null)]
+    [TestCase("")]
+    public async Task When_apiKey_is_unset_request_passes_through(string? apiKey)
     {
-        (ApiKeyAuthMiddleware middleware, NextSpy spy) = Build(apiKey: null);
+        (ApiKeyAuthMiddleware middleware, NextSpy spy) = Build(apiKey: apiKey);
         DefaultHttpContext ctx = NewContext();
 
         await middleware.InvokeAsync(ctx);
