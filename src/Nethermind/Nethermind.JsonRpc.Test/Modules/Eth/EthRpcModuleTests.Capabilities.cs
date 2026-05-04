@@ -25,7 +25,8 @@ public partial class EthRpcModuleTests
     private static readonly ResourceAvailability Disabled = new(Disabled: true, OldestBlock: null);
 
     private static readonly StateAvailability ArchiveState = new(Archive: true, RetentionWindowBlocks: null, StateProofsSupported: true);
-    private static readonly StateAvailability FullPrunedState = new(Archive: false, RetentionWindowBlocks: null, StateProofsSupported: false);
+    private static readonly StateAvailability FullPrunedState = new(Archive: false, RetentionWindowBlocks: null, StateProofsSupported: true);
+    private static readonly StateAvailability FlatState = new(Archive: false, RetentionWindowBlocks: 256, StateProofsSupported: false);
 
     private static EthCapabilities GetCaps(
         StateAvailability state,
@@ -69,46 +70,52 @@ public partial class EthRpcModuleTests
 
     private static IEnumerable<CapabilitiesScenario> CapabilitiesScenarios()
     {
-        // Archive — covers the genesis-receipts regression (AncientReceiptsBarrierCalc returns
-        // Math.Max(1, …) which is wrong for PivotNumber=0; receipts must be available from 0).
+        SyncConfig fullSync = new() { DownloadReceiptsInFastSync = true, PivotNumber = 0 };
+
+        // Regression: AncientReceiptsBarrierCalc returns Math.Max(1, …) — wrong for PivotNumber=0.
         yield return new CapabilitiesScenario(
             Name: "archive_full_availability",
             State: ArchiveState,
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        {
-            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-        };
+        { SyncConfig = fullSync };
 
-        // Full pruning is periodic and non-linear — no predictable window to report.
+        // Full-only trie pruning: state present but no predictable window. Proofs share the
+        // (unknown) retention since trie nodes still resolve.
+        ResourceAvailability stateUnknown = new(Disabled: false, OldestBlock: null);
         yield return new CapabilitiesScenario(
             Name: "full_pruning_omits_oldest_and_strategy",
             State: FullPrunedState,
-            ExpectedState: new ResourceAvailability(Disabled: false, OldestBlock: null),
-            ExpectedStateproofs: Disabled,
+            ExpectedState: stateUnknown, ExpectedStateproofs: stateUnknown,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        {
-            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-        };
+        { SyncConfig = fullSync };
 
-        // Memory pruning maintains a rolling window of N recent states.
         const long retention = 128;
         const long memoryHead = 1000;
+        ResourceAvailability memoryPruned = new(
+            Disabled: false,
+            OldestBlock: memoryHead - retention,
+            DeleteStrategy: new DeleteStrategy("window", retention));
         yield return new CapabilitiesScenario(
             Name: "memory_pruning_reports_window_and_oldest_block",
-            State: new StateAvailability(Archive: false, RetentionWindowBlocks: retention, StateProofsSupported: false),
-            ExpectedState: new ResourceAvailability(
-                Disabled: false,
-                OldestBlock: memoryHead - retention,
-                DeleteStrategy: new DeleteStrategy("window", retention)),
-            ExpectedStateproofs: Disabled,
+            State: new StateAvailability(Archive: false, RetentionWindowBlocks: retention, StateProofsSupported: true),
+            ExpectedState: memoryPruned, ExpectedStateproofs: memoryPruned,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        {
-            HeadNumber = memoryHead,
-            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
-        };
+        { HeadNumber = memoryHead, SyncConfig = fullSync };
 
-        // No receipts download → tx/logs/receipts unavailable.
+        // Flat storage cannot serve trie-node-by-hash lookups — proofs disabled even though
+        // State is reported with a retention window.
+        ResourceAvailability flatState = new(
+            Disabled: false,
+            OldestBlock: 1000 - 256,
+            DeleteStrategy: new DeleteStrategy("window", 256));
+        yield return new CapabilitiesScenario(
+            Name: "flat_state_disables_proofs",
+            State: FlatState,
+            ExpectedState: flatState, ExpectedStateproofs: Disabled,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
+        { SyncConfig = fullSync };
+
         yield return new CapabilitiesScenario(
             Name: "no_receipts_disables_tx_logs_receipts",
             State: ArchiveState,
@@ -118,8 +125,6 @@ public partial class EthRpcModuleTests
             SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = false },
         };
 
-        // Rolling history pruning (EIP-4444): blocks/tx/logs/receipts share a known retention
-        // window expressed in RetentionEpochs * 32 blocks; floor advances to historyPruner cutoff.
         const long rollingFloor = 1000;
         const uint retentionEpochs = 200;
         ResourceAvailability rollingPruned = new(
@@ -132,12 +137,11 @@ public partial class EthRpcModuleTests
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: rollingPruned, ExpectedBlocks: rollingPruned)
         {
-            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            SyncConfig = fullSync,
             HistoryConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = retentionEpochs },
             HistoryPruner = MockHistoryPruner(rollingFloor),
         };
 
-        // UseAncientBarriers prunes up to ancient barriers — predictable floor but no rolling window.
         const long ancientFloor = 500;
         ResourceAvailability ancientPruned = new(Disabled: false, OldestBlock: ancientFloor);
         yield return new CapabilitiesScenario(
@@ -146,7 +150,7 @@ public partial class EthRpcModuleTests
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: ancientPruned, ExpectedBlocks: ancientPruned)
         {
-            SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            SyncConfig = fullSync,
             HistoryConfig = new HistoryConfig { Pruning = PruningModes.UseAncientBarriers },
             HistoryPruner = MockHistoryPruner(ancientFloor),
         };

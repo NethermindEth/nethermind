@@ -17,10 +17,7 @@ public interface IWorldStateManager
     ISnapServer SnapServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
 
-    /// <summary>
-    /// Describes the historical state availability of this manager (archive vs. rolling window,
-    /// whether state proofs can be served). Reported through <c>eth_capabilities</c>.
-    /// </summary>
+    /// <summary>Historical state availability — reported through <c>eth_capabilities</c>.</summary>
     StateAvailability StateAvailability { get; }
 
     /// <summary>
