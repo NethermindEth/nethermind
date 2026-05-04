@@ -110,14 +110,14 @@ public class WithdrawalDecoderTests
 
         byte[] rlp = CombineRlpList(tamperedRlp1, tamperedRlp2);
 
-        Action decode = () => rlp.AsRlpValueContext().DecodeArray(decoder!);
-        Assert.That(decode, Throws.InstanceOf<RlpException>().And.Message.Contain("checkpoint failed"));
+        void Decode() => rlp.AsRlpValueContext().DecodeArray(decoder!);
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().And.Message.Contain("checkpoint failed"));
     }
 
     private static byte[] CombineRlpList(params byte[][] encodedItems)
     {
         int sequenceLength = encodedItems.Sum(static item => item.Length);
-        byte[] result = new byte[Rlp.LengthOfLength(sequenceLength) + sequenceLength];
+        byte[] result = new byte[Rlp.LengthOfSequence(sequenceLength)];
 
         int position = 0;
         position += Rlp.StartSequence(result, position, sequenceLength);
