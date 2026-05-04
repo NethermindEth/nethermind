@@ -26,7 +26,7 @@ using NonBlocking;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class TreeSync : ITreeSync
+    public class TreeSync
     {
         public const int AlreadySavedCapacity = 1024 * 1024;
         public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
@@ -56,6 +56,10 @@ namespace Nethermind.Synchronization.FastSync
         private Hash256 _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
 
+        public bool IsRootSaved => _rootSaved == 1;
+        public bool IsRootComplete => _rootSaved == 1 || _rootNode == Keccak.EmptyTreeHash
+            || _store.NodeExists(null, TreePath.Empty, _rootNode);
+
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly ITreeSyncStore _store;
@@ -76,13 +80,9 @@ namespace Nethermind.Synchronization.FastSync
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
         private long _blockNumber;
-        private readonly SyncMode _syncMode;
-
-        public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
         public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, ITreeSyncStore store, IBlockTree blockTree, IStateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
         {
-            _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -335,37 +335,32 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public (bool continueProcessing, bool finishSyncRound) ValidatePrepareRequest(SyncMode currentSyncMode)
+        public bool IsSyncRoundFinished()
         {
             if (_rootSaved == 1)
             {
                 if (_logger.IsInfo) _logger.Info("StateNode sync: falling asleep - root saved");
                 VerifyPostSyncCleanUp();
-                return (false, true);
-            }
-
-            if ((currentSyncMode & _syncMode) != _syncMode)
-            {
-                return (false, false);
+                return true;
             }
 
             if (_rootNode == Keccak.EmptyTreeHash)
             {
                 if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - root is empty tree");
-                return (false, true);
+                return true;
             }
 
             if (_stateSyncPivot.GetPivotHeader().StateRoot != _rootNode)
             {
                 if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - updating state root");
-                return (false, true);
+                return true;
             }
 
             if (_hintsToResetRoot >= 32 && DateTime.UtcNow - _lastResetRoot > _minTimeBetweenReset)
             {
                 if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - many missing responses");
                 _stateSyncPivot.UpdateHeaderForcefully();
-                return (false, true);
+                return true;
             }
 
             bool rootNodeKeyExists;
@@ -377,7 +372,7 @@ namespace Nethermind.Synchronization.FastSync
             }
             catch (ObjectDisposedException)
             {
-                return (false, false);
+                return true;
             }
             finally
             {
@@ -391,15 +386,12 @@ namespace Nethermind.Synchronization.FastSync
                     _logger.Info($"STATE SYNC FINISHED:{Metrics.StateSyncRequests}, {Metrics.SyncedStateTrieNodes}");
 
                     VerifyPostSyncCleanUp();
-                    return (false, true);
                 }
-                catch (ObjectDisposedException)
-                {
-                    return (false, false);
-                }
+                catch (ObjectDisposedException) { }
+                return true;
             }
 
-            return (true, false);
+            return false;
         }
 
         public void ResetStateRoot(SyncFeedState currentState) => ResetStateRoot(_blockNumber, _rootNode, currentState);
@@ -794,11 +786,6 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             CleanupMemory();
-
-            if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
-            {
-                SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(pivotHeader));
-            }
         }
 
         private void CleanupMemory()
