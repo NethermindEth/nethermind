@@ -178,8 +178,7 @@ namespace Nethermind.Serialization.Json
 
         private JsonWriterOptions CreateWriterOptions(bool indented)
         {
-            JsonWriterOptions writerOptions = new()
-                { SkipValidation = true, Indented = indented, MaxDepth = _maxDepth };
+            JsonWriterOptions writerOptions = new() { SkipValidation = true, Indented = indented, MaxDepth = _maxDepth };
             return writerOptions;
         }
 
