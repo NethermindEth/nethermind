@@ -30,6 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V70;
 public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 {
     private readonly MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70> _receiptsRequests70;
+    private readonly ISpecProvider _specProvider;
 
     public Eth70ProtocolHandler(
         ISession session,
@@ -45,7 +46,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ISpecProvider specProvider,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) => _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(Send);
+            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
+    {
+        _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(Send);
+        ArgumentNullException.ThrowIfNull(specProvider);
+        _specProvider = specProvider;
+    }
 
     public override string Name => "eth70";
 
@@ -176,11 +182,13 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ulong totalResponseSize = 0;
 
         using ArrayPoolList<long> expectedGasUsed = new(blockHashes.Count);
+        using ArrayPoolList<bool> validateReceiptGasAgainstHeader = new(blockHashes.Count);
 
         for (int i = 0; i < blockHashes.Count; i++)
         {
             BlockHeader? header = SyncServer.FindHeader(blockHashes[i]);
             expectedGasUsed.Add(header?.GasUsed ?? 0);
+            validateReceiptGasAgainstHeader.Add(header is not null && !_specProvider.GetSpec(header).IsEip8037Enabled);
         }
 
         try
@@ -230,7 +238,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             }
 
                             partialReceipts.AddRange(blockReceipts);
-                            ValidateBlockReceipts(blockReceipts, expectedGasUsed[blockIndex], firstBlockReceiptIndex, isLast && !response.LastBlockIncomplete);
+                            ValidateBlockReceipts(blockReceipts, expectedGasUsed[blockIndex], validateReceiptGasAgainstHeader[blockIndex], firstBlockReceiptIndex, isLast && !response.LastBlockIncomplete);
 
                             if (response.LastBlockIncomplete && isLast)
                             {
@@ -244,7 +252,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             else
                             {
                                 TxReceipt[] completed = partialReceipts.AsSpan().ToArray();
-                                ValidateBlockReceipts(completed, expectedGasUsed[blockIndex], 0, true);
+                                ValidateBlockReceipts(completed, expectedGasUsed[blockIndex], validateReceiptGasAgainstHeader[blockIndex], 0, true);
                                 aggregated.Add(completed);
                                 partialReceipts.Dispose();
                                 partialReceipts = null;
@@ -262,14 +270,14 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                                 throw new SubprotocolException("Peer returned no progress for partial receipts");
                             }
 
-                            ValidateBlockReceipts(blockReceipts, expectedGasUsed[blockIndex], firstBlockReceiptIndex, false);
+                            ValidateBlockReceipts(blockReceipts, expectedGasUsed[blockIndex], validateReceiptGasAgainstHeader[blockIndex], firstBlockReceiptIndex, false);
                             partialReceipts = new ArrayPoolList<TxReceipt>(blockReceipts.Length + firstBlockReceiptIndex);
                             partialReceipts.AddRange(blockReceipts);
                             firstBlockReceiptIndex = partialReceipts.Count;
                         }
                         else
                         {
-                            ValidateBlockReceipts(blockReceipts, expectedGasUsed[blockIndex], firstBlockReceiptIndex, true);
+                            ValidateBlockReceipts(blockReceipts, expectedGasUsed[blockIndex], validateReceiptGasAgainstHeader[blockIndex], firstBlockReceiptIndex, true);
                             aggregated.Add(blockReceipts);
                             blockIndex++;
                             firstBlockReceiptIndex = 0;
@@ -324,7 +332,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         public bool LastBlockIncomplete { get; } = lastBlockIncomplete;
     }
 
-    private static void ValidateBlockReceipts(TxReceipt[] blockReceipts, long expectedGasUsed, int firstReceiptIndex, bool isCompleteSegment)
+    private static void ValidateBlockReceipts(
+        TxReceipt[] blockReceipts,
+        long expectedGasUsed,
+        bool validateReceiptGasAgainstHeader,
+        int firstReceiptIndex,
+        bool isCompleteSegment)
     {
         if (blockReceipts is null)
         {
@@ -357,7 +370,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             throw new SubprotocolException("Invalid block gas used in receipts");
         }
 
-        if (expectedGasUsed > 0 && blockGasUsed > expectedGasUsed)
+        if (validateReceiptGasAgainstHeader && expectedGasUsed > 0 && blockGasUsed > expectedGasUsed)
         {
             throw new SubprotocolException("Block gas used exceeds header value");
         }
@@ -369,7 +382,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             throw new SubprotocolException("Intrinsic gas lower bound exceeds block gas used");
         }
 
-        long gasUpperBound = expectedGasUsed > 0 ? expectedGasUsed : blockGasUsed;
+        long gasUpperBound = validateReceiptGasAgainstHeader && expectedGasUsed > 0 ? expectedGasUsed : blockGasUsed;
 
         if (isCompleteSegment)
         {
@@ -394,7 +407,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 throw new SubprotocolException("Logs gas exceeds block gas used");
             }
 
-            if (expectedGasUsed > 0 && blockGasUsed != expectedGasUsed)
+            if (validateReceiptGasAgainstHeader && expectedGasUsed > 0 && blockGasUsed != expectedGasUsed)
             {
                 throw new SubprotocolException("Block gas used mismatch between receipts and header");
             }

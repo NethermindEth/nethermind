@@ -454,6 +454,53 @@ public class Eth70ProtocolHandlerTests
         Assert.ThrowsAsync<SubprotocolException>(async () => await act());
     }
 
+    [TestCase(false, "Block gas used exceeds header value")]
+    [TestCase(true, null)]
+    public async Task Should_validate_receipt_cumulative_against_header_gas_used_unless_eip8037(bool isEip8037Enabled, string? expectedException)
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(1)
+            .WithGasUsed(GasCostOf.Transaction)
+            .TestObject;
+        _syncManager.FindHeader(blockHash).Returns(header);
+
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip8037Enabled.Returns(isEip8037Enabled);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+        ];
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        async Task Act()
+        {
+            using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+            Assert.That(result, Has.Count.EqualTo(1));
+        }
+
+        if (expectedException is null)
+        {
+            await Act();
+        }
+        else
+        {
+            SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
+            Assert.That(exception?.Message, Is.EqualTo(expectedException));
+        }
+    }
+
     [Test]
     public async Task Should_return_immediately_when_peer_returns_fewer_blocks_than_requested()
     {
