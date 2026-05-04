@@ -47,13 +47,12 @@ public class WorldStateManager : IWorldStateManager
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
 
-        // Trie nodes resolve by hash, so proofs are available wherever state is.
         StateAvailability = pruningConfig.Mode switch
         {
-            PruningMode.None => new StateAvailability(Archive: true, RetentionWindowBlocks: null, StateProofsSupported: true),
-            var m when m.IsMemory() => new StateAvailability(Archive: false, RetentionWindowBlocks: pruningConfig.PruningBoundary, StateProofsSupported: true),
+            PruningMode.None => new StateAvailability(Archive: true, RetentionWindowBlocks: null),
+            var m when m.IsMemory() => new StateAvailability(Archive: false, RetentionWindowBlocks: pruningConfig.PruningBoundary),
             // Full-only pruning is periodic — no predictable lower bound.
-            _ => new StateAvailability(Archive: false, RetentionWindowBlocks: null, StateProofsSupported: true),
+            _ => new StateAvailability(Archive: false, RetentionWindowBlocks: null),
         };
     }
 

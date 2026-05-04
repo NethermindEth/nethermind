@@ -42,14 +42,14 @@ public class EthCapabilitiesProvider(
             ? new DeleteStrategy("window", historyConfig.RetentionEpochs * HistoryPruner.SlotsPerEpoch)
             : null;
 
+        ResourceAvailability state = Resource(enabled: true, stateOldest, stateWindow);
         return new EthCapabilities(
             Head: new ChainHead(head?.Number ?? 0, head?.Hash ?? Keccak.Zero),
-            State: Resource(enabled: true, stateOldest, stateWindow),
+            State: state,
             // Tx and Logs are computed aliases of Receipts.
             Receipts: Resource(receiptsSynced, Math.Max(oldestReceipts, historyFloor), historyWindow),
             Blocks: Resource(headersAvailable, Math.Max(lowestBlock, historyFloor), historyWindow),
-            // Proofs share state's retention; flat storage has no by-hash lookup so proofs are off.
-            Stateproofs: Resource(stateAvailability.StateProofsSupported, stateOldest, stateWindow));
+            Stateproofs: state);
     }
 
     private static ResourceAvailability Resource(bool enabled, long? oldestBlock, DeleteStrategy? deleteStrategy = null) =>

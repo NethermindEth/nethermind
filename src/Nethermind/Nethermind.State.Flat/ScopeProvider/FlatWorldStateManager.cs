@@ -47,9 +47,8 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    // No by-hash trie node lookup → proofs disabled. Snapshots retained within MaxReorgDepth.
     public StateAvailability StateAvailability { get; } =
-        new(Archive: false, RetentionWindowBlocks: configuration.MaxReorgDepth, StateProofsSupported: false);
+        new(Archive: false, RetentionWindowBlocks: configuration.MaxReorgDepth);
 
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(

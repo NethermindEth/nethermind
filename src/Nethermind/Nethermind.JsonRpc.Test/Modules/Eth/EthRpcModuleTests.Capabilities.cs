@@ -24,9 +24,8 @@ public partial class EthRpcModuleTests
     private static readonly ResourceAvailability Available = new(Disabled: false, OldestBlock: 0L);
     private static readonly ResourceAvailability Disabled = new(Disabled: true, OldestBlock: null);
 
-    private static readonly StateAvailability ArchiveState = new(Archive: true, RetentionWindowBlocks: null, StateProofsSupported: true);
-    private static readonly StateAvailability FullPrunedState = new(Archive: false, RetentionWindowBlocks: null, StateProofsSupported: true);
-    private static readonly StateAvailability FlatState = new(Archive: false, RetentionWindowBlocks: 256, StateProofsSupported: false);
+    private static readonly StateAvailability ArchiveState = new(Archive: true, RetentionWindowBlocks: null);
+    private static readonly StateAvailability FullPrunedState = new(Archive: false, RetentionWindowBlocks: null);
 
     private static EthCapabilities GetCaps(
         StateAvailability state,
@@ -98,23 +97,10 @@ public partial class EthRpcModuleTests
             DeleteStrategy: new DeleteStrategy("window", retention));
         yield return new CapabilitiesScenario(
             Name: "memory_pruning_reports_window_and_oldest_block",
-            State: new StateAvailability(Archive: false, RetentionWindowBlocks: retention, StateProofsSupported: true),
+            State: new StateAvailability(Archive: false, RetentionWindowBlocks: retention),
             ExpectedState: memoryPruned, ExpectedStateproofs: memoryPruned,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { HeadNumber = memoryHead, SyncConfig = fullSync };
-
-        // Flat storage cannot serve trie-node-by-hash lookups — proofs disabled even though
-        // State is reported with a retention window.
-        ResourceAvailability flatState = new(
-            Disabled: false,
-            OldestBlock: 1000 - 256,
-            DeleteStrategy: new DeleteStrategy("window", 256));
-        yield return new CapabilitiesScenario(
-            Name: "flat_state_disables_proofs",
-            State: FlatState,
-            ExpectedState: flatState, ExpectedStateproofs: Disabled,
-            ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { SyncConfig = fullSync };
 
         yield return new CapabilitiesScenario(
             Name: "no_receipts_disables_tx_logs_receipts",
@@ -225,7 +211,7 @@ public partial class EthRpcModuleTests
     public async Task eth_capabilities_json_matches_spec_schema()
     {
         EthCapabilities caps = GetCaps(
-            new StateAvailability(Archive: false, RetentionWindowBlocks: 64, StateProofsSupported: false),
+            new StateAvailability(Archive: false, RetentionWindowBlocks: 64),
             headNumber: 1000,
             syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 });
 
