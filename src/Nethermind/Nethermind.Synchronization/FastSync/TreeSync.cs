@@ -710,14 +710,16 @@ namespace Nethermind.Synchronization.FastSync
             {
                 Account? account = verificationContext.GetAccount(updatedAddress);
 
-                if (account?.StorageRoot == Keccak.EmptyTreeHash)
+                // Account may be null if it was deleted in the final state. In both the deleted
+                // and empty-storage-root cases, any flat storage entries written earlier in sync
+                // must be cleared to avoid stale slots.
+                if (account is null || account.StorageRoot == Keccak.EmptyTreeHash)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is empty, ensuring flat storage cleared");
+                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is empty or account deleted, ensuring flat storage cleared");
                     _store.EnsureStorageEmpty(updatedAddress);
                     dependentItem.Counter--;
                 }
-                else if (account?.StorageRoot is not null
-                    && AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
+                else if (AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
                 }
