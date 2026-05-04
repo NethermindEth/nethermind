@@ -29,15 +29,18 @@ namespace Nethermind.Mcp;
 /// </list>
 /// MCP failures never crash the node — startup errors are logged and the rest of the node keeps running.
 /// </remarks>
-public sealed class McpServerPlugin(IMcpConfig config, ILogManager logManager) : INethermindPlugin, IAsyncDisposable
+public sealed class McpServerPlugin(IMcpConfig config) : INethermindPlugin, IAsyncDisposable
 {
-    // Config and log manager are injected by Autofac via ConfigRegistrationSource so that
-    // PluginLoader can read `Enabled` *before* Init runs — the plugin table check happens
-    // immediately after container resolution, and a config read deferred to Init would
-    // always be observed as `false` and the plugin would be filtered out before lifecycle.
+    // Config is injected by Autofac via ConfigRegistrationSource so PluginLoader observes
+    // `Enabled` *before* Init runs — the plugin table check happens immediately after
+    // container resolution, and a config read deferred to Init would always be observed as
+    // `false` and the plugin would be filtered out before lifecycle. ILogManager is *not*
+    // registered in the plugin container (only IConfig types and ChainSpec are), so the
+    // logger is resolved from INethermindApi inside Init, matching the convention used by
+    // peer plugins like Flashbots.
     private readonly IMcpConfig _config = config;
-    private readonly ILogger _logger = logManager.GetClassLogger<McpServerPlugin>();
     private INethermindApi? _api;
+    private ILogger _logger;
     private McpWebHost? _runningHost;
 
     public string Name => "Mcp";
@@ -57,6 +60,7 @@ public sealed class McpServerPlugin(IMcpConfig config, ILogManager logManager) :
         ArgumentNullException.ThrowIfNull(api);
 
         _api = api;
+        _logger = api.LogManager.GetClassLogger<McpServerPlugin>();
 
         if (IsNonLoopback(_config.HttpHost) && string.IsNullOrEmpty(_config.ApiKey))
         {

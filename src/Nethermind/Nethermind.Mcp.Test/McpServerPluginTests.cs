@@ -23,7 +23,7 @@ public class McpServerPluginTests
     {
         // A fresh config has Enabled = false; the plugin must report disabled at the moment
         // PluginLoader reads it (immediately after Autofac resolution, before Init).
-        McpServerPlugin plugin = new(new McpConfig(), LimboLogs.Instance);
+        McpServerPlugin plugin = new(new McpConfig());
 
         Assert.That(plugin.Enabled, Is.False);
     }
@@ -34,7 +34,7 @@ public class McpServerPluginTests
         // Regression: PluginLoader inspects plugin.Enabled right after container build.
         // The plugin must observe its config via constructor injection — not via Init —
         // otherwise it gets filtered out and InitRpcModules never runs.
-        McpServerPlugin plugin = new(new McpConfig { Enabled = true }, LimboLogs.Instance);
+        McpServerPlugin plugin = new(new McpConfig { Enabled = true });
 
         Assert.That(plugin.Enabled, Is.True);
     }
@@ -216,7 +216,7 @@ public class McpServerPluginTests
     [Test]
     public void Module_returns_McpServerPluginModule()
     {
-        McpServerPlugin plugin = new(new McpConfig(), LimboLogs.Instance);
+        McpServerPlugin plugin = new(new McpConfig());
 
         Assert.That(plugin.Module, Is.InstanceOf<McpServerPluginModule>());
     }
@@ -224,7 +224,7 @@ public class McpServerPluginTests
     [Test]
     public void Plugin_metadata_is_set()
     {
-        McpServerPlugin plugin = new(new McpConfig(), LimboLogs.Instance);
+        McpServerPlugin plugin = new(new McpConfig());
 
         Assert.That(plugin.Name, Is.EqualTo("Mcp"));
         Assert.That(plugin.Description, Is.EqualTo("Model Context Protocol server"));
@@ -256,9 +256,10 @@ public class McpServerPluginTests
         IContainer container = builder.Build();
         api.Context.Returns(container);
 
-        // Construct the plugin with the same log manager wired to interfaceLogger so
-        // that warning/error assertions observe the plugin's actual log calls.
-        McpServerPlugin plugin = new(config, logManager);
+        // ILogManager is fetched from `api.LogManager` inside Init; the substituted
+        // log manager above is wired to interfaceLogger so warning/error assertions
+        // observe the plugin's actual log calls once Init has run.
+        McpServerPlugin plugin = new(config);
         return (api, plugin);
     }
 }
