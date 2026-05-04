@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
@@ -16,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
@@ -29,7 +31,9 @@ namespace Nethermind.Synchronization.SnapSync
         private const int CODES_BATCH_SIZE = 1_000;
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private const uint StorageRangeSplitFactor = 2;
+        private const int SnapRangesProgressVersion = 1;
         internal static readonly byte[] ACC_PROGRESS_KEY = "AccountProgressKey"u8.ToArray();
+        internal static readonly byte[] SNAP_RANGES_PROGRESS_KEY = "SnapRangesProgressKey"u8.ToArray();
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
         // bottlenecked by _syncCommit lock in SnapProviderHelper, which in turns is limited by the IO.
@@ -42,6 +46,8 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ConcurrentDictionary<ValueHash256, LargeProgressStatus> _largeStorageProgress = new();
         private long? _estimatedStorageRemaining = null;
         private bool _shouldStartLoggingLargeStorage = false;
+        private bool _rangePhaseFinished = false;
+        private bool _snapRangesProgressDirty = false;
 
         private int _activeCodeRequests;
         private int _activeAccRefreshRequests;
@@ -84,7 +90,10 @@ namespace Nethermind.Synchronization.SnapSync
             SetupAccountRangePartition();
 
             //TODO: maybe better to move to a init method instead of the constructor
-            GetSyncProgress();
+            if (!GetSyncProgress())
+            {
+                RestoreSnapRangesProgress();
+            }
         }
 
         private void SetupAccountRangePartition()
@@ -296,6 +305,7 @@ namespace Nethermind.Synchronization.SnapSync
             foreach (ValueHash256 hash in codeHashes)
             {
                 CodesToRetrieve.Enqueue(hash);
+                _snapRangesProgressDirty = true;
             }
         }
 
@@ -304,6 +314,7 @@ namespace Nethermind.Synchronization.SnapSync
             EnqueueCodeHashes(codeHashes);
 
             Interlocked.Decrement(ref _activeCodeRequests);
+            _snapRangesProgressDirty = true;
         }
 
         public void ReportAccountRefreshFinished(AccountsToRefreshRequest? accountsToRefreshRequest = null)
@@ -317,14 +328,20 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Interlocked.Decrement(ref _activeAccRefreshRequests);
+            _snapRangesProgressDirty = true;
         }
 
-        public void EnqueueAccountStorage(PathWithAccount pwa) => StoragesToRetrieve.Enqueue(pwa);
+        public void EnqueueAccountStorage(PathWithAccount pwa)
+        {
+            StoragesToRetrieve.Enqueue(pwa);
+            _snapRangesProgressDirty = true;
+        }
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash, in ValueHash256? hashLimit)
         {
             TrackAccountToHeal(pathWithAccount.Path);
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
+            _snapRangesProgressDirty = true;
         }
 
         public void ReportFullStorageRequestFinished(int originalStorageCount, IEnumerable<PathWithAccount>? storages = null)
@@ -338,6 +355,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
+            _snapRangesProgressDirty = true;
         }
 
         public void EnqueueNextSlot(StorageRange? storageRange)
@@ -345,6 +363,7 @@ namespace Nethermind.Synchronization.SnapSync
             if (storageRange is not null)
             {
                 NextSlotRange.Enqueue(storageRange);
+                _snapRangesProgressDirty = true;
             }
         }
 
@@ -401,6 +420,8 @@ namespace Nethermind.Synchronization.SnapSync
                 };
                 NextSlotRange.Enqueue(storageRange);
             }
+
+            _snapRangesProgressDirty = true;
         }
 
         public void RetryStorageRange(StorageRange storageRange)
@@ -421,6 +442,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Interlocked.Add(ref _activeStorageRequests, -(storageRange?.Accounts.Count ?? 0));
+            _snapRangesProgressDirty = true;
             if (dispose) storageRange.Dispose();
         }
 
@@ -433,6 +455,7 @@ namespace Nethermind.Synchronization.SnapSync
                 AccountRangeReadyForRequest.Enqueue(partition);
             }
             Interlocked.Decrement(ref _activeAccountRequests);
+            _snapRangesProgressDirty = true;
         }
 
         public void UpdateAccountRangePartitionProgress(in ValueHash256 hashLimit, in ValueHash256 nextPath, bool moreChildrenToRight)
@@ -441,6 +464,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             partition.NextAccountPath = nextPath;
             partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
+            _snapRangesProgressDirty = true;
         }
 
         public bool IsSnapGetRangesFinished() => AccountRangeReadyForRequest.IsEmpty
@@ -453,7 +477,7 @@ namespace Nethermind.Synchronization.SnapSync
                    && _activeCodeRequests == 0
                    && _activeAccRefreshRequests == 0;
 
-        private void GetSyncProgress()
+        private bool GetSyncProgress()
         {
             // Note, as before, the progress actually only store MaxValue or 0. So we can't actually resume
             // snap sync on restart.
@@ -470,18 +494,353 @@ namespace Nethermind.Synchronization.SnapSync
                         partition.Value.MoreAccountsToRight = false;
                     }
                     AccountRangeReadyForRequest.Clear();
+                    _rangePhaseFinished = true;
+                    return true;
                 }
                 else
                 {
                     _logger.Info($"Snap - State Ranges (Phase 1) progress loaded from DB:{path}");
                 }
             }
+
+            return false;
         }
 
         private void FinishRangePhase()
         {
+            _rangePhaseFinished = true;
+            _db.Remove(SNAP_RANGES_PROGRESS_KEY);
             _db.PutSpan(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes, WriteFlags.DisableWAL);
             _db.Flush();
+        }
+
+        private void PersistSnapRangesProgressIfSafe()
+        {
+            if (!CanPersistSnapRangesProgress())
+            {
+                return;
+            }
+
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+
+            writer.Write(SnapRangesProgressVersion);
+            writer.Write(_accountRangePartitionCount);
+
+            writer.Write(AccountRangePartitions.Count);
+            foreach (KeyValuePair<ValueHash256, AccountRangePartition> keyValuePair in AccountRangePartitions)
+            {
+                WriteValueHash256(writer, keyValuePair.Key);
+                WriteValueHash256(writer, keyValuePair.Value.NextAccountPath);
+                WriteValueHash256(writer, keyValuePair.Value.AccountPathStart);
+                WriteValueHash256(writer, keyValuePair.Value.AccountPathLimit);
+                writer.Write(keyValuePair.Value.MoreAccountsToRight);
+            }
+
+            AccountRangePartition[] readyPartitions = AccountRangeReadyForRequest.ToArray();
+            writer.Write(readyPartitions.Length);
+            for (int i = 0; i < readyPartitions.Length; i++)
+            {
+                WriteValueHash256(writer, readyPartitions[i].AccountPathLimit);
+            }
+
+            WriteStorageRanges(writer, NextSlotRange.ToArray());
+            WritePathWithAccounts(writer, StoragesToRetrieve.ToArray());
+            WriteValueHash256Array(writer, CodesToRetrieve.ToArray());
+            WriteAccountsToRefresh(writer, AccountsToRefresh.ToArray());
+
+            _db.PutSpan(SNAP_RANGES_PROGRESS_KEY, stream.ToArray(), WriteFlags.DisableWAL);
+            _db.Flush();
+            _snapRangesProgressDirty = false;
+        }
+
+        private bool CanPersistSnapRangesProgress() =>
+            !_rangePhaseFinished
+            && _snapRangesProgressDirty
+            && _activeAccountRequests == 0
+            && _activeStorageRequests == 0
+            && _activeCodeRequests == 0
+            && _activeAccRefreshRequests == 0;
+
+        private void RestoreSnapRangesProgress()
+        {
+            byte[]? checkpoint = _db.Get(SNAP_RANGES_PROGRESS_KEY);
+            if (checkpoint is null)
+            {
+                return;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(checkpoint);
+                using BinaryReader reader = new(stream);
+
+                int version = reader.ReadInt32();
+                if (version != SnapRangesProgressVersion)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Ignoring unsupported SnapRanges progress checkpoint version {version}.");
+                    return;
+                }
+
+                int partitionCount = reader.ReadInt32();
+                if (partitionCount != _accountRangePartitionCount)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Ignoring SnapRanges progress checkpoint for {partitionCount} partitions; current config uses {_accountRangePartitionCount}.");
+                    return;
+                }
+
+                AccountRangeReadyForRequest.Clear();
+                NextSlotRange.Clear();
+                StoragesToRetrieve.Clear();
+                CodesToRetrieve.Clear();
+                AccountsToRefresh.Clear();
+
+                int accountRangePartitionCount = reader.ReadInt32();
+                for (int i = 0; i < accountRangePartitionCount; i++)
+                {
+                    ValueHash256 key = ReadValueHash256(reader);
+                    if (!AccountRangePartitions.TryGetValue(key, out AccountRangePartition? partition))
+                    {
+                        throw new InvalidDataException($"Unknown account range partition {key}.");
+                    }
+
+                    partition.NextAccountPath = ReadValueHash256(reader);
+                    partition.AccountPathStart = ReadValueHash256(reader);
+                    partition.AccountPathLimit = ReadValueHash256(reader);
+                    partition.MoreAccountsToRight = reader.ReadBoolean();
+                }
+
+                int readyPartitionCount = reader.ReadInt32();
+                for (int i = 0; i < readyPartitionCount; i++)
+                {
+                    ValueHash256 key = ReadValueHash256(reader);
+                    if (!AccountRangePartitions.TryGetValue(key, out AccountRangePartition? partition))
+                    {
+                        throw new InvalidDataException($"Unknown ready account range partition {key}.");
+                    }
+
+                    if (partition.MoreAccountsToRight)
+                    {
+                        AccountRangeReadyForRequest.Enqueue(partition);
+                    }
+                }
+
+                foreach (StorageRange storageRange in ReadStorageRanges(reader))
+                {
+                    NextSlotRange.Enqueue(storageRange);
+                }
+
+                foreach (PathWithAccount pathWithAccount in ReadPathWithAccounts(reader))
+                {
+                    StoragesToRetrieve.Enqueue(pathWithAccount);
+                }
+
+                foreach (ValueHash256 codeHash in ReadValueHash256Array(reader))
+                {
+                    CodesToRetrieve.Enqueue(codeHash);
+                }
+
+                foreach (AccountWithStorageStartingHash account in ReadAccountsToRefresh(reader))
+                {
+                    AccountsToRefresh.Enqueue(account);
+                }
+
+                if (_logger.IsInfo) _logger.Info("Snap - State Ranges (Phase 1) progress restored from DB.");
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Ignoring invalid SnapRanges progress checkpoint. {exception}");
+
+                AccountRangePartitions.Clear();
+                AccountRangeReadyForRequest.Clear();
+                NextSlotRange.Clear();
+                StoragesToRetrieve.Clear();
+                CodesToRetrieve.Clear();
+                AccountsToRefresh.Clear();
+                SetupAccountRangePartition();
+            }
+        }
+
+        private static void WriteStorageRanges(BinaryWriter writer, StorageRange[] ranges)
+        {
+            writer.Write(ranges.Length);
+            for (int i = 0; i < ranges.Length; i++)
+            {
+                WriteNullableLong(writer, ranges[i].BlockNumber);
+                WriteNullableHash256(writer, ranges[i].RootHash);
+                WritePathWithAccounts(writer, ranges[i].Accounts);
+                WriteNullableValueHash256(writer, ranges[i].StartingHash);
+                WriteNullableValueHash256(writer, ranges[i].LimitHash);
+            }
+        }
+
+        private static StorageRange[] ReadStorageRanges(BinaryReader reader)
+        {
+            int count = reader.ReadInt32();
+            StorageRange[] ranges = new StorageRange[count];
+            for (int i = 0; i < count; i++)
+            {
+                ranges[i] = new StorageRange
+                {
+                    BlockNumber = ReadNullableLong(reader),
+                    RootHash = ReadNullableHash256(reader),
+                    Accounts = ReadPathWithAccounts(reader).ToPooledList(),
+                    StartingHash = ReadNullableValueHash256(reader),
+                    LimitHash = ReadNullableValueHash256(reader),
+                };
+            }
+
+            return ranges;
+        }
+
+        private static void WritePathWithAccounts(BinaryWriter writer, IReadOnlyList<PathWithAccount> accounts)
+        {
+            writer.Write(accounts.Count);
+            for (int i = 0; i < accounts.Count; i++)
+            {
+                WritePathWithAccount(writer, accounts[i]);
+            }
+        }
+
+        private static PathWithAccount[] ReadPathWithAccounts(BinaryReader reader)
+        {
+            int count = reader.ReadInt32();
+            PathWithAccount[] accounts = new PathWithAccount[count];
+            for (int i = 0; i < count; i++)
+            {
+                accounts[i] = ReadPathWithAccount(reader);
+            }
+
+            return accounts;
+        }
+
+        private static void WriteAccountsToRefresh(BinaryWriter writer, AccountWithStorageStartingHash[] accounts)
+        {
+            writer.Write(accounts.Length);
+            for (int i = 0; i < accounts.Length; i++)
+            {
+                WritePathWithAccount(writer, accounts[i].PathAndAccount);
+                WriteValueHash256(writer, accounts[i].StorageStartingHash);
+                WriteValueHash256(writer, accounts[i].StorageHashLimit);
+            }
+        }
+
+        private static AccountWithStorageStartingHash[] ReadAccountsToRefresh(BinaryReader reader)
+        {
+            int count = reader.ReadInt32();
+            AccountWithStorageStartingHash[] accounts = new AccountWithStorageStartingHash[count];
+            for (int i = 0; i < count; i++)
+            {
+                accounts[i] = new AccountWithStorageStartingHash
+                {
+                    PathAndAccount = ReadPathWithAccount(reader),
+                    StorageStartingHash = ReadValueHash256(reader),
+                    StorageHashLimit = ReadValueHash256(reader),
+                };
+            }
+
+            return accounts;
+        }
+
+        private static void WritePathWithAccount(BinaryWriter writer, PathWithAccount pathWithAccount)
+        {
+            WriteValueHash256(writer, pathWithAccount.Path);
+            WriteBytes(writer, Rlp.Encode(pathWithAccount.Account).Bytes);
+        }
+
+        private static PathWithAccount ReadPathWithAccount(BinaryReader reader)
+        {
+            ValueHash256 path = ReadValueHash256(reader);
+            Account? account = Rlp.Decode<Account>(ReadBytes(reader));
+            return new PathWithAccount(path, account ?? Account.TotallyEmpty);
+        }
+
+        private static void WriteValueHash256Array(BinaryWriter writer, ValueHash256[] hashes)
+        {
+            writer.Write(hashes.Length);
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                WriteValueHash256(writer, hashes[i]);
+            }
+        }
+
+        private static ValueHash256[] ReadValueHash256Array(BinaryReader reader)
+        {
+            int count = reader.ReadInt32();
+            ValueHash256[] hashes = new ValueHash256[count];
+            for (int i = 0; i < count; i++)
+            {
+                hashes[i] = ReadValueHash256(reader);
+            }
+
+            return hashes;
+        }
+
+        private static void WriteHash256(BinaryWriter writer, Hash256 hash) => writer.Write(hash.Bytes);
+
+        private static Hash256 ReadHash256(BinaryReader reader) => new(ReadFixedBytes(reader, 32));
+
+        private static void WriteNullableHash256(BinaryWriter writer, Hash256? hash)
+        {
+            writer.Write(hash is not null);
+            if (hash is not null)
+            {
+                WriteHash256(writer, hash);
+            }
+        }
+
+        private static Hash256? ReadNullableHash256(BinaryReader reader) =>
+            reader.ReadBoolean() ? ReadHash256(reader) : null;
+
+        private static void WriteValueHash256(BinaryWriter writer, ValueHash256 hash) => writer.Write(hash.Bytes);
+
+        private static ValueHash256 ReadValueHash256(BinaryReader reader) => new(ReadFixedBytes(reader, 32));
+
+        private static void WriteNullableValueHash256(BinaryWriter writer, ValueHash256? hash)
+        {
+            writer.Write(hash.HasValue);
+            if (hash.HasValue)
+            {
+                WriteValueHash256(writer, hash.Value);
+            }
+        }
+
+        private static ValueHash256? ReadNullableValueHash256(BinaryReader reader) =>
+            reader.ReadBoolean() ? ReadValueHash256(reader) : null;
+
+        private static void WriteNullableLong(BinaryWriter writer, long? value)
+        {
+            writer.Write(value.HasValue);
+            if (value.HasValue)
+            {
+                writer.Write(value.Value);
+            }
+        }
+
+        private static long? ReadNullableLong(BinaryReader reader) =>
+            reader.ReadBoolean() ? reader.ReadInt64() : null;
+
+        private static void WriteBytes(BinaryWriter writer, byte[] bytes)
+        {
+            writer.Write(bytes.Length);
+            writer.Write(bytes);
+        }
+
+        private static byte[] ReadBytes(BinaryReader reader)
+        {
+            int length = reader.ReadInt32();
+            return ReadFixedBytes(reader, length);
+        }
+
+        private static byte[] ReadFixedBytes(BinaryReader reader, int length)
+        {
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException();
+            }
+
+            return bytes;
         }
 
         public void TrackAccountToHeal(ValueHash256 path)
@@ -612,6 +971,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void Dispose()
         {
+            PersistSnapRangesProgressIfSafe();
             while (NextSlotRange.TryDequeue(out StorageRange? range))
             {
                 range?.Dispose();
